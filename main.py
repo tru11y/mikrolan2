@@ -17,10 +17,9 @@ from models import (
     get_logs,
     log_step,
     get_quarantine_state,
-    check_quarantine_gate,
 )
 from onboarding import spawn_onboarding_task
-from quarantine import on_job_complete, release_quarantine
+from quarantine import on_job_complete, release_quarantine, check_quarantine_gate
 
 app = FastAPI(title="MikroTik Provisioning Backend", version="0.1.0")
 
