@@ -6,6 +6,7 @@ import asyncio
 import os
 from typing import Optional
 import secrets
+import uuid
 
 from models import (
     Router,
@@ -40,6 +41,8 @@ async def onboarding_worker(router_id: str, backend_wg_pubkey: str):
     Each router runs independently; exceptions don't affect others.
     All state transitions are logged and persisted in DB.
     """
+    from quarantine import on_job_complete
+
     router = get_router(router_id)
     if not router:
         print(f"Router {router_id} not found")
@@ -48,6 +51,7 @@ async def onboarding_worker(router_id: str, backend_wg_pubkey: str):
     ip = router.ip
     username = router.username
     password = decrypt_password(router.password_encrypted)
+    job_id = f"onboard-{router_id}-{uuid.uuid4().hex[:8]}"
 
     # State machine: each step is idempotent
     try:
@@ -215,12 +219,14 @@ async def onboarding_worker(router_id: str, backend_wg_pubkey: str):
         log_step(router_id, "onboarding", "success")
         update_router_state(router_id, RouterState.DONE)
         print(f"✓ Router {router_id} ({ip}) onboarded successfully")
+        await on_job_complete(job_id, "success", router_id)
 
     except Exception as e:
         # Catch-all for unexpected errors
         log_step(router_id, "onboarding", "error", str(e))
         update_router_state(router_id, RouterState.ERROR, error=f"Unexpected error: {e}")
         print(f"✗ Router {router_id} ({ip}) failed: {e}")
+        await on_job_complete(job_id, "failed", router_id)
 
 
 async def spawn_onboarding_task(
