@@ -17,7 +17,6 @@ from models import (
     get_logs,
     log_step,
     get_quarantine_state,
-    get_quarantine_events,
     check_quarantine_gate,
 )
 from onboarding import spawn_onboarding_task
@@ -316,33 +315,33 @@ async def release_router_quarantine(router_id: str, req: ReleaseQuarantineReques
     )
 
 
-@app.get("/routers/{router_id}/quarantine-history")
-async def get_router_quarantine_history(router_id: str, limit: int = 50):
-    """
-    GET /routers/{router_id}/quarantine-history
-    Get quarantine event history for a router.
-    """
-    router = get_router(router_id)
-    if not router:
-        raise HTTPException(status_code=404, detail="Router not found")
-
-    events = get_quarantine_events(router_id, limit=limit)
-    return {
-        "router_id": router_id,
-        "events": [
-            {
-                "id": e.id,
-                "event_type": e.event_type,
-                "level_before": e.level_before,
-                "level_after": e.level_after,
-                "triggered_by": e.triggered_by,
-                "triggered_by_id": e.triggered_by_id,
-                "message": e.message,
-                "created_at": e.created_at.isoformat() if e.created_at else None,
-            }
-            for e in events
-        ],
-    }
+# @app.get("/routers/{router_id}/quarantine-history")
+# async def get_router_quarantine_history(router_id: str, limit: int = 50):
+#     """
+#     GET /routers/{router_id}/quarantine-history
+#     Get quarantine event history for a router.
+#     """
+#     router = get_router(router_id)
+#     if not router:
+#         raise HTTPException(status_code=404, detail="Router not found")
+#
+#     events = get_quarantine_events(router_id, limit=limit)
+#     return {
+#         "router_id": router_id,
+#         "events": [
+#             {
+#                 "id": e.id,
+#                 "event_type": e.event_type,
+#                 "level_before": e.level_before,
+#                 "level_after": e.level_after,
+#                 "triggered_by": e.triggered_by,
+#                 "triggered_by_id": e.triggered_by_id,
+#                 "message": e.message,
+#                 "created_at": e.created_at.isoformat() if e.created_at else None,
+#             }
+#             for e in events
+#         ],
+#     }
 
 
 @app.get("/health")
