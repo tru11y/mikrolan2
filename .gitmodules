@@ -1,0 +1,6 @@
+[submodule "mikroserver"]
+	path = mikroserver
+	url = git@github.com:tru11y/mikroserver.git
+[submodule "mikrolan-mobile"]
+	path = mikrolan-mobile
+	url = C:/Users/PC/OneDrive - Epitech/amy/PROJETS-TERMINES/mikrolan/mikrolan-mobile
