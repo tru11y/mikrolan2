@@ -10,8 +10,18 @@ from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
 
-from models import init_db, create_router, get_router, get_logs, log_step
+from models import (
+    init_db,
+    create_router,
+    get_router,
+    get_logs,
+    log_step,
+    get_quarantine_state,
+    get_quarantine_events,
+    check_quarantine_gate,
+)
 from onboarding import spawn_onboarding_task
+from quarantine import on_job_complete, release_quarantine
 
 app = FastAPI(title="MikroTik Provisioning Backend", version="0.1.0")
 
@@ -55,6 +65,48 @@ class RouterStatusResponse(BaseModel):
     updated_at: str
 
 
+class QuarantineStatusResponse(BaseModel):
+    """Current quarantine status of a router."""
+
+    router_id: str
+    quarantine_level: int
+    consecutive_failures: int
+    triggered_by_job_id: Optional[str]
+    last_failure_at: Optional[str]
+    quarantined_at: Optional[str]
+    reason: Optional[str]
+
+
+class ReleaseQuarantineRequest(BaseModel):
+    """Request to release router from quarantine."""
+
+    reason: str
+    target_level: int = 0
+
+
+class ReleaseQuarantineResponse(BaseModel):
+    """Response after releasing quarantine."""
+
+    status: str
+    router_id: str
+    quarantine_level: int
+    released_at: str
+    release_reason: str
+
+
+class QuarantineEventResponse(BaseModel):
+    """Quarantine audit event."""
+
+    id: int
+    event_type: str
+    level_before: Optional[int]
+    level_after: Optional[int]
+    triggered_by: str
+    triggered_by_id: Optional[str]
+    message: str
+    created_at: str
+
+
 @app.on_event("startup")
 async def startup():
     """Initialize database on startup."""
@@ -86,6 +138,20 @@ async def onboard_router(req: OnboardRequest, background_tasks: BackgroundTasks)
     # Validate inputs
     if not req.ip or not req.username or not req.password:
         raise HTTPException(status_code=400, detail="Missing credentials")
+
+    # Check quarantine gate (if router already exists, verify it's not blocked)
+    existing_router = get_router(router_id)
+    if existing_router:
+        allowed, block_reason = check_quarantine_gate(router_id, "apply")
+        if not allowed:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": "ROUTER_QUARANTINED",
+                    "message": block_reason,
+                    "details": get_quarantine_state(router_id).as_dict() if get_quarantine_state(router_id) else None,
+                },
+            )
 
     # Create router record in DB
     try:
@@ -186,6 +252,97 @@ async def retry_onboarding(router_id: str, background_tasks: BackgroundTasks):
     background_tasks.add_task(run_onboarding)
 
     return {"message": "Retry initiated", "router_id": router_id}
+
+
+@app.get("/routers/{router_id}/quarantine-status", response_model=QuarantineStatusResponse)
+async def get_quarantine_status(router_id: str):
+    """
+    GET /routers/{router_id}/quarantine-status
+    Get current quarantine status of a router.
+    """
+    router = get_router(router_id)
+    if not router:
+        raise HTTPException(status_code=404, detail="Router not found")
+
+    quarantine = get_quarantine_state(router_id)
+    if not quarantine:
+        raise HTTPException(status_code=404, detail="Quarantine state not found")
+
+    return QuarantineStatusResponse(
+        router_id=quarantine.router_id,
+        quarantine_level=quarantine.level,
+        consecutive_failures=quarantine.consecutive_failures,
+        triggered_by_job_id=quarantine.triggered_by_job_id,
+        last_failure_at=quarantine.last_failure_at.isoformat() if quarantine.last_failure_at else None,
+        quarantined_at=quarantine.quarantined_at.isoformat() if quarantine.quarantined_at else None,
+        reason=quarantine.reason,
+    )
+
+
+@app.post("/routers/{router_id}/release-quarantine", response_model=ReleaseQuarantineResponse)
+async def release_router_quarantine(router_id: str, req: ReleaseQuarantineRequest):
+    """
+    POST /routers/{router_id}/release-quarantine
+    Release router from quarantine.
+    """
+    router = get_router(router_id)
+    if not router:
+        raise HTTPException(status_code=404, detail="Router not found")
+
+    if not router.tenant_id:
+        raise HTTPException(status_code=400, detail="Router has no tenant_id")
+
+    quarantine = get_quarantine_state(router_id)
+    if not quarantine or quarantine.level == 0:
+        raise HTTPException(status_code=409, detail="Router is not in quarantine")
+
+    if req.target_level != 0:
+        raise HTTPException(status_code=400, detail="Can only release to level 0")
+
+    if len(req.reason) < 10:
+        raise HTTPException(status_code=400, detail="Reason must be at least 10 characters")
+
+    success = await release_quarantine(router_id, router.tenant_id, req.reason)
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to release quarantine")
+
+    updated_quarantine = get_quarantine_state(router_id)
+    return ReleaseQuarantineResponse(
+        status="success",
+        router_id=router_id,
+        quarantine_level=updated_quarantine.level,
+        released_at=updated_quarantine.released_at.isoformat(),
+        release_reason=updated_quarantine.release_reason,
+    )
+
+
+@app.get("/routers/{router_id}/quarantine-history")
+async def get_router_quarantine_history(router_id: str, limit: int = 50):
+    """
+    GET /routers/{router_id}/quarantine-history
+    Get quarantine event history for a router.
+    """
+    router = get_router(router_id)
+    if not router:
+        raise HTTPException(status_code=404, detail="Router not found")
+
+    events = get_quarantine_events(router_id, limit=limit)
+    return {
+        "router_id": router_id,
+        "events": [
+            {
+                "id": e.id,
+                "event_type": e.event_type,
+                "level_before": e.level_before,
+                "level_after": e.level_after,
+                "triggered_by": e.triggered_by,
+                "triggered_by_id": e.triggered_by_id,
+                "message": e.message,
+                "created_at": e.created_at.isoformat() if e.created_at else None,
+            }
+            for e in events
+        ],
+    }
 
 
 @app.get("/health")
