@@ -4,7 +4,11 @@ Each function is safe to call multiple times with the same inputs.
 """
 import asyncio
 from typing import Optional, Dict, Any
-import librouteros_async
+
+try:
+    import librouteros_async
+except ImportError:
+    librouteros_async = None
 
 # RouterOS API timeout (seconds)
 API_TIMEOUT = 30
