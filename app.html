@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MikroLan – Add a Router</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0d1117; color: #c9d1d9;
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  }
+
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 36px; width: 500px; }
+
+  .card-header { margin-bottom: 28px; }
+  h1 { font-size: 20px; color: #e6edf3; font-weight: 600; }
+  .subtitle { font-size: 14px; color: #8b949e; margin-top: 5px; line-height: 1.5; }
+
+  /* Form fields */
+  .field { margin-top: 20px; }
+  label { display: block; font-size: 14px; color: #e6edf3; font-weight: 500; margin-bottom: 6px; }
+  .hint { font-size: 12px; color: #6e7681; margin-top: 5px; line-height: 1.4; }
+  input {
+    width: 100%; padding: 10px 14px;
+    background: #0d1117; border: 1px solid #30363d; border-radius: 8px;
+    color: #c9d1d9; font-family: inherit; font-size: 14px; outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  input:focus { border-color: #58a6ff; box-shadow: 0 0 0 3px rgba(88,166,255,0.12); }
+  input::placeholder { color: #484f58; }
+
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 20px; }
+
+  /* Buttons */
+  #btn {
+    margin-top: 28px; width: 100%; padding: 13px;
+    background: #238636; border: none; border-radius: 8px;
+    color: #fff; font-family: inherit; font-size: 15px; font-weight: 600;
+    cursor: pointer; transition: background 0.15s;
+  }
+  #btn:hover:not(:disabled) { background: #2ea043; }
+  #btn:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
+
+  #add-another-btn {
+    display: none; margin-top: 14px; width: 100%; padding: 11px;
+    background: transparent; border: 1px solid #30363d; border-radius: 8px;
+    color: #8b949e; font-family: inherit; font-size: 14px;
+    cursor: pointer; transition: border-color 0.15s, color 0.15s;
+  }
+  #add-another-btn:hover { border-color: #58a6ff; color: #58a6ff; }
+
+  /* Error banner */
+  #err {
+    display: none; margin-top: 16px; padding: 14px 16px;
+    background: #3d1f1f; border: 1px solid #6e1313; border-radius: 8px;
+  }
+  #err-title { display: block; font-size: 14px; font-weight: 600; color: #f85149; margin-bottom: 3px; }
+  #err-detail { font-size: 13px; color: #ffa198; line-height: 1.5; }
+
+  /* Progress section */
+  #status-box { margin-top: 28px; display: none; }
+
+  /* Step indicator */
+  .steps { display: flex; align-items: flex-start; margin-bottom: 22px; }
+  .step { display: flex; flex-direction: column; align-items: center; min-width: 64px; }
+  .step-dot {
+    width: 30px; height: 30px; border-radius: 50%;
+    border: 2px solid #30363d; background: #161b22;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 600; color: #484f58;
+    transition: all 0.25s;
+  }
+  .step-label { font-size: 11px; color: #6e7681; margin-top: 7px; text-align: center; max-width: 64px; line-height: 1.3; }
+  .step-bar { flex: 1; height: 2px; background: #21262d; margin-top: 14px; transition: background 0.25s; }
+
+  .step.done  .step-dot  { background: #1b3a2f; border-color: #3fb950; color: #3fb950; }
+  .step.done  .step-label { color: #3fb950; }
+  .step.active .step-dot  { background: #1f3a5f; border-color: #58a6ff; color: #58a6ff; }
+  .step.active .step-label { color: #58a6ff; font-weight: 600; }
+  .step.error  .step-dot  { background: #3d1f1f; border-color: #f85149; color: #f85149; }
+  .step.error  .step-label { color: #f85149; }
+  .step-bar.done { background: #3fb950; }
+
+  /* Status card */
+  .status-card { background: #0d1117; border: 1px solid #21262d; border-radius: 8px; padding: 16px; }
+  .status-header { font-size: 11px; color: #6e7681; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; margin-bottom: 8px; }
+  #state-msg { font-size: 15px; color: #c9d1d9; font-weight: 500; margin-bottom: 12px; min-height: 22px; }
+
+  /* Activity log */
+  .log-header { font-size: 11px; color: #484f58; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px; }
+  #log-area { font-size: 12px; font-family: "SF Mono", "Cascadia Code", Consolas, monospace; line-height: 1.8; max-height: 160px; overflow-y: auto; }
+  .log-line       { color: #6e7681; }
+  .log-line.ok    { color: #3fb950; }
+  .log-line.warn  { color: #d29922; }
+  .log-line.err   { color: #f85149; }
+
+  /* Success banner */
+  #success-banner { display: none; text-align: center; padding: 12px 0 20px; }
+  .success-icon  { font-size: 52px; display: block; margin-bottom: 14px; }
+  .success-title { font-size: 19px; color: #3fb950; font-weight: 600; }
+  .success-sub   { font-size: 14px; color: #8b949e; margin-top: 6px; line-height: 1.5; }
+
+  /* Bootstrap script panel */
+  #script-box {
+    display: none; margin-top: 24px; background: #0d1117;
+    border: 1px solid #30363d; border-radius: 8px; padding: 16px;
+  }
+  #script-box .sb-title { font-size: 13px; font-weight: 600; color: #e6edf3; margin-bottom: 8px; }
+  #script-box .sb-hint  { font-size: 12px; color: #8b949e; margin-bottom: 12px; line-height: 1.5; }
+  #script-area {
+    width: 100%; font-size: 11px; font-family: "SF Mono","Cascadia Code",Consolas,monospace;
+    background: #010409; border: 1px solid #21262d; border-radius: 6px;
+    color: #8b949e; padding: 10px; resize: none; outline: none; line-height: 1.6;
+  }
+  #copy-btn {
+    margin-top: 8px; width: 100%; padding: 10px;
+    background: #1f3a5f; border: 1px solid #1f6feb; border-radius: 6px;
+    color: #58a6ff; font-family: inherit; font-size: 13px; font-weight: 600;
+    cursor: pointer; transition: background 0.15s;
+  }
+  #copy-btn:hover { background: #1a3350; }
+
+  /* Delete button */
+  #delete-btn {
+    display: none; margin-top: 10px; width: 100%; padding: 11px;
+    background: transparent; border: 1px solid #6e1313; border-radius: 8px;
+    color: #f85149; font-family: inherit; font-size: 14px; font-weight: 500;
+    cursor: pointer; transition: background 0.15s, border-color 0.15s;
+  }
+  #delete-btn:hover:not(:disabled) { background: #3d1f1f; border-color: #f85149; }
+  #delete-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Deletion progress banner */
+  #delete-banner { display: none; margin-top: 16px; padding: 14px 16px;
+    background: #1a1a2e; border: 1px solid #30363d; border-radius: 8px; }
+  #delete-banner .del-title { font-size: 13px; font-weight: 600; color: #c9d1d9; margin-bottom: 8px; }
+  #delete-log { font-size: 12px; font-family: "SF Mono", "Cascadia Code", Consolas, monospace;
+    line-height: 1.8; max-height: 140px; overflow-y: auto; }
+  #delete-result { display: none; margin-top: 10px; font-size: 14px; font-weight: 600; }
+  #delete-result.ok  { color: #3fb950; }
+  #delete-result.err { color: #f85149; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="card-header">
+    <h1>Add a New Router</h1>
+    <div class="subtitle">Enter your router details below to connect it to the network.</div>
+  </div>
+
+  <div class="field">
+    <label for="ip">Router IP Address</label>
+    <input id="ip" type="text" placeholder="e.g. 192.168.88.1">
+    <div class="hint">The local IP address of your MikroTik router — usually 192.168.88.1.</div>
+  </div>
+
+  <div class="field-row">
+    <div>
+      <label for="user">Username</label>
+      <input id="user" type="text" placeholder="admin" value="admin">
+      <div class="hint">Usually "admin"</div>
+    </div>
+    <div>
+      <label for="pass">Password</label>
+      <input id="pass" type="password" placeholder="Leave blank if none">
+      <div class="hint">Your router's admin password</div>
+    </div>
+  </div>
+
+  <button id="btn" onclick="go()">&#9654;&nbsp; Add Router</button>
+  <button id="add-another-btn" onclick="reset()">+ Add Another Router</button>
+  <button id="delete-btn" onclick="confirmDelete()">&#128465;&nbsp; Delete Router</button>
+
+  <div id="script-box">
+    <div class="sb-title">Step 2 — Run this script on your router</div>
+    <div class="sb-hint">Open <strong>Winbox &rarr; New Terminal</strong> (or SSH / WebFig terminal) and paste the script below. The router will connect to the cloud automatically.</div>
+    <textarea id="script-area" rows="12" readonly></textarea>
+    <button id="copy-btn" onclick="copyScript()">&#128203;&nbsp; Copy Script</button>
+  </div>
+
+  <div id="delete-banner">
+    <div class="del-title" id="delete-title">Removing router configuration&hellip;</div>
+    <div id="delete-log"></div>
+    <div id="delete-result"></div>
+  </div>
+
+  <div id="err">
+    <strong id="err-title"></strong>
+    <span id="err-detail"></span>
+  </div>
+
+  <div id="status-box">
+
+    <!-- Step indicator: Connecting → Secure Tunnel → Finalizing → Done -->
+    <div class="steps">
+      <div class="step" id="step-1">
+        <div class="step-dot" id="sc-1">1</div>
+        <div class="step-label">Connecting</div>
+      </div>
+      <div class="step-bar" id="sl-1"></div>
+      <div class="step" id="step-2">
+        <div class="step-dot" id="sc-2">2</div>
+        <div class="step-label">Secure Tunnel</div>
+      </div>
+      <div class="step-bar" id="sl-2"></div>
+      <div class="step" id="step-3">
+        <div class="step-dot" id="sc-3">3</div>
+        <div class="step-label">Finalizing</div>
+      </div>
+      <div class="step-bar" id="sl-3"></div>
+      <div class="step" id="step-4">
+        <div class="step-dot" id="sc-4">4</div>
+        <div class="step-label">Done</div>
+      </div>
+    </div>
+
+    <div id="success-banner">
+      <span class="success-icon">&#10003;</span>
+      <div class="success-title">Router added successfully!</div>
+      <div class="success-sub">Your router is now connected and secured.</div>
+    </div>
+
+    <div id="status-card" class="status-card">
+      <div class="status-header">What&rsquo;s happening</div>
+      <div id="state-msg">Starting up&hellip;</div>
+      <div class="log-header">Activity</div>
+      <div id="log-area"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const API = "http://149.28.232.230:8000";
+let timer = null;
+let rid   = null;
+
+// Technical state → human-readable message + which step is active (1–4)
+const STATE_MAP = {
+  NEW:           { msg: "Waiting for you to run the script on your router…", step: 1 },
+  API_OK:        { msg: "Connected to router ✓",                             step: 1 },
+  WG_READY:      { msg: "Router connected — establishing secure tunnel…",    step: 2 },
+  TUNNEL_UP:     { msg: "Secure tunnel is live ✓",                           step: 2 },
+  LOCKED:        { msg: "Applying final settings…",                          step: 3 },
+  DONE:          { msg: "All done!",                                          step: 5 },
+  ERROR:         { msg: "Something went wrong",             step: null, error: true },
+  DELETING:      { msg: "Removing router…",                 step: null, deleting: true },
+  DELETED:       { msg: "Router removed",                   step: null, deleted: true },
+  DELETE_FAILED: { msg: "Cleanup failed — see logs",        step: null, error: true },
+};
+
+function humanError(res, data) {
+  const detail = data && (data.detail || data.message) || "";
+  if (!navigator.onLine)        return ["No internet connection",  "Please check your network and try again."];
+  if (res && res.status === 401) return ["Access denied",           "The username or password is incorrect. Please check and try again."];
+  if (res && res.status === 409) return ["Router already added",    "This router is already being set up. You can check its current status or try again later."];
+  if (res && res.status === 422) return ["Invalid details",         "Please double-check the IP address, username, and password."];
+  if (res && res.status >= 500)  return ["Server error",            "Something went wrong on our end. Please wait a moment and try again."];
+  if (detail)                    return ["Could not complete",      detail];
+  return ["Something went wrong", "Please check your details and try again."];
+}
+
+function showErr(title, detail) {
+  document.getElementById("err-title").textContent  = title;
+  document.getElementById("err-detail").textContent = detail ? " " + detail : "";
+  document.getElementById("err").style.display = "block";
+}
+
+function clearErr() { document.getElementById("err").style.display = "none"; }
+
+function setStep(activeStep, isError) {
+  for (let i = 1; i <= 4; i++) {
+    const s   = document.getElementById("step-" + i);
+    const dot = document.getElementById("sc-" + i);
+    s.className = "step";
+    if (i < activeStep) {
+      s.classList.add("done");
+      dot.textContent = "✓";
+    } else if (i === activeStep) {
+      s.classList.add(isError ? "error" : "active");
+      dot.textContent = isError ? "✕" : String(i);
+    } else {
+      dot.textContent = String(i);
+    }
+  }
+  for (let j = 1; j <= 3; j++) {
+    const bar = document.getElementById("sl-" + j);
+    bar.className = "step-bar" + (j < activeStep ? " done" : "");
+  }
+}
+
+function updateState(state) {
+  const s = STATE_MAP[state] || { msg: "Working…", step: 1 };
+  document.getElementById("state-msg").textContent = s.msg;
+  if (s.error) {
+    setStep(3, true);
+  } else {
+    setStep(s.step, false);
+    if (s.step >= 5) {
+      document.getElementById("success-banner").style.display = "block";
+      document.getElementById("status-card").style.display    = "none";
+    }
+  }
+}
+
+function addLog(text, type) {
+  const area = document.getElementById("log-area");
+  const line = document.createElement("div");
+  line.className  = "log-line " + (type || "");
+  line.textContent = text;
+  area.appendChild(line);
+  area.scrollTop = area.scrollHeight;
+}
+
+function busy(yes) {
+  const b = document.getElementById("btn");
+  b.disabled    = yes;
+  b.textContent = yes ? "⏳  Setting up…" : "▶  Add Router";
+}
+
+function reset() {
+  if (timer) { clearInterval(timer); timer = null; }
+  rid = null;
+  document.getElementById("status-box").style.display     = "none";
+  document.getElementById("success-banner").style.display = "none";
+  document.getElementById("status-card").style.display    = "block";
+  document.getElementById("log-area").innerHTML           = "";
+  document.getElementById("add-another-btn").style.display = "none";
+  document.getElementById("btn").style.display            = "block";
+  document.getElementById("script-box").style.display     = "none";
+  document.getElementById("script-area").value            = "";
+  clearErr();
+  busy(false);
+  setStep(0, false);
+}
+
+async function go() {
+  clearErr();
+  const ip   = document.getElementById("ip").value.trim();
+  const user = document.getElementById("user").value.trim();
+  const pass = document.getElementById("pass").value;
+
+  if (!ip)   { showErr("IP address required", "Please enter your router’s IP address."); return; }
+  if (!user) { showErr("Username required",   "Please enter the router username (usually “admin”)."); return; }
+
+  if (timer) { clearInterval(timer); timer = null; }
+
+  busy(true);
+  document.getElementById("status-box").style.display    = "none";
+  document.getElementById("success-banner").style.display = "none";
+  document.getElementById("status-card").style.display    = "block";
+  document.getElementById("add-another-btn").style.display = "none";
+  document.getElementById("btn").style.display            = "block";
+
+  let res;
+  try {
+    res = await fetch(API + "/routers/onboard", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ip, username: user, password: pass })
+    });
+  } catch(e) {
+    busy(false);
+    showErr(
+      "Could not reach the server",
+      navigator.onLine
+        ? "The server is not responding. Please try again in a moment."
+        : "No internet connection — check your network."
+    );
+    return;
+  }
+
+  let data = {};
+  try { data = await res.json(); } catch(_) {}
+
+  if (!res.ok) {
+    busy(false);
+    const [title, detail] = humanError(res, data);
+    showErr(title, detail);
+    return;
+  }
+
+  rid = data.router_id || data.id;
+  if (!rid) {
+    busy(false);
+    showErr("Unexpected response", "The server returned an unexpected response. Please try again.");
+    return;
+  }
+
+  // Show bootstrap script
+  if (data.bootstrap_script) {
+    document.getElementById("script-area").value = data.bootstrap_script;
+    document.getElementById("script-box").style.display = "block";
+  }
+
+  document.getElementById("status-box").style.display = "block";
+  document.getElementById("log-area").innerHTML = "";
+  setStep(1, false);
+  document.getElementById("state-msg").textContent = "Waiting for you to run the script on your router…";
+  addLog("Router registered. Run the bootstrap script on your router to continue.");
+
+  timer = setInterval(poll, 2500);
+  poll();
+}
+
+function copyScript() {
+  const ta = document.getElementById("script-area");
+  ta.select();
+  document.execCommand("copy");
+  const btn = document.getElementById("copy-btn");
+  btn.textContent = "✓  Copied!";
+  setTimeout(() => { btn.textContent = "\u{1F4CB}  Copy Script"; }, 2000);
+}
+
+async function poll() {
+  let res;
+  try { res = await fetch(API + "/routers/" + rid + "/status"); }
+  catch(e) {
+    addLog("Connection interrupted — retrying…", "warn");
+    return;
+  }
+
+  let data = {};
+  try { data = await res.json(); } catch(_) {}
+
+  if (!res.ok) {
+    addLog("Could not get status — will retry…", "warn");
+    return;
+  }
+
+  const state = data.state || data.status || "UNKNOWN";
+  updateState(state);
+
+  const progress = data.progress || data.logs || data.log_entries || [];
+  if (Array.isArray(progress) && progress.length) {
+    document.getElementById("log-area").innerHTML = "";
+    progress.forEach(entry => {
+      let text, type;
+      if (typeof entry === "string") {
+        text = entry;
+        const lo = entry.toLowerCase();
+        type = (lo.includes("error") || lo.includes("fail")) ? "err"
+             : (lo.includes("ok") || lo.includes("done") || lo.includes("success")) ? "ok"
+             : "";
+      } else {
+        const step    = entry.step    || "";
+        const status  = entry.status  || "";
+        const message = entry.message || "";
+        text = message ? `[${step}] ${status}: ${message}` : `[${step}] ${status}`;
+        type = (status === "error") ? "err"
+             : (status === "success" || status === "ok") ? "ok"
+             : (status === "start") ? ""
+             : "";
+      }
+      addLog(text, type);
+    });
+  } else if (data.message && data.message !== "OK") {
+    addLog(data.message);
+  }
+
+  if (state === "DONE") {
+    clearInterval(timer); timer = null;
+    busy(false);
+    document.getElementById("btn").style.display             = "none";
+    document.getElementById("add-another-btn").style.display = "block";
+    document.getElementById("add-another-btn").textContent   = "+ Add Another Router";
+    document.getElementById("delete-btn").style.display      = "block";
+  } else if (state === "ERROR") {
+    clearInterval(timer); timer = null;
+    busy(false);
+    showErr(
+      "Setup failed",
+      "Your router could not be added. Please check the details and try again, or contact support if the problem continues."
+    );
+    document.getElementById("btn").style.display             = "none";
+    document.getElementById("add-another-btn").style.display = "block";
+    document.getElementById("add-another-btn").textContent   = "↩ Try Again";
+  } else if (state === "LOCKED") {
+    clearInterval(timer); timer = null;
+    busy(false);
+  }
+}
+
+let deleteTimer = null;
+let seenDeleteSteps = 0;
+
+const CLEANUP_STEP_LABELS = {
+  "cleanup_remove_fw_rule":   "Remove firewall rule",
+  "cleanup_remove_wg_peer":   "Remove WireGuard peer",
+  "cleanup_remove_wg_ip":     "Remove WireGuard IP",
+  "cleanup_remove_wg_iface":  "Remove WireGuard interface",
+  "cleanup_reset_password":   "Reset admin password",
+  "cleanup_db":               "Clean up database",
+  "cleanup":                  "Cleanup",
+};
+
+function confirmDelete() {
+  if (!rid) return;
+  const ok = confirm(
+    "This will modify the router:\n\n" +
+    "• Remove WireGuard interface and peer\n" +
+    "• Remove firewall rule\n" +
+    "• Reset admin password to original\n\n" +
+    "The router will be fully restored to pre-onboarding state.\n\n" +
+    "Continue?"
+  );
+  if (!ok) return;
+  startDelete();
+}
+
+async function startDelete() {
+  document.getElementById("delete-btn").disabled              = true;
+  document.getElementById("add-another-btn").disabled         = true;
+  document.getElementById("delete-banner").style.display      = "block";
+  document.getElementById("delete-log").innerHTML             = "";
+  document.getElementById("delete-result").style.display      = "none";
+  document.getElementById("delete-title").textContent         = "Removing router configuration…";
+  seenDeleteSteps = 0;
+
+  let res;
+  try {
+    res = await fetch(API + "/routers/" + rid, { method: "DELETE" });
+  } catch(e) {
+    showDeleteResult(false, "Could not reach server: " + e.message);
+    return;
+  }
+
+  if (!res.ok) {
+    let data = {};
+    try { data = await res.json(); } catch(_) {}
+    showDeleteResult(false, data.detail || ("HTTP " + res.status));
+    return;
+  }
+
+  addDeleteLog("Cleanup started — polling for progress…", "");
+  deleteTimer = setInterval(pollDelete, 2000);
+}
+
+async function pollDelete() {
+  let res;
+  try { res = await fetch(API + "/routers/" + rid + "/status"); }
+  catch(e) { addDeleteLog("Connection interrupted — retrying…", "warn"); return; }
+
+  let data = {};
+  try { data = await res.json(); } catch(_) {}
+
+  if (!res.ok) { addDeleteLog("Could not get status — retrying…", "warn"); return; }
+
+  const state = data.state || "UNKNOWN";
+
+  // Render new cleanup log lines
+  const progress = Array.isArray(data.progress) ? data.progress : [];
+  const cleanupSteps = progress.filter(l =>
+    l.step && (l.step.startsWith("cleanup") || l.step === "cleanup")
+  );
+  for (let i = seenDeleteSteps; i < cleanupSteps.length; i++) {
+    const l = cleanupSteps[i];
+    const label = CLEANUP_STEP_LABELS[l.step] || l.step;
+    const isOk  = l.status === "success";
+    const isErr = l.status === "error";
+    const isStart = l.status === "start";
+    const type  = isErr ? "err" : isOk ? "ok" : "";
+    const icon  = isErr ? "✕" : isOk ? "✓" : "…";
+    addDeleteLog(icon + " " + label + (l.message ? ": " + l.message : ""), type);
+  }
+  seenDeleteSteps = cleanupSteps.length;
+
+  if (state === "DELETED") {
+    clearInterval(deleteTimer); deleteTimer = null;
+    document.getElementById("delete-title").textContent = "Router fully removed";
+    showDeleteResult(true, "Router restored to factory state. You can now re-onboard or retire it.");
+    document.getElementById("delete-btn").style.display      = "none";
+    document.getElementById("add-another-btn").disabled      = false;
+  } else if (state === "DELETE_FAILED") {
+    clearInterval(deleteTimer); deleteTimer = null;
+    document.getElementById("delete-title").textContent = "Cleanup failed";
+    const errMsg = data.error || "A router-side step failed. Check logs above.";
+    showDeleteResult(false, errMsg + " — Router state preserved. Fix the issue and retry.");
+    document.getElementById("delete-btn").disabled = false;
+    document.getElementById("delete-btn").textContent = "Retry Delete";
+    document.getElementById("add-another-btn").disabled = false;
+  }
+}
+
+function addDeleteLog(text, type) {
+  const area = document.getElementById("delete-log");
+  const line = document.createElement("div");
+  line.className  = "log-line " + (type || "");
+  line.textContent = text;
+  area.appendChild(line);
+  area.scrollTop = area.scrollHeight;
+}
+
+function showDeleteResult(success, msg) {
+  const el = document.getElementById("delete-result");
+  el.className = "log-line " + (success ? "ok" : "err");
+  el.textContent = (success ? "✓ " : "✕ ") + msg;
+  el.style.display = "block";
+}
+
+// Init steps to neutral on load
+setStep(0, false);
+</script>
+</body>
+</html>

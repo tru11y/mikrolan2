@@ -1,0 +1,32 @@
+﻿services:
+  db:
+    image: postgres:15
+    env_file: .env
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+
+  api:
+    image: mikrolan-api:latest
+    env_file: .env
+    ports:
+      - 8000:8000
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+
+  worker:
+    image: mikrolan-worker:latest
+    env_file: .env
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+
+volumes:
+  db_data:
