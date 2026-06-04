@@ -1,0 +1,14 @@
+[Unit]
+Description=MikroLan Mobile App Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/mikrolan/mobile
+ExecStart=/usr/bin/python3 -m http.server 8080 --directory /opt/mikrolan/mobile
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

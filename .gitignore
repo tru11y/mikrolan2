@@ -55,3 +55,7 @@ Thumbs.db
 # Project specific
 *.log
 .claude/settings.local.json
+routers.db
+
+# VPS backup (secrets, certs, data — ne pas committer)
+vps-backup/

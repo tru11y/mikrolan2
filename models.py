@@ -17,6 +17,9 @@ class RouterState(str, Enum):
     LOCKED = "LOCKED"
     DONE = "DONE"
     ERROR = "ERROR"
+    DELETING = "DELETING"
+    DELETED = "DELETED"
+    DELETE_FAILED = "DELETE_FAILED"
 
 
 class QuarantineLevel(int, Enum):
@@ -36,6 +39,7 @@ class Router:
         username: str,
         password_encrypted: str,
         tenant_id: Optional[str] = None,
+        alias: Optional[str] = None,
         state: RouterState = RouterState.NEW,
         wg_pubkey: Optional[str] = None,
         wg_ip: Optional[str] = None,
@@ -49,6 +53,7 @@ class Router:
         self.username = username
         self.password_encrypted = password_encrypted
         self.tenant_id = tenant_id
+        self.alias = alias
         self.state = state
         self.wg_pubkey = wg_pubkey
         self.wg_ip = wg_ip
@@ -66,6 +71,7 @@ class Router:
             username,
             password_encrypted,
             tenant_id,
+            alias,
             state,
             wg_pubkey,
             wg_ip,
@@ -80,6 +86,7 @@ class Router:
             username=username,
             password_encrypted=password_encrypted,
             tenant_id=tenant_id,
+            alias=alias,
             state=RouterState(state),
             wg_pubkey=wg_pubkey,
             wg_ip=wg_ip,
@@ -190,6 +197,7 @@ def init_db():
             username TEXT NOT NULL,
             password_encrypted TEXT NOT NULL,
             tenant_id TEXT,
+            alias TEXT,
             state TEXT DEFAULT 'NEW',
             wg_pubkey TEXT,
             wg_ip TEXT,
@@ -240,6 +248,12 @@ def init_db():
     """
     )
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_quarantine_router_id ON quarantine_state(router_id)")
+
+    # Migrate: add alias column if not present
+    try:
+        cursor.execute("ALTER TABLE routers ADD COLUMN alias TEXT")
+    except Exception:
+        pass  # column already exists
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_quarantine_tenant_id ON quarantine_state(tenant_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_quarantine_level ON quarantine_state(level)")
 
@@ -254,7 +268,7 @@ def get_router(router_id: str) -> Optional[Router]:
     cursor = conn.cursor()
     cursor.execute(
         """
-        SELECT id, ip, username, password_encrypted, tenant_id, state, wg_pubkey, wg_ip,
+        SELECT id, ip, username, password_encrypted, tenant_id, alias, state, wg_pubkey, wg_ip,
                admin_pass_new, error, created_at, updated_at
         FROM routers WHERE id = ?
     """,
@@ -265,6 +279,28 @@ def get_router(router_id: str) -> Optional[Router]:
     return Router.from_row(row) if row else None
 
 
+def list_routers() -> list:
+    """Return summary of all routers ordered by creation date desc."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT id, ip, alias, state, wg_ip, error, created_at, updated_at
+        FROM routers WHERE state != 'DELETED' ORDER BY created_at DESC
+        """
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [
+        {
+            "id": r[0], "ip": r[1], "alias": r[2], "state": r[3],
+            "wg_ip": r[4], "error": r[5],
+            "created_at": r[6], "updated_at": r[7],
+        }
+        for r in rows
+    ]
+
+
 def create_router(
     router_id: str,
     ip: str,
@@ -272,6 +308,7 @@ def create_router(
     password_encrypted: str,
     wg_ip: str,
     tenant_id: Optional[str] = None,
+    alias: Optional[str] = None,
 ) -> Router:
     """Create new router record."""
     conn = sqlite3.connect(DB_PATH)
@@ -279,10 +316,10 @@ def create_router(
     now = datetime.utcnow().isoformat()
     cursor.execute(
         """
-        INSERT INTO routers (id, ip, username, password_encrypted, tenant_id, state, wg_ip, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO routers (id, ip, username, password_encrypted, tenant_id, alias, state, wg_ip, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
-        (router_id, ip, username, password_encrypted, tenant_id, "NEW", wg_ip, now, now),
+        (router_id, ip, username, password_encrypted, tenant_id, alias, "NEW", wg_ip, now, now),
     )
     conn.commit()
     conn.close()
@@ -292,6 +329,7 @@ def create_router(
         username=username,
         password_encrypted=password_encrypted,
         tenant_id=tenant_id,
+        alias=alias,
         wg_ip=wg_ip,
     )
 
@@ -498,6 +536,56 @@ def get_quarantine_state(router_id: str) -> Optional[QuarantineState]:
     row = cursor.fetchone()
     conn.close()
     return QuarantineState.from_row(row) if row else None
+
+
+def allocate_wg_ip() -> str:
+    """Allocate the next unused WG IP from the pool 10.0.0.2–10.0.0.254."""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT wg_ip FROM routers WHERE wg_ip IS NOT NULL")
+        used = {row[0].split("/")[0] for row in cursor.fetchall() if row[0]}
+        for i in range(2, 255):
+            candidate = f"10.0.0.{i}"
+            if candidate not in used:
+                return f"{candidate}/32"
+        raise RuntimeError("WG IP pool exhausted (10.0.0.2–10.0.0.254 all in use)")
+    finally:
+        conn.close()
+
+
+def delete_router_data(router_id: str) -> None:
+    """
+    Remove onboarding logs and quarantine state for a router.
+    The router row itself is kept as a DELETED tombstone so the status endpoint
+    can return state=DELETED after cleanup completes.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM onboarding_logs WHERE router_id = ?", (router_id,))
+    cursor.execute("DELETE FROM quarantine_state WHERE router_id = ?", (router_id,))
+    conn.commit()
+    conn.close()
+
+
+def clear_router_secrets(router_id: str) -> bool:
+    """
+    Zero out credential columns immediately after successful cleanup.
+    Must be called only after all router-side steps confirm success.
+    password_encrypted and admin_pass_new are NULLed; the router row is kept
+    as a DELETED tombstone for audit purposes.
+    """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    now = datetime.utcnow().isoformat()
+    cursor.execute(
+        "UPDATE routers SET password_encrypted = NULL, admin_pass_new = NULL, updated_at = ? WHERE id = ?",
+        (now, router_id),
+    )
+    affected = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return affected > 0
 
 
 
