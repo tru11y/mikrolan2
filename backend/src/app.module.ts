@@ -9,8 +9,10 @@ import { JwtModule } from '@nestjs/jwt';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { validateEnv } from './config/configuration';
 import { PrismaModule } from './prisma/prisma.module';
+import { CryptoModule } from './common/crypto/crypto.module';
 import { HealthModule } from './modules/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { RoutersModule } from './modules/routers/routers.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
@@ -23,7 +25,9 @@ import { TenantContextMiddleware } from './common/context/tenant-context.middlew
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     JwtModule.register({}),
     PrismaModule,
+    CryptoModule,
     AuthModule,
+    RoutersModule,
     HealthModule,
   ],
   providers: [
