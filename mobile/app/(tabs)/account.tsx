@@ -1,7 +1,10 @@
+import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { useAuth } from '@/src/providers/auth-provider';
+import { api, extractErrorMessage } from '@/src/lib/api';
 import {
   Badge,
+  Banner,
   Button,
   Card,
   Label,
@@ -22,6 +25,19 @@ function Row({ label, value }: { label: string; value: string }) {
 
 export default function AccountScreen() {
   const { me, isPro, logout, isBusy, apiBaseUrl } = useAuth();
+  const [upgrade, setUpgrade] = useState<
+    { kind: 'idle' } | { kind: 'busy' } | { kind: 'done'; message: string } | { kind: 'error'; message: string }
+  >({ kind: 'idle' });
+
+  async function requestUpgrade() {
+    setUpgrade({ kind: 'busy' });
+    try {
+      const res = await api.subscriptions.requestUpgrade();
+      setUpgrade({ kind: 'done', message: res.instructions });
+    } catch (e) {
+      setUpgrade({ kind: 'error', message: extractErrorMessage(e) });
+    }
+  }
 
   return (
     <Screen>
@@ -54,13 +70,22 @@ export default function AccountScreen() {
               : 'Plan gratuit : gestion locale (LAN) uniquement. Passez à PRO pour piloter vos routeurs à distance.'}
           </Subtitle>
           {!isPro ? (
-            <Button
-              title="Passer à PRO"
-              onPress={() => {
-                /* Phase 3: flux d'abonnement (validation manuelle) */
-              }}
-              disabled
-            />
+            <>
+              {upgrade.kind === 'done' ? (
+                <Banner tone="success">{upgrade.message}</Banner>
+              ) : null}
+              {upgrade.kind === 'error' ? (
+                <Banner tone="danger">{upgrade.message}</Banner>
+              ) : null}
+              <Button
+                title={
+                  upgrade.kind === 'done' ? 'Demande envoyée' : 'Passer à PRO'
+                }
+                onPress={requestUpgrade}
+                loading={upgrade.kind === 'busy'}
+                disabled={upgrade.kind === 'done'}
+              />
+            </>
           ) : null}
         </Card>
 
