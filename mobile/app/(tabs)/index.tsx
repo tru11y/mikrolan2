@@ -50,13 +50,19 @@ export default function RoutersScreen() {
               </Text>
               <Badge label={item.health} tone={healthTone(item.health)} />
             </View>
-            <Text style={{ color: theme.textMuted, fontSize: 13 }}>
+            <Text
+              style={{
+                color: theme.textMuted,
+                fontSize: 12,
+                fontFamily: theme.mono,
+              }}
+            >
               {item.identity}
               {item.localAddress ? ` · ${item.localAddress}` : ''}
             </Text>
             <Badge
               label={item.mode === 'REMOTE' ? 'À distance' : 'Local'}
-              tone={item.mode === 'REMOTE' ? 'primary' : 'muted'}
+              tone={item.mode === 'REMOTE' ? 'gold' : 'muted'}
             />
           </Card>
         </Pressable>

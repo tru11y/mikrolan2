@@ -36,7 +36,9 @@ function Row({ label, value }: { label: string; value: string }) {
       }}
     >
       <Label>{label}</Label>
-      <Text style={{ color: theme.text }}>{value}</Text>
+      <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 12.5 }}>
+        {value}
+      </Text>
     </View>
   );
 }
@@ -202,7 +204,7 @@ export default function RouterDetailScreen() {
             <Badge label={r.identity} />
             <Badge
               label={r.mode === 'REMOTE' ? 'À distance' : 'Local'}
-              tone={r.mode === 'REMOTE' ? 'primary' : 'muted'}
+              tone={r.mode === 'REMOTE' ? 'gold' : 'muted'}
             />
           </View>
         </View>

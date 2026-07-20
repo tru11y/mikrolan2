@@ -14,11 +14,27 @@ import {
   Title,
 } from '@/src/components/ui';
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
   return (
     <View style={{ gap: 4 }}>
       <Label>{label}</Label>
-      <Text style={{ color: theme.text, fontSize: 15 }}>{value}</Text>
+      <Text
+        style={{
+          color: theme.text,
+          fontSize: mono ? 13 : 15,
+          fontFamily: mono ? theme.mono : undefined,
+        }}
+      >
+        {value}
+      </Text>
     </View>
   );
 }
@@ -46,8 +62,8 @@ export default function AccountScreen() {
 
         <Card>
           <Row label="Organisation" value={me?.tenant.name ?? '—'} />
-          <Row label="Email" value={me?.user.email ?? '—'} />
-          <Row label="Rôle" value={me?.user.role ?? '—'} />
+          <Row label="Email" value={me?.user.email ?? '—'} mono />
+          <Row label="Rôle" value={me?.user.role ?? '—'} mono />
         </Card>
 
         <Card>
@@ -61,7 +77,7 @@ export default function AccountScreen() {
             <Label>Abonnement</Label>
             <Badge
               label={me?.subscription?.plan ?? 'FREE'}
-              tone={isPro ? 'primary' : 'muted'}
+              tone={isPro ? 'gold' : 'muted'}
             />
           </View>
           <Subtitle>
@@ -81,6 +97,7 @@ export default function AccountScreen() {
                 title={
                   upgrade.kind === 'done' ? 'Demande envoyée' : 'Passer à PRO'
                 }
+                variant="gold"
                 onPress={requestUpgrade}
                 loading={upgrade.kind === 'busy'}
                 disabled={upgrade.kind === 'done'}
@@ -90,7 +107,7 @@ export default function AccountScreen() {
         </Card>
 
         <Card>
-          <Row label="Serveur API" value={apiBaseUrl} />
+          <Row label="Serveur API" value={apiBaseUrl} mono />
         </Card>
 
         <Button
