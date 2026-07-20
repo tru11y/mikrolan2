@@ -1,6 +1,8 @@
-import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Public } from '../../common/decorators/public.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { TenantContext } from '../../common/context/tenant-context';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { AuthService } from './auth.service';
 import {
@@ -37,6 +39,11 @@ export class AuthController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   refresh(@Body(new ZodValidationPipe(refreshSchema)) dto: RefreshDto) {
     return this.auth.refresh(dto.refreshToken);
+  }
+
+  @Get('me')
+  me(@CurrentUser() user: TenantContext) {
+    return this.auth.me(user.userId, user.tenantId);
   }
 
   @Public()
