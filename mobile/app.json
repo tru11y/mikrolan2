@@ -9,7 +9,8 @@
     "newArchEnabled": true,
     "android": {
       "package": "com.mikrolan.app",
-      "usesCleartextTraffic": true
+      "usesCleartextTraffic": true,
+      "versionCode": 3
     },
     "ios": {
       "supportsTablet": true,
