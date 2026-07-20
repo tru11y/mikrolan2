@@ -5,8 +5,31 @@
 > (fork divergente) → on `rsync`/`scp`. **Ne jamais builder le frontend/back sur
 > le VPS** (2 Go → OOM) : build local, on n'envoie que `dist/`.
 
-Archi retenue : **API bare-metal (systemd)** sur l'hôte (pour piloter `wg-mgmt`
-sans nsenter) ; **Postgres + Redis en Docker** isolés de v1.
+Archi **réellement déployée (2026-07-20)** : **API en conteneur `--network host
+--cap-add NET_ADMIN`** (pilote `wg-mgmt` sur l'hôte, pas de Node à installer) ;
+**Postgres + Redis en conteneurs `network_mode: host`** liés à `127.0.0.1`
+(voir plus bas). Chemin `/opt/mikrolan-nest` (≠ `/opt/mikrolan` = rehost Python
+**live**, ne pas toucher).
+
+> **Piège ufw (résolu).** Ce VPS a `INPUT policy DROP` **sans** `-i lo -j ACCEPT`
+> → tout le loopback est droppé. Sans la règle `iptables -I INPUT -i lo -j ACCEPT`
+> (persistée en `PostUp` de `wg-mgmt.conf`), l'API host-network ne joint PAS
+> Postgres/Redis (127.0.0.1) et les ports publiés bridge (docker-proxy) non plus.
+> v1 n'en souffre pas (exposé via docker-proxy sur 0.0.0.0).
+
+Build image local → `docker save | gzip > f && scp f && ssh 'gunzip -c f | docker load'`
+(le pipe direct `save|ssh load` s'est fait reset ; passer par un fichier scp est fiable).
+
+Migrate/seed/run (image chargée, `.env` prêt) :
+```bash
+cd /opt/mikrolan-nest
+docker run --rm --network host --env-file .env mikrolan2-api:latest npx prisma migrate deploy
+docker run --rm --network host --env-file .env -e SEED_SUPERADMIN_EMAIL=... \
+  -e SEED_SUPERADMIN_PASSWORD=... mikrolan2-api:latest node dist/seed.js
+docker run -d --name mikrolan2-api --network host --cap-add NET_ADMIN \
+  --restart unless-stopped --env-file .env mikrolan2-api:latest
+curl -s http://127.0.0.1:3002/api/health
+```
 
 Ports/réseau dédiés (disjoints de v1) : API `3002`, PG `127.0.0.1:5544`,
 Redis `127.0.0.1:6390`, WG `51822/udp`, subnet `10.20.0.0/24`.
