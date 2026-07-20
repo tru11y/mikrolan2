@@ -1,4 +1,5 @@
 import * as Network from 'expo-network';
+import { getWifiInfo } from '@/src/lib/lanBinder';
 
 const CONCURRENCY = 24;
 const PROBE_TIMEOUT_MS = 1200;
@@ -21,42 +22,64 @@ async function isRouter(host: string, port: number): Promise<boolean> {
 }
 
 export interface ScanOutcome {
-  ip: string | null; // the phone's own IP (which subnet we scanned)
+  ip: string | null; // the phone's own IP
+  gateway: string | null; // DHCP gateway = the router, in most setups
   hosts: string[]; // reachable RouterOS candidates
 }
 
+const isIp = (v?: string | null): v is string =>
+  !!v && /^\d+\.\d+\.\d+\.\d+$/.test(v) && v !== '0.0.0.0';
+
 /**
- * Scans the phone's /24 subnet for MikroTik routers on the given port.
- * Also reports the phone IP so the operator can see which network was scanned.
+ * Detects the Wi-Fi gateway (the router) and scans the relevant /24 subnets.
+ * The subnet may be wider than /24 (e.g. /22), so scanning the phone's /24
+ * alone can miss the gateway — hence probing the gateway explicitly first.
  */
 export async function scanLan(
   port = 80,
   onProgress?: (done: number, total: number) => void,
 ): Promise<ScanOutcome> {
-  const ip = await Network.getIpAddressAsync();
-  if (!ip || !/^\d+\.\d+\.\d+\.\d+$/.test(ip) || ip === '0.0.0.0') {
-    return { ip: ip ?? null, hosts: [] };
-  }
+  const info = await getWifiInfo();
+  const ip = isIp(info?.ipAddress)
+    ? info!.ipAddress
+    : await Network.getIpAddressAsync().catch(() => null);
+  const gateway = isIp(info?.gateway) ? info!.gateway : null;
 
-  const base = ip.split('.').slice(0, 3).join('.');
-  // Scan the whole /24 plus the common MikroTik default gateway.
-  const set = new Set<string>();
-  for (let i = 1; i <= 254; i++) set.add(`${base}.${i}`);
-  set.add('192.168.88.1');
-  const hosts = [...set];
+  const bases = new Set<string>();
+  if (isIp(ip)) bases.add(ip.split('.').slice(0, 3).join('.'));
+  if (gateway) bases.add(gateway.split('.').slice(0, 3).join('.'));
+
+  // Gateway first (most likely the router), then the candidate /24s.
+  const ordered: string[] = [];
+  const seen = new Set<string>();
+  const push = (h: string) => {
+    if (!seen.has(h)) {
+      seen.add(h);
+      ordered.push(h);
+    }
+  };
+  if (gateway) push(gateway);
+  bases.forEach((base) => {
+    for (let i = 1; i <= 254; i++) push(`${base}.${i}`);
+  });
+  push('192.168.88.1');
+
   const found: string[] = [];
   let done = 0;
   let idx = 0;
-
   async function worker(): Promise<void> {
-    while (idx < hosts.length) {
-      const host = hosts[idx++];
+    while (idx < ordered.length) {
+      const host = ordered[idx++];
       if (await isRouter(host, port)) found.push(host);
-      onProgress?.(++done, hosts.length);
+      onProgress?.(++done, ordered.length);
     }
   }
-
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
-  found.sort((a, b) => Number(a.split('.')[3]) - Number(b.split('.')[3]));
-  return { ip, hosts: found };
+
+  found.sort((a, b) => {
+    if (a === gateway) return -1;
+    if (b === gateway) return 1;
+    return 0;
+  });
+  return { ip: isIp(ip) ? ip : null, gateway, hosts: found };
 }

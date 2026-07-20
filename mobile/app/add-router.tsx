@@ -38,7 +38,12 @@ type TestState =
 type ScanState =
   | { kind: 'idle' }
   | { kind: 'scanning'; done: number; total: number }
-  | { kind: 'done'; ip: string | null; hosts: string[] };
+  | {
+      kind: 'done';
+      ip: string | null;
+      gateway: string | null;
+      hosts: string[];
+    };
 
 export default function AddRouterScreen() {
   const router = useRouter();
@@ -65,7 +70,13 @@ export default function AddRouterScreen() {
           setScan({ kind: 'scanning', done, total }),
         ),
       );
-      setScan({ kind: 'done', ip: res.ip, hosts: res.hosts });
+      setScan({
+        kind: 'done',
+        ip: res.ip,
+        gateway: res.gateway,
+        hosts: res.hosts,
+      });
+      if (res.gateway && !address) setAddress(res.gateway);
     } catch (e) {
       setScan({ kind: 'idle' });
       setError(extractErrorMessage(e));
@@ -184,7 +195,7 @@ export default function AddRouterScreen() {
             {scan.kind === 'done' ? (
               <Text style={{ color: theme.textMuted, fontSize: 11.5, fontFamily: theme.mono }}>
                 {scan.ip
-                  ? `Réseau du téléphone : ${scan.ip}`
+                  ? `Tél ${scan.ip}${scan.gateway ? ` · passerelle ${scan.gateway}` : ''}`
                   : 'IP locale indisponible — connectez le Wi-Fi du routeur.'}
               </Text>
             ) : null}
