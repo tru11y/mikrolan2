@@ -8,6 +8,7 @@ import {
   MikroTikLanClient,
   type SystemResource,
 } from '@/src/services/mikrotik-lan/MikroTikLanClient';
+import { pushWireGuardConfig } from '@/src/services/mikrotik-lan/pushWireGuard';
 import {
   deleteLocalCredentials,
   getLocalCredentials,
@@ -51,6 +52,63 @@ export default function RouterDetailScreen() {
     queryFn: () => api.routers.get(id),
     enabled: Boolean(id),
   });
+
+  const remoteQuery = useQuery({
+    queryKey: ['router-remote', id],
+    queryFn: () => api.routers.remoteStatus(id),
+    enabled: Boolean(id) && isPro,
+  });
+
+  const [remoteBusy, setRemoteBusy] = useState(false);
+  const [remoteMsg, setRemoteMsg] = useState<
+    { tone: 'success' | 'danger'; text: string } | null
+  >(null);
+
+  async function enableRemote() {
+    if (!id) return;
+    setRemoteBusy(true);
+    setRemoteMsg(null);
+    try {
+      const creds = await getLocalCredentials(id);
+      if (!creds) {
+        setRemoteMsg({
+          tone: 'danger',
+          text: 'Identifiants locaux requis : testez d’abord la connexion LAN.',
+        });
+        return;
+      }
+      const bundle = await api.routers.provisionRemote(id);
+      await pushWireGuardConfig(new MikroTikLanClient(creds), bundle);
+      await qc.invalidateQueries({ queryKey: ['router', id] });
+      await qc.invalidateQueries({ queryKey: ['router-remote', id] });
+      await qc.invalidateQueries({ queryKey: ['routers'] });
+      setRemoteMsg({
+        tone: 'success',
+        text: `Tunnel activé — IP ${bundle.wgIp}. Le routeur est joignable à distance.`,
+      });
+    } catch (e) {
+      setRemoteMsg({ tone: 'danger', text: extractErrorMessage(e) });
+    } finally {
+      setRemoteBusy(false);
+    }
+  }
+
+  async function disableRemote() {
+    if (!id) return;
+    setRemoteBusy(true);
+    setRemoteMsg(null);
+    try {
+      await api.routers.revokeRemote(id);
+      await qc.invalidateQueries({ queryKey: ['router', id] });
+      await qc.invalidateQueries({ queryKey: ['router-remote', id] });
+      await qc.invalidateQueries({ queryKey: ['routers'] });
+      setRemoteMsg({ tone: 'success', text: 'Tunnel désactivé.' });
+    } catch (e) {
+      setRemoteMsg({ tone: 'danger', text: extractErrorMessage(e) });
+    } finally {
+      setRemoteBusy(false);
+    }
+  }
 
   const [alias, setAlias] = useState('');
   const [resource, setResource] = useState<SystemResource | null>(null);
@@ -190,19 +248,44 @@ export default function RouterDetailScreen() {
 
         <Card>
           <Label>Gestion à distance</Label>
-          <Subtitle>
-            {isPro
-              ? 'Votre plan PRO permet le pilotage à distance via tunnel sécurisé.'
-              : 'Réservé au plan PRO. Le pilotage hors du réseau local nécessite un abonnement.'}
-          </Subtitle>
-          <Button
-            title={isPro ? 'Activer le tunnel à distance' : 'Passer à PRO'}
-            variant="ghost"
-            disabled
-            onPress={() => {
-              /* Phase 4 (WG provisioning) / Phase 3 (abonnement) */
-            }}
-          />
+          {!isPro ? (
+            <>
+              <Subtitle>
+                Réservé au plan PRO. Le pilotage hors du réseau local nécessite un
+                abonnement.
+              </Subtitle>
+              <Button
+                title="Voir l’abonnement"
+                variant="ghost"
+                onPress={() => router.push('/(tabs)/account')}
+              />
+            </>
+          ) : (
+            <>
+              <Subtitle>
+                {remoteQuery.data?.status === 'ACTIVE'
+                  ? `Tunnel actif — IP ${remoteQuery.data.wgIp}, joignable via ${remoteQuery.data.endpoint}.`
+                  : 'Activez un tunnel WireGuard sécurisé pour piloter ce routeur à distance.'}
+              </Subtitle>
+              {remoteMsg ? (
+                <Banner tone={remoteMsg.tone}>{remoteMsg.text}</Banner>
+              ) : null}
+              {remoteQuery.data?.status === 'ACTIVE' ? (
+                <Button
+                  title="Désactiver le tunnel"
+                  variant="danger"
+                  onPress={disableRemote}
+                  loading={remoteBusy}
+                />
+              ) : (
+                <Button
+                  title="Activer le tunnel à distance"
+                  onPress={enableRemote}
+                  loading={remoteBusy}
+                />
+              )}
+            </>
+          )}
         </Card>
 
         <Button
