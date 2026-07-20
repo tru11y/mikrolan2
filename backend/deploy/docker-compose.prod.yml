@@ -1,0 +1,37 @@
+# Postgres + Redis for MikroLan v2, fully isolated from the v1 prod stack
+# (distinct container names, host ports, volumes, network). Does NOT touch v1.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mikrolan2-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mikrolan
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      POSTGRES_DB: mikrolan
+    ports:
+      - '127.0.0.1:5544:5432' # localhost-only; API reaches it on the host
+    volumes:
+      - mikrolan2_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U mikrolan']
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: mikrolan2-redis
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:6390:6379'
+    volumes:
+      - mikrolan2_redis:/data
+
+volumes:
+  mikrolan2_pg:
+  mikrolan2_redis:
+
+networks:
+  default:
+    name: mikrolan2_net
