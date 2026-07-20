@@ -61,7 +61,7 @@ enum RemotePeerStatus {
 }
 
 enum PaymentProvider {
-  WAVE
+  MANUAL // activation abonnement validée manuellement (pas de paiement auto)
 }
 
 enum PaymentStatus {
@@ -191,7 +191,7 @@ model Invoice {
   tenant         Tenant          @relation(fields: [tenantId], references: [id])
   amount         Int // XOF (entier)
   currency       String          @default("XOF")
-  provider       PaymentProvider @default(WAVE)
+  provider       PaymentProvider @default(MANUAL)
   providerRef    String?
   idempotencyKey String          @unique
   status         PaymentStatus   @default(PENDING)
