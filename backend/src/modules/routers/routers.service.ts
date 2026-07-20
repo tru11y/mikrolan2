@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ManagementMode, Prisma } from '@prisma/client';
+import { AuditAction, ManagementMode, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CryptoService } from '../../common/crypto/crypto.service';
 import { getTenantContext } from '../../common/context/tenant-context';
@@ -48,7 +48,7 @@ export class RoutersService {
     await this.assertRemoteAllowed(dto.mode);
     try {
       // tenantId injected by the Prisma tenant middleware.
-      return await this.prisma.router.create({
+      const created = await this.prisma.router.create({
         data: {
           identity: dto.identity,
           alias: dto.alias,
@@ -61,6 +61,8 @@ export class RoutersService {
         } as Prisma.RouterCreateInput,
         select: ROUTER_PUBLIC,
       });
+      await this.audit(AuditAction.CREATE, created.id, { identity: dto.identity });
+      return created;
     } catch (e) {
       if (
         e instanceof Prisma.PrismaClientKnownRequestError &&
@@ -115,6 +117,30 @@ export class RoutersService {
       where: { id },
       data: { deletedAt: new Date() },
     });
+    await this.audit(AuditAction.DELETE, id, {});
     return { deleted: true };
+  }
+
+  private async audit(
+    action: AuditAction,
+    entityId: string,
+    metadata: Prisma.InputJsonValue,
+  ): Promise<void> {
+    const ctx = getTenantContext();
+    if (!ctx) return;
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          tenantId: ctx.tenantId,
+          userId: ctx.userId,
+          action,
+          entityType: 'Router',
+          entityId,
+          metadata,
+        },
+      });
+    } catch {
+      // append-only, best-effort
+    }
   }
 }
