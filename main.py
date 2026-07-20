@@ -9,7 +9,7 @@ from typing import Optional
 from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 
 from models import (
     init_db,
@@ -39,8 +39,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:8080",
         "http://localhost:8000",
-        "http://149.28.232.230:8080",
-        "http://149.28.232.230",
+        "https://139.84.241.27:8443",
+        "https://139.84.241.27",
         "null",
     ],
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
@@ -551,6 +551,12 @@ async def delete_router(router_id: str, background_tasks: BackgroundTasks):
 async def health():
     """Health check."""
     return {"status": "ok"}
+
+
+@app.get("/")
+async def index():
+    """Serve the operator UI (same-origin as the API)."""
+    return FileResponse("app.html")
 
 
 if __name__ == "__main__":
