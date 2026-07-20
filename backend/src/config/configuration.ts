@@ -30,6 +30,21 @@ const envSchema = z.object({
         .map((s) => s.trim())
         .filter(Boolean),
     ),
+
+  // ─── WireGuard remote access (real on VPS, stubbed in dev) ──
+  WG_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  WG_INTERFACE: z.string().default('wg-mgmt'),
+  WG_SERVER_PUBLIC_KEY: z.string().default(''),
+  WG_ENDPOINT: z.string().default('0.0.0.0:51821'),
+  WG_SUBNET_BASE: z
+    .string()
+    .regex(/^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/)
+    .default('10.20.0.0/24'),
+  WG_PORT_MIN: z.coerce.number().int().min(1024).max(65535).default(41000),
+  WG_PORT_MAX: z.coerce.number().int().min(1024).max(65535).default(41999),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;
