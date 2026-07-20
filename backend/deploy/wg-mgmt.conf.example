@@ -9,8 +9,15 @@
 Address = 10.20.0.1/24
 ListenPort = 51822
 PrivateKey = <SERVER_PRIVATE_KEY>
+# Firewall rules persisted via the wg-quick lifecycle (interface enabled at boot).
+# NOTE: this VPS has INPUT policy DROP and NO `-i lo -j ACCEPT` rule — loopback is
+# dropped, so the host-network API can't reach host-bound Postgres/Redis without
+# the first line below. (v1 is unaffected: it exposes via docker-proxy on 0.0.0.0.)
+PostUp = iptables -w 5 -C INPUT -i lo -j ACCEPT 2>/dev/null || iptables -w 5 -I INPUT -i lo -j ACCEPT
+PostUp = iptables -w 5 -C INPUT -p udp --dport 51822 -j ACCEPT 2>/dev/null || iptables -w 5 -A INPUT -p udp --dport 51822 -j ACCEPT
+PostUp = iptables -w 5 -C INPUT -p tcp --dport 3002 -j ACCEPT 2>/dev/null || iptables -w 5 -A INPUT -p tcp --dport 3002 -j ACCEPT
+PostDown = iptables -w 5 -D INPUT -p tcp --dport 3002 -j ACCEPT 2>/dev/null || true
 # Peers are added dynamically by the API (`wg set wg-mgmt peer ...`); do not
 # list them here (they would be lost on `wg-quick down`).
 
 # Enable:  systemctl enable --now wg-quick@wg-mgmt
-# Open UDP (NOT via nginx):  iptables -A INPUT -p udp --dport 51822 -j ACCEPT
