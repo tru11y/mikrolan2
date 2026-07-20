@@ -1,5 +1,12 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, extractErrorMessage } from '@/src/lib/api';
@@ -8,10 +15,8 @@ import {
   LanAuthFailedError,
   LanUnreachableError,
 } from '@/src/services/mikrotik-lan/MikroTikLanClient';
-import {
-  parseAddress,
-  saveLocalCredentials,
-} from '@/src/lib/router-credentials';
+import { scanLan } from '@/src/services/mikrotik-lan/lanScan';
+import { saveLocalCredentials } from '@/src/lib/router-credentials';
 import {
   Banner,
   Button,
@@ -19,6 +24,7 @@ import {
   Field,
   Screen,
   Subtitle,
+  theme,
   Title,
 } from '@/src/components/ui';
 
@@ -28,28 +34,55 @@ type TestState =
   | { kind: 'ok'; identity: string }
   | { kind: 'error'; message: string };
 
+type ScanState =
+  | { kind: 'idle' }
+  | { kind: 'scanning'; done: number; total: number }
+  | { kind: 'done'; hosts: string[] };
+
 export default function AddRouterScreen() {
   const router = useRouter();
   const qc = useQueryClient();
+  const [address, setAddress] = useState('');
+  const [port, setPort] = useState('80');
   const [identity, setIdentity] = useState('');
   const [alias, setAlias] = useState('');
-  const [address, setAddress] = useState('');
   const [username, setUsername] = useState('admin');
   const [password, setPassword] = useState('');
   const [test, setTest] = useState<TestState>({ kind: 'idle' });
+  const [scan, setScan] = useState<ScanState>({ kind: 'idle' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const portNum = Number.parseInt(port, 10) || 80;
+
+  async function runScan() {
+    setError(null);
+    setScan({ kind: 'scanning', done: 0, total: 254 });
+    try {
+      const hosts = await scanLan(portNum, (done, total) =>
+        setScan({ kind: 'scanning', done, total }),
+      );
+      setScan({ kind: 'done', hosts });
+    } catch (e) {
+      setScan({ kind: 'idle' });
+      setError(extractErrorMessage(e));
+    }
+  }
+
   async function testLocal() {
     setError(null);
-    setTest({ kind: 'testing' });
-    const { host, port } = parseAddress(address);
-    if (!host) {
-      setTest({ kind: 'error', message: 'Adresse du routeur invalide' });
+    if (!address.trim()) {
+      setTest({ kind: 'error', message: 'Renseignez l’adresse du routeur' });
       return;
     }
+    setTest({ kind: 'testing' });
     try {
-      const client = new MikroTikLanClient({ host, port, username, password });
+      const client = new MikroTikLanClient({
+        host: address.trim(),
+        port: portNum,
+        username,
+        password,
+      });
       const res = await client.systemIdentity();
       setTest({ kind: 'ok', identity: res.name });
       if (!identity) setIdentity(res.name);
@@ -59,7 +92,7 @@ export default function AddRouterScreen() {
           ? 'Identifiants RouterOS incorrects'
           : e instanceof LanUnreachableError
             ? e.message
-            : 'Échec de la connexion locale';
+            : `Échec: ${extractErrorMessage(e)}`;
       setTest({ kind: 'error', message });
     }
   }
@@ -71,15 +104,13 @@ export default function AddRouterScreen() {
       const created = await api.routers.create({
         identity: identity.trim(),
         alias: alias.trim() || undefined,
-        localAddress: address.trim() || undefined,
+        localAddress: `${address.trim()}:${portNum}`,
         mode: 'LOCAL',
-        // Free/local mode: credentials stay on-device, not sent to the backend.
       });
-      const { host, port } = parseAddress(address);
-      if (host && password) {
+      if (address.trim() && password) {
         await saveLocalCredentials(created.id, {
-          host,
-          port,
+          host: address.trim(),
+          port: portNum,
           username,
           password,
         });
@@ -101,24 +132,84 @@ export default function AddRouterScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
-        <ScrollView contentContainerStyle={{ gap: 16 }}>
+        <ScrollView contentContainerStyle={{ gap: 16 }} keyboardShouldPersistTaps="handled">
           <Title>Ajouter un routeur</Title>
           <Subtitle>
-            Testez la connexion locale (LAN) puis enregistrez. Les identifiants
-            restent sur votre téléphone.
+            Adresse locale du routeur ou recherche automatique sur votre réseau.
+            Les identifiants restent sur votre téléphone.
           </Subtitle>
 
           {error ? <Banner tone="danger">{error}</Banner> : null}
 
           <Card>
-            <Field
-              label="Adresse locale (IP:port)"
-              placeholder="192.168.88.1:80"
-              value={address}
-              onChangeText={setAddress}
-              autoCapitalize="none"
-              keyboardType="numbers-and-punctuation"
-            />
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Field
+                  label="Adresse"
+                  placeholder="192.168.88.1"
+                  value={address}
+                  onChangeText={setAddress}
+                  autoCapitalize="none"
+                  keyboardType="numbers-and-punctuation"
+                />
+              </View>
+              <View style={{ width: 84 }}>
+                <Field
+                  label="Port"
+                  placeholder="80"
+                  value={port}
+                  onChangeText={(v) => setPort(v.replace(/[^0-9]/g, ''))}
+                  keyboardType="number-pad"
+                />
+              </View>
+            </View>
+
+            <Pressable
+              onPress={runScan}
+              disabled={scan.kind === 'scanning'}
+              accessibilityRole="button"
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 }}
+            >
+              <Text style={{ color: theme.primary, fontSize: 15 }}>⌕</Text>
+              <Text style={{ color: theme.primary, fontSize: 13.5, fontWeight: '600' }}>
+                {scan.kind === 'scanning'
+                  ? `Recherche… ${scan.done}/${scan.total}`
+                  : 'Rechercher les routeurs sur mon réseau'}
+              </Text>
+            </Pressable>
+
+            {scan.kind === 'done' && scan.hosts.length > 0 ? (
+              <View style={{ gap: 6 }}>
+                {scan.hosts.map((h) => (
+                  <Pressable
+                    key={h}
+                    onPress={() => {
+                      setAddress(h);
+                      setScan({ kind: 'idle' });
+                    }}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: theme.border,
+                      borderRadius: 10,
+                      padding: 11,
+                      backgroundColor: theme.surfaceAlt,
+                    }}
+                  >
+                    <Text style={{ color: theme.text, fontFamily: theme.mono }}>
+                      {h}:{portNum}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            ) : null}
+            {scan.kind === 'done' && scan.hosts.length === 0 ? (
+              <Banner tone="warning">
+                Aucun routeur détecté sur le réseau. Vérifiez le Wi-Fi et le port.
+              </Banner>
+            ) : null}
+          </Card>
+
+          <Card>
             <Field
               label="Utilisateur RouterOS"
               value={username}
@@ -139,7 +230,7 @@ export default function AddRouterScreen() {
             />
             {test.kind === 'ok' ? (
               <Banner tone="success">
-                Connecté ✓ — identité détectée : {test.identity}
+                Connecté ✓ — identité : {test.identity}
               </Banner>
             ) : null}
             {test.kind === 'error' ? (
