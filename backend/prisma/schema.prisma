@@ -159,7 +159,7 @@ model RemotePeer {
   router          Router           @relation(fields: [routerId], references: [id])
   tenantId        String
   wgPublicKey     String
-  wgIp            String
+  wgIp            String           @unique
   allocatedPort   Int              @unique
   serverPublicKey String
   endpoint        String

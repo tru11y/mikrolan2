@@ -14,6 +14,7 @@ import { HealthModule } from './modules/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { RoutersModule } from './modules/routers/routers.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
+import { RemoteAccessModule } from './modules/remote-access/remote-access.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
@@ -30,6 +31,7 @@ import { TenantContextMiddleware } from './common/context/tenant-context.middlew
     AuthModule,
     SubscriptionsModule,
     RoutersModule,
+    RemoteAccessModule,
     HealthModule,
   ],
   providers: [
