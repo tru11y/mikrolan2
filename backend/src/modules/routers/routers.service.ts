@@ -1,11 +1,14 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { ManagementMode, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CryptoService } from '../../common/crypto/crypto.service';
+import { getTenantContext } from '../../common/context/tenant-context';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { CreateRouterDto, UpdateRouterDto } from './dto/router.schemas';
 
 // Never expose credEncrypted to the API.
@@ -27,9 +30,22 @@ export class RoutersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
+  // Remote (cloud + WireGuard) management is a PRO-only feature.
+  private async assertRemoteAllowed(mode?: ManagementMode): Promise<void> {
+    if (mode !== ManagementMode.REMOTE) return;
+    const tenantId = getTenantContext()?.tenantId;
+    if (!tenantId || !(await this.subscriptions.isRemoteAllowed(tenantId))) {
+      throw new ForbiddenException(
+        'La gestion à distance nécessite un abonnement PRO actif',
+      );
+    }
+  }
+
   async create(dto: CreateRouterDto) {
+    await this.assertRemoteAllowed(dto.mode);
     try {
       // tenantId injected by the Prisma tenant middleware.
       return await this.prisma.router.create({
@@ -75,6 +91,7 @@ export class RoutersService {
 
   async update(id: string, dto: UpdateRouterDto) {
     await this.findOne(id); // ownership + existence (404 if cross-tenant)
+    await this.assertRemoteAllowed(dto.mode);
 
     const data: Prisma.RouterUpdateInput = {};
     if (dto.alias !== undefined) data.alias = dto.alias;

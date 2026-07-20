@@ -13,6 +13,7 @@ import { CryptoModule } from './common/crypto/crypto.module';
 import { HealthModule } from './modules/health/health.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { RoutersModule } from './modules/routers/routers.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
@@ -27,6 +28,7 @@ import { TenantContextMiddleware } from './common/context/tenant-context.middlew
     PrismaModule,
     CryptoModule,
     AuthModule,
+    SubscriptionsModule,
     RoutersModule,
     HealthModule,
   ],
