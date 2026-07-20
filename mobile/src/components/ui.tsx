@@ -1,6 +1,7 @@
 import { PropsWithChildren, ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -10,18 +11,22 @@ import {
   ViewStyle,
 } from 'react-native';
 
+// "Network console" identity — dark-first. See project_mikrolan2_design.
 export const theme = {
-  bg: '#0b0f14',
-  surface: '#151b23',
-  surfaceAlt: '#1d2630',
-  border: '#26313d',
-  text: '#e6edf3',
-  textMuted: '#8b97a4',
-  primary: '#3b82f6',
-  primaryText: '#ffffff',
-  danger: '#ef4444',
-  success: '#22c55e',
-  warning: '#f59e0b',
+  bg: '#0a0e17',
+  surface: '#131a29',
+  surfaceAlt: '#1b2438',
+  border: '#28324c',
+  text: '#e8eef7',
+  textMuted: '#8695b0',
+  primary: '#2de1c2', // signal teal
+  primaryText: '#05231f', // ink label on teal
+  gold: '#e6b450', // encodes the PRO tier
+  goldText: '#2c2208',
+  danger: '#f26d6d',
+  success: '#3ecf8e',
+  warning: '#f5a623',
+  mono: Platform.select({ ios: 'Menlo', default: 'monospace' }) as string,
 } as const;
 
 export function Screen({ children }: PropsWithChildren) {
@@ -72,16 +77,30 @@ export function Button({
   title: string;
   onPress: () => void;
   loading?: boolean;
-  variant?: 'primary' | 'ghost' | 'danger';
+  variant?: 'primary' | 'ghost' | 'danger' | 'gold';
   disabled?: boolean;
   accessibilityLabel?: string;
 }) {
   const bg =
     variant === 'primary'
       ? theme.primary
+      : variant === 'gold'
+        ? theme.gold
+        : 'transparent'; // ghost + danger are outline
+  const border =
+    variant === 'ghost'
+      ? theme.border
       : variant === 'danger'
         ? theme.danger
-        : 'transparent';
+        : bg;
+  const labelColor =
+    variant === 'primary'
+      ? theme.primaryText
+      : variant === 'gold'
+        ? theme.goldText
+        : variant === 'danger'
+          ? theme.danger
+          : theme.text;
   return (
     <Pressable
       accessibilityRole="button"
@@ -92,22 +111,15 @@ export function Button({
         styles.button,
         {
           backgroundColor: bg,
-          borderColor: variant === 'ghost' ? theme.border : bg,
+          borderColor: border,
           opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
         },
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={theme.primaryText} />
+        <ActivityIndicator color={labelColor} />
       ) : (
-        <Text
-          style={[
-            styles.buttonText,
-            { color: variant === 'ghost' ? theme.text : theme.primaryText },
-          ]}
-        >
-          {title}
-        </Text>
+        <Text style={[styles.buttonText, { color: labelColor }]}>{title}</Text>
       )}
     </Pressable>
   );
@@ -118,7 +130,7 @@ export function Badge({
   tone = 'muted',
 }: {
   label: string;
-  tone?: 'muted' | 'success' | 'danger' | 'warning' | 'primary';
+  tone?: 'muted' | 'success' | 'danger' | 'warning' | 'primary' | 'gold';
 }) {
   const color =
     tone === 'success'
@@ -129,7 +141,9 @@ export function Badge({
           ? theme.warning
           : tone === 'primary'
             ? theme.primary
-            : theme.textMuted;
+            : tone === 'gold'
+              ? theme.gold
+              : theme.textMuted;
   return (
     <View style={[styles.badge, { borderColor: color }]}>
       <Text style={[styles.badgeText, { color }]}>{label}</Text>
@@ -166,7 +180,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.bg, padding: 16 },
   card: {
     backgroundColor: theme.surface,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: theme.border,
     padding: 16,
@@ -200,7 +214,13 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     alignSelf: 'flex-start',
   },
-  badgeText: { fontSize: 12, fontWeight: '700' },
+  badgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    fontFamily: theme.mono,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
   banner: {
     borderWidth: 1,
     borderRadius: 10,
