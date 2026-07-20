@@ -16,6 +16,7 @@ import {
   LanUnreachableError,
 } from '@/src/services/mikrotik-lan/MikroTikLanClient';
 import { scanLan } from '@/src/services/mikrotik-lan/lanScan';
+import { withWifi } from '@/src/lib/lanBinder';
 import { saveLocalCredentials } from '@/src/lib/router-credentials';
 import {
   Banner,
@@ -37,7 +38,7 @@ type TestState =
 type ScanState =
   | { kind: 'idle' }
   | { kind: 'scanning'; done: number; total: number }
-  | { kind: 'done'; hosts: string[] };
+  | { kind: 'done'; ip: string | null; hosts: string[] };
 
 export default function AddRouterScreen() {
   const router = useRouter();
@@ -57,12 +58,14 @@ export default function AddRouterScreen() {
 
   async function runScan() {
     setError(null);
-    setScan({ kind: 'scanning', done: 0, total: 254 });
+    setScan({ kind: 'scanning', done: 0, total: 255 });
     try {
-      const hosts = await scanLan(portNum, (done, total) =>
-        setScan({ kind: 'scanning', done, total }),
+      const res = await withWifi(() =>
+        scanLan(portNum, (done, total) =>
+          setScan({ kind: 'scanning', done, total }),
+        ),
       );
-      setScan({ kind: 'done', hosts });
+      setScan({ kind: 'done', ip: res.ip, hosts: res.hosts });
     } catch (e) {
       setScan({ kind: 'idle' });
       setError(extractErrorMessage(e));
@@ -83,7 +86,7 @@ export default function AddRouterScreen() {
         username,
         password,
       });
-      const res = await client.systemIdentity();
+      const res = await withWifi(() => client.systemIdentity());
       setTest({ kind: 'ok', identity: res.name });
       if (!identity) setIdentity(res.name);
     } catch (e) {
@@ -178,6 +181,13 @@ export default function AddRouterScreen() {
               </Text>
             </Pressable>
 
+            {scan.kind === 'done' ? (
+              <Text style={{ color: theme.textMuted, fontSize: 11.5, fontFamily: theme.mono }}>
+                {scan.ip
+                  ? `Réseau du téléphone : ${scan.ip}`
+                  : 'IP locale indisponible — connectez le Wi-Fi du routeur.'}
+              </Text>
+            ) : null}
             {scan.kind === 'done' && scan.hosts.length > 0 ? (
               <View style={{ gap: 6 }}>
                 {scan.hosts.map((h) => (
@@ -204,7 +214,8 @@ export default function AddRouterScreen() {
             ) : null}
             {scan.kind === 'done' && scan.hosts.length === 0 ? (
               <Banner tone="warning">
-                Aucun routeur détecté sur le réseau. Vérifiez le Wi-Fi et le port.
+                Aucun routeur détecté. Le téléphone doit être sur le même Wi-Fi
+                que le routeur, et le port www/REST ({portNum}) activé.
               </Banner>
             ) : null}
           </Card>

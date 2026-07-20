@@ -9,6 +9,7 @@ import {
   type SystemResource,
 } from '@/src/services/mikrotik-lan/MikroTikLanClient';
 import { pushWireGuardConfig } from '@/src/services/mikrotik-lan/pushWireGuard';
+import { withWifi } from '@/src/lib/lanBinder';
 import {
   deleteLocalCredentials,
   getLocalCredentials,
@@ -80,7 +81,9 @@ export default function RouterDetailScreen() {
         return;
       }
       const bundle = await api.routers.provisionRemote(id);
-      await pushWireGuardConfig(new MikroTikLanClient(creds), bundle);
+      await withWifi(() =>
+        pushWireGuardConfig(new MikroTikLanClient(creds), bundle),
+      );
       await qc.invalidateQueries({ queryKey: ['router', id] });
       await qc.invalidateQueries({ queryKey: ['router-remote', id] });
       await qc.invalidateQueries({ queryKey: ['routers'] });
@@ -136,7 +139,7 @@ export default function RouterDetailScreen() {
     }
     try {
       const client = new MikroTikLanClient(creds);
-      setResource(await client.systemResource());
+      setResource(await withWifi(() => client.systemResource()));
       setLanState('ok');
     } catch (e) {
       setLanError(extractErrorMessage(e));

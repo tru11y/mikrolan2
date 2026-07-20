@@ -20,19 +20,30 @@ async function isRouter(host: string, port: number): Promise<boolean> {
   }
 }
 
+export interface ScanOutcome {
+  ip: string | null; // the phone's own IP (which subnet we scanned)
+  hosts: string[]; // reachable RouterOS candidates
+}
+
 /**
  * Scans the phone's /24 subnet for MikroTik routers on the given port.
- * Returns reachable candidate IPs, sorted by last octet.
+ * Also reports the phone IP so the operator can see which network was scanned.
  */
 export async function scanLan(
   port = 80,
   onProgress?: (done: number, total: number) => void,
-): Promise<string[]> {
+): Promise<ScanOutcome> {
   const ip = await Network.getIpAddressAsync();
-  if (!ip || !/^\d+\.\d+\.\d+\.\d+$/.test(ip)) return [];
+  if (!ip || !/^\d+\.\d+\.\d+\.\d+$/.test(ip) || ip === '0.0.0.0') {
+    return { ip: ip ?? null, hosts: [] };
+  }
 
   const base = ip.split('.').slice(0, 3).join('.');
-  const hosts = Array.from({ length: 254 }, (_, i) => `${base}.${i + 1}`);
+  // Scan the whole /24 plus the common MikroTik default gateway.
+  const set = new Set<string>();
+  for (let i = 1; i <= 254; i++) set.add(`${base}.${i}`);
+  set.add('192.168.88.1');
+  const hosts = [...set];
   const found: string[] = [];
   let done = 0;
   let idx = 0;
@@ -46,7 +57,6 @@ export async function scanLan(
   }
 
   await Promise.all(Array.from({ length: CONCURRENCY }, worker));
-  return found.sort(
-    (a, b) => Number(a.split('.')[3]) - Number(b.split('.')[3]),
-  );
+  found.sort((a, b) => Number(a.split('.')[3]) - Number(b.split('.')[3]));
+  return { ip, hosts: found };
 }
