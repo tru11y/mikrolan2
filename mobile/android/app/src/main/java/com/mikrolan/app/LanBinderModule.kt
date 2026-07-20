@@ -5,7 +5,10 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
+import android.net.wifi.WifiManager
 import android.os.Build
+import android.text.format.Formatter
+import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -54,6 +57,27 @@ class LanBinderModule(private val ctx: ReactApplicationContext) :
       }
     } catch (e: Exception) {
       promise.reject("bind_error", e.message, e)
+    }
+  }
+
+  /** DHCP info of the Wi-Fi link — the gateway is the router. */
+  @ReactMethod
+  fun getWifiInfo(promise: Promise) {
+    try {
+      val wifi =
+          ctx.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+      @Suppress("DEPRECATION")
+      val dhcp = wifi.dhcpInfo
+      val map = Arguments.createMap()
+      @Suppress("DEPRECATION")
+      map.putString("ipAddress", Formatter.formatIpAddress(dhcp.ipAddress))
+      @Suppress("DEPRECATION")
+      map.putString("gateway", Formatter.formatIpAddress(dhcp.gateway))
+      @Suppress("DEPRECATION")
+      map.putString("netmask", Formatter.formatIpAddress(dhcp.netmask))
+      promise.resolve(map)
+    } catch (e: Exception) {
+      promise.reject("wifi_info_error", e.message, e)
     }
   }
 
