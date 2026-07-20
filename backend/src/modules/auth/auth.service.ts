@@ -110,6 +110,25 @@ export class AuthService {
     });
   }
 
+  async me(userId: string, tenantId: string) {
+    const [user, tenant, subscription] = await Promise.all([
+      this.prisma.user.findFirst({
+        where: { id: userId },
+        select: { id: true, email: true, role: true, status: true },
+      }),
+      this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { id: true, name: true, slug: true, status: true },
+      }),
+      this.prisma.subscription.findUnique({
+        where: { tenantId },
+        select: { plan: true, status: true, currentPeriodEnd: true },
+      }),
+    ]);
+    if (!user || !tenant) throw new UnauthorizedException('Account not found');
+    return { user, tenant, subscription };
+  }
+
   refresh(refreshToken: string): Promise<TokenPair> {
     return this.tokens.rotate(refreshToken);
   }
