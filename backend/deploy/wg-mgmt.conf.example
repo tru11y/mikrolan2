@@ -1,0 +1,16 @@
+# /etc/wireguard/wg-mgmt.conf  — MikroLan v2 management tunnel (server side)
+# Distinct from v1 wg0 (10.66.66/51820) and from the Python rehost reservation.
+#   Subnet : 10.20.0.0/24  (server = 10.20.0.1, routers = 10.20.0.2+)
+#   Port   : 51822/udp
+# Generate keys:  wg genkey | tee server.key | wg pubkey > server.pub
+# Put server.pub into WG_SERVER_PUBLIC_KEY of the API .env.
+
+[Interface]
+Address = 10.20.0.1/24
+ListenPort = 51822
+PrivateKey = <SERVER_PRIVATE_KEY>
+# Peers are added dynamically by the API (`wg set wg-mgmt peer ...`); do not
+# list them here (they would be lost on `wg-quick down`).
+
+# Enable:  systemctl enable --now wg-quick@wg-mgmt
+# Open UDP (NOT via nginx):  iptables -A INPUT -p udp --dport 51822 -j ACCEPT

@@ -10,15 +10,37 @@ import { UserRole } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { TenantContext } from '../../common/context/tenant-context';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { Body } from '@nestjs/common';
 import { RemoteAccessService } from './remote-access.service';
+import { RemoteRouterService } from './remote-router.service';
+import { proxySchema, type ProxyDto } from './dto/proxy.schemas';
 
 @Controller('routers/:id/remote')
 export class RemoteAccessController {
-  constructor(private readonly remote: RemoteAccessService) {}
+  constructor(
+    private readonly remote: RemoteAccessService,
+    private readonly remoteRouter: RemoteRouterService,
+  ) {}
 
   @Get()
   status(@Param('id', ParseUUIDPipe) id: string) {
     return this.remote.status(id);
+  }
+
+  @Get('system-resource')
+  systemResource(@Param('id', ParseUUIDPipe) id: string) {
+    return this.remoteRouter.systemResource(id);
+  }
+
+  @Post('rest')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  proxy(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(proxySchema)) dto: ProxyDto,
+  ) {
+    return this.remoteRouter.request(id, dto.method, dto.path, dto.data);
   }
 
   @Post('provision')
