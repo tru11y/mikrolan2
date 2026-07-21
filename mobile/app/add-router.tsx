@@ -11,10 +11,10 @@ import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, extractErrorMessage } from '@/src/lib/api';
 import {
-  MikroTikLanClient,
+  withApi,
   LanAuthFailedError,
   LanUnreachableError,
-} from '@/src/services/mikrotik-lan/MikroTikLanClient';
+} from '@/src/services/mikrotik-lan/MikroTikApiClient';
 import { scanLan } from '@/src/services/mikrotik-lan/lanScan';
 import { withWifi } from '@/src/lib/lanBinder';
 import { saveLocalCredentials } from '@/src/lib/router-credentials';
@@ -49,7 +49,7 @@ export default function AddRouterScreen() {
   const router = useRouter();
   const qc = useQueryClient();
   const [address, setAddress] = useState('');
-  const [port, setPort] = useState('80');
+  const [port, setPort] = useState('8728');
   const [identity, setIdentity] = useState('');
   const [alias, setAlias] = useState('');
   const [username, setUsername] = useState('admin');
@@ -59,7 +59,7 @@ export default function AddRouterScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const portNum = Number.parseInt(port, 10) || 80;
+  const portNum = Number.parseInt(port, 10) || 8728;
 
   async function runScan() {
     setError(null);
@@ -91,13 +91,12 @@ export default function AddRouterScreen() {
     }
     setTest({ kind: 'testing' });
     try {
-      const client = new MikroTikLanClient({
-        host: address.trim(),
-        port: portNum,
-        username,
-        password,
-      });
-      const res = await withWifi(() => client.systemIdentity());
+      const res = await withWifi(() =>
+        withApi(
+          { host: address.trim(), port: portNum, username, password },
+          (c) => c.systemIdentity(),
+        ),
+      );
       setTest({ kind: 'ok', identity: res.name });
       if (!identity) setIdentity(res.name);
     } catch (e) {
@@ -170,7 +169,7 @@ export default function AddRouterScreen() {
               <View style={{ width: 84 }}>
                 <Field
                   label="Port"
-                  placeholder="80"
+                  placeholder="8728"
                   value={port}
                   onChangeText={(v) => setPort(v.replace(/[^0-9]/g, ''))}
                   keyboardType="number-pad"

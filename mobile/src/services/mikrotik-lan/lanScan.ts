@@ -1,24 +1,35 @@
 import * as Network from 'expo-network';
+import TcpSocket from 'react-native-tcp-socket';
 import { getWifiInfo } from '@/src/lib/lanBinder';
 
 const CONCURRENCY = 24;
-const PROBE_TIMEOUT_MS = 1200;
+const PROBE_TIMEOUT_MS = 1400;
 
-/** A RouterOS REST endpoint answers /rest/system/identity with 401 (no creds)
- *  or 200 (creds) — either means "a router lives here". */
+/** A router is present if its RouterOS API port (default 8728) accepts a TCP
+ *  connection. This works whether or not REST/www is enabled. */
 async function isRouter(host: string, port: number): Promise<boolean> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
-  try {
-    const res = await fetch(`http://${host}:${port}/rest/system/identity`, {
-      signal: controller.signal,
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (v: boolean) => {
+      if (done) return;
+      done = true;
+      try {
+        socket.destroy();
+      } catch {
+        // ignore
+      }
+      resolve(v);
+    };
+    const timer = setTimeout(() => finish(false), PROBE_TIMEOUT_MS);
+    const socket = TcpSocket.createConnection({ host, port }, () => {
+      clearTimeout(timer);
+      finish(true);
     });
-    return res.status === 401 || res.status === 200;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timer);
-  }
+    socket.on('error', () => {
+      clearTimeout(timer);
+      finish(false);
+    });
+  });
 }
 
 export interface ScanOutcome {
@@ -36,7 +47,7 @@ const isIp = (v?: string | null): v is string =>
  * alone can miss the gateway — hence probing the gateway explicitly first.
  */
 export async function scanLan(
-  port = 80,
+  port = 8728,
   onProgress?: (done: number, total: number) => void,
 ): Promise<ScanOutcome> {
   const info = await getWifiInfo();
