@@ -69,7 +69,12 @@ export class RemoteAccessService {
       throw new ConflictException('Remote access already provisioned');
     }
 
-    const { wgIp, allocatedPort } = await this.allocate();
+    // Reuse the router's existing tunnel IP/port on re-provision (previously
+    // revoked) so the address stays stable and never drifts from what the
+    // router already holds; only allocate fresh for a brand-new router.
+    const { wgIp, allocatedPort } = existing
+      ? { wgIp: existing.wgIp, allocatedPort: existing.allocatedPort }
+      : await this.allocate();
     const keys = generateWgKeyPair();
     const serverPublicKey = this.wg.serverPublicKey;
     const endpoint = this.wg.endpoint;

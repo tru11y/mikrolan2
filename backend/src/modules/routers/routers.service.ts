@@ -46,6 +46,37 @@ export class RoutersService {
 
   async create(dto: CreateRouterDto) {
     await this.assertRemoteAllowed(dto.mode);
+    const credEncrypted = dto.credentials
+      ? this.crypto.encrypt(JSON.stringify(dto.credentials))
+      : null;
+
+    // A previously soft-deleted router with the same identity still occupies the
+    // (tenantId, identity) unique index, so re-adding it must restore that record
+    // instead of 409ing. Soft delete is never a cascade — we reuse the row.
+    const soft = await this.prisma.router.findFirst({
+      where: { identity: dto.identity, deletedAt: { not: null } },
+      select: { id: true },
+    });
+    if (soft) {
+      // Middleware rewrites update→updateMany (tenant-scoped); no select here.
+      await this.prisma.router.update({
+        where: { id: soft.id },
+        data: {
+          deletedAt: null,
+          alias: dto.alias ?? null,
+          model: dto.model ?? null,
+          localAddress: dto.localAddress ?? null,
+          mode: dto.mode,
+          credEncrypted,
+        },
+      });
+      await this.audit(AuditAction.CREATE, soft.id, {
+        identity: dto.identity,
+        restored: true,
+      });
+      return this.findOne(soft.id);
+    }
+
     try {
       // tenantId injected by the Prisma tenant middleware.
       const created = await this.prisma.router.create({
@@ -55,9 +86,7 @@ export class RoutersService {
           model: dto.model,
           localAddress: dto.localAddress,
           mode: dto.mode,
-          credEncrypted: dto.credentials
-            ? this.crypto.encrypt(JSON.stringify(dto.credentials))
-            : undefined,
+          credEncrypted: credEncrypted ?? undefined,
         } as Prisma.RouterCreateInput,
         select: ROUTER_PUBLIC,
       });
