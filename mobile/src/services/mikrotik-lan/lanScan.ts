@@ -21,10 +21,13 @@ async function isRouter(host: string, port: number): Promise<boolean> {
       resolve(v);
     };
     const timer = setTimeout(() => finish(false), PROBE_TIMEOUT_MS);
-    const socket = TcpSocket.createConnection({ host, port }, () => {
-      clearTimeout(timer);
-      finish(true);
-    });
+    const socket = TcpSocket.createConnection(
+      { host, port, interface: 'wifi' },
+      () => {
+        clearTimeout(timer);
+        finish(true);
+      },
+    );
     socket.on('error', () => {
       clearTimeout(timer);
       finish(false);

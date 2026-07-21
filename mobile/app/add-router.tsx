@@ -16,7 +16,6 @@ import {
   LanUnreachableError,
 } from '@/src/services/mikrotik-lan/MikroTikApiClient';
 import { scanLan } from '@/src/services/mikrotik-lan/lanScan';
-import { withWifi } from '@/src/lib/lanBinder';
 import { saveLocalCredentials } from '@/src/lib/router-credentials';
 import {
   Banner,
@@ -65,10 +64,8 @@ export default function AddRouterScreen() {
     setError(null);
     setScan({ kind: 'scanning', done: 0, total: 255 });
     try {
-      const res = await withWifi(() =>
-        scanLan(portNum, (done, total) =>
-          setScan({ kind: 'scanning', done, total }),
-        ),
+      const res = await scanLan(portNum, (done, total) =>
+        setScan({ kind: 'scanning', done, total }),
       );
       setScan({
         kind: 'done',
@@ -91,11 +88,9 @@ export default function AddRouterScreen() {
     }
     setTest({ kind: 'testing' });
     try {
-      const res = await withWifi(() =>
-        withApi(
-          { host: address.trim(), port: portNum, username, password },
-          (c) => c.systemIdentity(),
-        ),
+      const res = await withApi(
+        { host: address.trim(), port: portNum, username, password },
+        (c) => c.systemIdentity(),
       );
       setTest({ kind: 'ok', identity: res.name });
       if (!identity) setIdentity(res.name);
