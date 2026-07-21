@@ -178,7 +178,10 @@ export class MikroTikApiClient {
       }, this.timeout);
 
       const socket = TcpSocket.createConnection(
-        { host: this.params.host, port: this.params.port },
+        // `interface: 'wifi'` pins this socket to the Wi-Fi network so the
+        // router is reachable even when its Wi-Fi has no internet (Android would
+        // otherwise use cellular). Per-socket → no process-wide bind races.
+        { host: this.params.host, port: this.params.port, interface: 'wifi' },
         () => {
           if (settled) return;
           settled = true;
