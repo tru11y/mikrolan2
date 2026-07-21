@@ -16,9 +16,11 @@ const credentialsSchema = z.object({
 export const createRouterSchema = z.object({
   identity: z
     .string()
+    .trim()
     .min(2)
     .max(64)
-    .regex(/^[a-zA-Z0-9._-]+$/, { message: 'Invalid identity' }),
+    // RouterOS identities can contain spaces and accents (e.g. "FREEDOM HOME").
+    .regex(/^[\p{L}\p{N} ._-]+$/u, { message: 'Invalid identity' }),
   alias: z.string().max(80).optional(),
   model: z.string().max(60).optional(),
   localAddress: addressSchema.optional(),

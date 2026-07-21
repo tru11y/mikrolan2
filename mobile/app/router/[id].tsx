@@ -5,9 +5,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, extractErrorMessage } from '@/src/lib/api';
 import { useAuth } from '@/src/providers/auth-provider';
 import {
-  MikroTikLanClient,
+  withApi,
   type SystemResource,
-} from '@/src/services/mikrotik-lan/MikroTikLanClient';
+} from '@/src/services/mikrotik-lan/MikroTikApiClient';
 import { pushWireGuardConfig } from '@/src/services/mikrotik-lan/pushWireGuard';
 import { withWifi } from '@/src/lib/lanBinder';
 import {
@@ -81,9 +81,7 @@ export default function RouterDetailScreen() {
         return;
       }
       const bundle = await api.routers.provisionRemote(id);
-      await withWifi(() =>
-        pushWireGuardConfig(new MikroTikLanClient(creds), bundle),
-      );
+      await withWifi(() => pushWireGuardConfig(creds, bundle));
       await qc.invalidateQueries({ queryKey: ['router', id] });
       await qc.invalidateQueries({ queryKey: ['router-remote', id] });
       await qc.invalidateQueries({ queryKey: ['routers'] });
@@ -138,8 +136,9 @@ export default function RouterDetailScreen() {
       return;
     }
     try {
-      const client = new MikroTikLanClient(creds);
-      setResource(await withWifi(() => client.systemResource()));
+      setResource(
+        await withWifi(() => withApi(creds, (c) => c.systemResource())),
+      );
       setLanState('ok');
     } catch (e) {
       setLanError(extractErrorMessage(e));
