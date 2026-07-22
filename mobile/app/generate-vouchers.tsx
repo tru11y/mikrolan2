@@ -10,6 +10,7 @@ import {
 } from '@/src/lib/api';
 import { getLocalCredentials } from '@/src/lib/router-credentials';
 import { pushVouchersLan } from '@/src/services/mikrotik-lan/hotspotLan';
+import { TicketQr } from '@/src/components/TicketQr';
 import {
   Badge,
   Banner,
@@ -169,17 +170,23 @@ export default function GenerateVouchersScreen() {
               <Badge label="Nouveau" tone="success" />
             </View>
             {justGenerated.map((v) => (
-              <Text
+              <View
                 key={v.id}
-                style={{
-                  color: theme.text,
-                  fontFamily: theme.mono,
-                  fontSize: 16,
-                  letterSpacing: 1,
-                }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}
               >
-                {v.code}
-              </Text>
+                <TicketQr code={v.code} />
+                <Text
+                  style={{
+                    flex: 1,
+                    color: theme.text,
+                    fontFamily: theme.mono,
+                    fontSize: 18,
+                    letterSpacing: 1,
+                  }}
+                >
+                  {v.code}
+                </Text>
+              </View>
             ))}
             <Button
               title="Partager tous les codes"
@@ -197,14 +204,12 @@ export default function GenerateVouchersScreen() {
           vouchersQuery.data.map((v) => (
             <Card key={v.id}>
               <View
-                style={{
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}
+                style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}
               >
+                <TicketQr code={v.code} size={56} />
                 <Text
                   style={{
+                    flex: 1,
                     color: theme.text,
                     fontFamily: theme.mono,
                     fontSize: 15,
