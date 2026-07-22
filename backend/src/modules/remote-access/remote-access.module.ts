@@ -9,5 +9,6 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
   imports: [SubscriptionsModule],
   controllers: [RemoteAccessController],
   providers: [RemoteAccessService, RemoteRouterService, WireGuardService],
+  exports: [RemoteRouterService],
 })
 export class RemoteAccessModule {}

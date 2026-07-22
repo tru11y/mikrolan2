@@ -135,6 +135,15 @@ class SentenceParser {
   }
 }
 
+/** Builds RouterOS `=key=value` attribute words, skipping undefined values. */
+export function attrs(
+  data: Record<string, string | number | undefined>,
+): string[] {
+  return Object.entries(data)
+    .filter(([, v]) => v !== undefined)
+    .map(([k, v]) => `=${k}=${v}`);
+}
+
 function parseRow(words: string[]): ApiRow {
   const row: ApiRow = {};
   for (const w of words) {
