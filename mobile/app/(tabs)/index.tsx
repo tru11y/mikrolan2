@@ -28,6 +28,10 @@ export default function MaisonScreen() {
   const me = useQuery({ queryKey: ['me'], queryFn: api.auth.me });
   const routers = useQuery({ queryKey: ['routers'], queryFn: api.routers.list });
   const plans = useQuery({ queryKey: ['plans'], queryFn: api.plans.list });
+  const metrics = useQuery({
+    queryKey: ['metrics', 'today'],
+    queryFn: () => api.metrics.summary('today'),
+  });
 
   const list: RouterItem[] = routers.data ?? [];
   const online = list.filter((r) => r.health === 'ONLINE').length;
@@ -81,28 +85,16 @@ export default function MaisonScreen() {
         </Pressable>
       </Row>
 
-      {/* Aurora hero — revenue (metrics endpoint TODO) */}
+      {/* Aurora hero — revenue (today) */}
       <AuroraCard style={{ padding: 22 }}>
-        <Row>
-          <Text style={{ color: theme.primaryText, fontWeight: '600', opacity: 0.9 }}>
-            Revenu du jour
-          </Text>
-          <View
-            style={{
-              backgroundColor: '#00000022',
-              borderRadius: 999,
-              paddingHorizontal: 10,
-              paddingVertical: 3,
-            }}
-          >
-            <Text style={{ color: theme.primaryText, fontSize: 11, fontWeight: '700' }}>
-              BIENTÔT
-            </Text>
-          </View>
-        </Row>
+        <Text style={{ color: theme.primaryText, fontWeight: '600', opacity: 0.9 }}>
+          Revenu du jour
+        </Text>
         <Row style={{ alignItems: 'flex-end', justifyContent: 'flex-start', marginTop: 10 }}>
           <Text style={{ color: theme.primaryText, fontSize: 40, fontWeight: '800' }}>
-            —
+            {metrics.isLoading
+              ? '…'
+              : (metrics.data?.revenueXof ?? 0).toLocaleString('fr-FR')}
           </Text>
           <Text
             style={{
@@ -117,7 +109,8 @@ export default function MaisonScreen() {
           </Text>
         </Row>
         <Text style={{ color: theme.primaryText, opacity: 0.8, fontSize: 12, marginTop: 4 }}>
-          Statistiques de ventes bientôt disponibles
+          {metrics.data?.ticketsGenerated ?? 0} tickets vendus ·{' '}
+          {metrics.data?.activeSessions ?? 0} sessions actives
         </Text>
       </AuroraCard>
 
