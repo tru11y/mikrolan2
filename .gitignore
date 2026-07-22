@@ -1,56 +1,29 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-.venv
-venv/
-ENV/
-env/
-.vscode/
-.env
-.env.local
-
-# Node
+# Node / build
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 package-lock.json
-.next/
 dist/
+build/
+.next/
 .expo/
 .expo-shared/
 
+# Env / secrets
+.env
+.env.local
+
 # IDE
+.vscode/
 .idea/
 *.swp
 *.swo
 *~
-.DS_Store
 
 # OS
-Thumbs.db
 .DS_Store
+Thumbs.db
 
 # Project specific
 *.log

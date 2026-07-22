@@ -1,0 +1,36 @@
+# Postgres + Redis for MikroLan v2, isolated from the v1 prod stack.
+# network_mode: host so they listen directly on host loopback — this VPS runs ufw
+# (INPUT policy DROP) which breaks Docker's bridge port-publishing (docker-proxy
+# → bridge forward is dropped). The host-network API then reaches them on
+# 127.0.0.1 in the same netns. Bound to 127.0.0.1 only → not publicly exposed.
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mikrolan2-pg
+    restart: unless-stopped
+    network_mode: host
+    command: ['postgres', '-c', 'listen_addresses=127.0.0.1', '-p', '5544']
+    environment:
+      POSTGRES_USER: mikrolan
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      POSTGRES_DB: mikrolan
+    volumes:
+      - mikrolan2_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U mikrolan -h 127.0.0.1 -p 5544']
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: mikrolan2-redis
+    restart: unless-stopped
+    network_mode: host
+    command: ['redis-server', '--port', '6390', '--bind', '127.0.0.1']
+    volumes:
+      - mikrolan2_redis:/data
+
+volumes:
+  mikrolan2_pg:
+  mikrolan2_redis:

@@ -1,0 +1,29 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mikrolan-pg-dev
+    environment:
+      POSTGRES_USER: mikrolan
+      POSTGRES_PASSWORD: mikrolan
+      POSTGRES_DB: mikrolan
+    ports:
+      - '5433:5432'
+    volumes:
+      - mikrolan_pg_dev:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U mikrolan']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: mikrolan-redis-dev
+    ports:
+      - '6380:6379'
+    volumes:
+      - mikrolan_redis_dev:/data
+
+volumes:
+  mikrolan_pg_dev:
+  mikrolan_redis_dev:
