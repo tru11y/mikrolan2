@@ -122,6 +122,7 @@ export default function RouterDetailScreen() {
 
   const [alias, setAlias] = useState('');
   const [resource, setResource] = useState<SystemResource | null>(null);
+  const [resourceVia, setResourceVia] = useState<'lan' | 'remote' | null>(null);
   const [lanState, setLanState] = useState<
     'idle' | 'loading' | 'ok' | 'no-creds' | 'error'
   >('idle');
@@ -133,25 +134,43 @@ export default function RouterDetailScreen() {
     if (query.data) setAlias(query.data.alias ?? '');
   }, [query.data]);
 
+  const remoteActive = remoteQuery.data?.status === 'ACTIVE';
+
   const loadLocal = useCallback(async () => {
     if (!id) return;
     setLanState('loading');
     setLanError(null);
+
+    // 1) LAN first: works offline on the router's Wi-Fi (free/local mode).
     const creds = await getLocalCredentials(id);
-    if (!creds) {
-      setLanState('no-creds');
-      return;
+    if (creds) {
+      try {
+        setResource(await withApi(creds, (c) => c.systemResource()));
+        setResourceVia('lan');
+        setLanState('ok');
+        return;
+      } catch (e) {
+        setLanError(extractErrorMessage(e));
+      }
     }
-    try {
-      setResource(
-        await withApi(creds, (c) => c.systemResource()),
-      );
-      setLanState('ok');
-    } catch (e) {
-      setLanError(extractErrorMessage(e));
-      setLanState('error');
+
+    // 2) Remote fallback (PRO): the backend drives the router over the tunnel,
+    // so resources are reachable from anywhere the phone has internet.
+    if (remoteActive) {
+      try {
+        setResource(
+          (await api.routers.remoteSystemResource(id)) as SystemResource,
+        );
+        setResourceVia('remote');
+        setLanState('ok');
+        return;
+      } catch (e) {
+        setLanError(extractErrorMessage(e));
+      }
     }
-  }, [id]);
+
+    setLanState(creds || remoteActive ? 'error' : 'no-creds');
+  }, [id, remoteActive]);
 
   useEffect(() => {
     void loadLocal();
@@ -221,7 +240,15 @@ export default function RouterDetailScreen() {
         {error ? <Banner tone="danger">{error}</Banner> : null}
 
         <Card>
-          <Label>État local (LAN)</Label>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Label>État du routeur</Label>
+            {lanState === 'ok' && resourceVia ? (
+              <Badge
+                label={resourceVia === 'remote' ? 'Via tunnel' : 'LAN'}
+                tone={resourceVia === 'remote' ? 'gold' : 'muted'}
+              />
+            ) : null}
+          </View>
           {lanState === 'loading' ? <Subtitle>Connexion au routeur…</Subtitle> : null}
           {lanState === 'no-creds' ? (
             <Subtitle>
@@ -245,7 +272,7 @@ export default function RouterDetailScreen() {
             </View>
           ) : null}
           <Button
-            title="Rafraîchir l'état local"
+            title="Rafraîchir"
             variant="ghost"
             onPress={loadLocal}
             loading={lanState === 'loading'}

@@ -59,3 +59,6 @@ routers.db
 
 # VPS backup (secrets, certs, data — ne pas committer)
 vps-backup/
+
+# Le template Python `lib/` (l.13) masquait à tort la source TS du mobile.
+!mobile/src/lib/
