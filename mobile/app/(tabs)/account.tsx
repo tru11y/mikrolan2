@@ -1,11 +1,9 @@
-import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { useAuth } from '@/src/providers/auth-provider';
-import { api, extractErrorMessage } from '@/src/lib/api';
 import {
   Badge,
-  Banner,
   Button,
   Card,
   Label,
@@ -47,24 +45,8 @@ function initialsOf(name?: string): string {
 }
 
 export default function AccountScreen() {
+  const router = useRouter();
   const { me, isPro, logout, isBusy, apiBaseUrl } = useAuth();
-  const [upgrade, setUpgrade] = useState<
-    | { kind: 'idle' }
-    | { kind: 'busy' }
-    | { kind: 'done'; message: string }
-    | { kind: 'error'; message: string }
-  >({ kind: 'idle' });
-
-  async function requestUpgrade() {
-    setUpgrade({ kind: 'busy' });
-    try {
-      const res = await api.subscriptions.requestUpgrade();
-      setUpgrade({ kind: 'done', message: res.instructions });
-    } catch (e) {
-      setUpgrade({ kind: 'error', message: extractErrorMessage(e) });
-    }
-  }
-
   const version = Constants.expoConfig?.version ?? '0.1.0';
 
   return (
@@ -121,21 +103,11 @@ export default function AccountScreen() {
             : 'Plan gratuit : gestion locale (LAN). Passez à PRO pour piloter vos routeurs à distance.'}
         </Subtitle>
         {!isPro ? (
-          <>
-            {upgrade.kind === 'done' ? (
-              <Banner tone="success">{upgrade.message}</Banner>
-            ) : null}
-            {upgrade.kind === 'error' ? (
-              <Banner tone="danger">{upgrade.message}</Banner>
-            ) : null}
-            <Button
-              title={upgrade.kind === 'done' ? 'Demande envoyée' : 'Passer à PRO'}
-              variant="gold"
-              onPress={requestUpgrade}
-              loading={upgrade.kind === 'busy'}
-              disabled={upgrade.kind === 'done'}
-            />
-          </>
+          <Button
+            title="Passer à PRO"
+            variant="gold"
+            onPress={() => router.push('/pro')}
+          />
         ) : null}
       </Card>
 

@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
-import { FlatList, Pressable, RefreshControl, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, Text, View } from 'react-native';
 import { Link, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { api, extractErrorMessage, type RouterItem } from '@/src/lib/api';
 import {
@@ -10,16 +11,16 @@ import {
   Card,
   Empty,
   Mono,
+  Row,
   Screen,
   Subtitle,
   theme,
   Title,
 } from '@/src/components/ui';
-import { Text } from 'react-native';
 
 function healthTone(h: RouterItem['health']) {
   return h === 'ONLINE'
-    ? 'success'
+    ? 'secondary'
     : h === 'ERROR'
       ? 'danger'
       : h === 'OFFLINE'
@@ -39,26 +40,49 @@ export default function RouteursScreen() {
       <Link href={`/router/${item.id}`} asChild>
         <Pressable>
           <Card style={{ marginBottom: 12 }}>
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <Text style={{ color: theme.text, fontSize: 16, fontWeight: '700' }}>
-                {item.alias || item.identity}
-              </Text>
-              <Badge label={item.health} tone={healthTone(item.health)} />
-            </View>
-            <Mono style={{ color: theme.textMuted, fontSize: 12 }}>
-              {item.identity}
-              {item.localAddress ? ` · ${item.localAddress}` : ''}
-            </Mono>
-            <Badge
-              label={item.mode === 'REMOTE' ? 'À distance' : 'Local'}
-              tone={item.mode === 'REMOTE' ? 'gold' : 'secondary'}
-            />
+            <Row style={{ gap: 12 }}>
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 12,
+                  backgroundColor: theme.primary + '22',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons
+                  name="hardware-chip-outline"
+                  size={20}
+                  color={theme.primary}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: theme.text, fontSize: 16, fontWeight: '700' }}>
+                  {item.alias || item.identity}
+                </Text>
+                <Mono style={{ color: theme.textMuted, fontSize: 12 }}>
+                  {item.identity}
+                  {item.localAddress ? ` · ${item.localAddress}` : ''}
+                </Mono>
+              </View>
+              <Badge
+                label={
+                  item.health === 'ONLINE'
+                    ? 'EN LIGNE'
+                    : item.health === 'OFFLINE'
+                      ? 'HORS LIGNE'
+                      : item.health
+                }
+                tone={healthTone(item.health)}
+              />
+            </Row>
+            <Row style={{ justifyContent: 'flex-start' }}>
+              <Badge
+                label={item.mode === 'REMOTE' ? 'À DISTANCE' : 'LOCAL'}
+                tone={item.mode === 'REMOTE' ? 'gold' : 'secondary'}
+              />
+            </Row>
           </Card>
         </Pressable>
       </Link>
