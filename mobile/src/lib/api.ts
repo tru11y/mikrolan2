@@ -93,6 +93,23 @@ export type Plan = {
   displayOrder: number;
 };
 
+export type MetricsPeriod = 'today' | '7d' | '30d';
+export type PlanBreakdown = {
+  planId: string;
+  planName: string;
+  priceXof: number;
+  sold: number;
+  revenueXof: number;
+};
+export type MetricsSummary = {
+  period: MetricsPeriod;
+  revenueXof: number;
+  ticketsGenerated: number;
+  ticketsUsed: number;
+  activeSessions: number;
+  byPlan: PlanBreakdown[];
+};
+
 export type CreatePlanPayload = {
   name: string;
   durationMinutes: number;
@@ -467,6 +484,19 @@ export const api = {
       const res = await apiClient.post<ApiEnvelope<{ terminated: boolean }>>(
         `/routers/${id}/sessions/terminate`,
         { mikrotikId },
+      );
+      return unwrap(res);
+    },
+  },
+
+  metrics: {
+    async summary(
+      period: MetricsPeriod = '30d',
+      routerId?: string,
+    ): Promise<MetricsSummary> {
+      const res = await apiClient.get<ApiEnvelope<MetricsSummary>>(
+        '/metrics/summary',
+        { params: { period, ...(routerId ? { routerId } : {}) } },
       );
       return unwrap(res);
     },

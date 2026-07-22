@@ -83,6 +83,7 @@ export class PrismaService
       case 'findMany':
       case 'count':
       case 'aggregate':
+      case 'groupBy':
       case 'updateMany':
       case 'deleteMany':
         params.args = params.args ?? {};
