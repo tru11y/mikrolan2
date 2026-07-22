@@ -6,6 +6,7 @@ import {
   api,
   extractErrorMessage,
   type Plan,
+  type VoucherBatch,
   type VoucherItem,
 } from '@/src/lib/api';
 import { getLocalCredentials } from '@/src/lib/router-credentials';
@@ -52,6 +53,11 @@ export default function GenerateVouchersScreen() {
     queryFn: () => api.routers.listVouchers(routerId),
     enabled: Boolean(routerId),
   });
+  const batchesQuery = useQuery({
+    queryKey: ['batches', routerId],
+    queryFn: () => api.routers.listBatches(routerId),
+    enabled: Boolean(routerId),
+  });
 
   const [planId, setPlanId] = useState<string | null>(null);
   const [quantity, setQuantity] = useState('10');
@@ -59,6 +65,7 @@ export default function GenerateVouchersScreen() {
   const [error, setError] = useState<string | null>(null);
   const [justGenerated, setJustGenerated] = useState<VoucherItem[] | null>(null);
   const [printBusy, setPrintBusy] = useState(false);
+  const [reprintId, setReprintId] = useState<string | null>(null);
 
   async function generate() {
     setError(null);
@@ -91,6 +98,7 @@ export default function GenerateVouchersScreen() {
       }
       setJustGenerated(res.vouchers);
       await qc.invalidateQueries({ queryKey: ['vouchers', routerId] });
+      await qc.invalidateQueries({ queryKey: ['batches', routerId] });
     } catch (e) {
       setError(extractErrorMessage(e));
     } finally {
@@ -119,6 +127,33 @@ export default function GenerateVouchersScreen() {
       setError(extractErrorMessage(e));
     } finally {
       setPrintBusy(false);
+    }
+  }
+
+  async function reprintBatch(batch: VoucherBatch) {
+    setError(null);
+    setReprintId(batch.id);
+    try {
+      const codes = await api.routers.listVouchers(routerId, {
+        batchId: batch.id,
+      });
+      if (!codes.length) {
+        setError('Ce lot ne contient aucun code.');
+        return;
+      }
+      const plan = plansQuery.data?.find((p) => p.id === batch.planId);
+      const r = routerQuery.data;
+      await printTickets({
+        routerName: r?.alias || r?.identity || 'WiFi',
+        planName: batch.plan.name,
+        durationMinutes: plan?.durationMinutes ?? 0,
+        priceXof: batch.plan.priceXof,
+        tickets: codes.map((v) => ({ code: v.code })),
+      });
+    } catch (e) {
+      setError(extractErrorMessage(e));
+    } finally {
+      setReprintId(null);
     }
   }
 
@@ -284,6 +319,43 @@ export default function GenerateVouchersScreen() {
               onPress={() => shareCodes(justGenerated)}
             />
           </Card>
+        ) : null}
+
+        {batchesQuery.data?.length ? (
+          <View style={{ gap: 12 }}>
+            <Label>Lots générés (réimpression)</Label>
+            {batchesQuery.data.map((b) => (
+              <Card key={b.id} style={{ gap: 10 }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: theme.text, fontWeight: '700' }}>
+                      {b.plan.name}
+                    </Text>
+                    <Text style={{ color: theme.textMuted, fontSize: 12 }}>
+                      {new Date(b.createdAt).toLocaleString('fr-FR')} ·{' '}
+                      {b.generated}/{b.quantity} tickets
+                    </Text>
+                  </View>
+                  <Badge
+                    label={`${b.plan.priceXof.toLocaleString('fr-FR')} F`}
+                    tone="gold"
+                  />
+                </View>
+                <Button
+                  title="Réimprimer ce lot (PDF)"
+                  variant="ghost"
+                  onPress={() => reprintBatch(b)}
+                  loading={reprintId === b.id}
+                />
+              </Card>
+            ))}
+          </View>
         ) : null}
 
         <Label>Codes existants</Label>

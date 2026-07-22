@@ -139,6 +139,23 @@ export type VoucherItem = {
   createdAt: string;
 };
 
+export type VoucherBatchStatus =
+  | 'PENDING'
+  | 'GENERATING'
+  | 'COMPLETED'
+  | 'FAILED';
+export type VoucherBatch = {
+  id: string;
+  planId: string;
+  routerId: string;
+  quantity: number;
+  generated: number;
+  status: VoucherBatchStatus;
+  createdAt: string;
+  completedAt: string | null;
+  plan: { name: string; priceXof: number };
+};
+
 export type LiveSession = {
   id: string; // RouterOS .id
   user: string;
@@ -459,6 +476,12 @@ export const api = {
       const res = await apiClient.get<ApiEnvelope<VoucherItem[]>>(
         `/routers/${id}/vouchers`,
         { params },
+      );
+      return unwrap(res);
+    },
+    async listBatches(id: string): Promise<VoucherBatch[]> {
+      const res = await apiClient.get<ApiEnvelope<VoucherBatch[]>>(
+        `/routers/${id}/vouchers/batches`,
       );
       return unwrap(res);
     },

@@ -231,6 +231,7 @@ export class VoucherService {
         status: true,
         createdAt: true,
         completedAt: true,
+        plan: { select: { name: true, priceXof: true } },
       },
       orderBy: { createdAt: 'desc' },
       take: 200,
