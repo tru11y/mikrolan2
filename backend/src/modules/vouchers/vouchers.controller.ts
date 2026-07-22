@@ -13,7 +13,9 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { VoucherService } from './voucher.service';
 import {
+  confirmVouchersSchema,
   generateVouchersSchema,
+  type ConfirmVouchersDto,
   type GenerateVouchersDto,
 } from './dto/voucher.schemas';
 
@@ -29,6 +31,16 @@ export class VouchersController {
     @Body(new ZodValidationPipe(generateVouchersSchema)) dto: GenerateVouchersDto,
   ) {
     return this.vouchers.generate(id, dto);
+  }
+
+  @Post('confirm')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  confirm(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(confirmVouchersSchema)) dto: ConfirmVouchersDto,
+  ) {
+    return this.vouchers.confirmPush(id, dto);
   }
 
   @Get()
