@@ -15,6 +15,10 @@ const TENANT_MODELS = new Set<Prisma.ModelName>([
   'Subscription',
   'Invoice',
   'AuditLog',
+  'Plan',
+  'VoucherBatch',
+  'Voucher',
+  'Session',
 ]);
 
 @Injectable()
