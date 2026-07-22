@@ -42,7 +42,10 @@ export async function configureHotspot(
   c: RouterOsApiClient,
   o: ConfigureHotspotOpts,
 ): Promise<void> {
-  const addresses = await c.command(['/ip/address/print']);
+  const addresses = await c.command([
+    '/ip/address/print',
+    '=.proplist=.id,address,interface',
+  ]);
   if (
     !addresses.some(
       (a) => a.interface === o.iface && a.address?.startsWith(`${o.gateway}/`),
@@ -54,7 +57,7 @@ export async function configureHotspot(
     ]);
   }
 
-  const pools = await c.command(['/ip/pool/print']);
+  const pools = await c.command(['/ip/pool/print', '=.proplist=.id,name']);
   if (!pools.some((p) => p.name === HS_POOL)) {
     await c.command([
       '/ip/pool/add',
@@ -62,7 +65,10 @@ export async function configureHotspot(
     ]);
   }
 
-  const dhcp = await c.command(['/ip/dhcp-server/print']);
+  const dhcp = await c.command([
+    '/ip/dhcp-server/print',
+    '=.proplist=.id,name',
+  ]);
   if (!dhcp.some((d) => d.name === HS_DHCP)) {
     await c.command([
       '/ip/dhcp-server/add',
@@ -76,7 +82,10 @@ export async function configureHotspot(
     ]);
   }
 
-  const nets = await c.command(['/ip/dhcp-server/network/print']);
+  const nets = await c.command([
+    '/ip/dhcp-server/network/print',
+    '=.proplist=.id,address',
+  ]);
   if (!nets.some((n) => n.address === o.network)) {
     await c.command([
       '/ip/dhcp-server/network/add',
@@ -84,7 +93,10 @@ export async function configureHotspot(
     ]);
   }
 
-  const profiles = await c.command(['/ip/hotspot/profile/print']);
+  const profiles = await c.command([
+    '/ip/hotspot/profile/print',
+    '=.proplist=.id,name',
+  ]);
   if (!profiles.some((p) => p.name === HS_PROFILE)) {
     await c.command([
       '/ip/hotspot/profile/add',
@@ -96,7 +108,7 @@ export async function configureHotspot(
     ]);
   }
 
-  const servers = await c.command(['/ip/hotspot/print']);
+  const servers = await c.command(['/ip/hotspot/print', '=.proplist=.id,name']);
   if (!servers.some((s) => s.name === HS_SERVER)) {
     await c.command([
       '/ip/hotspot/add',
@@ -123,7 +135,14 @@ export async function ensureUserProfile(
       ? `${plan.uploadKbps}k/${plan.downloadKbps}k`
       : undefined;
 
-  const rows = await c.command(['/ip/hotspot/user/profile/print']);
+  // `.proplist` is REQUIRED here: a bare print of hotspot user-profiles can
+  // stall forever (0 bytes back) when another profile carries a large on-login/
+  // on-logout script (e.g. left by MikroTicket). Fetching only .id+name avoids
+  // serializing those fields.
+  const rows = await c.command([
+    '/ip/hotspot/user/profile/print',
+    '=.proplist=.id,name',
+  ]);
   const existing = rows.find((r) => r.name === plan.userProfile);
   const id = idOf(existing);
   if (id) {
@@ -169,7 +188,12 @@ export async function removeHotspotUser(
 }
 
 export function listActive(c: RouterOsApiClient): Promise<ApiRow[]> {
-  return c.command(['/ip/hotspot/active/print']);
+  // Scope to the fields we reflect — keeps replies small and dodges any
+  // stall on heavy computed columns (see ensureUserProfile).
+  return c.command([
+    '/ip/hotspot/active/print',
+    '=.proplist=.id,user,address,mac-address,bytes-in,bytes-out',
+  ]);
 }
 
 export async function removeActive(
