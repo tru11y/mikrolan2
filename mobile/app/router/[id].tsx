@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, extractErrorMessage } from '@/src/lib/api';
 import { useAuth } from '@/src/providers/auth-provider';
@@ -25,6 +26,7 @@ import {
   Subtitle,
   theme,
   Title,
+  type IoniconName,
 } from '@/src/components/ui';
 
 // The LAN client pins its TCP socket to Wi-Fi; opening it toward an unreachable
@@ -36,20 +38,71 @@ function sameSubnet24(a: string, b: string): boolean {
   return a.split('.').slice(0, 3).join('.') === b.split('.').slice(0, 3).join('.');
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function MetricCell({
+  icon,
+  label,
+  value,
+}: {
+  icon: IoniconName;
+  label: string;
+  value: string;
+}) {
   return (
     <View
       style={{
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        paddingVertical: 4,
+        width: '48%',
+        backgroundColor: theme.surfaceAlt,
+        borderRadius: 14,
+        padding: 14,
+        gap: 6,
       }}
     >
-      <Label>{label}</Label>
-      <Text style={{ color: theme.text, fontFamily: theme.mono, fontSize: 12.5 }}>
+      <Ionicons name={icon} size={18} color={theme.secondary} />
+      <Text style={{ color: theme.textMuted, fontSize: 11 }}>{label}</Text>
+      <Text
+        style={{
+          color: theme.text,
+          fontFamily: theme.mono,
+          fontSize: 15,
+          fontWeight: '700',
+        }}
+      >
         {value}
       </Text>
     </View>
+  );
+}
+
+function ActionCell({
+  icon,
+  label,
+  color,
+  onPress,
+}: {
+  icon: IoniconName;
+  label: string;
+  color: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        width: '48%',
+        borderWidth: 1,
+        borderColor: theme.border,
+        backgroundColor: theme.surface,
+        borderRadius: 14,
+        paddingVertical: 18,
+        alignItems: 'center',
+        gap: 8,
+      }}
+    >
+      <Ionicons name={icon} size={22} color={color} />
+      <Text style={{ color: theme.text, fontWeight: '600', fontSize: 13 }}>
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -306,13 +359,29 @@ export default function RouterDetailScreen() {
             <Banner tone="warning">{lanError ?? 'Routeur injoignable'}</Banner>
           ) : null}
           {lanState === 'ok' && resource ? (
-            <View>
-              <Row label="Identité" value={r.identity} />
-              <Row label="Version" value={resource.version} />
-              <Row label="Modèle" value={resource['board-name']} />
-              <Row label="Uptime" value={resource.uptime} />
-              <Row label="CPU" value={`${resource['cpu-load']}%`} />
-              <Row
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+              <MetricCell
+                icon="shield-checkmark-outline"
+                label="RouterOS"
+                value={resource.version}
+              />
+              <MetricCell
+                icon="hardware-chip-outline"
+                label="Modèle"
+                value={resource['board-name']}
+              />
+              <MetricCell
+                icon="time-outline"
+                label="Uptime"
+                value={resource.uptime}
+              />
+              <MetricCell
+                icon="pulse-outline"
+                label="CPU"
+                value={`${resource['cpu-load']}%`}
+              />
+              <MetricCell
+                icon="ellipse-outline"
                 label="Mémoire libre"
                 value={resource['free-memory']}
               />
@@ -327,38 +396,45 @@ export default function RouterDetailScreen() {
         </Card>
 
         <Card>
-          <Label>Vente WiFi</Label>
-          <Button
-            title="Forfaits"
-            variant="ghost"
-            onPress={() => router.push('/plans')}
-          />
-          <Button
-            title="Générer des codes"
-            onPress={() =>
-              router.push({
-                pathname: '/generate-vouchers',
-                params: { routerId: id },
-              })
-            }
-          />
-          <Button
-            title="Sessions actives"
-            variant="ghost"
-            onPress={() =>
-              router.push({ pathname: '/sessions', params: { routerId: id } })
-            }
-          />
-          <Button
-            title="Configurer le hotspot"
-            variant="ghost"
-            onPress={() =>
-              router.push({
-                pathname: '/hotspot-setup',
-                params: { routerId: id },
-              })
-            }
-          />
+          <Label>Actions rapides</Label>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+            <ActionCell
+              icon="pricetags-outline"
+              label="Forfaits"
+              color={theme.primary}
+              onPress={() => router.push('/plans')}
+            />
+            <ActionCell
+              icon="ticket-outline"
+              label="Générer tickets"
+              color={theme.primary}
+              onPress={() =>
+                router.push({
+                  pathname: '/generate-vouchers',
+                  params: { routerId: id },
+                })
+              }
+            />
+            <ActionCell
+              icon="people-outline"
+              label="Sessions"
+              color={theme.secondary}
+              onPress={() =>
+                router.push({ pathname: '/sessions', params: { routerId: id } })
+              }
+            />
+            <ActionCell
+              icon="globe-outline"
+              label="Portail captif"
+              color={theme.secondary}
+              onPress={() =>
+                router.push({
+                  pathname: '/hotspot-setup',
+                  params: { routerId: id },
+                })
+              }
+            />
+          </View>
         </Card>
 
         <Card>
