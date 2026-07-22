@@ -1,0 +1,218 @@
+// MikroLan — commercial multi-tenant SaaS.
+// Isolation: row-level tenant_id + global TenantGuard + Prisma tenant middleware.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ENUMS ───────────────────────────────────────────────
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum UserRole {
+  SUPER_ADMIN // plateforme, hors tenant (bypass TenantGuard)
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum SubscriptionPlan {
+  FREE // gestion locale seule
+  PRO // remote activé
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELED
+}
+
+enum RouterHealth {
+  UNKNOWN
+  ONLINE
+  OFFLINE
+  ERROR
+}
+
+enum ManagementMode {
+  LOCAL
+  REMOTE
+}
+
+enum RemotePeerStatus {
+  PENDING
+  ACTIVE
+  REVOKED
+  ERROR
+}
+
+enum PaymentProvider {
+  MANUAL // activation abonnement validée manuellement (pas de paiement auto)
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  PROVISION
+  REVOKE
+  SUBSCRIBE
+}
+
+// ─── TENANT (racine d'isolation) ─────────────────────────
+model Tenant {
+  id           String        @id @default(uuid())
+  name         String
+  slug         String        @unique
+  status       TenantStatus  @default(ACTIVE)
+  users        User[]
+  routers      Router[]
+  subscription Subscription?
+  invoices     Invoice[]
+  auditLogs    AuditLog[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  deletedAt    DateTime?
+}
+
+// ─── USER (email global unique → résout le tenant au login) ─
+model User {
+  id            String         @id @default(uuid())
+  tenantId      String
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  email         String         @unique
+  passwordHash  String // Argon2id
+  role          UserRole       @default(MEMBER)
+  status        UserStatus     @default(ACTIVE)
+  refreshTokens RefreshToken[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([tenantId])
+}
+
+// ─── REFRESH TOKEN (family rotation) ─────────────────────
+model RefreshToken {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  tokenHash    String   @unique
+  family       String
+  revoked      Boolean  @default(false)
+  replacedById String?
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([family])
+}
+
+// ─── ROUTER (unique par tenant) ──────────────────────────
+model Router {
+  id            String         @id @default(uuid())
+  tenantId      String
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  identity      String
+  alias         String?
+  model         String?
+  localAddress  String? // IP:port LAN (mode local)
+  credEncrypted String? // creds RouterOS AES-256-GCM (remote seulement)
+  mode          ManagementMode @default(LOCAL)
+  health        RouterHealth   @default(UNKNOWN)
+  lastHeartbeat DateTime?
+  remotePeer    RemotePeer?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  deletedAt     DateTime?
+
+  @@unique([tenantId, identity])
+  @@index([tenantId])
+  @@index([tenantId, health])
+}
+
+// ─── REMOTE PEER (WG, provisionné si abonnement PRO actif) ─
+model RemotePeer {
+  id              String           @id @default(uuid())
+  routerId        String           @unique
+  router          Router           @relation(fields: [routerId], references: [id])
+  tenantId        String
+  wgPublicKey     String
+  wgIp            String           @unique
+  allocatedPort   Int              @unique
+  serverPublicKey String
+  endpoint        String
+  status          RemotePeerStatus @default(PENDING)
+  provisionedAt   DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime         @default(now())
+
+  @@index([tenantId])
+}
+
+// ─── SUBSCRIPTION (1 par tenant) ─────────────────────────
+model Subscription {
+  id                 String             @id @default(uuid())
+  tenantId           String             @unique
+  tenant             Tenant             @relation(fields: [tenantId], references: [id])
+  plan               SubscriptionPlan   @default(FREE)
+  status             SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+}
+
+// ─── INVOICE / PAIEMENT (idempotent) ─────────────────────
+model Invoice {
+  id             String          @id @default(uuid())
+  tenantId       String
+  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  amount         Int // XOF (entier)
+  currency       String          @default("XOF")
+  provider       PaymentProvider @default(MANUAL)
+  providerRef    String?
+  idempotencyKey String          @unique
+  status         PaymentStatus   @default(PENDING)
+  paidAt         DateTime?
+  createdAt      DateTime        @default(now())
+
+  @@index([tenantId])
+}
+
+// ─── AUDIT LOG (append-only) ─────────────────────────────
+model AuditLog {
+  id         String      @id @default(uuid())
+  tenantId   String
+  tenant     Tenant      @relation(fields: [tenantId], references: [id])
+  userId     String?
+  action     AuditAction
+  entityType String
+  entityId   String?
+  metadata   Json?
+  ip         String?
+  createdAt  DateTime    @default(now())
+
+  @@index([tenantId, createdAt])
+}

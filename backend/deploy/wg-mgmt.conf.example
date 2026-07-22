@@ -1,0 +1,31 @@
+# /etc/wireguard/wg-mgmt.conf  — MikroLan v2 management tunnel (server side)
+# Distinct from v1 wg0 (10.66.66/51820) and from the Python rehost reservation.
+#   Subnet : 10.20.0.0/24  (server = 10.20.0.1, routers = 10.20.0.2+)
+#   Port   : 51822/udp
+# Generate keys:  wg genkey | tee server.key | wg pubkey > server.pub
+# Put server.pub into WG_SERVER_PUBLIC_KEY of the API .env.
+
+[Interface]
+Address = 10.20.0.1/24
+ListenPort = 51822
+PrivateKey = <SERVER_PRIVATE_KEY>
+# Firewall rules persisted via the wg-quick lifecycle (interface enabled at boot).
+# NOTE: this VPS has INPUT policy DROP and NO `-i lo -j ACCEPT` rule — loopback is
+# dropped, so the host-network API can't reach host-bound Postgres/Redis without
+# the first line below. (v1 is unaffected: it exposes via docker-proxy on 0.0.0.0.)
+PostUp = iptables -w 5 -C INPUT -i lo -j ACCEPT 2>/dev/null || iptables -w 5 -I INPUT -i lo -j ACCEPT
+# CRITICAL: allow decrypted tunnel traffic re-entering via the wg-mgmt interface.
+# The udp/51822 rule below only lets the WireGuard TRANSPORT in — handshakes and
+# keepalives succeed and the tunnel looks "up" — but every decrypted inner packet
+# (a router's ping/REST reply on its way back to the backend) hits INPUT again with
+# `-i wg-mgmt` and is dropped by the DROP policy. Without this rule the backend
+# proxy reaches the router (VPS→router) but never sees the reply → 100% loss.
+PostUp = iptables -w 5 -C INPUT -i wg-mgmt -j ACCEPT 2>/dev/null || iptables -w 5 -I INPUT -i wg-mgmt -j ACCEPT
+PostDown = iptables -w 5 -D INPUT -i wg-mgmt -j ACCEPT 2>/dev/null || true
+PostUp = iptables -w 5 -C INPUT -p udp --dport 51822 -j ACCEPT 2>/dev/null || iptables -w 5 -A INPUT -p udp --dport 51822 -j ACCEPT
+PostUp = iptables -w 5 -C INPUT -p tcp --dport 3002 -j ACCEPT 2>/dev/null || iptables -w 5 -A INPUT -p tcp --dport 3002 -j ACCEPT
+PostDown = iptables -w 5 -D INPUT -p tcp --dport 3002 -j ACCEPT 2>/dev/null || true
+# Peers are added dynamically by the API (`wg set wg-mgmt peer ...`); do not
+# list them here (they would be lost on `wg-quick down`).
+
+# Enable:  systemctl enable --now wg-quick@wg-mgmt

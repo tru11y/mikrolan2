@@ -1,0 +1,18 @@
+[Unit]
+Description=MikroLan v2 API (NestJS)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/mikrolan/backend
+EnvironmentFile=/opt/mikrolan/backend/.env
+ExecStart=/usr/bin/node dist/main.js
+Restart=on-failure
+RestartSec=5
+# Runs as root so it can `wg set wg-mgmt ...` on the host interface.
+User=root
+NoNewPrivileges=false
+
+[Install]
+WantedBy=multi-user.target
