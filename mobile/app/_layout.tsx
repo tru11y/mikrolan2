@@ -33,7 +33,7 @@ export default function RootLayout() {
             />
             <Stack.Screen
               name="generate-vouchers"
-              options={{ title: 'Générer des codes' }}
+              options={{ title: 'Créer des tickets' }}
             />
             <Stack.Screen name="sessions" options={{ title: 'Sessions' }} />
           </Stack>

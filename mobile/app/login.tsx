@@ -1,8 +1,17 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/src/providers/auth-provider';
 import {
+  Badge,
   Banner,
   Button,
   Card,
@@ -21,6 +30,7 @@ export default function LoginScreen() {
   const [tenantName, setTenantName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [baseUrl, setBaseUrl] = useState(apiBaseUrl);
 
@@ -57,13 +67,28 @@ export default function LoginScreen() {
           }}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={{ gap: 6 }}>
-            <Title>MikroLan</Title>
-            <Subtitle>
-              {mode === 'login'
-                ? 'Connectez-vous à votre espace'
-                : 'Créez votre compte et gérez vos routeurs'}
-            </Subtitle>
+          {/* Brand mark */}
+          <View style={{ alignItems: 'center', gap: 12 }}>
+            <View
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: 32,
+                backgroundColor: theme.primary,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name="wifi" size={30} color={theme.primaryText} />
+            </View>
+            <View style={{ alignItems: 'center', gap: 4 }}>
+              <Title>{mode === 'login' ? 'Bienvenue' : 'Créer un compte'}</Title>
+              <Subtitle>
+                {mode === 'login'
+                  ? 'Gérez vos hotspots MikroTik'
+                  : 'Commencez gratuitement en local'}
+              </Subtitle>
+            </View>
           </View>
 
           {error ? <Banner tone="danger">{error}</Banner> : null}
@@ -79,7 +104,7 @@ export default function LoginScreen() {
               />
             ) : null}
             <Field
-              label="Email"
+              label="E-mail"
               placeholder="vous@exemple.ci"
               value={email}
               onChangeText={setEmail}
@@ -87,13 +112,30 @@ export default function LoginScreen() {
               keyboardType="email-address"
               autoComplete="email"
             />
-            <Field
-              label="Mot de passe"
-              placeholder={mode === 'signup' ? '10 caractères minimum' : '••••••••'}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
+            <View style={{ gap: 6 }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: theme.textMuted, fontSize: 13, fontWeight: '600' }}>
+                  Mot de passe
+                </Text>
+                <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={8}>
+                  <Text style={{ color: theme.primary, fontSize: 13, fontWeight: '600' }}>
+                    {showPassword ? 'Masquer' : 'Afficher'}
+                  </Text>
+                </Pressable>
+              </View>
+              <Field
+                placeholder={mode === 'signup' ? '10 caractères minimum' : '••••••••'}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+              />
+            </View>
             <Button
               title={mode === 'signup' ? 'Créer mon compte' : 'Se connecter'}
               onPress={submit}
@@ -137,10 +179,19 @@ export default function LoginScreen() {
             </Card>
           ) : null}
 
-          <Subtitle>
-            {'⚡ '}Gratuit en local. Abonnement PRO pour la gestion à distance.
-          </Subtitle>
-          <View style={{ height: theme.text ? 24 : 0 }} />
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+            }}
+          >
+            <Subtitle>Gratuit en local ·</Subtitle>
+            <Badge label="PRO" tone="gold" />
+            <Subtitle>pour le distant</Subtitle>
+          </View>
+          <View style={{ height: 24 }} />
         </ScrollView>
       </KeyboardAvoidingView>
     </Screen>

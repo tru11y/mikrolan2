@@ -243,13 +243,43 @@ export default function RouterDetailScreen() {
   return (
     <Screen>
       <ScrollView contentContainerStyle={{ gap: 16 }}>
-        <View style={{ gap: 6 }}>
-          <Title>{r.alias || r.identity}</Title>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <Badge label={r.identity} />
+        <View style={{ gap: 8 }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 10,
+              flexWrap: 'wrap',
+            }}
+          >
+            <Title>{r.alias || r.identity}</Title>
+            <Badge
+              label={
+                r.health === 'ONLINE'
+                  ? 'EN LIGNE'
+                  : r.health === 'OFFLINE'
+                    ? 'HORS LIGNE'
+                    : r.health
+              }
+              tone={
+                r.health === 'ONLINE'
+                  ? 'secondary'
+                  : r.health === 'ERROR'
+                    ? 'danger'
+                    : 'warning'
+              }
+            />
+          </View>
+          <Text
+            style={{ color: theme.textMuted, fontFamily: theme.mono, fontSize: 12.5 }}
+          >
+            {r.identity}
+            {r.localAddress ? ` · ${r.localAddress}` : ''}
+          </Text>
+          <View style={{ flexDirection: 'row' }}>
             <Badge
               label={r.mode === 'REMOTE' ? 'À distance' : 'Local'}
-              tone={r.mode === 'REMOTE' ? 'gold' : 'muted'}
+              tone={r.mode === 'REMOTE' ? 'gold' : 'secondary'}
             />
           </View>
         </View>
@@ -258,7 +288,7 @@ export default function RouterDetailScreen() {
 
         <Card>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Label>État du routeur</Label>
+            <Label>État local (LAN)</Label>
             {lanState === 'ok' && resourceVia ? (
               <Badge
                 label={resourceVia === 'remote' ? 'Via tunnel' : 'LAN'}
@@ -337,7 +367,16 @@ export default function RouterDetailScreen() {
         </Card>
 
         <Card>
-          <Label>Gestion à distance</Label>
+          <View
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}
+          >
+            <Label>Gestion à distance</Label>
+            <Badge label="PRO" tone="gold" />
+          </View>
           {!isPro ? (
             <>
               <Subtitle>

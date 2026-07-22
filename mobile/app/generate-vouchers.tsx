@@ -108,9 +108,9 @@ export default function GenerateVouchersScreen() {
   return (
     <Screen>
       <ScrollView contentContainerStyle={{ gap: 16 }}>
-        <Title>Générer des codes</Title>
+        <Title>Créer des tickets</Title>
         <Subtitle>
-          Choisissez un forfait, la quantité, puis distribuez les codes à vos
+          Générez des codes d’accès WiFi uniques, puis distribuez-les à vos
           clients (partage ou lecture).
         </Subtitle>
 
@@ -143,18 +143,72 @@ export default function GenerateVouchersScreen() {
                   <Text style={{ color: theme.text, fontWeight: '600' }}>
                     {p.name}
                   </Text>
-                  <Badge label={`${p.priceXof} F`} tone="gold" />
+                  <Badge
+                    label={`${p.priceXof.toLocaleString('fr-FR')} FCFA`}
+                    tone="gold"
+                  />
                 </Pressable>
               );
             })
           )}
-          <Field
-            label="Quantité"
-            value={quantity}
-            onChangeText={setQuantity}
-            keyboardType="number-pad"
+          <Label>Quantité de tickets</Label>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <Pressable
+              accessibilityLabel="Diminuer la quantité"
+              onPress={() =>
+                setQuantity((q) =>
+                  String(Math.max(1, (Number.parseInt(q, 10) || 1) - 1)),
+                )
+              }
+              style={{
+                width: 46,
+                height: 46,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: theme.border,
+                backgroundColor: theme.surfaceAlt,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ color: theme.text, fontSize: 22, fontWeight: '700' }}>
+                −
+              </Text>
+            </Pressable>
+            <View style={{ flex: 1 }}>
+              <Field
+                value={quantity}
+                onChangeText={setQuantity}
+                keyboardType="number-pad"
+                textAlign="center"
+              />
+            </View>
+            <Pressable
+              accessibilityLabel="Augmenter la quantité"
+              onPress={() =>
+                setQuantity((q) => String((Number.parseInt(q, 10) || 0) + 1))
+              }
+              style={{
+                width: 46,
+                height: 46,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: theme.border,
+                backgroundColor: theme.surfaceAlt,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ color: theme.text, fontSize: 22, fontWeight: '700' }}>
+                +
+              </Text>
+            </Pressable>
+          </View>
+          <Button
+            title={`Générer ${Number.parseInt(quantity, 10) || 0} tickets`}
+            onPress={generate}
+            loading={busy}
           />
-          <Button title="Générer" onPress={generate} loading={busy} />
         </Card>
 
         {justGenerated?.length ? (
