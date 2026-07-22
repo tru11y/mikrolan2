@@ -26,6 +26,16 @@ export default function RootLayout() {
               options={{ title: 'Ajouter un routeur', presentation: 'modal' }}
             />
             <Stack.Screen name="router/[id]" options={{ title: 'Routeur' }} />
+            <Stack.Screen name="plans" options={{ title: 'Forfaits' }} />
+            <Stack.Screen
+              name="hotspot-setup"
+              options={{ title: 'Configurer le hotspot' }}
+            />
+            <Stack.Screen
+              name="generate-vouchers"
+              options={{ title: 'Générer des codes' }}
+            />
+            <Stack.Screen name="sessions" options={{ title: 'Sessions' }} />
           </Stack>
         </AuthProvider>
       </QueryProvider>

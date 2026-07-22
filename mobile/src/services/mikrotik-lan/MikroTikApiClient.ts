@@ -286,8 +286,8 @@ export class MikroTikApiClient {
     );
   }
 
-  print(path: string): Promise<ApiRow[]> {
-    return this.talk([`${path}/print`]);
+  print(path: string, extra: string[] = []): Promise<ApiRow[]> {
+    return this.talk([`${path}/print`, ...extra]);
   }
 
   add(path: string, data: Record<string, string>): Promise<string> {

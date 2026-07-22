@@ -77,6 +77,77 @@ export type RemoteStatus = {
   revokedAt?: string | null;
 };
 
+export type PlanStatus = 'ACTIVE' | 'ARCHIVED';
+export type Plan = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  durationMinutes: number;
+  priceXof: number;
+  downloadKbps: number | null;
+  uploadKbps: number | null;
+  dataLimitMb: number | null;
+  userProfile: string;
+  status: PlanStatus;
+  displayOrder: number;
+};
+
+export type CreatePlanPayload = {
+  name: string;
+  durationMinutes: number;
+  priceXof: number;
+  downloadKbps?: number | null;
+  uploadKbps?: number | null;
+  dataLimitMb?: number | null;
+  description?: string;
+};
+
+export type VoucherStatus =
+  | 'GENERATED'
+  | 'ACTIVE'
+  | 'USED'
+  | 'EXPIRED'
+  | 'REVOKED';
+export type VoucherItem = {
+  id: string;
+  code: string;
+  password: string;
+  status: VoucherStatus;
+  planId: string;
+  routerId: string;
+  batchId: string | null;
+  expiresAt: string | null;
+  usedAt: string | null;
+  createdAt: string;
+};
+
+export type LiveSession = {
+  id: string; // RouterOS .id
+  user: string;
+  ipAddress: string | null;
+  macAddress: string | null;
+  bytesIn: string;
+  bytesOut: string;
+  uptime: string | null;
+};
+
+// RouterOS push params returned for LOCAL routers so the app pushes over the LAN.
+export type VoucherPushParams = {
+  userProfile: string;
+  rateLimit?: string;
+  limitUptime: string;
+  limitBytesTotal?: number;
+  comment: string;
+};
+
+export type GenerateResult = {
+  batchId: string;
+  pushedByServer: boolean;
+  push?: VoucherPushParams;
+  vouchers: VoucherItem[];
+};
+
 export type CreateRouterPayload = {
   identity: string;
   alias?: string;
@@ -329,6 +400,90 @@ export const api = {
     async revokeRemote(id: string): Promise<{ revoked: boolean }> {
       const res = await apiClient.post<ApiEnvelope<{ revoked: boolean }>>(
         `/routers/${id}/remote/revoke`,
+      );
+      return unwrap(res);
+    },
+    async configureHotspot(
+      id: string,
+      payload: { interface: string; network?: string; dns?: string },
+    ): Promise<{ configured: boolean; gateway: string; network: string }> {
+      const res = await apiClient.post<
+        ApiEnvelope<{ configured: boolean; gateway: string; network: string }>
+      >(`/routers/${id}/hotspot/configure`, payload);
+      return unwrap(res);
+    },
+    async generateVouchers(
+      id: string,
+      payload: { planId: string; quantity: number },
+    ): Promise<GenerateResult> {
+      const res = await apiClient.post<ApiEnvelope<GenerateResult>>(
+        `/routers/${id}/vouchers/generate`,
+        payload,
+      );
+      return unwrap(res);
+    },
+    async confirmVouchers(
+      id: string,
+      payload: {
+        batchId: string;
+        items: { id: string; mikrotikId: string }[];
+      },
+    ): Promise<{ confirmed: number }> {
+      const res = await apiClient.post<ApiEnvelope<{ confirmed: number }>>(
+        `/routers/${id}/vouchers/confirm`,
+        payload,
+      );
+      return unwrap(res);
+    },
+    async listVouchers(
+      id: string,
+      params?: { status?: VoucherStatus; batchId?: string },
+    ): Promise<VoucherItem[]> {
+      const res = await apiClient.get<ApiEnvelope<VoucherItem[]>>(
+        `/routers/${id}/vouchers`,
+        { params },
+      );
+      return unwrap(res);
+    },
+    async revokeVoucher(
+      id: string,
+      voucherId: string,
+    ): Promise<{ revoked: boolean }> {
+      const res = await apiClient.post<ApiEnvelope<{ revoked: boolean }>>(
+        `/routers/${id}/vouchers/${voucherId}/revoke`,
+      );
+      return unwrap(res);
+    },
+    async listSessions(id: string): Promise<LiveSession[]> {
+      const res = await apiClient.get<ApiEnvelope<LiveSession[]>>(
+        `/routers/${id}/sessions`,
+      );
+      return unwrap(res);
+    },
+    async terminateSession(
+      id: string,
+      mikrotikId: string,
+    ): Promise<{ terminated: boolean }> {
+      const res = await apiClient.post<ApiEnvelope<{ terminated: boolean }>>(
+        `/routers/${id}/sessions/terminate`,
+        { mikrotikId },
+      );
+      return unwrap(res);
+    },
+  },
+
+  plans: {
+    async list(): Promise<Plan[]> {
+      const res = await apiClient.get<ApiEnvelope<Plan[]>>('/plans');
+      return unwrap(res);
+    },
+    async create(payload: CreatePlanPayload): Promise<Plan> {
+      const res = await apiClient.post<ApiEnvelope<Plan>>('/plans', payload);
+      return unwrap(res);
+    },
+    async remove(id: string): Promise<{ deleted: boolean }> {
+      const res = await apiClient.delete<ApiEnvelope<{ deleted: boolean }>>(
+        `/plans/${id}`,
       );
       return unwrap(res);
     },

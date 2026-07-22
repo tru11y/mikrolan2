@@ -297,6 +297,41 @@ export default function RouterDetailScreen() {
         </Card>
 
         <Card>
+          <Label>Vente WiFi</Label>
+          <Button
+            title="Forfaits"
+            variant="ghost"
+            onPress={() => router.push('/plans')}
+          />
+          <Button
+            title="Générer des codes"
+            onPress={() =>
+              router.push({
+                pathname: '/generate-vouchers',
+                params: { routerId: id },
+              })
+            }
+          />
+          <Button
+            title="Sessions actives"
+            variant="ghost"
+            onPress={() =>
+              router.push({ pathname: '/sessions', params: { routerId: id } })
+            }
+          />
+          <Button
+            title="Configurer le hotspot"
+            variant="ghost"
+            onPress={() =>
+              router.push({
+                pathname: '/hotspot-setup',
+                params: { routerId: id },
+              })
+            }
+          />
+        </Card>
+
+        <Card>
           <Field label="Alias" value={alias} onChangeText={setAlias} />
           <Button title="Enregistrer" onPress={saveAlias} loading={busy} />
         </Card>
