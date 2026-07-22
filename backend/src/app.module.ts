@@ -19,6 +19,7 @@ import { PlansModule } from './modules/plans/plans.module';
 import { HotspotModule } from './modules/hotspot/hotspot.module';
 import { VouchersModule } from './modules/vouchers/vouchers.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
+import { MetricsModule } from './modules/metrics/metrics.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
@@ -40,6 +41,7 @@ import { TenantContextMiddleware } from './common/context/tenant-context.middlew
     HotspotModule,
     VouchersModule,
     SessionsModule,
+    MetricsModule,
     HealthModule,
   ],
   providers: [
