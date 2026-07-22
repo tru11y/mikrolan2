@@ -7,25 +7,28 @@ import {
   Text,
   TextInput,
   TextInputProps,
+  TextStyle,
   View,
   ViewStyle,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
-// "Network console" identity — dark-first. See project_mikrolan2_design.
+// "Onyx & Aurora" identity — dark premium. See project_mikrolan2_stitch_redesign.
 export const theme = {
-  bg: '#0a0e17',
-  surface: '#131a29',
-  surfaceAlt: '#1b2438',
-  border: '#28324c',
-  text: '#e8eef7',
-  textMuted: '#8695b0',
-  primary: '#2de1c2', // signal teal
-  primaryText: '#05231f', // ink label on teal
-  gold: '#e6b450', // encodes the PRO tier
-  goldText: '#2c2208',
-  danger: '#f26d6d',
-  success: '#3ecf8e',
-  warning: '#f5a623',
+  bg: '#0B0B12', // encre
+  surface: '#15151F',
+  surfaceAlt: '#1C1C29',
+  border: '#2A2A3C',
+  text: '#F2F3F8',
+  textMuted: '#9AA0B4',
+  primary: '#7B61FF', // violet électrique (brand/tech)
+  primaryText: '#0B0B12', // ink label on violet
+  secondary: '#22D3EE', // cyan signal (data/réseau)
+  gold: '#F5B84A', // encode le tier PRO (money)
+  goldText: '#0B0B12',
+  danger: '#F87171',
+  success: '#34D399',
+  warning: '#FBBF24',
   mono: Platform.select({ ios: 'Menlo', default: 'monospace' }) as string,
 } as const;
 
@@ -130,7 +133,14 @@ export function Badge({
   tone = 'muted',
 }: {
   label: string;
-  tone?: 'muted' | 'success' | 'danger' | 'warning' | 'primary' | 'gold';
+  tone?:
+    | 'muted'
+    | 'success'
+    | 'danger'
+    | 'warning'
+    | 'primary'
+    | 'secondary'
+    | 'gold';
 }) {
   const color =
     tone === 'success'
@@ -141,9 +151,11 @@ export function Badge({
           ? theme.warning
           : tone === 'primary'
             ? theme.primary
-            : tone === 'gold'
-              ? theme.gold
-              : theme.textMuted;
+            : tone === 'secondary'
+              ? theme.secondary
+              : tone === 'gold'
+                ? theme.gold
+                : theme.textMuted;
   return (
     <View style={[styles.badge, { borderColor: color }]}>
       <Text style={[styles.badgeText, { color }]}>{label}</Text>
@@ -173,6 +185,114 @@ export function Empty({ text }: { text: string }): ReactNode {
     <View style={styles.empty}>
       <Text style={{ color: theme.textMuted, textAlign: 'center' }}>{text}</Text>
     </View>
+  );
+}
+
+type Accent = 'text' | 'primary' | 'secondary' | 'gold' | 'success' | 'danger';
+
+function accentColor(a: Accent): string {
+  switch (a) {
+    case 'primary':
+      return theme.primary;
+    case 'secondary':
+      return theme.secondary;
+    case 'gold':
+      return theme.gold;
+    case 'success':
+      return theme.success;
+    case 'danger':
+      return theme.danger;
+    default:
+      return theme.text;
+  }
+}
+
+export function Mono({
+  children,
+  style,
+}: PropsWithChildren<{ style?: TextStyle }>) {
+  return <Text style={[styles.monoText, style]}>{children}</Text>;
+}
+
+export function SectionTitle({ children }: PropsWithChildren) {
+  return <Text style={styles.sectionTitle}>{children}</Text>;
+}
+
+export function Row({
+  children,
+  style,
+}: PropsWithChildren<{ style?: ViewStyle }>) {
+  return <View style={[styles.row, style]}>{children}</View>;
+}
+
+// KPI tile: big value + label, optional accent color.
+export function Stat({
+  value,
+  label,
+  tone = 'text',
+  style,
+}: {
+  value: string;
+  label: string;
+  tone?: Accent;
+  style?: ViewStyle;
+}) {
+  return (
+    <View style={[styles.stat, style]}>
+      <Text style={[styles.statValue, { color: accentColor(tone) }]}>
+        {value}
+      </Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </View>
+  );
+}
+
+// Small filter/segmented pill.
+export function Pill({
+  label,
+  active,
+  onPress,
+  tone = 'primary',
+}: {
+  label: string;
+  active?: boolean;
+  onPress?: () => void;
+  tone?: Accent;
+}) {
+  const accent = accentColor(tone === 'text' ? 'primary' : tone);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={[
+        styles.pill,
+        {
+          borderColor: active ? accent : theme.border,
+          backgroundColor: active ? accent + '22' : 'transparent',
+        },
+      ]}
+    >
+      <Text style={[styles.pillText, { color: active ? accent : theme.textMuted }]}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+// Aurora gradient surface (violet -> cyan) for hero / revenue cards.
+export function AuroraCard({
+  children,
+  style,
+}: PropsWithChildren<{ style?: ViewStyle }>) {
+  return (
+    <LinearGradient
+      colors={[theme.primary, theme.secondary]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={[styles.aurora, style]}
+    >
+      {children}
+    </LinearGradient>
   );
 }
 
@@ -228,4 +348,36 @@ const styles = StyleSheet.create({
     backgroundColor: theme.surface,
   },
   empty: { padding: 32, alignItems: 'center', justifyContent: 'center' },
+  monoText: { color: theme.text, fontFamily: theme.mono, fontSize: 13 },
+  sectionTitle: {
+    color: theme.text,
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  stat: {
+    flex: 1,
+    backgroundColor: theme.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: theme.border,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    gap: 2,
+  },
+  statValue: { fontSize: 20, fontWeight: '700' },
+  statLabel: { color: theme.textMuted, fontSize: 12 },
+  pill: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+  },
+  pillText: { fontSize: 13, fontWeight: '600' },
+  aurora: { borderRadius: 20, padding: 20 },
 });
