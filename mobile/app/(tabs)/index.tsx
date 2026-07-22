@@ -57,40 +57,66 @@ export default function MaisonScreen() {
             </Text>
           </View>
           <View>
-            <Title>Bonjour</Title>
-            <Subtitle>{tenantName}</Subtitle>
+            <Text style={{ color: theme.textMuted, fontSize: 13 }}>Bonjour,</Text>
+            <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700' }}>
+              {tenantName}
+            </Text>
           </View>
         </Row>
         <Pressable
           accessibilityLabel="Notifications"
           hitSlop={8}
-          style={{ padding: 8 }}
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: theme.border,
+            backgroundColor: theme.surface,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
         >
-          <Ionicons name="notifications-outline" size={22} color={theme.text} />
+          <Ionicons name="notifications-outline" size={20} color={theme.text} />
         </Pressable>
       </Row>
 
       {/* Aurora hero — revenue (metrics endpoint TODO) */}
-      <AuroraCard>
-        <Text style={{ color: theme.primaryText, fontWeight: '600', opacity: 0.9 }}>
-          Revenu du jour
-        </Text>
-        <Row style={{ alignItems: 'flex-end', marginTop: 6 }}>
-          <Text style={{ color: theme.primaryText, fontSize: 34, fontWeight: '800' }}>
+      <AuroraCard style={{ padding: 22 }}>
+        <Row>
+          <Text style={{ color: theme.primaryText, fontWeight: '600', opacity: 0.9 }}>
+            Revenu du jour
+          </Text>
+          <View
+            style={{
+              backgroundColor: '#00000022',
+              borderRadius: 999,
+              paddingHorizontal: 10,
+              paddingVertical: 3,
+            }}
+          >
+            <Text style={{ color: theme.primaryText, fontSize: 11, fontWeight: '700' }}>
+              BIENTÔT
+            </Text>
+          </View>
+        </Row>
+        <Row style={{ alignItems: 'flex-end', justifyContent: 'flex-start', marginTop: 10 }}>
+          <Text style={{ color: theme.primaryText, fontSize: 40, fontWeight: '800' }}>
             —
           </Text>
           <Text
             style={{
               color: theme.primaryText,
               opacity: 0.8,
-              marginBottom: 6,
-              marginLeft: 6,
+              marginBottom: 8,
+              marginLeft: 8,
+              fontWeight: '600',
             }}
           >
             FCFA
           </Text>
         </Row>
-        <Text style={{ color: theme.primaryText, opacity: 0.75, fontSize: 12 }}>
+        <Text style={{ color: theme.primaryText, opacity: 0.8, fontSize: 12, marginTop: 4 }}>
           Statistiques de ventes bientôt disponibles
         </Text>
       </AuroraCard>
@@ -101,33 +127,54 @@ export default function MaisonScreen() {
           value={`${online}/${list.length}`}
           label="Routeurs en ligne"
           tone="secondary"
+          icon="wifi"
         />
-        <Stat value={`${plans.data?.length ?? 0}`} label="Forfaits" tone="gold" />
-        <Stat value={isPro ? 'PRO' : 'Local'} label="Abonnement" tone="primary" />
+        <Stat
+          value={`${plans.data?.length ?? 0}`}
+          label="Forfaits"
+          tone="gold"
+          icon="pricetags-outline"
+        />
+        <Stat
+          value={isPro ? 'PRO' : 'Local'}
+          label="Abonnement"
+          tone="primary"
+          icon="star-outline"
+        />
       </Row>
 
       {/* PRO upsell (only when FREE) */}
       {!isPro ? (
-        <Card style={{ borderColor: theme.gold }}>
-          <Row>
-            <View style={{ flex: 1, paddingRight: 12 }}>
-              <Badge label="PRO" tone="gold" />
-              <Text style={{ color: theme.text, fontWeight: '700', marginTop: 6 }}>
-                Gérez vos routeurs à distance
-              </Text>
-              <Text style={{ color: theme.textMuted, fontSize: 13 }}>
-                Tunnel WireGuard, cloud & impression — passez à PRO.
-              </Text>
-            </View>
-            <View style={{ width: 120 }}>
-              <Button
-                title="Découvrir"
-                variant="gold"
-                onPress={() => router.push('/(tabs)/account')}
-              />
-            </View>
-          </Row>
-        </Card>
+        <Pressable onPress={() => router.push('/pro')}>
+          <Card style={{ borderColor: theme.gold }}>
+            <Row>
+              <Row style={{ gap: 12, flex: 1, justifyContent: 'flex-start' }}>
+                <View
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 12,
+                    backgroundColor: theme.gold + '22',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Ionicons name="rocket-outline" size={20} color={theme.gold} />
+                </View>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Badge label="PRO" tone="gold" />
+                  <Text style={{ color: theme.text, fontWeight: '700', marginTop: 6 }}>
+                    Gérez vos routeurs à distance
+                  </Text>
+                  <Text style={{ color: theme.textMuted, fontSize: 13 }}>
+                    Tunnel WireGuard, cloud & impression.
+                  </Text>
+                </View>
+              </Row>
+              <Ionicons name="chevron-forward" size={20} color={theme.textMuted} />
+            </Row>
+          </Card>
+        </Pressable>
       ) : null}
 
       {/* Routeurs summary */}
@@ -151,12 +198,25 @@ export default function MaisonScreen() {
         ) : (
           <View style={{ gap: 12 }}>
             {list.slice(0, 3).map((r) => (
-              <Pressable
-                key={r.id}
-                onPress={() => router.push(`/router/${r.id}`)}
-              >
+              <Pressable key={r.id} onPress={() => router.push(`/router/${r.id}`)}>
                 <Card>
-                  <Row>
+                  <Row style={{ gap: 12 }}>
+                    <View
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 12,
+                        backgroundColor: theme.primary + '22',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Ionicons
+                        name="hardware-chip-outline"
+                        size={20}
+                        color={theme.primary}
+                      />
+                    </View>
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: theme.text, fontWeight: '700' }}>
                         {r.alias || r.identity}
@@ -180,7 +240,7 @@ export default function MaisonScreen() {
 
       <Button
         title="+ Générer des tickets"
-        onPress={() => router.push('/(tabs)/routeurs')}
+        onPress={() => router.push('/(tabs)/tickets')}
       />
     </ScrollView>
   );

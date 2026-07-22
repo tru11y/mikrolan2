@@ -12,6 +12,9 @@ import {
   ViewStyle,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+
+export type IoniconName = keyof typeof Ionicons.glyphMap;
 
 // "Onyx & Aurora" identity — dark premium. See project_mikrolan2_stitch_redesign.
 export const theme = {
@@ -225,23 +228,29 @@ export function Row({
   return <View style={[styles.row, style]}>{children}</View>;
 }
 
-// KPI tile: big value + label, optional accent color.
+// KPI tile: icon chip + big value + label, optional accent color.
 export function Stat({
   value,
   label,
   tone = 'text',
+  icon,
   style,
 }: {
   value: string;
   label: string;
   tone?: Accent;
+  icon?: IoniconName;
   style?: ViewStyle;
 }) {
+  const c = accentColor(tone);
   return (
     <View style={[styles.stat, style]}>
-      <Text style={[styles.statValue, { color: accentColor(tone) }]}>
-        {value}
-      </Text>
+      {icon ? (
+        <View style={[styles.statIcon, { backgroundColor: c + '22' }]}>
+          <Ionicons name={icon} size={16} color={c} />
+        </View>
+      ) : null}
+      <Text style={[styles.statValue, { color: c }]}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
   );
@@ -368,10 +377,17 @@ const styles = StyleSheet.create({
     borderColor: theme.border,
     paddingVertical: 14,
     paddingHorizontal: 12,
-    gap: 2,
+    gap: 6,
   },
-  statValue: { fontSize: 20, fontWeight: '700' },
-  statLabel: { color: theme.textMuted, fontSize: 12 },
+  statIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statValue: { fontSize: 22, fontWeight: '800' },
+  statLabel: { color: theme.textMuted, fontSize: 11.5 },
   pill: {
     borderWidth: 1,
     borderRadius: 999,

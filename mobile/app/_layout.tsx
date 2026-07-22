@@ -36,6 +36,7 @@ export default function RootLayout() {
               options={{ title: 'Créer des tickets' }}
             />
             <Stack.Screen name="sessions" options={{ title: 'Sessions' }} />
+            <Stack.Screen name="pro" options={{ title: 'MikroLan2 PRO' }} />
           </Stack>
         </AuthProvider>
       </QueryProvider>
