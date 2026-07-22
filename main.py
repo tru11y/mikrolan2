@@ -9,7 +9,7 @@ from typing import Optional
 from pydantic import BaseModel
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 
 from models import (
     init_db,
@@ -39,8 +39,8 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:8080",
         "http://localhost:8000",
-        "http://149.28.232.230:8080",
-        "http://149.28.232.230",
+        "https://139.84.241.27:8443",
+        "https://139.84.241.27",
         "null",
     ],
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
@@ -57,6 +57,9 @@ BACKEND_WG_PUBKEY = os.getenv(
 )
 # VPS WireGuard endpoint that routers dial to establish the tunnel
 VPS_WG_ENDPOINT = os.getenv("VPS_WG_ENDPOINT", "149.28.232.230:51820")
+# Public URL of this API that routers call back for register-pubkey (over the
+# public internet, before the tunnel is up). Must include scheme + port.
+API_PUBLIC_URL = os.getenv("API_PUBLIC_URL", "").rstrip("/")
 
 
 class OnboardRequest(BaseModel):
@@ -182,7 +185,7 @@ def _build_bootstrap_script(
     wg_ip: str,
 ) -> str:
     vps_host, vps_port = vps_endpoint.rsplit(":", 1)
-    api_base = f"http://{vps_host}:8000"
+    api_base = API_PUBLIC_URL or f"http://{vps_host}:8000"
     return f"""\
 # MikroLan Bootstrap Script — router_id={router_id}
 :local routerId "{router_id}"
@@ -222,6 +225,7 @@ def _build_bootstrap_script(
 :local body ("{{\\"pubkey\\":\\"" . $routerPubkey . "\\"}}")
 /tool/fetch url=($apiBase . "/routers/" . $routerId . "/register-pubkey") \\
     http-method=post \\
+    check-certificate=no \\
     http-header-field="Content-Type: application/json" \\
     http-data=$body \\
     output=none
@@ -551,6 +555,12 @@ async def delete_router(router_id: str, background_tasks: BackgroundTasks):
 async def health():
     """Health check."""
     return {"status": "ok"}
+
+
+@app.get("/")
+async def index():
+    """Serve the operator UI (same-origin as the API)."""
+    return FileResponse("app.html")
 
 
 if __name__ == "__main__":
