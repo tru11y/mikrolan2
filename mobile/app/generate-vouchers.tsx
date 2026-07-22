@@ -11,6 +11,7 @@ import {
 import { getLocalCredentials } from '@/src/lib/router-credentials';
 import { pushVouchersLan } from '@/src/services/mikrotik-lan/hotspotLan';
 import { TicketQr } from '@/src/components/TicketQr';
+import { printTickets } from '@/src/lib/ticketsPdf';
 import {
   Badge,
   Banner,
@@ -41,6 +42,11 @@ export default function GenerateVouchersScreen() {
   const qc = useQueryClient();
 
   const plansQuery = useQuery({ queryKey: ['plans'], queryFn: api.plans.list });
+  const routerQuery = useQuery({
+    queryKey: ['router', routerId],
+    queryFn: () => api.routers.get(routerId),
+    enabled: Boolean(routerId),
+  });
   const vouchersQuery = useQuery({
     queryKey: ['vouchers', routerId],
     queryFn: () => api.routers.listVouchers(routerId),
@@ -52,6 +58,7 @@ export default function GenerateVouchersScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [justGenerated, setJustGenerated] = useState<VoucherItem[] | null>(null);
+  const [printBusy, setPrintBusy] = useState(false);
 
   async function generate() {
     setError(null);
@@ -88,6 +95,30 @@ export default function GenerateVouchersScreen() {
       setError(extractErrorMessage(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function printBatch(codes: VoucherItem[]) {
+    const plan = plansQuery.data?.find((p) => p.id === codes[0]?.planId);
+    if (!plan) {
+      setError('Forfait introuvable pour ces tickets.');
+      return;
+    }
+    setError(null);
+    setPrintBusy(true);
+    try {
+      const r = routerQuery.data;
+      await printTickets({
+        routerName: r?.alias || r?.identity || 'WiFi',
+        planName: plan.name,
+        durationMinutes: plan.durationMinutes,
+        priceXof: plan.priceXof,
+        tickets: codes.map((v) => ({ code: v.code })),
+      });
+    } catch (e) {
+      setError(extractErrorMessage(e));
+    } finally {
+      setPrintBusy(false);
     }
   }
 
@@ -243,7 +274,13 @@ export default function GenerateVouchersScreen() {
               </View>
             ))}
             <Button
+              title="Imprimer les tickets (PDF)"
+              onPress={() => printBatch(justGenerated)}
+              loading={printBusy}
+            />
+            <Button
               title="Partager tous les codes"
+              variant="ghost"
               onPress={() => shareCodes(justGenerated)}
             />
           </Card>
