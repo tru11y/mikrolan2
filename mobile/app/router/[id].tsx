@@ -13,6 +13,7 @@ import {
   deleteLocalCredentials,
   getLocalCredentials,
 } from '@/src/lib/router-credentials';
+import { getWifiInfo } from '@/src/lib/lanBinder';
 import {
   Badge,
   Banner,
@@ -25,6 +26,15 @@ import {
   theme,
   Title,
 } from '@/src/components/ui';
+
+// The LAN client pins its TCP socket to Wi-Fi; opening it toward an unreachable
+// router (mobile data, or a Wi-Fi that isn't the router's) makes
+// react-native-tcp-socket throw on a native thread ("No socket with id 0") and
+// hard-crashes the app. So only attempt LAN when the router's host is on the
+// current Wi-Fi subnet; otherwise go straight to the tunnel.
+function sameSubnet24(a: string, b: string): boolean {
+  return a.split('.').slice(0, 3).join('.') === b.split('.').slice(0, 3).join('.');
+}
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -141,9 +151,16 @@ export default function RouterDetailScreen() {
     setLanState('loading');
     setLanError(null);
 
-    // 1) LAN first: works offline on the router's Wi-Fi (free/local mode).
+    // 1) LAN first: works offline on the router's Wi-Fi (free/local mode). Only
+    // when the router is actually on the current Wi-Fi subnet — otherwise the
+    // pinned socket crashes the app (see sameSubnet24 above).
     const creds = await getLocalCredentials(id);
-    if (creds) {
+    const wifi = await getWifiInfo();
+    const onRouterLan =
+      !!creds &&
+      !!wifi &&
+      (creds.host === wifi.gateway || sameSubnet24(creds.host, wifi.ipAddress));
+    if (creds && onRouterLan) {
       try {
         setResource(await withApi(creds, (c) => c.systemResource()));
         setResourceVia('lan');
