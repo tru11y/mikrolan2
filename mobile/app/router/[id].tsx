@@ -81,6 +81,12 @@ export default function RouterDetailScreen() {
       }
       const bundle = await api.routers.provisionRemote(id);
       await pushWireGuardConfig(creds, bundle);
+      // Hand the RouterOS credentials to the backend (encrypted at rest) so the
+      // server can drive the router over the tunnel via the binary API (8728).
+      // In LOCAL mode they live only on-device; PRO management needs them server-side.
+      await api.routers.update(id, {
+        credentials: { username: creds.username, password: creds.password },
+      });
       await qc.invalidateQueries({ queryKey: ['router', id] });
       await qc.invalidateQueries({ queryKey: ['router-remote', id] });
       await qc.invalidateQueries({ queryKey: ['routers'] });
@@ -101,6 +107,8 @@ export default function RouterDetailScreen() {
     setRemoteMsg(null);
     try {
       await api.routers.revokeRemote(id);
+      // Opt-out: drop the server-side credentials (they stay on-device for LOCAL).
+      await api.routers.update(id, { credentials: null });
       await qc.invalidateQueries({ queryKey: ['router', id] });
       await qc.invalidateQueries({ queryKey: ['router-remote', id] });
       await qc.invalidateQueries({ queryKey: ['routers'] });

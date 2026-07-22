@@ -10,15 +10,32 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CryptoService } from '../../common/crypto/crypto.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { getTenantContext } from '../../common/context/tenant-context';
+import {
+  RouterOsApiError,
+  RouterOsAuthError,
+  type ApiRow,
+  withRouterOsApi,
+} from '../../common/routeros/routeros-api.client';
 
-const ROUTEROS_REST_PORT = 80;
+// RouterOS binary API — enabled by default (no `www`/REST service needed).
+const ROUTEROS_API_PORT = 8728;
 const REQUEST_TIMEOUT_MS = 8000;
 
-export type RestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+type RestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
+// Maps the REST-style proxy verb onto a RouterOS API action verb.
+const METHOD_ACTION: Record<RestMethod, string> = {
+  GET: 'print',
+  POST: 'add',
+  PUT: 'set',
+  PATCH: 'set',
+  DELETE: 'remove',
+};
 
 /**
- * Proxies RouterOS REST calls from the backend to a router over the WireGuard
- * tunnel (PRO). Uses the router credentials stored encrypted at rest.
+ * Drives a router from the backend over the WireGuard tunnel using the RouterOS
+ * binary API (8728), the same protocol the mobile app speaks on the LAN. Uses
+ * the router credentials stored encrypted at rest (pushed on PRO activation).
  */
 @Injectable()
 export class RemoteRouterService {
@@ -28,12 +45,14 @@ export class RemoteRouterService {
     private readonly subscriptions: SubscriptionsService,
   ) {}
 
-  async request(
+  // Private on purpose: no arbitrary command passthrough is exposed over HTTP.
+  // Each remotely-driven operation gets its own typed, allowlisted method below.
+  private async request(
     routerId: string,
     method: RestMethod,
     path: string,
-    body?: unknown,
-  ): Promise<unknown> {
+    body?: Record<string, unknown>,
+  ): Promise<ApiRow[]> {
     const tenantId = getTenantContext()?.tenantId;
     if (!tenantId || !(await this.subscriptions.isRemoteAllowed(tenantId))) {
       throw new ForbiddenException('Abonnement PRO actif requis');
@@ -61,41 +80,61 @@ export class RemoteRouterService {
       password: string;
     };
 
-    const cleanPath = path.startsWith('/') ? path : `/${path}`;
-    const url = `http://${peer.wgIp}:${ROUTEROS_REST_PORT}/rest${cleanPath}`;
-    const auth = Buffer.from(
-      `${creds.username}:${creds.password}`,
-    ).toString('base64');
+    const words = this.buildSentence(method, path, body);
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      const res = await fetch(url, {
-        method,
-        headers: {
-          Authorization: `Basic ${auth}`,
-          'Content-Type': 'application/json',
+      return await withRouterOsApi(
+        {
+          host: peer.wgIp,
+          port: ROUTEROS_API_PORT,
+          username: creds.username,
+          password: creds.password,
+          timeoutMs: REQUEST_TIMEOUT_MS,
         },
-        body: body === undefined ? undefined : JSON.stringify(body),
-        signal: controller.signal,
-      });
-      const text = await res.text();
-      const data = text ? (JSON.parse(text) as unknown) : null;
-      if (!res.ok) {
-        throw new ServiceUnavailableException(
-          `RouterOS a répondu ${res.status}`,
-        );
-      }
-      return data;
+        (c) => c.command(words),
+      );
     } catch (e) {
-      if (e instanceof ServiceUnavailableException) throw e;
+      if (e instanceof RouterOsAuthError) {
+        throw new BadRequestException('Identifiants RouterOS incorrects');
+      }
+      if (e instanceof RouterOsApiError) {
+        throw new ServiceUnavailableException(`RouterOS: ${e.message}`);
+      }
       throw new ServiceUnavailableException('Routeur injoignable via le tunnel');
-    } finally {
-      clearTimeout(timer);
     }
   }
 
-  systemResource(routerId: string): Promise<unknown> {
-    return this.request(routerId, 'GET', '/system/resource');
+  /** REST-style verb + menu path → RouterOS API command word list. */
+  private buildSentence(
+    method: RestMethod,
+    path: string,
+    body?: Record<string, unknown>,
+  ): string[] {
+    const menu = path.startsWith('/') ? path : `/${path}`;
+    const action = METHOD_ACTION[method];
+    const words = [`${menu}/${action}`];
+
+    if (action === 'set' || action === 'remove') {
+      const id = body?.['.id'];
+      if (typeof id !== 'string' || !id) {
+        throw new BadRequestException('`.id` requis pour cette opération');
+      }
+      words.push(`=.id=${id}`);
+    }
+
+    if (body) {
+      // GET: attributes are query filters (`?k=v`); writes: attributes (`=k=v`).
+      const prefix = action === 'print' ? '?' : '=';
+      for (const [k, v] of Object.entries(body)) {
+        if (k === '.id') continue;
+        words.push(`${prefix}${k}=${String(v)}`);
+      }
+    }
+    return words;
+  }
+
+  async systemResource(routerId: string): Promise<ApiRow> {
+    const rows = await this.request(routerId, 'GET', '/system/resource');
+    return rows[0] ?? {};
   }
 }
