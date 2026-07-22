@@ -192,7 +192,7 @@ export function listActive(c: RouterOsApiClient): Promise<ApiRow[]> {
   // stall on heavy computed columns (see ensureUserProfile).
   return c.command([
     '/ip/hotspot/active/print',
-    '=.proplist=.id,user,address,mac-address,bytes-in,bytes-out',
+    '=.proplist=.id,user,address,mac-address,bytes-in,bytes-out,uptime',
   ]);
 }
 
