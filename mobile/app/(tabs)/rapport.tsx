@@ -3,6 +3,7 @@ import { ScrollView, View, Text } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { api, type MetricsPeriod } from '@/src/lib/api';
 import {
+  Badge,
   Card,
   Empty,
   Mono,
@@ -26,6 +27,10 @@ export default function RapportScreen() {
   const metrics = useQuery({
     queryKey: ['metrics', period],
     queryFn: () => api.metrics.summary(period),
+  });
+  const clients = useQuery({
+    queryKey: ['clients'],
+    queryFn: () => api.metrics.recentClients(30),
   });
   const data = metrics.data;
   const maxRevenue = Math.max(1, ...(data?.byPlan.map((p) => p.revenueXof) ?? []));
@@ -118,6 +123,36 @@ export default function RapportScreen() {
                   {p.sold} ticket(s) · {p.priceXof.toLocaleString('fr-FR')} FCFA
                   l’unité
                 </Text>
+              </Card>
+            ))}
+          </View>
+        )}
+      </View>
+
+      <View>
+        <SectionTitle>Clients récents</SectionTitle>
+        {!clients.data?.length ? (
+          <Empty text="Aucun ticket utilisé pour le moment." />
+        ) : (
+          <View style={{ gap: 12 }}>
+            {clients.data.map((c) => (
+              <Card key={c.voucherId} style={{ gap: 6 }}>
+                <Row>
+                  <Mono style={{ color: theme.text, fontSize: 15 }}>{c.code}</Mono>
+                  <Badge
+                    label={c.online ? 'En ligne' : 'Utilisé'}
+                    tone={c.online ? 'success' : 'muted'}
+                  />
+                </Row>
+                <Text style={{ color: theme.textMuted, fontSize: 12 }}>
+                  {c.planName} · {c.priceXof.toLocaleString('fr-FR')} FCFA ·{' '}
+                  {c.routerName}
+                </Text>
+                {c.macAddress || c.ipAddress ? (
+                  <Mono style={{ color: theme.textMuted, fontSize: 11 }}>
+                    {[c.ipAddress, c.macAddress].filter(Boolean).join(' · ')}
+                  </Mono>
+                ) : null}
               </Card>
             ))}
           </View>

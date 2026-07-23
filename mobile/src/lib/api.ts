@@ -110,6 +110,19 @@ export type MetricsSummary = {
   byPlan: PlanBreakdown[];
 };
 
+export type RecentClient = {
+  voucherId: string;
+  code: string;
+  status: VoucherStatus;
+  planName: string;
+  priceXof: number;
+  routerName: string;
+  redeemedAt: string | null;
+  macAddress: string | null;
+  ipAddress: string | null;
+  online: boolean;
+};
+
 export type CreatePlanPayload = {
   name: string;
   durationMinutes: number;
@@ -520,6 +533,13 @@ export const api = {
       const res = await apiClient.get<ApiEnvelope<MetricsSummary>>(
         '/metrics/summary',
         { params: { period, ...(routerId ? { routerId } : {}) } },
+      );
+      return unwrap(res);
+    },
+    async recentClients(limit = 30): Promise<RecentClient[]> {
+      const res = await apiClient.get<ApiEnvelope<RecentClient[]>>(
+        '/metrics/clients',
+        { params: { limit } },
       );
       return unwrap(res);
     },

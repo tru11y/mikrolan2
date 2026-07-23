@@ -8,3 +8,11 @@ export const metricsQuerySchema = z
   .strict();
 
 export type MetricsQueryDto = z.infer<typeof metricsQuerySchema>;
+
+export const clientsQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(100).default(30),
+  })
+  .strict();
+
+export type ClientsQueryDto = z.infer<typeof clientsQuerySchema>;
