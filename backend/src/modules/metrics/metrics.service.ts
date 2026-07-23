@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { SessionStatus, VoucherStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import type { MetricsQueryDto } from './dto/metrics.schemas';
+import type { ClientsQueryDto, MetricsQueryDto } from './dto/metrics.schemas';
 
 export interface PlanBreakdown {
   planId: string;
@@ -9,6 +9,19 @@ export interface PlanBreakdown {
   priceXof: number;
   sold: number;
   revenueXof: number;
+}
+
+export interface RecentClient {
+  voucherId: string;
+  code: string;
+  status: VoucherStatus;
+  planName: string;
+  priceXof: number;
+  routerName: string;
+  redeemedAt: string | null;
+  macAddress: string | null;
+  ipAddress: string | null;
+  online: boolean;
 }
 
 export interface MetricsSummary {
@@ -90,5 +103,44 @@ export class MetricsService {
       activeSessions,
       byPlan: [...byPlanMap.values()].sort((a, b) => b.revenueXof - a.revenueXof),
     };
+  }
+
+  /**
+   * Recent clients = redeemed vouchers (USED/ACTIVE) with their live session
+   * data, derived from existing rows (no customer entity). Tenant-scoped via
+   * findMany.
+   */
+  async recentClients(query: ClientsQueryDto): Promise<RecentClient[]> {
+    const vouchers = await this.prisma.voucher.findMany({
+      where: {
+        status: { in: [VoucherStatus.USED, VoucherStatus.ACTIVE] },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: query.limit,
+      select: {
+        id: true,
+        code: true,
+        status: true,
+        usedAt: true,
+        plan: { select: { name: true, priceXof: true } },
+        router: { select: { identity: true, alias: true } },
+        session: {
+          select: { macAddress: true, ipAddress: true, status: true },
+        },
+      },
+    });
+
+    return vouchers.map((v) => ({
+      voucherId: v.id,
+      code: v.code,
+      status: v.status,
+      planName: v.plan.name,
+      priceXof: v.plan.priceXof,
+      routerName: v.router.alias || v.router.identity,
+      redeemedAt: v.usedAt ? v.usedAt.toISOString() : null,
+      macAddress: v.session?.macAddress ?? null,
+      ipAddress: v.session?.ipAddress ?? null,
+      online: v.session?.status === SessionStatus.ACTIVE,
+    }));
   }
 }
