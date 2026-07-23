@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, extractErrorMessage, type LiveSession } from '@/src/lib/api';
 import { getLocalCredentials } from '@/src/lib/router-credentials';
@@ -9,12 +10,9 @@ import {
   terminateActiveLan,
 } from '@/src/services/mikrotik-lan/hotspotLan';
 import {
-  Badge,
   Banner,
-  Button,
-  Card,
   Empty,
-  Label,
+  Row,
   Screen,
   Subtitle,
   Title,
@@ -34,6 +32,7 @@ export default function SessionsScreen() {
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
   const routerQuery = useQuery({
     queryKey: ['router', routerId],
@@ -74,64 +73,200 @@ export default function SessionsScreen() {
     }
   }
 
+  const sessions = query.data ?? [];
+  const q = search.trim().toLowerCase();
+  const filtered = q
+    ? sessions.filter(
+        (s) =>
+          (s.user ?? '').toLowerCase().includes(q) ||
+          (s.macAddress ?? '').toLowerCase().includes(q) ||
+          (s.ipAddress ?? '').toLowerCase().includes(q),
+      )
+    : sessions;
+
   return (
     <Screen>
-      <ScrollView contentContainerStyle={{ gap: 16 }}>
-        <Title>Sessions actives</Title>
-        <Subtitle>Tous les clients connectés au hotspot en ce moment.</Subtitle>
+      <ScrollView contentContainerStyle={{ gap: 16, paddingBottom: 24 }}>
+        <Row>
+          <View style={{ flex: 1 }}>
+            <Title>Utilisateurs Actifs</Title>
+            <Subtitle>Sessions hotspot en cours ({sessions.length})</Subtitle>
+          </View>
+          <Pressable
+            accessibilityLabel="Rafraîchir"
+            onPress={() =>
+              qc.invalidateQueries({ queryKey: ['sessions', routerId] })
+            }
+            style={{
+              width: 42,
+              height: 42,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: theme.border,
+              backgroundColor: theme.surface,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons name="refresh" size={18} color={theme.text} />
+          </Pressable>
+        </Row>
+
+        {/* Search */}
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            backgroundColor: theme.surface,
+            borderWidth: 1,
+            borderColor: theme.border,
+            borderRadius: 12,
+            paddingHorizontal: 12,
+          }}
+        >
+          <Ionicons name="search" size={16} color={theme.textMuted} />
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Rechercher nom, MAC, IP…"
+            placeholderTextColor={theme.textMuted}
+            style={{ flex: 1, color: theme.text, paddingVertical: 11, fontSize: 14 }}
+          />
+        </View>
 
         {error ? <Banner tone="danger">{error}</Banner> : null}
         {query.isError ? (
           <Banner tone="warning">{extractErrorMessage(query.error)}</Banner>
         ) : null}
 
-        <Button
-          title="Rafraîchir"
-          variant="ghost"
-          onPress={() => qc.invalidateQueries({ queryKey: ['sessions', routerId] })}
-          loading={query.isFetching}
-        />
-
         {query.isLoading ? (
           <Subtitle>Lecture du routeur…</Subtitle>
-        ) : !query.data?.length ? (
+        ) : !filtered.length ? (
           <Empty text="Aucune session active." />
         ) : (
-          query.data.map((s: LiveSession) => (
-            <Card key={s.id}>
+          <View style={{ gap: 12 }}>
+            {filtered.map((s: LiveSession) => (
               <View
+                key={s.id}
                 style={{
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
+                  backgroundColor: theme.surface,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  padding: 16,
+                  gap: 12,
                 }}
               >
-                <Text
+                <Row>
+                  <Row style={{ gap: 12, flex: 1, justifyContent: 'flex-start' }}>
+                    <View>
+                      <View
+                        style={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 20,
+                          backgroundColor: theme.success + '22',
+                          borderWidth: 1,
+                          borderColor: theme.success + '55',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Text style={{ color: theme.success, fontWeight: '700', fontSize: 13 }}>
+                          {(s.user ?? '??').substring(0, 2).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View
+                        style={{
+                          position: 'absolute',
+                          right: -1,
+                          bottom: -1,
+                          width: 12,
+                          height: 12,
+                          borderRadius: 6,
+                          backgroundColor: theme.success,
+                          borderWidth: 2,
+                          borderColor: theme.surface,
+                        }}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: theme.text, fontWeight: '700', fontSize: 14 }}>
+                        {s.user || '—'}
+                      </Text>
+                      <Text
+                        style={{
+                          color: theme.textMuted,
+                          fontFamily: theme.mono,
+                          fontSize: 11,
+                        }}
+                      >
+                        {s.macAddress ?? 'MAC ?'} · {s.ipAddress ?? '—'}
+                      </Text>
+                    </View>
+                  </Row>
+                  <Pressable
+                    accessibilityLabel="Déconnecter"
+                    onPress={() => terminate(s.id)}
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 11,
+                      borderWidth: 1,
+                      borderColor: theme.border,
+                      backgroundColor: theme.danger + '18',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Ionicons name="power" size={17} color={theme.danger} />
+                  </Pressable>
+                </Row>
+
+                {/* Metrics */}
+                <Row
                   style={{
-                    color: theme.text,
-                    fontFamily: theme.mono,
-                    fontWeight: '700',
+                    backgroundColor: theme.surfaceAlt,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    padding: 10,
+                    gap: 8,
                   }}
                 >
-                  {s.user || '—'}
-                </Text>
-                <Badge label="Actif" tone="success" />
+                  <Row style={{ gap: 6, flex: 1, justifyContent: 'flex-start' }}>
+                    <Ionicons name="time-outline" size={13} color={theme.secondary} />
+                    <Text style={{ color: theme.textMuted, fontSize: 12 }}>Temps</Text>
+                    <Text
+                      style={{
+                        color: theme.text,
+                        fontFamily: theme.mono,
+                        fontSize: 12,
+                        fontWeight: '700',
+                      }}
+                    >
+                      {s.uptime ?? '—'}
+                    </Text>
+                  </Row>
+                  <Row style={{ gap: 4, justifyContent: 'flex-end' }}>
+                    <Ionicons name="arrow-down" size={13} color={theme.secondary} />
+                    <Ionicons name="arrow-up" size={13} color={theme.gold} />
+                    <Text
+                      style={{
+                        color: theme.text,
+                        fontFamily: theme.mono,
+                        fontSize: 12,
+                        fontWeight: '700',
+                      }}
+                    >
+                      {fmtBytes(s.bytesIn)} / {fmtBytes(s.bytesOut)}
+                    </Text>
+                  </Row>
+                </Row>
               </View>
-              <Label>
-                {s.ipAddress ?? '—'} · {s.macAddress ?? 'MAC inconnue'}
-              </Label>
-              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-                <Badge label={`↓ ${fmtBytes(s.bytesIn)}`} tone="primary" />
-                <Badge label={`↑ ${fmtBytes(s.bytesOut)}`} tone="primary" />
-                {s.uptime ? <Badge label={s.uptime} /> : null}
-              </View>
-              <Button
-                title="Déconnecter"
-                variant="danger"
-                onPress={() => terminate(s.id)}
-              />
-            </Card>
-          ))
+            ))}
+          </View>
         )}
       </ScrollView>
     </Screen>
