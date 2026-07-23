@@ -53,4 +53,38 @@ export class WireGuardService {
     }
     await exec('wg', ['set', this.iface, 'peer', publicKey, 'remove']);
   }
+
+  /**
+   * Reconciles the live interface to exactly the given set of peers: adds or
+   * updates each wanted peer and removes any extra one. The DB is the source of
+   * truth, so this restores peers lost to a wg/VPS restart (runtime `wg set`
+   * peers are not persisted) and prunes revoked leftovers. Idempotent.
+   */
+  async syncPeers(peers: { wgPublicKey: string; wgIp: string }[]): Promise<void> {
+    if (!this.enabled) {
+      this.logger.warn(`[WG disabled] would sync ${peers.length} peer(s)`);
+      return;
+    }
+    for (const p of peers) {
+      await exec('wg', [
+        'set',
+        this.iface,
+        'peer',
+        p.wgPublicKey,
+        'allowed-ips',
+        `${p.wgIp}/32`,
+      ]);
+    }
+    const { stdout } = await exec('wg', ['show', this.iface, 'peers']);
+    const live = stdout
+      .split('\n')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const wanted = new Set(peers.map((p) => p.wgPublicKey));
+    for (const pk of live) {
+      if (!wanted.has(pk)) {
+        await exec('wg', ['set', this.iface, 'peer', pk, 'remove']);
+      }
+    }
+  }
 }
