@@ -1,7 +1,12 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { MetricsService } from './metrics.service';
-import { metricsQuerySchema, type MetricsQueryDto } from './dto/metrics.schemas';
+import {
+  clientsQuerySchema,
+  metricsQuerySchema,
+  type ClientsQueryDto,
+  type MetricsQueryDto,
+} from './dto/metrics.schemas';
 
 @Controller('metrics')
 export class MetricsController {
@@ -12,5 +17,12 @@ export class MetricsController {
     @Query(new ZodValidationPipe(metricsQuerySchema)) query: MetricsQueryDto,
   ) {
     return this.metrics.summary(query);
+  }
+
+  @Get('clients')
+  clients(
+    @Query(new ZodValidationPipe(clientsQuerySchema)) query: ClientsQueryDto,
+  ) {
+    return this.metrics.recentClients(query);
   }
 }
