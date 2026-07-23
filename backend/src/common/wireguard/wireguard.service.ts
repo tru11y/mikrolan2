@@ -87,4 +87,20 @@ export class WireGuardService {
       }
     }
   }
+
+  /** Map of peer public key → last handshake (unix seconds; 0 = never). */
+  async latestHandshakes(): Promise<Record<string, number>> {
+    if (!this.enabled) return {};
+    const { stdout } = await exec('wg', [
+      'show',
+      this.iface,
+      'latest-handshakes',
+    ]);
+    const out: Record<string, number> = {};
+    for (const line of stdout.split('\n')) {
+      const [pk, ts] = line.trim().split(/\s+/);
+      if (pk && ts) out[pk] = Number(ts);
+    }
+    return out;
+  }
 }

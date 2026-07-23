@@ -4,11 +4,13 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { RemotePeerStatus } from '@prisma/client';
+import { RemotePeerStatus, RouterHealth } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WireGuardService } from '../../common/wireguard/wireguard.service';
 
-const RECONCILE_INTERVAL_MS = 120_000;
+const RECONCILE_INTERVAL_MS = 60_000;
+// A router is ONLINE when its tunnel handshaked within this window.
+const HANDSHAKE_FRESH_S = 180;
 
 /**
  * Keeps the wg-mgmt interface in sync with the DB (source of truth). Runtime
@@ -42,13 +44,38 @@ export class WireGuardReconciler implements OnModuleInit, OnModuleDestroy {
     try {
       const peers = await this.prisma.remotePeer.findMany({
         where: { status: RemotePeerStatus.ACTIVE },
-        select: { wgPublicKey: true, wgIp: true },
+        select: { wgPublicKey: true, wgIp: true, routerId: true },
       });
       await this.wg.syncPeers(peers);
+      await this.updateHealth(peers);
     } catch (e) {
       this.logger.error(
         `WireGuard reconcile failed: ${e instanceof Error ? e.message : e}`,
       );
+    }
+  }
+
+  /**
+   * Heartbeat: a REMOTE router is ONLINE iff its WireGuard peer handshaked
+   * recently. Fixes the "hors ligne" badge on reachable routers (health stayed
+   * UNKNOWN with no poller). LOCAL routers are untouched (no tunnel to observe).
+   */
+  private async updateHealth(
+    peers: { wgPublicKey: string; routerId: string }[],
+  ): Promise<void> {
+    if (!peers.length) return;
+    const handshakes = await this.wg.latestHandshakes();
+    const now = Math.floor(Date.now() / 1000);
+    for (const p of peers) {
+      const last = handshakes[p.wgPublicKey] ?? 0;
+      const online = last > 0 && now - last < HANDSHAKE_FRESH_S;
+      await this.prisma.router.update({
+        where: { id: p.routerId },
+        data: {
+          health: online ? RouterHealth.ONLINE : RouterHealth.OFFLINE,
+          ...(online ? { lastHeartbeat: new Date(last * 1000) } : {}),
+        },
+      });
     }
   }
 }
