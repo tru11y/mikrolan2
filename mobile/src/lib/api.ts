@@ -161,6 +161,23 @@ export type VoucherItem = {
 
 export type HotspotServer = { id: string; name: string; interface: string };
 
+export type IpBindingType = 'bypassed' | 'blocked' | 'regular';
+export type IpBinding = {
+  id: string;
+  macAddress: string;
+  ipAddress?: string;
+  server?: string;
+  type: IpBindingType;
+  comment?: string;
+};
+export type CreateIpBindingPayload = {
+  macAddress: string;
+  ipAddress?: string;
+  server?: string;
+  type: IpBindingType;
+  comment?: string;
+};
+
 export type VoucherBatchStatus =
   | 'PENDING'
   | 'GENERATING'
@@ -472,6 +489,31 @@ export const api = {
     async listHotspotServers(id: string): Promise<HotspotServer[]> {
       const res = await apiClient.get<ApiEnvelope<HotspotServer[]>>(
         `/routers/${id}/hotspot/servers`,
+      );
+      return unwrap(res);
+    },
+    async listIpBindings(id: string): Promise<IpBinding[]> {
+      const res = await apiClient.get<ApiEnvelope<IpBinding[]>>(
+        `/routers/${id}/hotspot/ip-bindings`,
+      );
+      return unwrap(res);
+    },
+    async addIpBinding(
+      id: string,
+      payload: CreateIpBindingPayload,
+    ): Promise<IpBinding> {
+      const res = await apiClient.post<ApiEnvelope<IpBinding>>(
+        `/routers/${id}/hotspot/ip-bindings`,
+        payload,
+      );
+      return unwrap(res);
+    },
+    async removeIpBinding(
+      id: string,
+      bindingId: string,
+    ): Promise<{ removed: boolean }> {
+      const res = await apiClient.delete<ApiEnvelope<{ removed: boolean }>>(
+        `/routers/${id}/hotspot/ip-bindings/${bindingId}`,
       );
       return unwrap(res);
     },
