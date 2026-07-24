@@ -9,15 +9,8 @@ import {
   listActiveLan,
   terminateActiveLan,
 } from '@/src/services/mikrotik-lan/hotspotLan';
-import {
-  Banner,
-  Empty,
-  Row,
-  Screen,
-  Subtitle,
-  Title,
-  theme,
-} from '@/src/components/ui';
+import { Banner, Empty, Row, Subtitle, Title, theme } from '@/src/components/ui';
+import { BottomNav } from '@/src/components/BottomNav';
 
 function fmtBytes(v: string): string {
   const n = Number(v);
@@ -85,8 +78,8 @@ export default function SessionsScreen() {
     : sessions;
 
   return (
-    <Screen>
-      <ScrollView contentContainerStyle={{ gap: 16, paddingBottom: 24 }}>
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: 100 }}>
         <Row>
           <View style={{ flex: 1 }}>
             <Title>Utilisateurs Actifs</Title>
@@ -269,6 +262,7 @@ export default function SessionsScreen() {
           </View>
         )}
       </ScrollView>
-    </Screen>
+      <BottomNav active="routeurs" />
+    </View>
   );
 }

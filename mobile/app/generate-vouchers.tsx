@@ -21,11 +21,11 @@ import {
   Empty,
   Field,
   Label,
-  Screen,
   Subtitle,
   Title,
   theme,
 } from '@/src/components/ui';
+import { BottomNav } from '@/src/components/BottomNav';
 
 const STATUS_TONE: Record<
   VoucherItem['status'],
@@ -176,8 +176,8 @@ export default function GenerateVouchersScreen() {
   }
 
   return (
-    <Screen>
-      <ScrollView contentContainerStyle={{ gap: 16 }}>
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: 100 }}>
         <Title>Créer des tickets</Title>
         <Subtitle>
           Générez des codes d’accès WiFi uniques, puis distribuez-les à vos
@@ -409,6 +409,7 @@ export default function GenerateVouchersScreen() {
           ))
         )}
       </ScrollView>
-    </Screen>
+      <BottomNav active="tickets" />
+    </View>
   );
 }

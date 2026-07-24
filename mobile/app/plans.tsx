@@ -13,11 +13,11 @@ import {
   Field,
   Label,
   Row,
-  Screen,
   Subtitle,
   Title,
   theme,
 } from '@/src/components/ui';
+import { BottomNav } from '@/src/components/BottomNav';
 
 function fmtDuration(min: number): string {
   if (min % 1440 === 0) return `${min / 1440}j`;
@@ -125,8 +125,8 @@ export default function PlansScreen() {
   }
 
   return (
-    <Screen>
-      <ScrollView contentContainerStyle={{ gap: 16, paddingBottom: 24 }}>
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: 100 }}>
         <Row>
           <View style={{ flex: 1, paddingRight: 12 }}>
             <Title>Forfaits & Plans WiFi</Title>
@@ -306,6 +306,7 @@ export default function PlansScreen() {
           </View>
         )}
       </ScrollView>
-    </Screen>
+      <BottomNav active="routeurs" />
+    </View>
   );
 }
