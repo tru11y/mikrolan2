@@ -196,6 +196,36 @@ export default function RouterDetailScreen() {
   const [remoteMsg, setRemoteMsg] = useState<
     { tone: 'success' | 'danger'; text: string } | null
   >(null);
+  const [showCreds, setShowCreds] = useState(false);
+  const [credUser, setCredUser] = useState('admin');
+  const [credPass, setCredPass] = useState('');
+  const [credBusy, setCredBusy] = useState(false);
+
+  // Hand RouterOS credentials to the backend without needing the router's LAN.
+  // Only the WireGuard push needs the LAN; storing creds server-side does not.
+  // Restores backend access after an APK reinstall wiped the on-device creds,
+  // for a router whose tunnel is already provisioned.
+  async function saveCredentials() {
+    if (!id) return;
+    setCredBusy(true);
+    setRemoteMsg(null);
+    try {
+      await api.routers.update(id, {
+        credentials: { username: credUser.trim(), password: credPass },
+      });
+      await qc.invalidateQueries({ queryKey: ['router', id] });
+      setShowCreds(false);
+      setCredPass('');
+      setRemoteMsg({
+        tone: 'success',
+        text: 'Identifiants enregistrés. Le serveur peut piloter le routeur via le tunnel.',
+      });
+    } catch (e) {
+      setRemoteMsg({ tone: 'danger', text: extractErrorMessage(e) });
+    } finally {
+      setCredBusy(false);
+    }
+  }
 
   async function enableRemote() {
     if (!id) return;
@@ -615,6 +645,46 @@ export default function RouterDetailScreen() {
                   loading={remoteBusy}
                 />
               )}
+
+              {remoteQuery.data?.status === 'ACTIVE' ? (
+                <>
+                  <Button
+                    title={
+                      showCreds
+                        ? 'Masquer les identifiants'
+                        : 'Saisir les identifiants RouterOS (hors LAN)'
+                    }
+                    variant="ghost"
+                    onPress={() => setShowCreds((v) => !v)}
+                  />
+                  {showCreds ? (
+                    <>
+                      <Subtitle>
+                        Le tunnel est déjà en place : renseignez les identifiants
+                        du routeur pour restaurer le pilotage à distance, sans
+                        être sur son Wi-Fi.
+                      </Subtitle>
+                      <Field
+                        label="Utilisateur RouterOS"
+                        value={credUser}
+                        onChangeText={setCredUser}
+                        autoCapitalize="none"
+                      />
+                      <Field
+                        label="Mot de passe RouterOS"
+                        value={credPass}
+                        onChangeText={setCredPass}
+                        secureTextEntry
+                      />
+                      <Button
+                        title="Enregistrer les identifiants"
+                        onPress={saveCredentials}
+                        loading={credBusy}
+                      />
+                    </>
+                  ) : null}
+                </>
+              ) : null}
             </>
           )}
         </Card>
