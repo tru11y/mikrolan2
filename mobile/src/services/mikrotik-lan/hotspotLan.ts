@@ -23,6 +23,9 @@ export async function pushVouchersLan(
     if (!profiles.some((p) => p.name === push.userProfile)) {
       const data: Record<string, string> = { name: push.userProfile };
       if (push.rateLimit) data['rate-limit'] = push.rateLimit;
+      if (push.sharedUsers && push.sharedUsers > 0) {
+        data['shared-users'] = String(push.sharedUsers);
+      }
       await c.add('/ip/hotspot/user/profile', data);
     }
 

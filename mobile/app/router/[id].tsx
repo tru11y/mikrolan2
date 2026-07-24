@@ -100,68 +100,49 @@ function sameSubnet24(a: string, b: string): boolean {
   return a.split('.').slice(0, 3).join('.') === b.split('.').slice(0, 3).join('.');
 }
 
-function MetricCell({
+function StatSquare({
   icon,
-  label,
-  value,
-}: {
-  icon: IoniconName;
-  label: string;
-  value: string;
-}) {
-  return (
-    <View
-      style={{
-        width: '48%',
-        backgroundColor: theme.surfaceAlt,
-        borderRadius: 14,
-        padding: 14,
-        gap: 6,
-      }}
-    >
-      <Ionicons name={icon} size={18} color={theme.secondary} />
-      <Text style={{ color: theme.textMuted, fontSize: 11 }}>{label}</Text>
-      <Text
-        style={{
-          color: theme.text,
-          fontFamily: theme.mono,
-          fontSize: 15,
-          fontWeight: '700',
-        }}
-      >
-        {value}
-      </Text>
-    </View>
-  );
-}
-
-function ActionCell({
-  icon,
-  label,
   color,
+  value,
+  label,
   onPress,
 }: {
   icon: IoniconName;
-  label: string;
   color: string;
+  value: string;
+  label: string;
   onPress: () => void;
 }) {
   return (
     <Pressable
       onPress={onPress}
       style={{
-        width: '48%',
+        width: '23%',
+        backgroundColor: theme.surface,
         borderWidth: 1,
         borderColor: theme.border,
-        backgroundColor: theme.surface,
-        borderRadius: 14,
-        paddingVertical: 18,
+        borderRadius: 16,
+        paddingVertical: 12,
         alignItems: 'center',
-        gap: 8,
+        gap: 4,
       }}
     >
-      <Ionicons name={icon} size={22} color={color} />
-      <Text style={{ color: theme.text, fontWeight: '600', fontSize: 13 }}>
+      <View
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: 10,
+          backgroundColor: color + '22',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Ionicons name={icon} size={16} color={color} />
+      </View>
+      <Text style={{ color: theme.text, fontSize: 18, fontWeight: '800' }}>
+        {value}
+      </Text>
+      <Text style={{ color: theme.textMuted, fontSize: 10 }} numberOfLines={1}>
         {label}
       </Text>
     </Pressable>
@@ -189,6 +170,12 @@ export default function RouterDetailScreen() {
   const salesQuery = useQuery({
     queryKey: ['router-metrics', id],
     queryFn: () => api.metrics.summary('30d', id),
+    enabled: Boolean(id),
+  });
+
+  const plansQuery = useQuery({
+    queryKey: ['plans', id],
+    queryFn: () => api.plans.list(id),
     enabled: Boolean(id),
   });
 
@@ -471,127 +458,49 @@ export default function RouterDetailScreen() {
         ) : null}
 
         {error ? <Banner tone="danger">{error}</Banner> : null}
+        {lanState === 'error' ? (
+          <Banner tone="warning">{lanError ?? 'Routeur injoignable'}</Banner>
+        ) : null}
 
-        <Card>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Label>État local (LAN)</Label>
-            {lanState === 'ok' && resourceVia ? (
-              <Badge
-                label={resourceVia === 'remote' ? 'Via tunnel' : 'LAN'}
-                tone={resourceVia === 'remote' ? 'gold' : 'muted'}
-              />
-            ) : null}
-          </View>
-          {lanState === 'loading' ? <Subtitle>Connexion au routeur…</Subtitle> : null}
-          {lanState === 'no-creds' ? (
-            <Subtitle>
-              Aucun identifiant local enregistré sur cet appareil.
-            </Subtitle>
-          ) : null}
-          {lanState === 'error' ? (
-            <Banner tone="warning">{lanError ?? 'Routeur injoignable'}</Banner>
-          ) : null}
-          {lanState === 'ok' && resource ? (
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-              <MetricCell
-                icon="shield-checkmark-outline"
-                label="RouterOS"
-                value={resource.version}
-              />
-              <MetricCell
-                icon="hardware-chip-outline"
-                label="Modèle"
-                value={resource['board-name']}
-              />
-              <MetricCell
-                icon="time-outline"
-                label="Uptime"
-                value={resource.uptime}
-              />
-              <MetricCell
-                icon="ellipse-outline"
-                label="Mémoire libre"
-                value={resource['free-memory']}
-              />
-            </View>
-          ) : null}
-          <Button
-            title="Rafraîchir"
-            variant="ghost"
-            onPress={loadLocal}
-            loading={lanState === 'loading'}
+        {/* Rangée de 4 tuiles carrées (réf) */}
+        <Row style={{ gap: 8, alignItems: 'stretch' }}>
+          <StatSquare
+            icon="people"
+            color={theme.success}
+            value={`${salesQuery.data?.activeSessions ?? 0}`}
+            label="Actifs"
+            onPress={() =>
+              router.push({ pathname: '/sessions', params: { routerId: id } })
+            }
           />
-        </Card>
-
-        <Card>
-          <Label>Ventes (30 jours)</Label>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-            <MetricCell
-              icon="cash-outline"
-              label="Revenu"
-              value={`${(salesQuery.data?.revenueXof ?? 0).toLocaleString('fr-FR')} F`}
-            />
-            <MetricCell
-              icon="ticket-outline"
-              label="Tickets vendus"
-              value={`${salesQuery.data?.ticketsGenerated ?? 0}`}
-            />
-            <MetricCell
-              icon="people-outline"
-              label="Utilisés"
-              value={`${salesQuery.data?.ticketsUsed ?? 0}`}
-            />
-            <MetricCell
-              icon="pulse-outline"
-              label="Sessions actives"
-              value={`${salesQuery.data?.activeSessions ?? 0}`}
-            />
-          </View>
-        </Card>
-
-        <Card>
-          <Label>Actions rapides</Label>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-            <ActionCell
-              icon="pricetags-outline"
-              label="Forfaits"
-              color={theme.primary}
-              onPress={() =>
-                router.push({ pathname: '/plans', params: { routerId: id } })
-              }
-            />
-            <ActionCell
-              icon="ticket-outline"
-              label="Générer tickets"
-              color={theme.primary}
-              onPress={() =>
-                router.push({
-                  pathname: '/generate-vouchers',
-                  params: { routerId: id },
-                })
-              }
-            />
-            <ActionCell
-              icon="people-outline"
-              label="Sessions"
-              color={theme.secondary}
-              onPress={() =>
-                router.push({ pathname: '/sessions', params: { routerId: id } })
-              }
-            />
-            <ActionCell
-              icon="globe-outline"
-              label="Portail captif"
-              color={theme.secondary}
-              onPress={() =>
-                router.push({
-                  pathname: '/hotspot-setup',
-                  params: { routerId: id },
-                })
-              }
-            />
-          </View>
-        </Card>
+          <StatSquare
+            icon="ticket"
+            color={theme.primary}
+            value={`${salesQuery.data?.ticketsGenerated ?? 0}`}
+            label="Tickets"
+            onPress={() =>
+              router.push({ pathname: '/generate-vouchers', params: { routerId: id } })
+            }
+          />
+          <StatSquare
+            icon="layers"
+            color={theme.gold}
+            value={`${plansQuery.data?.length ?? 0}`}
+            label="Plans"
+            onPress={() =>
+              router.push({ pathname: '/plans', params: { routerId: id } })
+            }
+          />
+          <StatSquare
+            icon="globe"
+            color={theme.secondary}
+            value={`${salesQuery.data?.ticketsUsed ?? 0}`}
+            label="Utilisés"
+            onPress={() =>
+              router.push({ pathname: '/generate-vouchers', params: { routerId: id } })
+            }
+          />
+        </Row>
 
         {/* Réseau Sans Fil (SSID) */}
         <Card>

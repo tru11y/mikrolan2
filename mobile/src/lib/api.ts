@@ -88,10 +88,13 @@ export type Plan = {
   downloadKbps: number | null;
   uploadKbps: number | null;
   dataLimitMb: number | null;
+  sharedUsers: number;
+  expirationMode: PlanExpiration;
   userProfile: string;
   status: PlanStatus;
   displayOrder: number;
 };
+export type PlanExpiration = 'ELAPSED' | 'RADIO_PAUSE';
 
 export type MetricsPeriod = 'today' | '7d' | '30d';
 export type PlanBreakdown = {
@@ -130,6 +133,8 @@ export type CreatePlanPayload = {
   downloadKbps?: number | null;
   uploadKbps?: number | null;
   dataLimitMb?: number | null;
+  sharedUsers?: number;
+  expirationMode?: PlanExpiration;
   description?: string;
 };
 
@@ -183,6 +188,7 @@ export type LiveSession = {
 export type VoucherPushParams = {
   userProfile: string;
   rateLimit?: string;
+  sharedUsers?: number;
   limitUptime: string;
   limitBytesTotal?: number;
   comment: string;

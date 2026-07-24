@@ -14,6 +14,8 @@ const PLAN_PUBLIC = {
   downloadKbps: true,
   uploadKbps: true,
   dataLimitMb: true,
+  sharedUsers: true,
+  expirationMode: true,
   userProfile: true,
   status: true,
   displayOrder: true,
@@ -52,6 +54,8 @@ export class PlansService {
         downloadKbps: dto.downloadKbps ?? null,
         uploadKbps: dto.uploadKbps ?? null,
         dataLimitMb: dto.dataLimitMb ?? null,
+        sharedUsers: dto.sharedUsers ?? 1,
+        expirationMode: dto.expirationMode ?? 'RADIO_PAUSE',
         userProfile: slug,
         displayOrder: dto.displayOrder ?? 0,
       } as unknown as Prisma.PlanUncheckedCreateInput,
@@ -90,6 +94,9 @@ export class PlansService {
     if (dto.downloadKbps !== undefined) data.downloadKbps = dto.downloadKbps;
     if (dto.uploadKbps !== undefined) data.uploadKbps = dto.uploadKbps;
     if (dto.dataLimitMb !== undefined) data.dataLimitMb = dto.dataLimitMb;
+    if (dto.sharedUsers !== undefined) data.sharedUsers = dto.sharedUsers;
+    if (dto.expirationMode !== undefined)
+      data.expirationMode = dto.expirationMode;
     if (dto.displayOrder !== undefined) data.displayOrder = dto.displayOrder;
     if (dto.status !== undefined) data.status = dto.status;
 
