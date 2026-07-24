@@ -159,6 +159,8 @@ export type VoucherItem = {
   createdAt: string;
 };
 
+export type HotspotServer = { id: string; name: string; interface: string };
+
 export type VoucherBatchStatus =
   | 'PENDING'
   | 'GENERATING'
@@ -465,6 +467,12 @@ export const api = {
       const res = await apiClient.post<
         ApiEnvelope<{ configured: boolean; gateway: string; network: string }>
       >(`/routers/${id}/hotspot/configure`, payload);
+      return unwrap(res);
+    },
+    async listHotspotServers(id: string): Promise<HotspotServer[]> {
+      const res = await apiClient.get<ApiEnvelope<HotspotServer[]>>(
+        `/routers/${id}/hotspot/servers`,
+      );
       return unwrap(res);
     },
     async generateVouchers(
