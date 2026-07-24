@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   Param,
   ParseUUIDPipe,
@@ -27,5 +28,10 @@ export class HotspotController {
     @Body(new ZodValidationPipe(configureHotspotSchema)) dto: ConfigureHotspotDto,
   ) {
     return this.hotspot.configure(id, dto);
+  }
+
+  @Get('servers')
+  listServers(@Param('id', ParseUUIDPipe) id: string) {
+    return this.hotspot.listServers(id);
   }
 }
