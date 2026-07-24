@@ -42,7 +42,11 @@ export default function GenerateVouchersScreen() {
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const qc = useQueryClient();
 
-  const plansQuery = useQuery({ queryKey: ['plans'], queryFn: api.plans.list });
+  const plansQuery = useQuery({
+    queryKey: ['plans', routerId],
+    queryFn: () => api.plans.list(routerId),
+    enabled: Boolean(routerId),
+  });
   const routerQuery = useQuery({
     queryKey: ['router', routerId],
     queryFn: () => api.routers.get(routerId),

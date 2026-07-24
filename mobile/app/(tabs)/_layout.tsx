@@ -2,6 +2,7 @@ import { Redirect, Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/src/providers/auth-provider';
 import { theme } from '@/src/components/ui';
+import { TopBar } from '@/src/components/TopBar';
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
 
@@ -18,7 +19,8 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerShown: false,
+        headerShown: true,
+        header: () => <TopBar />,
         tabBarStyle: {
           backgroundColor: theme.surface,
           borderTopColor: theme.border,

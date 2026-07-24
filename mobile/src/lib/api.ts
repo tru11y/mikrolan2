@@ -546,17 +546,25 @@ export const api = {
   },
 
   plans: {
-    async list(): Promise<Plan[]> {
-      const res = await apiClient.get<ApiEnvelope<Plan[]>>('/plans');
+    async list(routerId: string): Promise<Plan[]> {
+      const res = await apiClient.get<ApiEnvelope<Plan[]>>(
+        `/routers/${routerId}/plans`,
+      );
       return unwrap(res);
     },
-    async create(payload: CreatePlanPayload): Promise<Plan> {
-      const res = await apiClient.post<ApiEnvelope<Plan>>('/plans', payload);
+    async create(routerId: string, payload: CreatePlanPayload): Promise<Plan> {
+      const res = await apiClient.post<ApiEnvelope<Plan>>(
+        `/routers/${routerId}/plans`,
+        payload,
+      );
       return unwrap(res);
     },
-    async remove(id: string): Promise<{ deleted: boolean }> {
+    async remove(
+      routerId: string,
+      planId: string,
+    ): Promise<{ deleted: boolean }> {
       const res = await apiClient.delete<ApiEnvelope<{ deleted: boolean }>>(
-        `/plans/${id}`,
+        `/routers/${routerId}/plans/${planId}`,
       );
       return unwrap(res);
     },

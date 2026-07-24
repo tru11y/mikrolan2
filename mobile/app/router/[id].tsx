@@ -22,12 +22,74 @@ import {
   Card,
   Field,
   Label,
+  Mono,
+  Row,
   Screen,
   Subtitle,
   theme,
-  Title,
   type IoniconName,
 } from '@/src/components/ui';
+import { BottomNav } from '@/src/components/BottomNav';
+
+function memPercent(res: SystemResource): number {
+  const rec = res as unknown as Record<string, string>;
+  const total = Number(rec['total-memory']);
+  const free = Number(rec['free-memory']);
+  if (Number.isFinite(total) && total > 0 && Number.isFinite(free)) {
+    return Math.round(((total - free) / total) * 100);
+  }
+  return 0;
+}
+
+function Sparkline({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number;
+  color: string;
+}) {
+  const bars = [20, 35, 15, 40, 25, 18, 22, 30, Math.max(4, Math.min(100, value))];
+  return (
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: theme.surfaceAlt,
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: theme.border,
+        padding: 12,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          marginBottom: 6,
+        }}
+      >
+        <Text style={{ color: theme.textMuted, fontSize: 11 }}>{label}</Text>
+        <Text style={{ color, fontWeight: '700', fontSize: 12 }}>{value}%</Text>
+      </View>
+      <View
+        style={{ height: 34, flexDirection: 'row', alignItems: 'flex-end', gap: 3 }}
+      >
+        {bars.map((b, i) => (
+          <View
+            key={i}
+            style={{
+              flex: 1,
+              height: `${b}%`,
+              backgroundColor: color + '66',
+              borderRadius: 3,
+            }}
+          />
+        ))}
+      </View>
+    </View>
+  );
+}
 
 // The LAN client pins its TCP socket to Wi-Fi; opening it toward an unreachable
 // router (mobile data, or a Wi-Fi that isn't the router's) makes
@@ -122,6 +184,12 @@ export default function RouterDetailScreen() {
     queryKey: ['router-remote', id],
     queryFn: () => api.routers.remoteStatus(id),
     enabled: Boolean(id) && isPro,
+  });
+
+  const salesQuery = useQuery({
+    queryKey: ['router-metrics', id],
+    queryFn: () => api.metrics.summary('30d', id),
+    enabled: Boolean(id),
   });
 
   const [remoteBusy, setRemoteBusy] = useState(false);
@@ -294,48 +362,83 @@ export default function RouterDetailScreen() {
   const r = query.data;
 
   return (
-    <Screen>
-      <ScrollView contentContainerStyle={{ gap: 16 }}>
-        <View style={{ gap: 8 }}>
-          <View
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 10,
-              flexWrap: 'wrap',
-            }}
-          >
-            <Title>{r.alias || r.identity}</Title>
-            <Badge
-              label={
-                r.health === 'ONLINE'
-                  ? 'EN LIGNE'
-                  : r.health === 'OFFLINE'
-                    ? 'HORS LIGNE'
-                    : r.health
-              }
-              tone={
-                r.health === 'ONLINE'
-                  ? 'secondary'
-                  : r.health === 'ERROR'
-                    ? 'danger'
-                    : 'warning'
-              }
-            />
-          </View>
-          <Text
-            style={{ color: theme.textMuted, fontFamily: theme.mono, fontSize: 12.5 }}
-          >
-            {r.identity}
-            {r.localAddress ? ` · ${r.localAddress}` : ''}
-          </Text>
-          <View style={{ flexDirection: 'row' }}>
-            <Badge
-              label={r.mode === 'REMOTE' ? 'À distance' : 'Local'}
-              tone={r.mode === 'REMOTE' ? 'gold' : 'secondary'}
-            />
-          </View>
-        </View>
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: 100 }}>
+        <Card>
+          <Row style={{ gap: 12, alignItems: 'flex-start' }}>
+            <View
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: 16,
+                backgroundColor: theme.primary + '22',
+                borderWidth: 1,
+                borderColor: theme.primary + '44',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name="hardware-chip" size={28} color={theme.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Row style={{ justifyContent: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
+                <Text style={{ color: theme.text, fontSize: 18, fontWeight: '800' }}>
+                  {r.alias || r.identity}
+                </Text>
+                <Badge
+                  label={
+                    r.health === 'ONLINE'
+                      ? 'CONNECTÉ'
+                      : r.health === 'OFFLINE'
+                        ? 'HORS LIGNE'
+                        : r.health
+                  }
+                  tone={
+                    r.health === 'ONLINE'
+                      ? 'success'
+                      : r.health === 'ERROR'
+                        ? 'danger'
+                        : 'warning'
+                  }
+                />
+              </Row>
+              <Mono style={{ color: theme.textMuted, fontSize: 12, marginTop: 3 }}>
+                {r.identity}
+                {r.localAddress ? ` · ${r.localAddress}` : ''}
+              </Mono>
+              <Row style={{ justifyContent: 'flex-start', marginTop: 6 }}>
+                <Badge
+                  label={r.mode === 'REMOTE' ? 'À DISTANCE' : 'LOCAL'}
+                  tone={r.mode === 'REMOTE' ? 'gold' : 'secondary'}
+                />
+              </Row>
+            </View>
+          </Row>
+        </Card>
+
+        {lanState === 'ok' && resource ? (
+          <Card>
+            <Row>
+              <Row style={{ gap: 6, justifyContent: 'flex-start' }}>
+                <Ionicons name="pulse-outline" size={16} color={theme.secondary} />
+                <Label>Moniteur performance</Label>
+              </Row>
+              <Badge label="API 8728" tone="success" />
+            </Row>
+            <Row style={{ gap: 10, alignItems: 'stretch' }}>
+              <Sparkline
+                label="CPU"
+                value={Number(resource['cpu-load']) || 0}
+                color={theme.secondary}
+              />
+              <Sparkline
+                label="Mémoire"
+                value={memPercent(resource)}
+                color={theme.gold}
+              />
+            </Row>
+          </Card>
+        ) : null}
 
         {error ? <Banner tone="danger">{error}</Banner> : null}
 
@@ -376,11 +479,6 @@ export default function RouterDetailScreen() {
                 value={resource.uptime}
               />
               <MetricCell
-                icon="pulse-outline"
-                label="CPU"
-                value={`${resource['cpu-load']}%`}
-              />
-              <MetricCell
                 icon="ellipse-outline"
                 label="Mémoire libre"
                 value={resource['free-memory']}
@@ -396,13 +494,41 @@ export default function RouterDetailScreen() {
         </Card>
 
         <Card>
+          <Label>Ventes (30 jours)</Label>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+            <MetricCell
+              icon="cash-outline"
+              label="Revenu"
+              value={`${(salesQuery.data?.revenueXof ?? 0).toLocaleString('fr-FR')} F`}
+            />
+            <MetricCell
+              icon="ticket-outline"
+              label="Tickets vendus"
+              value={`${salesQuery.data?.ticketsGenerated ?? 0}`}
+            />
+            <MetricCell
+              icon="people-outline"
+              label="Utilisés"
+              value={`${salesQuery.data?.ticketsUsed ?? 0}`}
+            />
+            <MetricCell
+              icon="pulse-outline"
+              label="Sessions actives"
+              value={`${salesQuery.data?.activeSessions ?? 0}`}
+            />
+          </View>
+        </Card>
+
+        <Card>
           <Label>Actions rapides</Label>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
             <ActionCell
               icon="pricetags-outline"
               label="Forfaits"
               color={theme.primary}
-              onPress={() => router.push('/plans')}
+              onPress={() =>
+                router.push({ pathname: '/plans', params: { routerId: id } })
+              }
             />
             <ActionCell
               icon="ticket-outline"
@@ -494,12 +620,23 @@ export default function RouterDetailScreen() {
         </Card>
 
         <Button
+          title="+ Créer des tickets"
+          onPress={() =>
+            router.push({
+              pathname: '/generate-vouchers',
+              params: { routerId: id },
+            })
+          }
+        />
+
+        <Button
           title="Supprimer le routeur"
           variant="danger"
           onPress={remove}
           loading={busy}
         />
       </ScrollView>
-    </Screen>
+      <BottomNav active="routeurs" />
+    </View>
   );
 }

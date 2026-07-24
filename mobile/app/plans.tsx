@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, extractErrorMessage, type Plan } from '@/src/lib/api';
@@ -65,10 +66,16 @@ function Chip({
 }
 
 export default function PlansScreen() {
+  const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const qc = useQueryClient();
-  const query = useQuery({ queryKey: ['plans'], queryFn: api.plans.list });
+  const query = useQuery({
+    queryKey: ['plans', routerId],
+    queryFn: () => api.plans.list(routerId),
+    enabled: Boolean(routerId),
+  });
 
   const [showForm, setShowForm] = useState(false);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [duration, setDuration] = useState('');
   const [price, setPrice] = useState('');
@@ -87,7 +94,7 @@ export default function PlansScreen() {
     }
     setBusy(true);
     try {
-      await api.plans.create({
+      await api.plans.create(routerId, {
         name: name.trim(),
         durationMinutes,
         priceXof,
@@ -100,7 +107,7 @@ export default function PlansScreen() {
       setDown('');
       setUp('');
       setShowForm(false);
-      await qc.invalidateQueries({ queryKey: ['plans'] });
+      await qc.invalidateQueries({ queryKey: ['plans', routerId] });
     } catch (e) {
       setError(extractErrorMessage(e));
     } finally {
@@ -110,8 +117,8 @@ export default function PlansScreen() {
 
   async function remove(id: string) {
     try {
-      await api.plans.remove(id);
-      await qc.invalidateQueries({ queryKey: ['plans'] });
+      await api.plans.remove(routerId, id);
+      await qc.invalidateQueries({ queryKey: ['plans', routerId] });
     } catch (e) {
       setError(extractErrorMessage(e));
     }
@@ -228,18 +235,55 @@ export default function PlansScreen() {
                         <Text style={{ color: theme.textMuted, fontSize: 12 }}>
                           {fmtDuration(p.durationMinutes)}
                         </Text>
+                        <Text style={{ color: theme.textMuted, fontSize: 12 }}>•</Text>
+                        <Text style={{ color: theme.warning, fontSize: 12, fontWeight: '500' }}>
+                          Temps écoulé
+                        </Text>
                       </Row>
+                      {p.description ? (
+                        <Text
+                          style={{ color: theme.textMuted, fontSize: 11.5, marginTop: 2 }}
+                          numberOfLines={1}
+                        >
+                          {p.description}
+                        </Text>
+                      ) : null}
                     </View>
                   </Row>
                   <Pressable
-                    accessibilityLabel="Supprimer le forfait"
-                    onPress={() => remove(p.id)}
+                    accessibilityLabel="Options du forfait"
+                    onPress={() => setMenuFor(menuFor === p.id ? null : p.id)}
                     hitSlop={8}
                     style={{ padding: 4 }}
                   >
-                    <Ionicons name="trash-outline" size={18} color={theme.danger} />
+                    <Ionicons name="ellipsis-vertical" size={18} color={theme.textMuted} />
                   </Pressable>
                 </Row>
+
+                {menuFor === p.id ? (
+                  <Pressable
+                    onPress={() => {
+                      setMenuFor(null);
+                      remove(p.id);
+                    }}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 8,
+                      paddingVertical: 10,
+                      paddingHorizontal: 12,
+                      borderRadius: 12,
+                      backgroundColor: theme.danger + '18',
+                      borderWidth: 1,
+                      borderColor: theme.danger + '40',
+                    }}
+                  >
+                    <Ionicons name="trash-outline" size={16} color={theme.danger} />
+                    <Text style={{ color: theme.danger, fontWeight: '600', fontSize: 13 }}>
+                      Supprimer ce forfait
+                    </Text>
+                  </Pressable>
+                ) : null}
 
                 <Row
                   style={{

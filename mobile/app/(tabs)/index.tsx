@@ -6,15 +6,12 @@ import { api, type RouterItem } from '@/src/lib/api';
 import {
   AuroraCard,
   Badge,
-  Button,
   Card,
   Mono,
   Row,
-  SectionTitle,
-  Stat,
-  Subtitle,
   theme,
   Title,
+  type IoniconName,
 } from '@/src/components/ui';
 
 function initialsOf(name?: string): string {
@@ -23,11 +20,78 @@ function initialsOf(name?: string): string {
   return (parts[0]?.[0] ?? 'M').concat(parts[1]?.[0] ?? '').toUpperCase();
 }
 
+function trialDaysLeft(end?: string | null): number | null {
+  if (!end) return null;
+  const ms = new Date(end).getTime() - Date.now();
+  if (!Number.isFinite(ms) || ms <= 0) return null;
+  return Math.ceil(ms / 86_400_000);
+}
+
+function StatCard({
+  label,
+  value,
+  sub,
+  subTone = 'muted',
+  icon,
+  iconColor,
+  onPress,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  subTone?: 'muted' | 'success' | 'secondary';
+  icon: IoniconName;
+  iconColor: string;
+  onPress: () => void;
+}) {
+  const subColor =
+    subTone === 'success'
+      ? theme.success
+      : subTone === 'secondary'
+        ? theme.secondary
+        : theme.textMuted;
+  return (
+    <Pressable
+      onPress={onPress}
+      style={{
+        width: '48%',
+        backgroundColor: theme.surface,
+        borderWidth: 1,
+        borderColor: theme.border,
+        borderRadius: 18,
+        padding: 14,
+        gap: 6,
+      }}
+    >
+      <Row>
+        <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '500' }}>
+          {label}
+        </Text>
+        <View
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 10,
+            backgroundColor: iconColor + '22',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name={icon} size={16} color={iconColor} />
+        </View>
+      </Row>
+      <Text style={{ color: theme.text, fontSize: 24, fontWeight: '800' }}>
+        {value}
+      </Text>
+      <Text style={{ color: subColor, fontSize: 11 }}>{sub}</Text>
+    </Pressable>
+  );
+}
+
 export default function MaisonScreen() {
   const router = useRouter();
   const me = useQuery({ queryKey: ['me'], queryFn: api.auth.me });
   const routers = useQuery({ queryKey: ['routers'], queryFn: api.routers.list });
-  const plans = useQuery({ queryKey: ['plans'], queryFn: api.plans.list });
   const metrics = useQuery({
     queryKey: ['metrics', 'today'],
     queryFn: () => api.metrics.summary('today'),
@@ -37,53 +101,70 @@ export default function MaisonScreen() {
   const online = list.filter((r) => r.health === 'ONLINE').length;
   const isPro = me.data?.subscription?.plan === 'PRO';
   const tenantName = me.data?.tenant.name ?? 'MikroLan2';
+  const firstName = tenantName.split(/\s+/)[0];
+  const trial = !isPro
+    ? trialDaysLeft(me.data?.subscription?.currentPeriodEnd)
+    : null;
 
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: theme.bg }}
       contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 32 }}
     >
-      {/* Header */}
-      <Row>
-        <Row style={{ gap: 12, justifyContent: 'flex-start', flex: 1 }}>
-          <View
+      {/* Welcome card */}
+      <Card>
+        <Row>
+          <Row style={{ gap: 12, flex: 1, justifyContent: 'flex-start' }}>
+            <View
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: 16,
+                backgroundColor: theme.primary,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Text style={{ color: theme.primaryText, fontWeight: '800', fontSize: 18 }}>
+                {initialsOf(tenantName)}
+              </Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: theme.text, fontSize: 17, fontWeight: '700' }}>
+                Bienvenu, {firstName}
+              </Text>
+              <Row style={{ gap: 6, justifyContent: 'flex-start', marginTop: 2 }}>
+                <View
+                  style={{
+                    width: 7,
+                    height: 7,
+                    borderRadius: 4,
+                    backgroundColor: theme.success,
+                  }}
+                />
+                <Text style={{ color: theme.textMuted, fontSize: 12 }}>
+                  Compte administrateur vérifié
+                </Text>
+              </Row>
+            </View>
+          </Row>
+          <Pressable
+            onPress={() => router.push('/(tabs)/account')}
             style={{
-              width: 44,
-              height: 44,
-              borderRadius: 22,
-              backgroundColor: theme.primary,
-              alignItems: 'center',
-              justifyContent: 'center',
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: theme.border,
+              backgroundColor: theme.surfaceAlt,
             }}
           >
-            <Text style={{ color: theme.primaryText, fontWeight: '700' }}>
-              {initialsOf(tenantName)}
+            <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>
+              Profil
             </Text>
-          </View>
-          <View>
-            <Text style={{ color: theme.textMuted, fontSize: 13 }}>Bonjour,</Text>
-            <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700' }}>
-              {tenantName}
-            </Text>
-          </View>
+          </Pressable>
         </Row>
-        <Pressable
-          accessibilityLabel="Notifications"
-          hitSlop={8}
-          style={{
-            width: 40,
-            height: 40,
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: theme.border,
-            backgroundColor: theme.surface,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Ionicons name="notifications-outline" size={20} color={theme.text} />
-        </Pressable>
-      </Row>
+      </Card>
 
       {/* Aurora hero — revenue (today) */}
       <AuroraCard style={{ padding: 22 }}>
@@ -114,32 +195,64 @@ export default function MaisonScreen() {
         </Text>
       </AuroraCard>
 
-      {/* KPI tiles (real data) */}
-      <Row style={{ gap: 12, alignItems: 'stretch' }}>
-        <Stat
-          value={`${online}/${list.length}`}
-          label="Routeurs en ligne"
-          tone="secondary"
-          icon="wifi"
-        />
-        <Stat
-          value={`${plans.data?.length ?? 0}`}
-          label="Forfaits"
-          tone="gold"
-          icon="pricetags-outline"
-        />
-        <Stat
-          value={isPro ? 'PRO' : 'Local'}
-          label="Abonnement"
-          tone="primary"
-          icon="star-outline"
-        />
-      </Row>
+      {/* Trial banner */}
+      {trial != null ? (
+        <Card style={{ borderColor: theme.warning, borderWidth: 1.5 }}>
+          <Row>
+            <Row style={{ gap: 12, flex: 1, justifyContent: 'flex-start' }}>
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 12,
+                  backgroundColor: theme.warning + '22',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="time-outline" size={20} color={theme.warning} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    color: theme.warning,
+                    fontSize: 11,
+                    fontWeight: '700',
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  PÉRIODE D'ESSAI ACTIVE
+                </Text>
+                <Text style={{ color: theme.text, fontSize: 13, marginTop: 2 }}>
+                  Il vous reste{' '}
+                  <Text style={{ color: theme.warning, fontWeight: '700' }}>
+                    {trial} jour{trial > 1 ? 's' : ''}
+                  </Text>{' '}
+                  d'essai complet.
+                </Text>
+              </View>
+            </Row>
+            <Pressable
+              onPress={() => router.push('/pro')}
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                borderRadius: 12,
+                backgroundColor: theme.warning,
+              }}
+            >
+              <Text style={{ color: theme.goldText, fontWeight: '700', fontSize: 12 }}>
+                Prolonger
+              </Text>
+            </Pressable>
+          </Row>
+        </Card>
+      ) : null}
 
-      {/* PRO upsell (only when FREE) */}
+      {/* Prime banner */}
       {!isPro ? (
         <Pressable onPress={() => router.push('/pro')}>
-          <Card style={{ borderColor: theme.gold }}>
+          <Card style={{ borderColor: theme.gold, borderWidth: 1.5 }}>
             <Row>
               <Row style={{ gap: 12, flex: 1, justifyContent: 'flex-start' }}>
                 <View
@@ -152,15 +265,24 @@ export default function MaisonScreen() {
                     justifyContent: 'center',
                   }}
                 >
-                  <Ionicons name="rocket-outline" size={20} color={theme.gold} />
+                  <Ionicons name="diamond-outline" size={20} color={theme.gold} />
                 </View>
                 <View style={{ flex: 1, paddingRight: 8 }}>
-                  <Badge label="PRO" tone="gold" />
-                  <Text style={{ color: theme.text, fontWeight: '700', marginTop: 6 }}>
-                    Gérez vos routeurs à distance
-                  </Text>
-                  <Text style={{ color: theme.textMuted, fontSize: 13 }}>
-                    Tunnel WireGuard, cloud & impression.
+                  <Row style={{ justifyContent: 'flex-start', gap: 8 }}>
+                    <Text
+                      style={{
+                        color: theme.gold,
+                        fontSize: 11,
+                        fontWeight: '700',
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      PASS PRO UNLIMITED
+                    </Text>
+                    <Badge label="PRO" tone="gold" />
+                  </Row>
+                  <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
+                    Multi-routeurs, cloud backup & impression thermique.
                   </Text>
                 </View>
               </Row>
@@ -170,71 +292,167 @@ export default function MaisonScreen() {
         </Pressable>
       ) : null}
 
-      {/* Routeurs summary */}
-      <View>
-        <Row style={{ marginBottom: 8 }}>
-          <SectionTitle>Routeurs</SectionTitle>
-          <Pressable onPress={() => router.push('/(tabs)/routeurs')}>
-            <Text style={{ color: theme.primary, fontWeight: '600' }}>Voir tout</Text>
+      {/* 2x2 stats grid (clickable) */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+        <StatCard
+          label="Routeurs"
+          value={`${list.length}`}
+          sub={`${online} en ligne`}
+          subTone="success"
+          icon="hardware-chip-outline"
+          iconColor={theme.secondary}
+          onPress={() => router.push('/(tabs)/routeurs')}
+        />
+        <StatCard
+          label="Clients"
+          value={`${metrics.data?.ticketsUsed ?? 0}`}
+          sub="tickets utilisés"
+          icon="people-circle-outline"
+          iconColor={theme.primary}
+          onPress={() => router.push('/(tabs)/rapport')}
+        />
+        <StatCard
+          label="Tickets"
+          value={`${metrics.data?.ticketsGenerated ?? 0}`}
+          sub="générés aujourd'hui"
+          icon="ticket-outline"
+          iconColor={theme.gold}
+          onPress={() => router.push('/(tabs)/tickets')}
+        />
+        <StatCard
+          label="Sessions"
+          value={`${metrics.data?.activeSessions ?? 0}`}
+          sub="actifs live"
+          subTone="secondary"
+          icon="people-outline"
+          iconColor={theme.success}
+          onPress={() => router.push('/(tabs)/rapport')}
+        />
+      </View>
+
+      {/* Routers section */}
+      <Card style={{ gap: 12 }}>
+        <Row>
+          <Row style={{ gap: 8, justifyContent: 'flex-start' }}>
+            <Ionicons name="hardware-chip" size={18} color={theme.primary} />
+            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>
+              Mes routeurs connectés
+            </Text>
+          </Row>
+          <Pressable
+            onPress={() => router.push('/add-router')}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 4,
+              paddingHorizontal: 10,
+              paddingVertical: 7,
+              borderRadius: 10,
+              backgroundColor: theme.primary,
+            }}
+          >
+            <Ionicons name="add" size={15} color={theme.primaryText} />
+            <Text style={{ color: theme.primaryText, fontWeight: '700', fontSize: 12 }}>
+              Ajouter
+            </Text>
           </Pressable>
         </Row>
+
         {list.length === 0 ? (
-          <Card>
-            <Text style={{ color: theme.textMuted }}>
-              Aucun routeur. Ajoutez-en un pour commencer.
-            </Text>
-            <Button
-              title="Ajouter un routeur"
-              onPress={() => router.push('/add-router')}
-            />
-          </Card>
+          <Text style={{ color: theme.textMuted }}>
+            Aucun routeur. Ajoutez-en un pour commencer.
+          </Text>
         ) : (
-          <View style={{ gap: 12 }}>
-            {list.slice(0, 3).map((r) => (
-              <Pressable key={r.id} onPress={() => router.push(`/router/${r.id}`)}>
-                <Card>
-                  <Row style={{ gap: 12 }}>
-                    <View
-                      style={{
-                        width: 40,
-                        height: 40,
-                        borderRadius: 12,
-                        backgroundColor: theme.primary + '22',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Ionicons
-                        name="hardware-chip-outline"
-                        size={20}
-                        color={theme.primary}
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: theme.text, fontWeight: '700' }}>
-                        {r.alias || r.identity}
-                      </Text>
-                      <Mono style={{ color: theme.textMuted, fontSize: 12 }}>
-                        {r.identity}
-                        {r.localAddress ? ` · ${r.localAddress}` : ''}
-                      </Mono>
-                    </View>
+          list.map((r) => (
+            <Pressable key={r.id} onPress={() => router.push(`/router/${r.id}`)}>
+              <View
+                style={{
+                  backgroundColor: theme.surfaceAlt,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  borderRadius: 14,
+                  padding: 12,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 12,
+                }}
+              >
+                <View
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 12,
+                    backgroundColor: theme.primary + '22',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Ionicons
+                    name="hardware-chip-outline"
+                    size={22}
+                    color={theme.primary}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Row style={{ justifyContent: 'flex-start', gap: 8 }}>
+                    <Text style={{ color: theme.text, fontWeight: '700', fontSize: 14 }}>
+                      {r.alias || r.identity}
+                    </Text>
                     <Badge
                       label={r.health === 'ONLINE' ? 'EN LIGNE' : 'HORS LIGNE'}
                       tone={r.health === 'ONLINE' ? 'secondary' : 'danger'}
                     />
                   </Row>
-                </Card>
-              </Pressable>
-            ))}
-          </View>
+                  <Mono style={{ color: theme.textMuted, fontSize: 11, marginTop: 2 }}>
+                    {r.model ? `${r.model} · ` : ''}
+                    {r.localAddress ?? r.identity}
+                  </Mono>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color={theme.textMuted} />
+              </View>
+            </Pressable>
+          ))
         )}
-      </View>
+      </Card>
 
-      <Button
-        title="+ Générer des tickets"
-        onPress={() => router.push('/(tabs)/tickets')}
-      />
+      {/* Tickets quick info */}
+      <Pressable onPress={() => router.push('/(tabs)/tickets')}>
+        <Card style={{ gap: 8 }}>
+          <Row style={{ gap: 8, justifyContent: 'flex-start' }}>
+            <Ionicons name="ticket" size={18} color={theme.primary} />
+            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>
+              Aperçu rapide des Tickets
+            </Text>
+          </Row>
+          <Text style={{ color: theme.textMuted, fontSize: 12, lineHeight: 18 }}>
+            Sélectionnez un routeur pour générer, imprimer et exporter vos tickets
+            WiFi au format thermique, PDF ou écran.
+          </Text>
+          <Row style={{ marginTop: 4 }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                backgroundColor: theme.gold + '18',
+                borderWidth: 1,
+                borderColor: theme.gold + '33',
+                borderRadius: 10,
+                paddingHorizontal: 10,
+                paddingVertical: 6,
+              }}
+            >
+              <Ionicons name="information-circle-outline" size={14} color={theme.gold} />
+              <Text style={{ color: theme.gold, fontSize: 11 }}>
+                {metrics.data?.ticketsGenerated ?? 0} générés aujourd'hui
+              </Text>
+            </View>
+            <Text style={{ color: theme.primary, fontWeight: '700', fontSize: 12 }}>
+              Créer un ticket →
+            </Text>
+          </Row>
+        </Card>
+      </Pressable>
     </ScrollView>
   );
 }
