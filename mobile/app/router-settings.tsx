@@ -1,8 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { api, extractErrorMessage } from '@/src/lib/api';
+import { deleteLocalCredentials } from '@/src/lib/router-credentials';
 import {
+  Banner,
+  Button,
+  Field,
+  Label,
   Subtitle,
   theme,
   Title,
@@ -25,7 +32,52 @@ const SOON = 'Bientôt disponible';
 export default function RouterSettingsScreen() {
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const router = useRouter();
+  const qc = useQueryClient();
   const [rebootOpen, setRebootOpen] = useState(false);
+
+  const routerQuery = useQuery({
+    queryKey: ['router', routerId],
+    queryFn: () => api.routers.get(routerId),
+    enabled: Boolean(routerId),
+  });
+
+  const [alias, setAlias] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (routerQuery.data) setAlias(routerQuery.data.alias ?? '');
+  }, [routerQuery.data]);
+
+  async function saveAlias() {
+    if (!routerId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.routers.update(routerId, { alias: alias.trim() || null });
+      await qc.invalidateQueries({ queryKey: ['router', routerId] });
+      await qc.invalidateQueries({ queryKey: ['routers'] });
+    } catch (e) {
+      setError(extractErrorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeRouter() {
+    if (!routerId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.routers.remove(routerId);
+      await deleteLocalCredentials(routerId);
+      await qc.invalidateQueries({ queryKey: ['routers'] });
+      router.dismissTo('/(tabs)/routeurs');
+    } catch (e) {
+      setError(extractErrorMessage(e));
+      setBusy(false);
+    }
+  }
 
   const go = (pathname: string) =>
     router.push({ pathname, params: { routerId } });
@@ -175,6 +227,30 @@ export default function RouterSettingsScreen() {
             </Pressable>
           ))}
         </View>
+
+        {/* Gestion locale (hors réf) : renommer / supprimer ce routeur */}
+        {error ? <Banner tone="danger">{error}</Banner> : null}
+        <View
+          style={{
+            backgroundColor: theme.surface,
+            borderWidth: 1,
+            borderColor: theme.border,
+            borderRadius: 16,
+            padding: 16,
+            gap: 12,
+          }}
+        >
+          <Label>Alias</Label>
+          <Field value={alias} onChangeText={setAlias} placeholder="Nom du routeur" />
+          <Button title="Enregistrer" onPress={saveAlias} loading={busy} />
+        </View>
+
+        <Button
+          title="Supprimer le routeur"
+          variant="danger"
+          onPress={removeRouter}
+          loading={busy}
+        />
       </ScrollView>
 
       {/* Reboot confirmation modal */}
