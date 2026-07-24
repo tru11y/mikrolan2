@@ -19,38 +19,49 @@ import {
   type UpdatePlanDto,
 } from './dto/plan.schemas';
 
-@Controller('plans')
+// Plans are scoped to a router: each router owns its own catalogue de forfaits.
+@Controller('routers/:routerId/plans')
 export class PlansController {
   constructor(private readonly plans: PlansService) {}
 
   @Get()
-  findAll() {
-    return this.plans.findAll();
+  findAll(@Param('routerId', ParseUUIDPipe) routerId: string) {
+    return this.plans.findAll(routerId);
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseUUIDPipe) id: string) {
-    return this.plans.findOne(id);
+  findOne(
+    @Param('routerId', ParseUUIDPipe) routerId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.plans.findOne(routerId, id);
   }
 
   @Post()
   @Roles(UserRole.ADMIN)
-  create(@Body(new ZodValidationPipe(createPlanSchema)) dto: CreatePlanDto) {
-    return this.plans.create(dto);
+  create(
+    @Param('routerId', ParseUUIDPipe) routerId: string,
+    @Body(new ZodValidationPipe(createPlanSchema)) dto: CreatePlanDto,
+  ) {
+    return this.plans.create(routerId, dto);
   }
 
   @Patch(':id')
   @Roles(UserRole.ADMIN)
   update(
+    @Param('routerId', ParseUUIDPipe) routerId: string,
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(updatePlanSchema)) dto: UpdatePlanDto,
   ) {
-    return this.plans.update(id, dto);
+    return this.plans.update(routerId, id, dto);
   }
 
   @Delete(':id')
   @Roles(UserRole.ADMIN)
-  remove(@Param('id', ParseUUIDPipe) id: string) {
-    return this.plans.remove(id);
+  remove(
+    @Param('routerId', ParseUUIDPipe) routerId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.plans.remove(routerId, id);
   }
 }

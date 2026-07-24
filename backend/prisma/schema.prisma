@@ -178,6 +178,7 @@ model Router {
   health         RouterHealth   @default(UNKNOWN)
   lastHeartbeat  DateTime?
   remotePeer     RemotePeer?
+  plans          Plan[]
   voucherBatches VoucherBatch[]
   vouchers       Voucher[]
   sessions       Session[]
@@ -260,6 +261,8 @@ model Plan {
   id              String         @id @default(uuid())
   tenantId        String
   tenant          Tenant         @relation(fields: [tenantId], references: [id])
+  routerId        String?
+  router          Router?        @relation(fields: [routerId], references: [id])
   name            String
   slug            String
   description     String?
@@ -277,8 +280,9 @@ model Plan {
   updatedAt       DateTime       @updatedAt
   deletedAt       DateTime?
 
-  @@unique([tenantId, slug])
+  @@unique([tenantId, routerId, slug])
   @@index([tenantId])
+  @@index([routerId])
   @@index([tenantId, status])
 }
 

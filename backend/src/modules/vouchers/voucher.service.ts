@@ -67,7 +67,7 @@ export class VoucherService {
     if (!router) throw new NotFoundException('Router not found');
 
     const plan = await this.prisma.plan.findFirst({
-      where: { id: dto.planId, deletedAt: null },
+      where: { id: dto.planId, routerId, deletedAt: null },
       select: {
         id: true,
         userProfile: true,

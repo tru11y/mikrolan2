@@ -114,6 +114,7 @@ export class MetricsService {
     const vouchers = await this.prisma.voucher.findMany({
       where: {
         status: { in: [VoucherStatus.USED, VoucherStatus.ACTIVE] },
+        ...(query.routerId ? { routerId: query.routerId } : {}),
       },
       orderBy: { updatedAt: 'desc' },
       take: query.limit,

@@ -37,11 +37,13 @@ function slugify(name: string): string {
 export class PlansService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(dto: CreatePlanDto) {
-    const slug = await this.uniqueSlug(slugify(dto.name));
+  async create(routerId: string, dto: CreatePlanDto) {
+    await this.assertRouter(routerId);
+    const slug = await this.uniqueSlug(routerId, slugify(dto.name));
     const created = await this.prisma.plan.create({
       // tenantId injected by the Prisma tenant middleware.
       data: {
+        routerId,
         name: dto.name,
         slug,
         description: dto.description,
@@ -52,32 +54,32 @@ export class PlansService {
         dataLimitMb: dto.dataLimitMb ?? null,
         userProfile: slug,
         displayOrder: dto.displayOrder ?? 0,
-      } as Prisma.PlanCreateInput,
+      } as unknown as Prisma.PlanUncheckedCreateInput,
       select: PLAN_PUBLIC,
     });
-    await this.audit(AuditAction.CREATE, created.id, { slug });
+    await this.audit(AuditAction.CREATE, created.id, { slug, routerId });
     return created;
   }
 
-  findAll() {
+  findAll(routerId: string) {
     return this.prisma.plan.findMany({
-      where: { deletedAt: null },
+      where: { routerId, deletedAt: null },
       select: PLAN_PUBLIC,
       orderBy: [{ displayOrder: 'asc' }, { createdAt: 'desc' }],
     });
   }
 
-  async findOne(id: string) {
+  async findOne(routerId: string, id: string) {
     const plan = await this.prisma.plan.findFirst({
-      where: { id, deletedAt: null },
+      where: { id, routerId, deletedAt: null },
       select: PLAN_PUBLIC,
     });
     if (!plan) throw new NotFoundException('Plan not found');
     return plan;
   }
 
-  async update(id: string, dto: UpdatePlanDto) {
-    await this.findOne(id); // ownership + existence (404 cross-tenant)
+  async update(routerId: string, id: string, dto: UpdatePlanDto) {
+    await this.findOne(routerId, id); // ownership + existence (404 cross-tenant/router)
 
     const data: Prisma.PlanUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;
@@ -94,11 +96,11 @@ export class PlansService {
     // Middleware rewrites update→updateMany (tenant-scoped); no select here.
     await this.prisma.plan.update({ where: { id }, data });
     await this.audit(AuditAction.UPDATE, id, {});
-    return this.findOne(id);
+    return this.findOne(routerId, id);
   }
 
-  async remove(id: string) {
-    await this.findOne(id);
+  async remove(routerId: string, id: string) {
+    await this.findOne(routerId, id);
     await this.prisma.plan.update({
       where: { id },
       data: { deletedAt: new Date() },
@@ -107,11 +109,20 @@ export class PlansService {
     return { deleted: true };
   }
 
-  // Unique per tenant, counting soft-deleted rows (they keep the slug via the
-  // (tenantId, slug) unique index).
-  private async uniqueSlug(base: string): Promise<string> {
+  // Ensures the router exists within the caller's tenant (404 otherwise).
+  private async assertRouter(routerId: string): Promise<void> {
+    const router = await this.prisma.router.findFirst({
+      where: { id: routerId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!router) throw new NotFoundException('Router not found');
+  }
+
+  // Unique per router, counting soft-deleted rows (they keep the slug via the
+  // (tenantId, routerId, slug) unique index).
+  private async uniqueSlug(routerId: string, base: string): Promise<string> {
     const rows = await this.prisma.plan.findMany({
-      where: { slug: { startsWith: base } },
+      where: { routerId, slug: { startsWith: base } },
       select: { slug: true },
     });
     const taken = new Set(rows.map((r) => r.slug));
