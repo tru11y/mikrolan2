@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ScrollView, View, Text } from 'react-native';
+import { Alert, Pressable, ScrollView, View, Text } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { api, type MetricsPeriod } from '@/src/lib/api';
 import {
@@ -7,19 +8,16 @@ import {
   Card,
   Empty,
   Mono,
-  Pill,
   Row,
   SectionTitle,
-  Stat,
-  Subtitle,
   theme,
   Title,
 } from '@/src/components/ui';
 
 const PERIODS: { label: string; value: MetricsPeriod }[] = [
-  { label: 'Aujourd’hui', value: 'today' },
-  { label: '7 jours', value: '7d' },
-  { label: '30 jours', value: '30d' },
+  { label: "Aujourd'hui", value: 'today' },
+  { label: 'Cette Semaine', value: '7d' },
+  { label: 'Ce Mois', value: '30d' },
 ];
 
 export default function RapportScreen() {
@@ -40,66 +38,125 @@ export default function RapportScreen() {
       style={{ flex: 1, backgroundColor: theme.bg }}
       contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 32 }}
     >
-      <View>
-        <Title>Rapports & Revenus</Title>
-        <Subtitle>Statistiques de vente de tickets WiFi</Subtitle>
-      </View>
-
-      <Row style={{ justifyContent: 'flex-start', gap: 8 }}>
-        {PERIODS.map((p) => (
-          <Pill
-            key={p.value}
-            label={p.label}
-            active={p.value === period}
-            onPress={() => setPeriod(p.value)}
-          />
-        ))}
+      <Row>
+        <View>
+          <Title>Rapport financier</Title>
+          <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
+            Statistiques de vente de tickets WiFi
+          </Text>
+        </View>
+        <Pressable
+          onPress={() => Alert.alert('Exporter CSV', 'Bientôt disponible sur cette version.')}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            backgroundColor: theme.surface,
+            borderWidth: 1,
+            borderColor: theme.border,
+            borderRadius: 12,
+            paddingHorizontal: 10,
+            paddingVertical: 10,
+          }}
+        >
+          <Ionicons name="download-outline" size={16} color={theme.secondary} />
+          <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '700' }}>
+            Exporter CSV
+          </Text>
+        </Pressable>
       </Row>
 
-      <Card>
-        <Text style={{ color: theme.textMuted, fontSize: 12 }}>
-          CHIFFRE D’AFFAIRES
+      {/* Filtre de période */}
+      <Row
+        style={{
+          backgroundColor: theme.surface,
+          borderWidth: 1,
+          borderColor: theme.border,
+          borderRadius: 16,
+          padding: 6,
+          gap: 4,
+        }}
+      >
+        {PERIODS.map((p) => {
+          const active = p.value === period;
+          return (
+            <Pressable
+              key={p.value}
+              onPress={() => setPeriod(p.value)}
+              style={{
+                flex: 1,
+                paddingVertical: 8,
+                borderRadius: 12,
+                alignItems: 'center',
+                backgroundColor: active ? theme.primary : 'transparent',
+              }}
+            >
+              <Text
+                style={{
+                  color: active ? theme.primaryText : theme.textMuted,
+                  fontSize: 12,
+                  fontWeight: '700',
+                }}
+              >
+                {p.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </Row>
+
+      {/* Chiffre d'affaires total */}
+      <Card style={{ gap: 8 }}>
+        <Text
+          style={{
+            color: theme.textMuted,
+            fontSize: 11,
+            fontWeight: '700',
+            letterSpacing: 0.5,
+          }}
+        >
+          CHIFFRE D'AFFAIRES TOTAL
         </Text>
-        <Row style={{ alignItems: 'flex-end', justifyContent: 'flex-start', marginTop: 4 }}>
-          <Text style={{ color: theme.success, fontSize: 30, fontWeight: '800' }}>
-            {metrics.isLoading
-              ? '…'
-              : (data?.revenueXof ?? 0).toLocaleString('fr-FR')}
-          </Text>
-          <Text style={{ color: theme.textMuted, marginLeft: 6, marginBottom: 6 }}>
-            FCFA
-          </Text>
-        </Row>
+        <Mono style={{ color: theme.success, fontSize: 30, fontWeight: '900' }}>
+          {metrics.isLoading ? '…' : (data?.revenueXof ?? 0).toLocaleString('fr-FR')} FCFA
+        </Mono>
+        {data?.trendPct != null ? (
+          <Row style={{ justifyContent: 'flex-start', gap: 6 }}>
+            <Ionicons
+              name={data.trendPct >= 0 ? 'trending-up' : 'trending-down'}
+              size={16}
+              color={theme.success}
+            />
+            <Text style={{ color: theme.success, fontSize: 12 }}>
+              {data.trendPct >= 0 ? '+' : ''}
+              {data.trendPct.toFixed(0)}% par rapport à la période précédente (
+              {data.ticketsGenerated} tickets vendus)
+            </Text>
+          </Row>
+        ) : null}
       </Card>
 
-      <Row style={{ gap: 12, alignItems: 'stretch' }}>
-        <Stat
-          value={`${data?.ticketsGenerated ?? 0}`}
-          label="Tickets vendus"
-          tone="primary"
-        />
-        <Stat value={`${data?.ticketsUsed ?? 0}`} label="Utilisés" tone="secondary" />
-        <Stat
-          value={`${data?.activeSessions ?? 0}`}
-          label="Sessions actives"
-          tone="gold"
-        />
-      </Row>
+      {/* Répartition par forfait */}
+      <Card style={{ gap: 12 }}>
+        <Row style={{ gap: 8, justifyContent: 'flex-start' }}>
+          <Ionicons name="pie-chart-outline" size={16} color={theme.primary} />
+          <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
+            Répartition par forfait
+          </Text>
+        </Row>
 
-      <View>
-        <SectionTitle>Répartition par forfait</SectionTitle>
         {!data?.byPlan.length ? (
           <Empty text="Aucune vente sur cette période." />
         ) : (
-          <View style={{ gap: 12 }}>
+          <View style={{ gap: 10 }}>
             {data.byPlan.map((p) => (
-              <Card key={p.planId} style={{ gap: 8 }}>
+              <View key={p.planId} style={{ gap: 4 }}>
                 <Row>
-                  <Text style={{ color: theme.text, fontWeight: '700' }}>
+                  <Text style={{ color: theme.text, fontSize: 12, fontWeight: '600' }}>
                     {p.planName}
                   </Text>
-                  <Mono style={{ color: theme.text }}>
-                    {p.revenueXof.toLocaleString('fr-FR')} FCFA
+                  <Mono style={{ color: theme.success, fontSize: 12, fontWeight: '700' }}>
+                    {p.revenueXof.toLocaleString('fr-FR')} FCFA ({p.sold} tickets)
                   </Mono>
                 </Row>
                 <View
@@ -119,16 +176,13 @@ export default function RapportScreen() {
                     }}
                   />
                 </View>
-                <Text style={{ color: theme.textMuted, fontSize: 12 }}>
-                  {p.sold} ticket(s) · {p.priceXof.toLocaleString('fr-FR')} FCFA
-                  l’unité
-                </Text>
-              </Card>
+              </View>
             ))}
           </View>
         )}
-      </View>
+      </Card>
 
+      {/* Clients récents (hors réf, fonctionnalité réelle) */}
       <View>
         <SectionTitle>Clients récents</SectionTitle>
         {!clients.data?.length ? (
