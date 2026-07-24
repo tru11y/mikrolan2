@@ -10,6 +10,7 @@ export interface PlanForProfile {
   userProfile: string;
   downloadKbps: number | null;
   uploadKbps: number | null;
+  sharedUsers?: number; // logins simultanés (RouterOS shared-users)
 }
 
 export interface HotspotUserSpec {
@@ -143,21 +144,27 @@ export async function ensureUserProfile(
     '/ip/hotspot/user/profile/print',
     '=.proplist=.id,name',
   ]);
+  const sharedUsers =
+    plan.sharedUsers && plan.sharedUsers > 0 ? String(plan.sharedUsers) : undefined;
   const existing = rows.find((r) => r.name === plan.userProfile);
   const id = idOf(existing);
   if (id) {
-    if (rateLimit) {
+    if (rateLimit || sharedUsers) {
       await c.command([
         '/ip/hotspot/user/profile/set',
         `=.id=${id}`,
-        ...attrs({ 'rate-limit': rateLimit }),
+        ...attrs({ 'rate-limit': rateLimit, 'shared-users': sharedUsers }),
       ]);
     }
     return;
   }
   await c.command([
     '/ip/hotspot/user/profile/add',
-    ...attrs({ name: plan.userProfile, 'rate-limit': rateLimit }),
+    ...attrs({
+      name: plan.userProfile,
+      'rate-limit': rateLimit,
+      'shared-users': sharedUsers,
+    }),
   ]);
 }
 
