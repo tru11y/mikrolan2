@@ -168,6 +168,29 @@ export async function ensureUserProfile(
   ]);
 }
 
+export interface HotspotServer {
+  id: string;
+  name: string;
+  interface: string;
+}
+
+/** Lists the hotspot servers on the router (for the ticket « Serveur Hotspot »). */
+export async function listHotspotServers(
+  c: RouterOsApiClient,
+): Promise<HotspotServer[]> {
+  const rows = await c.command([
+    '/ip/hotspot/print',
+    '=.proplist=.id,name,interface',
+  ]);
+  return rows
+    .filter((r) => r.name)
+    .map((r) => ({
+      id: r['.id'] ?? '',
+      name: r.name ?? '',
+      interface: r.interface ?? '',
+    }));
+}
+
 /** Adds a hotspot user (voucher). Returns the RouterOS `.id`. */
 export async function addHotspotUser(
   c: RouterOsApiClient,

@@ -3,7 +3,12 @@ import {
   type ApiConnectionParams,
   type ApiRow,
 } from './MikroTikApiClient';
-import type { VoucherItem, VoucherPushParams, LiveSession } from '@/src/lib/api';
+import type {
+  VoucherItem,
+  VoucherPushParams,
+  LiveSession,
+  HotspotServer,
+} from '@/src/lib/api';
 
 // `.proplist` is REQUIRED on hotspot profile/active prints: a bare print can
 // stall forever when a profile carries a large on-login script (MikroTicket).
@@ -79,4 +84,20 @@ export async function terminateActiveLan(
   mikrotikId: string,
 ): Promise<void> {
   await withApi(creds, (c) => c.remove('/ip/hotspot/active', mikrotikId));
+}
+
+/** Lists hotspot servers over the LAN (free/offline mode), for the ticket « Serveur Hotspot » dropdown. */
+export async function listHotspotServersLan(
+  creds: ApiConnectionParams,
+): Promise<HotspotServer[]> {
+  return withApi(creds, async (c) => {
+    const rows = await c.print('/ip/hotspot', ['=.proplist=.id,name,interface']);
+    return rows
+      .filter((r) => r.name)
+      .map((r) => ({
+        id: r['.id'] ?? '',
+        name: r.name ?? '',
+        interface: r.interface ?? '',
+      }));
+  });
 }

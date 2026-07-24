@@ -1,7 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ManagementMode } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RemoteRouterService } from '../remote-access/remote-router.service';
-import { configureHotspot } from '../../common/routeros/hotspot.ops';
+import {
+  configureHotspot,
+  listHotspotServers,
+  type HotspotServer,
+} from '../../common/routeros/hotspot.ops';
 import type { ConfigureHotspotDto } from './dto/hotspot.schemas';
 
 @Injectable()
@@ -36,6 +41,21 @@ export class HotspotService {
     );
 
     return { configured: true, gateway, network };
+  }
+
+  /** Lists hotspot servers for the ticket « Serveur Hotspot » dropdown (REMOTE only; LOCAL routers are queried by the app over the LAN). */
+  async listServers(routerId: string): Promise<HotspotServer[]> {
+    const router = await this.prisma.router.findFirst({
+      where: { id: routerId, deletedAt: null },
+      select: { id: true, mode: true },
+    });
+    if (!router) throw new NotFoundException('Router not found');
+    if (router.mode !== ManagementMode.REMOTE) {
+      throw new BadRequestException(
+        'Routeur local : les serveurs se lisent via le LAN',
+      );
+    }
+    return this.remote.run(routerId, (client) => listHotspotServers(client));
   }
 
   private async assertRouter(routerId: string): Promise<void> {
