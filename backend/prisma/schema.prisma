@@ -87,6 +87,13 @@ enum PlanStatus {
   ARCHIVED
 }
 
+// Comptage de la validité : RADIO_PAUSE = temps connecté seulement (limit-uptime,
+// natif) ; ELAPSED = temps écoulé depuis la 1re connexion (fenêtre calendaire).
+enum PlanExpiration {
+  ELAPSED
+  RADIO_PAUSE
+}
+
 enum VoucherStatus {
   GENERATED // créé, poussé sur le routeur, jamais utilisé
   ACTIVE // première connexion faite, session en cours
@@ -271,6 +278,8 @@ model Plan {
   downloadKbps    Int? // rate-limit descendant (null = illimité)
   uploadKbps      Int? // rate-limit montant
   dataLimitMb     Int? // quota (limit-bytes-total), null = illimité
+  sharedUsers     Int            @default(1) // logins simultanés (RouterOS shared-users)
+  expirationMode  PlanExpiration @default(RADIO_PAUSE) // Temps écoulé vs Pause radio
   userProfile     String         @default("default") // nom du profile RouterOS
   status          PlanStatus     @default(ACTIVE)
   displayOrder    Int            @default(0)

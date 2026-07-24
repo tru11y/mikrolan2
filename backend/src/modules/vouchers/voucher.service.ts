@@ -47,6 +47,7 @@ const VOUCHER_PUBLIC = {
 export interface VoucherPushParams {
   userProfile: string;
   rateLimit?: string;
+  sharedUsers?: number;
   limitUptime: string;
   limitBytesTotal?: number;
   comment: string;
@@ -75,6 +76,7 @@ export class VoucherService {
         dataLimitMb: true,
         downloadKbps: true,
         uploadKbps: true,
+        sharedUsers: true,
       },
     });
     if (!plan) throw new NotFoundException('Plan not found');
@@ -91,6 +93,7 @@ export class VoucherService {
         plan.uploadKbps && plan.downloadKbps
           ? `${plan.uploadKbps}k/${plan.downloadKbps}k`
           : undefined,
+      sharedUsers: plan.sharedUsers,
       limitUptime: `${plan.durationMinutes}m`,
       limitBytesTotal: plan.dataLimitMb
         ? plan.dataLimitMb * 1024 * 1024
