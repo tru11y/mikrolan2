@@ -15,8 +15,10 @@ import { HotspotService } from './hotspot.service';
 import {
   configureHotspotSchema,
   createIpBindingSchema,
+  setInternetSharingSchema,
   type ConfigureHotspotDto,
   type CreateIpBindingDto,
+  type SetInternetSharingDto,
 } from './dto/hotspot.schemas';
 
 @Controller('routers/:id/hotspot')
@@ -61,5 +63,21 @@ export class HotspotController {
     @Param('bindingId') bindingId: string,
   ) {
     return this.hotspot.removeIpBinding(id, bindingId);
+  }
+
+  @Get('internet-sharing')
+  getInternetSharing(@Param('id', ParseUUIDPipe) id: string) {
+    return this.hotspot.getInternetSharing(id);
+  }
+
+  @Post('internet-sharing')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  setInternetSharing(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(setInternetSharingSchema))
+    dto: SetInternetSharingDto,
+  ) {
+    return this.hotspot.setInternetSharing(id, dto.blocked);
   }
 }

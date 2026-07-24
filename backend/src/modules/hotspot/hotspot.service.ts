@@ -5,9 +5,11 @@ import { RemoteRouterService } from '../remote-access/remote-router.service';
 import {
   addIpBinding,
   configureHotspot,
+  isInternetSharingBlocked,
   listHotspotServers,
   listIpBindings,
   removeIpBinding,
+  setInternetSharingBlocked,
   type HotspotServer,
   type IpBinding,
 } from '../../common/routeros/hotspot.ops';
@@ -76,6 +78,30 @@ export class HotspotService {
       removeIpBinding(client, bindingId),
     );
     return { removed: true };
+  }
+
+  /**
+   * Anti-tethering toggle (TTL mangle rule). ⚠️ Applies a live firewall change
+   * to the router the operator manages — never triggered automatically; the
+   * app calls this only on explicit user action.
+   */
+  async getInternetSharing(routerId: string): Promise<{ blocked: boolean }> {
+    await this.assertRemote(routerId);
+    const blocked = await this.remote.run(routerId, (client) =>
+      isInternetSharingBlocked(client),
+    );
+    return { blocked };
+  }
+
+  async setInternetSharing(
+    routerId: string,
+    blocked: boolean,
+  ): Promise<{ blocked: boolean }> {
+    await this.assertRemote(routerId);
+    await this.remote.run(routerId, (client) =>
+      setInternetSharingBlocked(client, blocked),
+    );
+    return { blocked };
   }
 
   private async assertRemote(routerId: string): Promise<void> {
