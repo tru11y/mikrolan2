@@ -8,6 +8,8 @@ import type {
   VoucherPushParams,
   LiveSession,
   HotspotServer,
+  IpBinding,
+  CreateIpBindingPayload,
 } from '@/src/lib/api';
 
 // `.proplist` is REQUIRED on hotspot profile/active prints: a bare print can
@@ -100,4 +102,48 @@ export async function listHotspotServersLan(
         interface: r.interface ?? '',
       }));
   });
+}
+
+/** Lists IP bindings over the LAN (free/offline mode). */
+export async function listIpBindingsLan(
+  creds: ApiConnectionParams,
+): Promise<IpBinding[]> {
+  return withApi(creds, async (c) => {
+    const rows = await c.print('/ip/hotspot/ip-binding', [
+      '=.proplist=.id,mac-address,address,server,type,comment',
+    ]);
+    return rows.map((r) => ({
+      id: r['.id'] ?? '',
+      macAddress: r['mac-address'] ?? '',
+      ipAddress: r.address || undefined,
+      server: r.server || undefined,
+      type: (r.type as IpBinding['type']) || 'regular',
+      comment: r.comment || undefined,
+    }));
+  });
+}
+
+/** Adds an IP binding over the LAN. Returns the RouterOS `.id`. */
+export async function addIpBindingLan(
+  creds: ApiConnectionParams,
+  binding: CreateIpBindingPayload,
+): Promise<string> {
+  return withApi(creds, async (c) => {
+    const data: Record<string, string> = {
+      'mac-address': binding.macAddress,
+      type: binding.type,
+    };
+    if (binding.ipAddress) data.address = binding.ipAddress;
+    if (binding.server) data.server = binding.server;
+    if (binding.comment) data.comment = binding.comment;
+    return c.add('/ip/hotspot/ip-binding', data);
+  });
+}
+
+/** Removes an IP binding over the LAN. */
+export async function removeIpBindingLan(
+  creds: ApiConnectionParams,
+  mikrotikId: string,
+): Promise<void> {
+  await withApi(creds, (c) => c.remove('/ip/hotspot/ip-binding', mikrotikId));
 }

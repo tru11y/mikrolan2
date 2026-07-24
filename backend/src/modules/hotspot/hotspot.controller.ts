@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
@@ -13,7 +14,9 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { HotspotService } from './hotspot.service';
 import {
   configureHotspotSchema,
+  createIpBindingSchema,
   type ConfigureHotspotDto,
+  type CreateIpBindingDto,
 } from './dto/hotspot.schemas';
 
 @Controller('routers/:id/hotspot')
@@ -33,5 +36,30 @@ export class HotspotController {
   @Get('servers')
   listServers(@Param('id', ParseUUIDPipe) id: string) {
     return this.hotspot.listServers(id);
+  }
+
+  @Get('ip-bindings')
+  listIpBindings(@Param('id', ParseUUIDPipe) id: string) {
+    return this.hotspot.listIpBindings(id);
+  }
+
+  @Post('ip-bindings')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  addIpBinding(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(createIpBindingSchema)) dto: CreateIpBindingDto,
+  ) {
+    return this.hotspot.addIpBinding(id, dto);
+  }
+
+  @Delete('ip-bindings/:bindingId')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  removeIpBinding(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('bindingId') bindingId: string,
+  ) {
+    return this.hotspot.removeIpBinding(id, bindingId);
   }
 }

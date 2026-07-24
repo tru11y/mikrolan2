@@ -210,6 +210,68 @@ export async function addHotspotUser(
   return rows.find((r) => 'ret' in r)?.ret ?? '';
 }
 
+export type IpBindingType = 'bypassed' | 'blocked' | 'regular';
+
+export interface IpBinding {
+  id: string;
+  macAddress: string;
+  ipAddress?: string;
+  server?: string;
+  type: IpBindingType;
+  comment?: string;
+}
+
+export interface IpBindingSpec {
+  macAddress: string;
+  ipAddress?: string;
+  server?: string;
+  type: IpBindingType;
+  comment?: string;
+}
+
+/** Lists /ip/hotspot/ip-binding entries (bypass/block MAC devices). */
+export async function listIpBindings(
+  c: RouterOsApiClient,
+): Promise<IpBinding[]> {
+  const rows = await c.command([
+    '/ip/hotspot/ip-binding/print',
+    '=.proplist=.id,mac-address,address,server,type,comment',
+  ]);
+  return rows.map((r) => ({
+    id: r['.id'] ?? '',
+    macAddress: r['mac-address'] ?? '',
+    ipAddress: r.address || undefined,
+    server: r.server || undefined,
+    type: (r.type as IpBindingType) || 'regular',
+    comment: r.comment || undefined,
+  }));
+}
+
+/** Adds an IP binding. Returns the RouterOS `.id`. */
+export async function addIpBinding(
+  c: RouterOsApiClient,
+  b: IpBindingSpec,
+): Promise<string> {
+  const rows = await c.command([
+    '/ip/hotspot/ip-binding/add',
+    ...attrs({
+      'mac-address': b.macAddress,
+      address: b.ipAddress,
+      server: b.server,
+      type: b.type,
+      comment: b.comment,
+    }),
+  ]);
+  return rows.find((r) => 'ret' in r)?.ret ?? '';
+}
+
+export async function removeIpBinding(
+  c: RouterOsApiClient,
+  mikrotikId: string,
+): Promise<void> {
+  await c.command(['/ip/hotspot/ip-binding/remove', `=.id=${mikrotikId}`]);
+}
+
 export async function removeHotspotUser(
   c: RouterOsApiClient,
   mikrotikId: string,

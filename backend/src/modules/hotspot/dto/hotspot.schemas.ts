@@ -21,3 +21,23 @@ export const configureHotspotSchema = z
   })
   .strict();
 export type ConfigureHotspotDto = z.infer<typeof configureHotspotSchema>;
+
+const macAddress = z
+  .string()
+  .trim()
+  .regex(/^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/, { message: 'Invalid MAC' });
+const ipAddress = z
+  .string()
+  .trim()
+  .regex(/^(\d{1,3}\.){3}\d{1,3}$/, { message: 'Invalid IP' });
+
+export const createIpBindingSchema = z
+  .object({
+    macAddress,
+    ipAddress: ipAddress.optional(),
+    server: z.string().trim().max(64).optional(),
+    type: z.enum(['bypassed', 'blocked', 'regular']),
+    comment: z.string().trim().max(200).optional(),
+  })
+  .strict();
+export type CreateIpBindingDto = z.infer<typeof createIpBindingSchema>;
