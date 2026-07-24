@@ -37,6 +37,10 @@ export default function RootLayout() {
             />
             <Stack.Screen name="sessions" options={{ title: 'Sessions' }} />
             <Stack.Screen name="pro" options={{ title: 'MikroLan2 PRO' }} />
+            <Stack.Screen
+              name="router-settings"
+              options={{ title: 'Paramètres routeur' }}
+            />
           </Stack>
         </AuthProvider>
       </QueryProvider>
