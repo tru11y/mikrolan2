@@ -265,6 +265,59 @@ export async function addIpBinding(
   return rows.find((r) => 'ret' in r)?.ret ?? '';
 }
 
+// Standard hotspot-billing anti-tethering recipe: client OSes send TTL=64/128
+// on their own traffic; a shared/tethered device is one extra hop away, so its
+// forwarded packets arrive with TTL-1. Dropping ttl=63/127 in forward blocks
+// tethered traffic without touching direct client traffic. Idempotent via a
+// stable comment; ⚠️ never applied automatically — the operator enables it
+// explicitly from the app, ideally off-peak, since a live hotspot serves real
+// paying customers.
+const TETHER_RULE_COMMENT = 'mikrolan-antitether';
+
+export async function isInternetSharingBlocked(
+  c: RouterOsApiClient,
+): Promise<boolean> {
+  const rows = await c.command([
+    '/ip/firewall/mangle/print',
+    '=.proplist=.id,comment',
+  ]);
+  return rows.some((r) => r.comment === TETHER_RULE_COMMENT);
+}
+
+export async function setInternetSharingBlocked(
+  c: RouterOsApiClient,
+  blocked: boolean,
+): Promise<void> {
+  const rows = await c.command([
+    '/ip/firewall/mangle/print',
+    '=.proplist=.id,comment',
+  ]);
+  const existingIds = rows
+    .filter((r) => r.comment === TETHER_RULE_COMMENT)
+    .map((r) => r['.id'])
+    .filter((id): id is string => Boolean(id));
+
+  if (!blocked) {
+    for (const id of existingIds) {
+      await c.command(['/ip/firewall/mangle/remove', `=.id=${id}`]);
+    }
+    return;
+  }
+  if (existingIds.length > 0) return; // already enabled, idempotent
+
+  await c.command([
+    '/ip/firewall/mangle/add',
+    ...attrs({
+      chain: 'forward',
+      protocol: 'tcp',
+      'connection-state': 'new',
+      ttl: '63,127',
+      action: 'drop',
+      comment: TETHER_RULE_COMMENT,
+    }),
+  ]);
+}
+
 export async function removeIpBinding(
   c: RouterOsApiClient,
   mikrotikId: string,

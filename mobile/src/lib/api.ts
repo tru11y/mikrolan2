@@ -517,6 +517,22 @@ export const api = {
       );
       return unwrap(res);
     },
+    async getInternetSharing(id: string): Promise<{ blocked: boolean }> {
+      const res = await apiClient.get<ApiEnvelope<{ blocked: boolean }>>(
+        `/routers/${id}/hotspot/internet-sharing`,
+      );
+      return unwrap(res);
+    },
+    async setInternetSharing(
+      id: string,
+      blocked: boolean,
+    ): Promise<{ blocked: boolean }> {
+      const res = await apiClient.post<ApiEnvelope<{ blocked: boolean }>>(
+        `/routers/${id}/hotspot/internet-sharing`,
+        { blocked },
+      );
+      return unwrap(res);
+    },
     async generateVouchers(
       id: string,
       payload: { planId: string; quantity: number },

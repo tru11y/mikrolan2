@@ -41,3 +41,8 @@ export const createIpBindingSchema = z
   })
   .strict();
 export type CreateIpBindingDto = z.infer<typeof createIpBindingSchema>;
+
+export const setInternetSharingSchema = z
+  .object({ blocked: z.boolean() })
+  .strict();
+export type SetInternetSharingDto = z.infer<typeof setInternetSharingSchema>;
