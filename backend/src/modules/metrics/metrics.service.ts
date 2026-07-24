@@ -30,6 +30,8 @@ export interface MetricsSummary {
   ticketsGenerated: number;
   ticketsUsed: number;
   activeSessions: number;
+  previousRevenueXof: number;
+  trendPct: number | null; // vs période précédente ; null si aucune vente avant
   byPlan: PlanBreakdown[];
 }
 
@@ -74,6 +76,22 @@ export class MetricsService {
       where: { status: SessionStatus.ACTIVE, ...routerFilter },
     });
 
+    // Previous window of equal length, for the trend badge (« +24% vs … »).
+    const windowMs = Date.now() - start.getTime();
+    const prevStart = new Date(start.getTime() - windowMs);
+    const prevVouchers = await this.prisma.voucher.findMany({
+      where: {
+        createdAt: { gte: prevStart, lt: start },
+        status: { not: VoucherStatus.REVOKED },
+        ...routerFilter,
+      },
+      select: { plan: { select: { priceXof: true } } },
+    });
+    const previousRevenueXof = prevVouchers.reduce(
+      (sum, v) => sum + v.plan.priceXof,
+      0,
+    );
+
     const byPlanMap = new Map<string, PlanBreakdown>();
     let revenueXof = 0;
     let ticketsUsed = 0;
@@ -101,6 +119,13 @@ export class MetricsService {
       ticketsGenerated: vouchers.length,
       ticketsUsed,
       activeSessions,
+      previousRevenueXof,
+      trendPct:
+        previousRevenueXof > 0
+          ? Math.round(
+              ((revenueXof - previousRevenueXof) / previousRevenueXof) * 100,
+            )
+          : null,
       byPlan: [...byPlanMap.values()].sort((a, b) => b.revenueXof - a.revenueXof),
     };
   }

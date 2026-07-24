@@ -110,6 +110,8 @@ export type MetricsSummary = {
   ticketsGenerated: number;
   ticketsUsed: number;
   activeSessions: number;
+  previousRevenueXof: number;
+  trendPct: number | null;
   byPlan: PlanBreakdown[];
 };
 
