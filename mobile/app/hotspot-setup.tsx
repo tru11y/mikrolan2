@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ScrollView } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { api, extractErrorMessage } from '@/src/lib/api';
 import {
@@ -8,10 +8,11 @@ import {
   Card,
   Field,
   Label,
-  Screen,
   Subtitle,
+  theme,
   Title,
 } from '@/src/components/ui';
+import { BottomNav } from '@/src/components/BottomNav';
 
 export default function HotspotSetupScreen() {
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
@@ -43,8 +44,8 @@ export default function HotspotSetupScreen() {
   }
 
   return (
-    <Screen>
-      <ScrollView contentContainerStyle={{ gap: 16 }}>
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: 100 }}>
         <Title>Configurer le hotspot</Title>
         <Banner tone="warning">
           Cette action modifie le réseau du routeur (adresse, DHCP, serveur
@@ -75,6 +76,7 @@ export default function HotspotSetupScreen() {
           <Button title="Configurer" onPress={configure} loading={busy} />
         </Card>
       </ScrollView>
-    </Screen>
+      <BottomNav active="routeurs" />
+    </View>
   );
 }
