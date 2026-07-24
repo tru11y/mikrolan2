@@ -593,6 +593,82 @@ export default function RouterDetailScreen() {
           </View>
         </Card>
 
+        {/* Réseau Sans Fil (SSID) */}
+        <Card>
+          <Row>
+            <Row style={{ gap: 12, flex: 1, justifyContent: 'flex-start' }}>
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 12,
+                  backgroundColor: theme.primary + '22',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="wifi" size={20} color={theme.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: theme.textMuted, fontSize: 12 }}>
+                  Réseau Sans Fil (SSID)
+                </Text>
+                <Text style={{ color: theme.text, fontWeight: '700', marginTop: 1 }}>
+                  Hotspot du routeur
+                </Text>
+              </View>
+            </Row>
+            <Pressable
+              onPress={() =>
+                router.push({ pathname: '/hotspot-setup', params: { routerId: id } })
+              }
+            >
+              <Text style={{ color: theme.secondary, fontWeight: '600' }}>Modifier</Text>
+            </Pressable>
+          </Row>
+        </Card>
+
+        {/* Cartes astuce */}
+        <Row style={{ gap: 12, alignItems: 'stretch' }}>
+          <Pressable
+            style={{ flex: 1 }}
+            onPress={() =>
+              router.push({ pathname: '/hotspot-setup', params: { routerId: id } })
+            }
+          >
+            <Card style={{ gap: 6 }}>
+              <Row style={{ gap: 6, justifyContent: 'flex-start' }}>
+                <Ionicons name="shield-outline" size={15} color={theme.warning} />
+                <Text style={{ color: theme.warning, fontSize: 11, fontWeight: '700' }}>
+                  ANTI-TETHERING
+                </Text>
+              </Row>
+              <Text style={{ color: theme.text, fontSize: 12 }}>
+                Bloquer le partage via TTL=1 dans RouterOS.
+              </Text>
+              <Text style={{ color: theme.primary, fontSize: 11, fontWeight: '600' }}>
+                Configurer →
+              </Text>
+            </Card>
+          </Pressable>
+          <Pressable style={{ flex: 1 }} onPress={() => router.push('/(tabs)/rapport')}>
+            <Card style={{ gap: 6 }}>
+              <Row style={{ gap: 6, justifyContent: 'flex-start' }}>
+                <Ionicons name="trending-up-outline" size={15} color={theme.secondary} />
+                <Text style={{ color: theme.secondary, fontSize: 11, fontWeight: '700' }}>
+                  ANALYSE VENTES
+                </Text>
+              </Row>
+              <Text style={{ color: theme.text, fontSize: 12 }}>
+                Rapport financier & journal de caisse.
+              </Text>
+              <Text style={{ color: theme.primary, fontSize: 11, fontWeight: '600' }}>
+                Voir le rapport →
+              </Text>
+            </Card>
+          </Pressable>
+        </Row>
+
         <Card>
           <Field label="Alias" value={alias} onChangeText={setAlias} />
           <Button title="Enregistrer" onPress={saveAlias} loading={busy} />
