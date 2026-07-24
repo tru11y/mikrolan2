@@ -430,6 +430,27 @@ export default function RouterDetailScreen() {
                 />
               </Row>
             </View>
+            <Pressable
+              accessibilityLabel="Paramètres du routeur"
+              onPress={() =>
+                router.push({
+                  pathname: '/router-settings',
+                  params: { routerId: id },
+                })
+              }
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: theme.border,
+                backgroundColor: theme.surfaceAlt,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name="settings-outline" size={20} color={theme.text} />
+            </Pressable>
           </Row>
         </Card>
 
