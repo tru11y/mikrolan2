@@ -11,7 +11,6 @@ import {
 } from '@/src/services/mikrotik-lan/MikroTikApiClient';
 import { pushWireGuardConfig } from '@/src/services/mikrotik-lan/pushWireGuard';
 import {
-  deleteLocalCredentials,
   getLocalCredentials,
 } from '@/src/lib/router-credentials';
 import { getWifiInfo } from '@/src/lib/lanBinder';
@@ -268,19 +267,12 @@ export default function RouterDetailScreen() {
     }
   }
 
-  const [alias, setAlias] = useState('');
   const [resource, setResource] = useState<SystemResource | null>(null);
   const [resourceVia, setResourceVia] = useState<'lan' | 'remote' | null>(null);
   const [lanState, setLanState] = useState<
     'idle' | 'loading' | 'ok' | 'no-creds' | 'error'
   >('idle');
   const [lanError, setLanError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (query.data) setAlias(query.data.alias ?? '');
-  }, [query.data]);
 
   const remoteActive = remoteQuery.data?.status === 'ACTIVE';
 
@@ -330,36 +322,6 @@ export default function RouterDetailScreen() {
   useEffect(() => {
     void loadLocal();
   }, [loadLocal]);
-
-  async function saveAlias() {
-    if (!id) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await api.routers.update(id, { alias: alias.trim() || null });
-      await qc.invalidateQueries({ queryKey: ['router', id] });
-      await qc.invalidateQueries({ queryKey: ['routers'] });
-    } catch (e) {
-      setError(extractErrorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function remove() {
-    if (!id) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await api.routers.remove(id);
-      await deleteLocalCredentials(id);
-      await qc.invalidateQueries({ queryKey: ['routers'] });
-      router.back();
-    } catch (e) {
-      setError(extractErrorMessage(e));
-      setBusy(false);
-    }
-  }
 
   if (query.isLoading) {
     return (
@@ -478,10 +440,98 @@ export default function RouterDetailScreen() {
           </Card>
         ) : null}
 
-        {error ? <Banner tone="danger">{error}</Banner> : null}
         {lanState === 'error' ? (
           <Banner tone="warning">{lanError ?? 'Routeur injoignable'}</Banner>
         ) : null}
+
+        {/* Accès à distance (réf: carte bleue après le moniteur) */}
+        <Card style={{ borderColor: theme.gold + '55' }}>
+          <Row>
+            <Row style={{ gap: 6, justifyContent: 'flex-start' }}>
+              <Ionicons name="globe-outline" size={16} color={theme.gold} />
+              <Label>Gestion à distance</Label>
+            </Row>
+            <Badge label="PRO" tone="gold" />
+          </Row>
+          {!isPro ? (
+            <>
+              <Subtitle>
+                Réservé au plan PRO. Le pilotage hors du réseau local nécessite un
+                abonnement.
+              </Subtitle>
+              <Button
+                title="Voir l’abonnement"
+                variant="ghost"
+                onPress={() => router.push('/(tabs)/account')}
+              />
+            </>
+          ) : (
+            <>
+              <Subtitle>
+                {remoteQuery.data?.status === 'ACTIVE'
+                  ? `Tunnel actif — IP ${remoteQuery.data.wgIp}, joignable via ${remoteQuery.data.endpoint}.`
+                  : 'Activez un tunnel WireGuard sécurisé pour piloter ce routeur à distance.'}
+              </Subtitle>
+              {remoteMsg ? (
+                <Banner tone={remoteMsg.tone}>{remoteMsg.text}</Banner>
+              ) : null}
+              {remoteQuery.data?.status === 'ACTIVE' ? (
+                <Button
+                  title="Désactiver le tunnel"
+                  variant="danger"
+                  onPress={disableRemote}
+                  loading={remoteBusy}
+                />
+              ) : (
+                <Button
+                  title="Activer le tunnel à distance"
+                  onPress={enableRemote}
+                  loading={remoteBusy}
+                />
+              )}
+
+              {remoteQuery.data?.status === 'ACTIVE' ? (
+                <>
+                  <Button
+                    title={
+                      showCreds
+                        ? 'Masquer les identifiants'
+                        : 'Saisir les identifiants RouterOS (hors LAN)'
+                    }
+                    variant="ghost"
+                    onPress={() => setShowCreds((v) => !v)}
+                  />
+                  {showCreds ? (
+                    <>
+                      <Subtitle>
+                        Le tunnel est déjà en place : renseignez les identifiants
+                        du routeur pour restaurer le pilotage à distance, sans
+                        être sur son Wi-Fi.
+                      </Subtitle>
+                      <Field
+                        label="Utilisateur RouterOS"
+                        value={credUser}
+                        onChangeText={setCredUser}
+                        autoCapitalize="none"
+                      />
+                      <Field
+                        label="Mot de passe RouterOS"
+                        value={credPass}
+                        onChangeText={setCredPass}
+                        secureTextEntry
+                      />
+                      <Button
+                        title="Enregistrer les identifiants"
+                        onPress={saveCredentials}
+                        loading={credBusy}
+                      />
+                    </>
+                  ) : null}
+                </>
+              ) : null}
+            </>
+          )}
+        </Card>
 
         {/* Rangée de 4 tuiles carrées (réf) */}
         <Row style={{ gap: 8, alignItems: 'stretch' }}>
@@ -599,102 +649,6 @@ export default function RouterDetailScreen() {
           </Pressable>
         </Row>
 
-        <Card>
-          <Field label="Alias" value={alias} onChangeText={setAlias} />
-          <Button title="Enregistrer" onPress={saveAlias} loading={busy} />
-        </Card>
-
-        <Card>
-          <View
-            style={{
-              flexDirection: 'row',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-          >
-            <Label>Gestion à distance</Label>
-            <Badge label="PRO" tone="gold" />
-          </View>
-          {!isPro ? (
-            <>
-              <Subtitle>
-                Réservé au plan PRO. Le pilotage hors du réseau local nécessite un
-                abonnement.
-              </Subtitle>
-              <Button
-                title="Voir l’abonnement"
-                variant="ghost"
-                onPress={() => router.push('/(tabs)/account')}
-              />
-            </>
-          ) : (
-            <>
-              <Subtitle>
-                {remoteQuery.data?.status === 'ACTIVE'
-                  ? `Tunnel actif — IP ${remoteQuery.data.wgIp}, joignable via ${remoteQuery.data.endpoint}.`
-                  : 'Activez un tunnel WireGuard sécurisé pour piloter ce routeur à distance.'}
-              </Subtitle>
-              {remoteMsg ? (
-                <Banner tone={remoteMsg.tone}>{remoteMsg.text}</Banner>
-              ) : null}
-              {remoteQuery.data?.status === 'ACTIVE' ? (
-                <Button
-                  title="Désactiver le tunnel"
-                  variant="danger"
-                  onPress={disableRemote}
-                  loading={remoteBusy}
-                />
-              ) : (
-                <Button
-                  title="Activer le tunnel à distance"
-                  onPress={enableRemote}
-                  loading={remoteBusy}
-                />
-              )}
-
-              {remoteQuery.data?.status === 'ACTIVE' ? (
-                <>
-                  <Button
-                    title={
-                      showCreds
-                        ? 'Masquer les identifiants'
-                        : 'Saisir les identifiants RouterOS (hors LAN)'
-                    }
-                    variant="ghost"
-                    onPress={() => setShowCreds((v) => !v)}
-                  />
-                  {showCreds ? (
-                    <>
-                      <Subtitle>
-                        Le tunnel est déjà en place : renseignez les identifiants
-                        du routeur pour restaurer le pilotage à distance, sans
-                        être sur son Wi-Fi.
-                      </Subtitle>
-                      <Field
-                        label="Utilisateur RouterOS"
-                        value={credUser}
-                        onChangeText={setCredUser}
-                        autoCapitalize="none"
-                      />
-                      <Field
-                        label="Mot de passe RouterOS"
-                        value={credPass}
-                        onChangeText={setCredPass}
-                        secureTextEntry
-                      />
-                      <Button
-                        title="Enregistrer les identifiants"
-                        onPress={saveCredentials}
-                        loading={credBusy}
-                      />
-                    </>
-                  ) : null}
-                </>
-              ) : null}
-            </>
-          )}
-        </Card>
-
         <Button
           title="+ Créer des tickets"
           onPress={() =>
@@ -703,13 +657,6 @@ export default function RouterDetailScreen() {
               params: { routerId: id },
             })
           }
-        />
-
-        <Button
-          title="Supprimer le routeur"
-          variant="danger"
-          onPress={remove}
-          loading={busy}
         />
       </ScrollView>
       <BottomNav active="routeurs" />
