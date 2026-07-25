@@ -1,11 +1,15 @@
+import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import { useAuth } from '@/src/providers/auth-provider';
+import { api, extractErrorMessage } from '@/src/lib/api';
 import {
   Badge,
+  Banner,
   Button,
   Card,
+  Field,
   Label,
   Row,
   Subtitle,
@@ -47,8 +51,60 @@ function initialsOf(name?: string): string {
 
 export default function AccountScreen() {
   const router = useRouter();
-  const { me, isPro, logout, isBusy, apiBaseUrl } = useAuth();
+  const { me, isPro, logout, isBusy, apiBaseUrl, refreshProfile } = useAuth();
   const version = Constants.expoConfig?.version ?? '0.1.0';
+
+  const [name, setName] = useState(me?.user.name ?? '');
+  const [country, setCountry] = useState(me?.user.country ?? '');
+  const [profileBusy, setProfileBusy] = useState(false);
+  const [profileMsg, setProfileMsg] = useState<
+    { tone: 'success' | 'danger'; text: string } | null
+  >(null);
+
+  async function saveProfile() {
+    setProfileBusy(true);
+    setProfileMsg(null);
+    try {
+      await api.auth.updateProfile({
+        name: name.trim() || null,
+        country: country.trim() || null,
+      });
+      await refreshProfile();
+      setProfileMsg({ tone: 'success', text: 'Profil mis à jour.' });
+    } catch (e) {
+      setProfileMsg({ tone: 'danger', text: extractErrorMessage(e) });
+    } finally {
+      setProfileBusy(false);
+    }
+  }
+
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [passwordBusy, setPasswordBusy] = useState(false);
+  const [passwordMsg, setPasswordMsg] = useState<
+    { tone: 'success' | 'danger'; text: string } | null
+  >(null);
+
+  async function savePassword() {
+    setPasswordBusy(true);
+    setPasswordMsg(null);
+    try {
+      await api.auth.changePassword(currentPassword, newPassword);
+      setCurrentPassword('');
+      setNewPassword('');
+      setPasswordMsg({
+        tone: 'success',
+        text: 'Mot de passe changé. Reconnexion requise…',
+      });
+      // Password change revokes every session server-side (security
+      // boundary) — force a clean re-login rather than leave a stale token.
+      setTimeout(() => void logout(), 1200);
+    } catch (e) {
+      setPasswordMsg({ tone: 'danger', text: extractErrorMessage(e) });
+    } finally {
+      setPasswordBusy(false);
+    }
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -91,6 +147,59 @@ export default function AccountScreen() {
             <Badge label="Compte vérifié" tone="success" />
           </View>
         </Row>
+      </Card>
+
+      {/* Profil éditable (réf: Nom Complet, Pays/Région) */}
+      <Card style={{ gap: 12 }}>
+        <Label>Mon profil</Label>
+        {profileMsg ? (
+          <Banner tone={profileMsg.tone}>{profileMsg.text}</Banner>
+        ) : null}
+        <Field
+          label="Nom complet"
+          value={name}
+          onChangeText={setName}
+          placeholder="Votre nom"
+        />
+        <Field
+          label="Pays / Région"
+          value={country}
+          onChangeText={setCountry}
+          placeholder="Ex. Côte d’Ivoire"
+        />
+        <Button
+          title="Enregistrer les modifications"
+          onPress={saveProfile}
+          loading={profileBusy}
+        />
+      </Card>
+
+      {/* Changer le mot de passe */}
+      <Card style={{ gap: 12 }}>
+        <Label>Changer le mot de passe</Label>
+        {passwordMsg ? (
+          <Banner tone={passwordMsg.tone}>{passwordMsg.text}</Banner>
+        ) : null}
+        <Field
+          label="Mot de passe actuel"
+          value={currentPassword}
+          onChangeText={setCurrentPassword}
+          secureTextEntry
+        />
+        <Field
+          label="Nouveau mot de passe"
+          value={newPassword}
+          onChangeText={setNewPassword}
+          placeholder="10 caractères minimum"
+          secureTextEntry
+        />
+        <Button
+          title="Changer le mot de passe"
+          variant="ghost"
+          onPress={savePassword}
+          loading={passwordBusy}
+          disabled={currentPassword.length < 1 || newPassword.length < 10}
+        />
       </Card>
 
       {/* Subscription */}
