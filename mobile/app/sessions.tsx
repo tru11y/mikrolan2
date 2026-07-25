@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -11,6 +11,73 @@ import {
 } from '@/src/services/mikrotik-lan/hotspotLan';
 import { Banner, Empty, Row, Subtitle, Title, theme } from '@/src/components/ui';
 import { BottomNav } from '@/src/components/BottomNav';
+
+// Small "device is live" heartbeat — matches the reference's animate-pulse dot.
+function PulseDot({ color }: { color: string }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const opacity = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.parallel([
+          Animated.timing(scale, {
+            toValue: 1.6,
+            duration: 900,
+            useNativeDriver: true,
+          }),
+          Animated.timing(opacity, {
+            toValue: 0,
+            duration: 900,
+            useNativeDriver: true,
+          }),
+        ]),
+        Animated.parallel([
+          Animated.timing(scale, { toValue: 1, duration: 0, useNativeDriver: true }),
+          Animated.timing(opacity, { toValue: 1, duration: 0, useNativeDriver: true }),
+        ]),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [opacity, scale]);
+
+  return (
+    <View
+      style={{
+        position: 'absolute',
+        right: -1,
+        bottom: -1,
+        width: 12,
+        height: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Animated.View
+        style={{
+          position: 'absolute',
+          width: 12,
+          height: 12,
+          borderRadius: 6,
+          backgroundColor: color,
+          opacity,
+          transform: [{ scale }],
+        }}
+      />
+      <View
+        style={{
+          width: 12,
+          height: 12,
+          borderRadius: 6,
+          backgroundColor: color,
+          borderWidth: 2,
+          borderColor: theme.surface,
+        }}
+      />
+    </View>
+  );
+}
 
 function fmtBytes(v: string): string {
   const n = Number(v);
@@ -83,7 +150,9 @@ export default function SessionsScreen() {
         <Row>
           <View style={{ flex: 1 }}>
             <Title>Utilisateurs Actifs</Title>
-            <Subtitle>Sessions hotspot en cours ({sessions.length})</Subtitle>
+            <Subtitle>
+              Sessions hotspot en cours sur RouterOS ({sessions.length})
+            </Subtitle>
           </View>
           <Pressable
             accessibilityLabel="Rafraîchir"
@@ -101,7 +170,7 @@ export default function SessionsScreen() {
               justifyContent: 'center',
             }}
           >
-            <Ionicons name="refresh" size={18} color={theme.text} />
+            <Ionicons name="refresh" size={20} color={theme.text} />
           </Pressable>
         </Row>
 
@@ -124,7 +193,7 @@ export default function SessionsScreen() {
             onChangeText={setSearch}
             placeholder="Rechercher nom, MAC, IP…"
             placeholderTextColor={theme.textMuted}
-            style={{ flex: 1, color: theme.text, paddingVertical: 11, fontSize: 14 }}
+            style={{ flex: 1, color: theme.text, paddingVertical: 11, fontSize: 12 }}
           />
         </View>
 
@@ -170,19 +239,7 @@ export default function SessionsScreen() {
                           {(s.user ?? '??').substring(0, 2).toUpperCase()}
                         </Text>
                       </View>
-                      <View
-                        style={{
-                          position: 'absolute',
-                          right: -1,
-                          bottom: -1,
-                          width: 12,
-                          height: 12,
-                          borderRadius: 6,
-                          backgroundColor: theme.success,
-                          borderWidth: 2,
-                          borderColor: theme.surface,
-                        }}
-                      />
+                      <PulseDot color={theme.success} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: theme.text, fontWeight: '700', fontSize: 14 }}>
