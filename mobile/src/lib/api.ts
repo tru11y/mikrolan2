@@ -160,6 +160,10 @@ export type VoucherItem = {
 };
 
 export type HotspotServer = { id: string; name: string; interface: string };
+export type HotspotSettings = {
+  idleTimeoutMinutes: number | null;
+  dnsName: string | null;
+};
 
 export type IpBindingType = 'bypassed' | 'blocked' | 'regular';
 export type IpBinding = {
@@ -530,6 +534,30 @@ export const api = {
       const res = await apiClient.post<ApiEnvelope<{ blocked: boolean }>>(
         `/routers/${id}/hotspot/internet-sharing`,
         { blocked },
+      );
+      return unwrap(res);
+    },
+    async getHotspotSettings(
+      id: string,
+      server = 'hotspot1',
+    ): Promise<HotspotSettings> {
+      const res = await apiClient.get<ApiEnvelope<HotspotSettings>>(
+        `/routers/${id}/hotspot/settings`,
+        { params: { server } },
+      );
+      return unwrap(res);
+    },
+    async updateHotspotSettings(
+      id: string,
+      payload: {
+        server?: string;
+        idleTimeoutMinutes?: number | null;
+        dnsName?: string | null;
+      },
+    ): Promise<HotspotSettings> {
+      const res = await apiClient.patch<ApiEnvelope<HotspotSettings>>(
+        `/routers/${id}/hotspot/settings`,
+        payload,
       );
       return unwrap(res);
     },

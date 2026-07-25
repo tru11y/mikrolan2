@@ -5,17 +5,21 @@ import { RemoteRouterService } from '../remote-access/remote-router.service';
 import {
   addIpBinding,
   configureHotspot,
+  getHotspotSettings,
   isInternetSharingBlocked,
   listHotspotServers,
   listIpBindings,
   removeIpBinding,
+  setHotspotSettings,
   setInternetSharingBlocked,
   type HotspotServer,
+  type HotspotSettings,
   type IpBinding,
 } from '../../common/routeros/hotspot.ops';
 import type {
   ConfigureHotspotDto,
   CreateIpBindingDto,
+  UpdateHotspotSettingsDto,
 } from './dto/hotspot.schemas';
 
 @Injectable()
@@ -102,6 +106,29 @@ export class HotspotService {
       setInternetSharingBlocked(client, blocked),
     );
     return { blocked };
+  }
+
+  /** Idle-timeout + DNS name of the hotspot server profile. Low-risk (no live traffic impact until a client actually idles/logs in). */
+  async getSettings(
+    routerId: string,
+    server: string,
+  ): Promise<HotspotSettings> {
+    await this.assertRemote(routerId);
+    return this.remote.run(routerId, (client) =>
+      getHotspotSettings(client, server),
+    );
+  }
+
+  async updateSettings(
+    routerId: string,
+    dto: UpdateHotspotSettingsDto,
+  ): Promise<HotspotSettings> {
+    await this.assertRemote(routerId);
+    const { server, ...settings } = dto;
+    await this.remote.run(routerId, (client) =>
+      setHotspotSettings(client, server, settings),
+    );
+    return this.getSettings(routerId, server);
   }
 
   private async assertRemote(routerId: string): Promise<void> {
