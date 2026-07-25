@@ -220,7 +220,7 @@ export default function GenerateVouchersScreen() {
               }}
             >
               <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>
-                {r ? `${r.alias || r.identity} (${r.localAddress ?? r.identity})` : '…'}
+                {r ? r.alias || r.identity : '…'}
               </Text>
             </View>
           </View>

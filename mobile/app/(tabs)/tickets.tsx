@@ -77,7 +77,7 @@ export default function TicketsScreen() {
                         {r.alias || r.identity}
                       </Text>
                       <Mono style={{ color: theme.textMuted, fontSize: 12 }}>
-                        {r.localAddress ?? r.identity}
+                        {r.identity}
                       </Mono>
                     </View>
                   </Row>

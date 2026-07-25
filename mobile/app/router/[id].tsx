@@ -247,7 +247,7 @@ export default function RouterDetailScreen() {
       await qc.invalidateQueries({ queryKey: ['routers'] });
       setRemoteMsg({
         tone: 'success',
-        text: `Tunnel activé — IP ${bundle.wgIp}. Le routeur est joignable à distance.`,
+        text: 'Gestion à distance activée. Le routeur est joignable partout.',
       });
     } catch (e) {
       setRemoteMsg({ tone: 'danger', text: extractErrorMessage(e) });
@@ -391,7 +391,6 @@ export default function RouterDetailScreen() {
               </Row>
               <Mono style={{ color: theme.textMuted, fontSize: 12, marginTop: 3 }}>
                 {r.identity}
-                {r.localAddress ? ` · ${r.localAddress}` : ''}
               </Mono>
               <Row style={{ justifyContent: 'flex-start', marginTop: 6 }}>
                 <Badge
@@ -431,7 +430,7 @@ export default function RouterDetailScreen() {
                 <Ionicons name="pulse-outline" size={16} color={theme.secondary} />
                 <Label>Moniteur performance</Label>
               </Row>
-              <Badge label="API 8728" tone="success" />
+              <Badge label="EN DIRECT" tone="success" />
             </Row>
             <Row style={{ gap: 10, alignItems: 'stretch' }}>
               <Sparkline
@@ -477,7 +476,7 @@ export default function RouterDetailScreen() {
             <>
               <Subtitle>
                 {remoteQuery.data?.status === 'ACTIVE'
-                  ? `Tunnel actif — IP ${remoteQuery.data.wgIp}, joignable via ${remoteQuery.data.endpoint}.`
+                  ? 'Gestion à distance active — ce routeur est joignable partout.'
                   : 'Activez un tunnel WireGuard sécurisé pour piloter ce routeur à distance.'}
               </Subtitle>
               {remoteMsg ? (

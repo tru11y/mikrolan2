@@ -82,7 +82,6 @@ export default function RouteursScreen() {
                   </Text>
                   <Mono style={{ color: theme.textMuted, fontSize: 12 }}>
                     {item.identity}
-                    {item.localAddress ? ` · ${item.localAddress}` : ''}
                   </Mono>
                   {item.model ? (
                     <Text style={{ color: theme.textMuted, fontSize: 12 }}>

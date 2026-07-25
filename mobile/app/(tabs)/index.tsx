@@ -415,7 +415,7 @@ export default function MaisonScreen() {
                   </Row>
                   <Mono style={{ color: theme.textMuted, fontSize: 11, marginTop: 2 }}>
                     {r.model ? `${r.model} · ` : ''}
-                    {r.localAddress ?? r.identity}
+                    {r.identity}
                   </Mono>
                 </View>
                 <Ionicons name="chevron-forward" size={20} color={theme.textMuted} />
