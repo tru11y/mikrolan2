@@ -14,7 +14,12 @@ import * as argon2 from 'argon2';
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TokenService, TokenPair } from './token.service';
-import { LoginDto, SignupDto } from './dto/auth.schemas';
+import {
+  ChangePasswordDto,
+  LoginDto,
+  SignupDto,
+  UpdateProfileDto,
+} from './dto/auth.schemas';
 
 // Argon2id params (fintech-grade) — see global profile.
 const ARGON: argon2.Options = {
@@ -114,7 +119,14 @@ export class AuthService {
     const [user, tenant, subscription] = await Promise.all([
       this.prisma.user.findFirst({
         where: { id: userId },
-        select: { id: true, email: true, role: true, status: true },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          country: true,
+          role: true,
+          status: true,
+        },
       }),
       this.prisma.tenant.findUnique({
         where: { id: tenantId },
@@ -127,6 +139,46 @@ export class AuthService {
     ]);
     if (!user || !tenant) throw new UnauthorizedException('Account not found');
     return { user, tenant, subscription };
+  }
+
+  async updateProfile(userId: string, dto: UpdateProfileDto) {
+    const data: Prisma.UserUpdateInput = {};
+    if (dto.name !== undefined) data.name = dto.name;
+    if (dto.country !== undefined) data.country = dto.country;
+
+    await this.prisma.user.update({ where: { id: userId }, data });
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        country: true,
+        role: true,
+        status: true,
+      },
+    });
+    return user;
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto): Promise<void> {
+    const user = await this.prisma.user.findFirst({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('Account not found');
+
+    const ok = await argon2.verify(user.passwordHash, dto.currentPassword);
+    if (!ok) throw new UnauthorizedException('Mot de passe actuel incorrect');
+
+    const passwordHash = await argon2.hash(dto.newPassword, ARGON);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
+    // Password change is a security boundary: revoke all sessions so any
+    // stolen refresh token stops working immediately.
+    await this.prisma.refreshToken.updateMany({
+      where: { userId, revoked: false },
+      data: { revoked: true },
+    });
   }
 
   refresh(refreshToken: string): Promise<TokenPair> {
