@@ -34,7 +34,14 @@ export type ManagementMode = 'LOCAL' | 'REMOTE';
 export type RouterHealth = 'UNKNOWN' | 'ONLINE' | 'OFFLINE' | 'ERROR';
 
 export type Me = {
-  user: { id: string; email: string; role: UserRole; status: string };
+  user: {
+    id: string;
+    email: string;
+    name: string | null;
+    country: string | null;
+    role: UserRole;
+    status: string;
+  };
   tenant: { id: string; name: string; slug: string; status: string };
   subscription: {
     plan: SubscriptionPlan;
@@ -421,6 +428,25 @@ export const api = {
     async me(): Promise<Me> {
       const res = await apiClient.get<ApiEnvelope<Me>>('/auth/me');
       return unwrap(res);
+    },
+    async updateProfile(payload: {
+      name?: string | null;
+      country?: string | null;
+    }): Promise<Me['user']> {
+      const res = await apiClient.patch<ApiEnvelope<Me['user']>>(
+        '/auth/me',
+        payload,
+      );
+      return unwrap(res);
+    },
+    async changePassword(
+      currentPassword: string,
+      newPassword: string,
+    ): Promise<void> {
+      await apiClient.post('/auth/change-password', {
+        currentPassword,
+        newPassword,
+      });
     },
     async logout(): Promise<void> {
       if (!refreshToken) return;
