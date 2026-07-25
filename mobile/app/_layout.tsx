@@ -43,6 +43,14 @@ export default function RootLayout() {
                 name="router-settings"
                 options={{ title: 'Paramètres routeur' }}
               />
+              <Stack.Screen
+                name="ip-bindings"
+                options={{ title: 'IP Bindings & MAC' }}
+              />
+              <Stack.Screen
+                name="internet-sharing"
+                options={{ title: 'Partage Internet' }}
+              />
             </Stack>
           </ActiveRouterProvider>
         </AuthProvider>

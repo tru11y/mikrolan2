@@ -621,7 +621,7 @@ export default function RouterDetailScreen() {
           <Pressable
             style={{ flex: 1 }}
             onPress={() =>
-              router.push({ pathname: '/hotspot-setup', params: { routerId: id } })
+              router.push({ pathname: '/internet-sharing', params: { routerId: id } })
             }
           >
             <Card style={{ gap: 6 }}>
