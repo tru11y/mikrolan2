@@ -174,6 +174,82 @@ export interface HotspotServer {
   interface: string;
 }
 
+export interface HotspotSettings {
+  idleTimeoutMinutes: number | null;
+  dnsName: string | null;
+}
+
+function parseTimeoutMinutes(value?: string): number | null {
+  if (!value || value === 'none') return null;
+  // RouterOS returns "00:10:00" (hh:mm:ss) or a short form like "10m".
+  const hms = value.match(/^(\d+):(\d{2}):(\d{2})$/);
+  if (hms) {
+    return Number(hms[1]) * 60 + Number(hms[2]) + Math.round(Number(hms[3]) / 60);
+  }
+  const short = value.match(/^(\d+)m$/);
+  return short ? Number(short[1]) : null;
+}
+
+/** Resolves the `/ip/hotspot/profile` name backing a given server. */
+async function profileNameForServer(
+  c: RouterOsApiClient,
+  serverName: string,
+): Promise<string> {
+  const servers = await c.command([
+    '/ip/hotspot/print',
+    '=.proplist=.id,name,profile',
+  ]);
+  const server = servers.find((s) => s.name === serverName);
+  if (!server?.profile) {
+    throw new Error(`Hotspot server "${serverName}" not found`);
+  }
+  return server.profile;
+}
+
+/** Reads idle-timeout + dns-name from the profile behind a hotspot server. */
+export async function getHotspotSettings(
+  c: RouterOsApiClient,
+  serverName: string,
+): Promise<HotspotSettings> {
+  const profileName = await profileNameForServer(c, serverName);
+  const profiles = await c.command([
+    '/ip/hotspot/profile/print',
+    '=.proplist=.id,name,idle-timeout,dns-name',
+  ]);
+  const profile = profiles.find((p) => p.name === profileName);
+  return {
+    idleTimeoutMinutes: parseTimeoutMinutes(profile?.['idle-timeout']),
+    dnsName: profile?.['dns-name'] || null,
+  };
+}
+
+/** Updates idle-timeout + dns-name on the profile behind a hotspot server. */
+export async function setHotspotSettings(
+  c: RouterOsApiClient,
+  serverName: string,
+  settings: { idleTimeoutMinutes?: number | null; dnsName?: string | null },
+): Promise<void> {
+  const profileName = await profileNameForServer(c, serverName);
+  const profiles = await c.command([
+    '/ip/hotspot/profile/print',
+    '=.proplist=.id,name',
+  ]);
+  const id = profiles.find((p) => p.name === profileName)?.['.id'];
+  if (!id) throw new Error(`Hotspot profile "${profileName}" not found`);
+
+  const data: Record<string, string | undefined> = {};
+  if (settings.idleTimeoutMinutes !== undefined) {
+    data['idle-timeout'] =
+      settings.idleTimeoutMinutes === null
+        ? 'none'
+        : `${settings.idleTimeoutMinutes}m`;
+  }
+  if (settings.dnsName !== undefined) {
+    data['dns-name'] = settings.dnsName ?? '';
+  }
+  await c.command(['/ip/hotspot/profile/set', `=.id=${id}`, ...attrs(data)]);
+}
+
 /** Lists the hotspot servers on the router (for the ticket « Serveur Hotspot »). */
 export async function listHotspotServers(
   c: RouterOsApiClient,

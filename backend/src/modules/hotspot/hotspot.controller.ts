@@ -6,7 +6,9 @@ import {
   HttpCode,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -15,10 +17,14 @@ import { HotspotService } from './hotspot.service';
 import {
   configureHotspotSchema,
   createIpBindingSchema,
+  hotspotSettingsQuerySchema,
   setInternetSharingSchema,
+  updateHotspotSettingsSchema,
   type ConfigureHotspotDto,
   type CreateIpBindingDto,
+  type HotspotSettingsQueryDto,
   type SetInternetSharingDto,
+  type UpdateHotspotSettingsDto,
 } from './dto/hotspot.schemas';
 
 @Controller('routers/:id/hotspot')
@@ -79,5 +85,24 @@ export class HotspotController {
     dto: SetInternetSharingDto,
   ) {
     return this.hotspot.setInternetSharing(id, dto.blocked);
+  }
+
+  @Get('settings')
+  getSettings(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query(new ZodValidationPipe(hotspotSettingsQuerySchema))
+    query: HotspotSettingsQueryDto,
+  ) {
+    return this.hotspot.getSettings(id, query.server);
+  }
+
+  @Patch('settings')
+  @Roles(UserRole.ADMIN)
+  updateSettings(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(updateHotspotSettingsSchema))
+    dto: UpdateHotspotSettingsDto,
+  ) {
+    return this.hotspot.updateSettings(id, dto);
   }
 }
