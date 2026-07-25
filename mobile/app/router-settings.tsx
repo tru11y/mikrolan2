@@ -94,7 +94,7 @@ export default function RouterSettingsScreen() {
       subtitle: 'Bloquer la répartition Hotspot sur PC / téléphones',
       icon: 'share-social-outline',
       color: theme.warning,
-      onPress: () => go('/hotspot-setup'),
+      onPress: () => go('/internet-sharing'),
     },
     {
       id: 'free_trial',
@@ -118,7 +118,7 @@ export default function RouterSettingsScreen() {
       subtitle: 'Autoriser ou bloquer des adresses MAC',
       icon: 'shield-outline',
       color: theme.primary,
-      onPress: () => soon('IP Bindings & Bypasses'),
+      onPress: () => go('/ip-bindings'),
     },
     {
       id: 'users',

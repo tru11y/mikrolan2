@@ -381,17 +381,22 @@ export async function setInternetSharingBlocked(
   }
   if (existingIds.length > 0) return; // already enabled, idempotent
 
-  await c.command([
-    '/ip/firewall/mangle/add',
-    ...attrs({
-      chain: 'forward',
-      protocol: 'tcp',
-      'connection-state': 'new',
-      ttl: '63,127',
-      action: 'drop',
-      comment: TETHER_RULE_COMMENT,
-    }),
-  ]);
+  // RouterOS's mangle `ttl` matcher takes a single value or a `lo-hi` range,
+  // not a comma-list — "63,127" is rejected ("invalid value for argument
+  // ttl"). Model "TTL is 63 OR 127" as two separate rules instead.
+  for (const ttl of ['63', '127']) {
+    await c.command([
+      '/ip/firewall/mangle/add',
+      ...attrs({
+        chain: 'forward',
+        protocol: 'tcp',
+        'connection-state': 'new',
+        ttl,
+        action: 'drop',
+        comment: TETHER_RULE_COMMENT,
+      }),
+    ]);
+  }
 }
 
 export async function removeIpBinding(
