@@ -1,6 +1,7 @@
 import {
   createContext,
   PropsWithChildren,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -44,19 +45,24 @@ export function ActiveRouterProvider({ children }: PropsWithChildren) {
     };
   }, []);
 
-  async function selectRouter(id: string): Promise<void> {
+  // Stable identities: router/[id].tsx's activation effect depends on
+  // `selectRouter`, so a fresh closure on every activeRouterId change would
+  // re-trigger that effect and immediately re-select the router right after
+  // clearActiveRouter() runs — a self-reactivation loop that made "Quitter"
+  // a no-op. useCallback with empty deps (functional setState only) fixes it.
+  const selectRouter = useCallback(async (id: string): Promise<void> => {
     setActiveRouterId(id);
     await setStoredValue(KEY, id);
-  }
+  }, []);
 
-  async function clearActiveRouter(): Promise<void> {
+  const clearActiveRouter = useCallback(async (): Promise<void> => {
     setActiveRouterId(null);
     await deleteStoredValue(KEY);
-  }
+  }, []);
 
   const value = useMemo<ActiveRouterContextValue>(
     () => ({ isReady, activeRouterId, selectRouter, clearActiveRouter }),
-    [isReady, activeRouterId],
+    [isReady, activeRouterId, selectRouter, clearActiveRouter],
   );
 
   return (
