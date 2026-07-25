@@ -381,10 +381,13 @@ export async function setInternetSharingBlocked(
   }
   if (existingIds.length > 0) return; // already enabled, idempotent
 
-  // RouterOS's mangle `ttl` matcher takes a single value or a `lo-hi` range,
-  // not a comma-list — "63,127" is rejected ("invalid value for argument
-  // ttl"). Model "TTL is 63 OR 127" as two separate rules instead.
-  for (const ttl of ['63', '127']) {
+  // RouterOS's mangle `ttl` matcher takes a `lo-hi` range, not a comma-list
+  // ("63,127" → "invalid value for argument ttl") — model "TTL is 63 OR 127"
+  // as two separate rules. The API is also stricter than the CLI here: a bare
+  // "63" is rejected too ("invalid value for argument ttl") — the CLI silently
+  // normalizes a single value to "63-63" before sending it over the API, but
+  // the API itself requires the explicit "lo-hi" form.
+  for (const ttl of ['63-63', '127-127']) {
     await c.command([
       '/ip/firewall/mangle/add',
       ...attrs({
