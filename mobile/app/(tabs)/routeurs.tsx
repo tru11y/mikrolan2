@@ -6,6 +6,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Link, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
@@ -20,6 +21,7 @@ import {
   theme,
   Title,
 } from '@/src/components/ui';
+import { BottomNav } from '@/src/components/BottomNav';
 
 function healthTone(h: RouterItem['health']) {
   return h === 'ONLINE'
@@ -41,6 +43,7 @@ function Dot({ color }: { color: string }) {
 
 export default function RouteursScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const query = useQuery({ queryKey: ['routers'], queryFn: api.routers.list });
 
   const list = query.data ?? [];
@@ -109,7 +112,7 @@ export default function RouteursScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <FlatList
-        contentContainerStyle={{ padding: 16, paddingBottom: 96 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
         data={list}
         keyExtractor={(r) => r.id}
         renderItem={renderItem}
@@ -155,7 +158,7 @@ export default function RouteursScreen() {
         style={{
           position: 'absolute',
           right: 20,
-          bottom: 20,
+          bottom: 76 + insets.bottom,
           width: 56,
           height: 56,
           borderRadius: 28,
@@ -171,6 +174,7 @@ export default function RouteursScreen() {
       >
         <Ionicons name="add" size={28} color={theme.primaryText} />
       </Pressable>
+      <BottomNav active="routeurs" />
     </View>
   );
 }

@@ -1,8 +1,9 @@
 import { ScrollView, View, Text, Pressable } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { api, type RouterItem } from '@/src/lib/api';
+import { useActiveRouter } from '@/src/providers/active-router-provider';
 import {
   AuroraCard,
   Badge,
@@ -13,6 +14,7 @@ import {
   Title,
   type IoniconName,
 } from '@/src/components/ui';
+import { BottomNav } from '@/src/components/BottomNav';
 
 function initialsOf(name?: string): string {
   if (!name) return 'ML';
@@ -90,6 +92,7 @@ function StatCard({
 
 export default function MaisonScreen() {
   const router = useRouter();
+  const { isReady, activeRouterId } = useActiveRouter();
   const me = useQuery({ queryKey: ['me'], queryFn: api.auth.me });
   const routers = useQuery({ queryKey: ['routers'], queryFn: api.routers.list });
   const metrics = useQuery({
@@ -106,10 +109,17 @@ export default function MaisonScreen() {
     ? trialDaysLeft(me.data?.subscription?.currentPeriodEnd)
     : null;
 
+  // A router is already selected (persisted or just activated): Maison becomes
+  // its dashboard and the bottom nav switches to router-connected mode.
+  if (isReady && activeRouterId) {
+    return <Redirect href={`/router/${activeRouterId}`} />;
+  }
+
   return (
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
     <ScrollView
       style={{ flex: 1, backgroundColor: theme.bg }}
-      contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 32 }}
+      contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 100 }}
     >
       {/* Welcome card */}
       <Card>
@@ -454,5 +464,7 @@ export default function MaisonScreen() {
         </Card>
       </Pressable>
     </ScrollView>
+    <BottomNav active="index" />
+    </View>
   );
 }
