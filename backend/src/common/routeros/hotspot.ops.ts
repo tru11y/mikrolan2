@@ -381,11 +381,19 @@ export async function setInternetSharingBlocked(
   }
   if (existingIds.length > 0) return; // already enabled, idempotent
 
-  // RouterOS's mangle `ttl` matcher is a plain `integer: 0..255`, not a range
-  // type (per official doc: help.mikrotik.com "Common Firewall Matchers and
-  // Actions" — "ttl (integer: 0..255; Default: )"). A comma-list ("63,127")
-  // is rejected ("invalid value for argument ttl"); model "TTL is 63 OR 127"
-  // as two separate rules with plain single values instead.
+  // RouterOS's mangle `ttl` matcher is documented as a plain `integer:
+  // 0..255` (help.mikrotik.com "Common Firewall Matchers and Actions"). On
+  // this router (RB951Ui-2HnD, RouterOS 7.20.8 long-term) it is recognized as
+  // a valid parameter name (confirmed: a bogus name yields "unknown
+  // parameter X", this yields "invalid value for argument ttl" instead) but
+  // EVERY value tested is rejected — bare ("63"), degenerate range ("63-63"),
+  // real range ("60-70"), the edge case "0", and hex ("0x3F") — across
+  // /ip/firewall/mangle, /filter, and /raw alike. This looks like a firmware
+  // bug/limitation specific to this router rather than a request-format
+  // issue on our side. Keeping the doc-correct plain-integer form here (the
+  // right shape per spec even though it currently fails on this device); see
+  // project memory for the full diagnostic trail before trying yet another
+  // value format blind.
   for (const ttl of ['63', '127']) {
     await c.command([
       '/ip/firewall/mangle/add',
