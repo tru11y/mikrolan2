@@ -1,4 +1,12 @@
-import { Body, Controller, Get, HttpCode, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -7,14 +15,18 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { AuthService } from './auth.service';
 import {
   changePasswordSchema,
+  deleteAccountSchema,
   loginSchema,
   refreshSchema,
   signupSchema,
+  updateNotificationsSchema,
   updateProfileSchema,
   type ChangePasswordDto,
+  type DeleteAccountDto,
   type LoginDto,
   type RefreshDto,
   type SignupDto,
+  type UpdateNotificationsDto,
   type UpdateProfileDto,
 } from './dto/auth.schemas';
 
@@ -73,5 +85,30 @@ export class AuthController {
   @HttpCode(200)
   logout(@Body(new ZodValidationPipe(refreshSchema)) dto: RefreshDto) {
     return this.auth.logout(dto.refreshToken);
+  }
+
+  @Patch('me/notifications')
+  updateNotifications(
+    @CurrentUser() user: TenantContext,
+    @Body(new ZodValidationPipe(updateNotificationsSchema))
+    dto: UpdateNotificationsDto,
+  ) {
+    return this.auth.updateNotifications(user.userId, dto);
+  }
+
+  @Post('logout-all')
+  @HttpCode(200)
+  logoutAll(@CurrentUser() user: TenantContext) {
+    return this.auth.revokeAllSessions(user.userId);
+  }
+
+  @Delete('me')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  deleteAccount(
+    @CurrentUser() user: TenantContext,
+    @Body(new ZodValidationPipe(deleteAccountSchema)) dto: DeleteAccountDto,
+  ) {
+    return this.auth.deleteAccount(user.userId, dto);
   }
 }

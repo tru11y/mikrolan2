@@ -5,14 +5,93 @@ import {
   Pressable,
   ScrollView,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import Constants from 'expo-constants';
 import { useAuth } from '@/src/providers/auth-provider';
-import { Banner, Button, Field, theme } from '@/src/components/ui';
+import { Banner, Button, theme } from '@/src/components/ui';
+
+// Outlined field with a floating label notched into the top border —
+// matches the real app's input style (verified from device screenshots,
+// not the approximate reference code dump).
+function OutlinedField({
+  label,
+  value,
+  onChangeText,
+  secureTextEntry,
+  onToggleSecure,
+  autoCapitalize,
+  keyboardType,
+  autoComplete,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (v: string) => void;
+  secureTextEntry?: boolean;
+  onToggleSecure?: () => void;
+  autoCapitalize?: 'none' | 'words';
+  keyboardType?: 'default' | 'email-address' | 'url';
+  autoComplete?: 'email';
+  placeholder?: string;
+}) {
+  return (
+    <View>
+      <View
+        style={{
+          position: 'absolute',
+          top: -8,
+          left: 12,
+          backgroundColor: theme.bg,
+          paddingHorizontal: 6,
+          zIndex: 1,
+        }}
+      >
+        <Text style={{ color: theme.textMuted, fontSize: 12 }}>{label}</Text>
+      </View>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          borderWidth: 1,
+          borderColor: theme.border,
+          borderRadius: 14,
+          paddingHorizontal: 16,
+        }}
+      >
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={theme.textMuted}
+          secureTextEntry={secureTextEntry}
+          autoCapitalize={autoCapitalize ?? 'none'}
+          keyboardType={keyboardType}
+          autoComplete={autoComplete}
+          style={{
+            flex: 1,
+            color: theme.text,
+            fontSize: 16,
+            fontWeight: '600',
+            paddingVertical: 16,
+          }}
+        />
+        {onToggleSecure ? (
+          <Pressable onPress={onToggleSecure} hitSlop={10}>
+            <Ionicons
+              name={secureTextEntry ? 'eye-outline' : 'eye-off-outline'}
+              size={20}
+              color={theme.textMuted}
+            />
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
+  );
+}
 
 export default function LoginScreen() {
   const { login, signup, isBusy, error, clearError, apiBaseUrl, updateApiBaseUrl } =
@@ -46,33 +125,6 @@ export default function LoginScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      {/* Ambient glow — mirrors the reference's two blurred background circles */}
-      <View pointerEvents="none" style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
-        <LinearGradient
-          colors={[theme.primary + '26', theme.primary + '00']}
-          style={{
-            position: 'absolute',
-            top: -140,
-            left: '50%',
-            marginLeft: -190,
-            width: 380,
-            height: 380,
-            borderRadius: 190,
-          }}
-        />
-        <LinearGradient
-          colors={[theme.secondary + '22', theme.secondary + '00']}
-          style={{
-            position: 'absolute',
-            bottom: -100,
-            right: -100,
-            width: 320,
-            height: 320,
-            borderRadius: 160,
-          }}
-        />
-      </View>
-
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
@@ -80,156 +132,72 @@ export default function LoginScreen() {
         <ScrollView
           contentContainerStyle={{
             flexGrow: 1,
-            paddingTop: insets.top + 32,
+            paddingTop: insets.top + 48,
             paddingHorizontal: 24,
-            paddingBottom: 16 + insets.bottom,
-            justifyContent: 'space-between',
-            gap: 24,
+            paddingBottom: 24 + insets.bottom,
+            gap: 28,
           }}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Brand header */}
-          <View style={{ alignItems: 'center', gap: 4 }}>
-            <LinearGradient
-              colors={[theme.primary, theme.secondary]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
+          <View style={{ alignItems: 'center', gap: 16 }}>
+            <View
               style={{
-                width: 80,
-                height: 80,
-                borderRadius: 24,
+                width: 96,
+                height: 96,
+                borderRadius: 48,
+                backgroundColor: theme.primary,
                 alignItems: 'center',
                 justifyContent: 'center',
-                marginBottom: 16,
               }}
             >
-              <Ionicons name="wifi" size={40} color="#fff" />
-            </LinearGradient>
-            <Text
-              style={{
-                color: theme.text,
-                fontSize: 30,
-                fontWeight: '800',
-                letterSpacing: -0.5,
-              }}
-            >
-              MikroLan2
-            </Text>
-            <Text
-              style={{
-                color: theme.textMuted,
-                fontSize: 14,
-                textAlign: 'center',
-                maxWidth: 260,
-                marginTop: 4,
-              }}
-            >
-              Monétisation WiFi intelligente pour routeurs MikroTik
+              <Ionicons name="ticket" size={44} color={theme.primaryText} />
+            </View>
+            <Text style={{ color: theme.text, fontSize: 28, fontWeight: '800' }}>
+              {mode === 'signup' ? 'Créer un compte' : 'Bienvenue'}
             </Text>
           </View>
 
-          {/* Auth card */}
-          <View
-            style={{
-              backgroundColor: theme.surface,
-              borderWidth: 1,
-              borderColor: theme.border,
-              borderRadius: 16,
-              padding: 20,
-              gap: 16,
-            }}
-          >
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                paddingBottom: 12,
-                borderBottomWidth: 1,
-                borderBottomColor: theme.border,
-              }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Ionicons name="shield-checkmark" size={20} color={theme.primary} />
-                <Text style={{ color: theme.text, fontWeight: '700', fontSize: 14 }}>
-                  {mode === 'signup' ? 'Créer un compte' : 'Connexion'}
-                </Text>
-              </View>
-              <View
-                style={{
-                  backgroundColor: theme.success + '1A',
-                  borderWidth: 1,
-                  borderColor: theme.success + '4D',
-                  borderRadius: 999,
-                  paddingHorizontal: 10,
-                  paddingVertical: 2,
-                }}
-              >
-                <Text style={{ color: theme.success, fontSize: 11, fontWeight: '700' }}>
-                  v{Constants.expoConfig?.version ?? '1.0'}
-                </Text>
-              </View>
-            </View>
+          {error ? <Banner tone="danger">{error}</Banner> : null}
 
-            {error ? <Banner tone="danger">{error}</Banner> : null}
-
-            <View style={{ gap: 12 }}>
-              {mode === 'signup' ? (
-                <Field
-                  label="Nom de l'organisation"
-                  placeholder="Mon ISP"
-                  value={tenantName}
-                  onChangeText={setTenantName}
-                  autoCapitalize="words"
-                />
-              ) : null}
-              <Field
-                label="E-mail"
-                placeholder="vous@exemple.ci"
-                value={email}
-                onChangeText={setEmail}
-                autoCapitalize="none"
-                keyboardType="email-address"
-                autoComplete="email"
+          <View style={{ gap: 20 }}>
+            {mode === 'signup' ? (
+              <OutlinedField
+                label="Nom de l'organisation"
+                value={tenantName}
+                onChangeText={setTenantName}
+                autoCapitalize="words"
+                placeholder="Mon ISP"
               />
-              <View style={{ gap: 6 }}>
-                <View
-                  style={{
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '500' }}>
-                    Mot de passe
-                  </Text>
-                  <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={8}>
-                    <Text style={{ color: theme.primary, fontSize: 12, fontWeight: '600' }}>
-                      {showPassword ? 'Masquer' : 'Afficher'}
-                    </Text>
-                  </Pressable>
-                </View>
-                <Field
-                  placeholder={mode === 'signup' ? '10 caractères minimum' : '••••••••'}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPassword}
-                />
-              </View>
-            </View>
+            ) : null}
+            <OutlinedField
+              label="E-mail"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoComplete="email"
+              placeholder="vous@exemple.ci"
+            />
+            <OutlinedField
+              label="Mot de passe"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              onToggleSecure={() => setShowPassword((v) => !v)}
+              placeholder={mode === 'signup' ? '10 caractères minimum' : '••••••••'}
+            />
+          </View>
 
+          <View style={{ gap: 16 }}>
             <Pressable
               onPress={submit}
               disabled={!canSubmit || isBusy}
               style={{
-                height: 52,
-                borderRadius: 12,
+                height: 54,
+                borderRadius: 27,
                 backgroundColor: theme.primary,
                 opacity: !canSubmit || isBusy ? 0.6 : 1,
-                flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 8,
               }}
             >
               <Text style={{ color: theme.primaryText, fontWeight: '700', fontSize: 16 }}>
@@ -239,9 +207,6 @@ export default function LoginScreen() {
                     ? 'Créer mon compte'
                     : 'Se connecter'}
               </Text>
-              {!isBusy ? (
-                <Ionicons name="arrow-forward" size={20} color={theme.primaryText} />
-              ) : null}
             </Pressable>
 
             <Pressable
@@ -251,35 +216,16 @@ export default function LoginScreen() {
               }}
               style={{ alignItems: 'center' }}
             >
-              <Text style={{ color: theme.textMuted, fontSize: 13, fontWeight: '600' }}>
+              <Text style={{ color: theme.primary, fontWeight: '700', fontSize: 14 }}>
                 {mode === 'login'
                   ? 'Pas de compte ? Créer un compte'
                   : "J'ai déjà un compte"}
               </Text>
             </Pressable>
-
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 16,
-                paddingTop: 8,
-              }}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <Ionicons name="flash" size={14} color={theme.gold} />
-                <Text style={{ color: theme.textMuted, fontSize: 12 }}>Mode Hors-Ligne</Text>
-              </View>
-              <Text style={{ color: theme.textMuted, fontSize: 12 }}>•</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <Ionicons name="hardware-chip-outline" size={14} color={theme.secondary} />
-                <Text style={{ color: theme.textMuted, fontSize: 12 }}>RouterOS v6/v7</Text>
-              </View>
-            </View>
           </View>
 
-          {/* Advanced: API server override (LAN/dev only) */}
+          <View style={{ flex: 1, minHeight: 12 }} />
+
           <View style={{ gap: 12 }}>
             <Pressable onPress={() => setShowConfig((v) => !v)} style={{ alignItems: 'center' }}>
               <Text style={{ color: theme.textMuted, fontSize: 11 }}>
@@ -297,11 +243,10 @@ export default function LoginScreen() {
                   gap: 10,
                 }}
               >
-                <Field
+                <OutlinedField
                   label="URL du serveur API"
                   value={baseUrl}
                   onChangeText={setBaseUrl}
-                  autoCapitalize="none"
                   keyboardType="url"
                   placeholder="http://10.0.2.2:3001/api"
                 />
@@ -314,7 +259,7 @@ export default function LoginScreen() {
             ) : null}
 
             <Text style={{ color: theme.textMuted, fontSize: 11, textAlign: 'center' }}>
-              Gratuit en local · PRO pour le distant
+              MikroLan2 v{Constants.expoConfig?.version ?? '0.1.0'}
             </Text>
           </View>
         </ScrollView>

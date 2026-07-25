@@ -33,3 +33,17 @@ export const changePasswordSchema = z
   })
   .strict();
 export type ChangePasswordDto = z.infer<typeof changePasswordSchema>;
+
+export const updateNotificationsSchema = z
+  .object({
+    enabled: z.boolean(),
+  })
+  .strict();
+export type UpdateNotificationsDto = z.infer<typeof updateNotificationsSchema>;
+
+export const deleteAccountSchema = z
+  .object({
+    password: z.string().min(1).max(128),
+  })
+  .strict();
+export type DeleteAccountDto = z.infer<typeof deleteAccountSchema>;
