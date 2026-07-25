@@ -46,3 +46,28 @@ export const setInternetSharingSchema = z
   .object({ blocked: z.boolean() })
   .strict();
 export type SetInternetSharingDto = z.infer<typeof setInternetSharingSchema>;
+
+const dnsHostname = z
+  .string()
+  .trim()
+  .min(1)
+  .max(253)
+  .regex(/^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/, {
+    message: 'Invalid DNS name',
+  });
+
+export const hotspotSettingsQuerySchema = z
+  .object({ server: z.string().trim().min(1).max(64).default('hotspot1') })
+  .strict();
+export type HotspotSettingsQueryDto = z.infer<typeof hotspotSettingsQuerySchema>;
+
+export const updateHotspotSettingsSchema = z
+  .object({
+    server: z.string().trim().min(1).max(64).default('hotspot1'),
+    idleTimeoutMinutes: z.number().int().min(1).max(1440).nullable().optional(),
+    dnsName: dnsHostname.nullable().optional(),
+  })
+  .strict();
+export type UpdateHotspotSettingsDto = z.infer<
+  typeof updateHotspotSettingsSchema
+>;
