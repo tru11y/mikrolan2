@@ -159,7 +159,12 @@ export class RouterOsApiClient {
   private socket: Socket | null = null;
   private parser = new SentenceParser();
   private pending:
-    | { resolve: (rows: ApiRow[]) => void; reject: (e: Error) => void; rows: ApiRow[] }
+    | {
+        resolve: (rows: ApiRow[]) => void;
+        reject: (e: Error) => void;
+        rows: ApiRow[];
+        words: string[];
+      }
     | null = null;
   private readonly timeout: number;
 
@@ -218,6 +223,13 @@ export class RouterOsApiClient {
         p.resolve(p.rows);
       } else if (reply === '!trap' || reply === '!fatal') {
         const row = parseRow(words.slice(1));
+        // Diagnostic: full sentence + full trap words, so a future RouterOS
+        // rejection is readable straight from `docker logs` instead of
+        // guessing from just row.message (see mikrolan2 TTL anti-tether bug).
+        console.error(
+          '[RouterOsApiClient] trap',
+          JSON.stringify({ sent: p.words, trap: words }),
+        );
         this.pending = null;
         p.reject(new RouterOsApiError(row.message ?? 'Erreur RouterOS'));
       }
@@ -245,6 +257,7 @@ export class RouterOsApiClient {
       }, this.timeout);
       this.pending = {
         rows: [],
+        words,
         resolve: (rows) => {
           clearTimeout(timer);
           resolve(rows);
