@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Patch, Post } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -6,12 +6,16 @@ import { TenantContext } from '../../common/context/tenant-context';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { AuthService } from './auth.service';
 import {
+  changePasswordSchema,
   loginSchema,
   refreshSchema,
   signupSchema,
+  updateProfileSchema,
+  type ChangePasswordDto,
   type LoginDto,
   type RefreshDto,
   type SignupDto,
+  type UpdateProfileDto,
 } from './dto/auth.schemas';
 
 @Controller('auth')
@@ -44,6 +48,24 @@ export class AuthController {
   @Get('me')
   me(@CurrentUser() user: TenantContext) {
     return this.auth.me(user.userId, user.tenantId);
+  }
+
+  @Patch('me')
+  updateProfile(
+    @CurrentUser() user: TenantContext,
+    @Body(new ZodValidationPipe(updateProfileSchema)) dto: UpdateProfileDto,
+  ) {
+    return this.auth.updateProfile(user.userId, dto);
+  }
+
+  @Post('change-password')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  changePassword(
+    @CurrentUser() user: TenantContext,
+    @Body(new ZodValidationPipe(changePasswordSchema)) dto: ChangePasswordDto,
+  ) {
+    return this.auth.changePassword(user.userId, dto);
   }
 
   @Public()
