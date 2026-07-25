@@ -12,6 +12,7 @@ import {
   theme,
   Title,
 } from '@/src/components/ui';
+import { BottomNav } from '@/src/components/BottomNav';
 
 function DetailRow({
   label,
@@ -50,9 +51,10 @@ export default function AccountScreen() {
   const version = Constants.expoConfig?.version ?? '0.1.0';
 
   return (
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
     <ScrollView
       style={{ flex: 1, backgroundColor: theme.bg }}
-      contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 32 }}
+      contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 100 }}
     >
       <Title>Compte</Title>
 
@@ -128,5 +130,7 @@ export default function AccountScreen() {
         MikroLan2 v{version}
       </Text>
     </ScrollView>
+    <BottomNav active="account" />
+    </View>
   );
 }

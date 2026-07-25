@@ -1,58 +1,36 @@
 import { Redirect, Tabs } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '@/src/providers/auth-provider';
-import { theme } from '@/src/components/ui';
 import { TopBar } from '@/src/components/TopBar';
 
-type IoniconName = keyof typeof Ionicons.glyphMap;
-
+// The native tab bar is hidden — each screen renders its own <BottomNav>,
+// which adapts its tab set to whether a router is currently selected (see
+// ActiveRouterProvider + src/components/BottomNav.tsx). Tickets/Rapport stay
+// routable (linked from Maison in global mode) but aren't global-mode bottom
+// tabs — matching the MikroTicket reference, where ticket/report screens are
+// only reachable once a router is selected.
 export default function TabsLayout() {
   const { isReady, isAuthenticated } = useAuth();
   if (isReady && !isAuthenticated) return <Redirect href="/login" />;
-
-  const icon =
-    (name: IoniconName) =>
-    ({ color }: { color: string }) => (
-      <Ionicons name={name} size={22} color={color} />
-    );
 
   return (
     <Tabs
       screenOptions={{
         headerShown: true,
         header: () => <TopBar />,
-        tabBarStyle: {
-          backgroundColor: theme.surface,
-          borderTopColor: theme.border,
-          height: 62,
-          paddingTop: 6,
-          paddingBottom: 8,
-        },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
-        tabBarActiveTintColor: theme.primary,
-        tabBarInactiveTintColor: theme.textMuted,
+        tabBarStyle: { display: 'none' },
       }}
     >
-      <Tabs.Screen
-        name="index"
-        options={{ title: 'Maison', tabBarIcon: icon('home-outline') }}
-      />
-      <Tabs.Screen
-        name="routeurs"
-        options={{ title: 'Routeurs', tabBarIcon: icon('hardware-chip-outline') }}
-      />
+      <Tabs.Screen name="index" options={{ title: 'Maison' }} />
+      <Tabs.Screen name="routeurs" options={{ title: 'Routeurs' }} />
       <Tabs.Screen
         name="tickets"
-        options={{ title: 'Tickets', tabBarIcon: icon('ticket-outline') }}
+        options={{ title: 'Tickets', href: null }}
       />
       <Tabs.Screen
         name="rapport"
-        options={{ title: 'Rapport', tabBarIcon: icon('bar-chart-outline') }}
+        options={{ title: 'Rapport', href: null }}
       />
-      <Tabs.Screen
-        name="account"
-        options={{ title: 'Compte', tabBarIcon: icon('person-outline') }}
-      />
+      <Tabs.Screen name="account" options={{ title: 'Compte' }} />
     </Tabs>
   );
 }

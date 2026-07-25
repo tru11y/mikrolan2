@@ -306,7 +306,7 @@ export default function PlansScreen() {
           </View>
         )}
       </ScrollView>
-      <BottomNav active="routeurs" />
+      <BottomNav active="plans" />
     </View>
   );
 }

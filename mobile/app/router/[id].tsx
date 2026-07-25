@@ -14,6 +14,7 @@ import {
   getLocalCredentials,
 } from '@/src/lib/router-credentials';
 import { getWifiInfo } from '@/src/lib/lanBinder';
+import { useActiveRouter } from '@/src/providers/active-router-provider';
 import {
   Badge,
   Banner,
@@ -153,6 +154,13 @@ export default function RouterDetailScreen() {
   const router = useRouter();
   const qc = useQueryClient();
   const { isPro } = useAuth();
+  const { selectRouter } = useActiveRouter();
+
+  // Opening a router always activates it: the bottom nav + Maison switch to
+  // router-connected mode (mirrors the reference's handleSelectRouter).
+  useEffect(() => {
+    if (id) void selectRouter(id);
+  }, [id, selectRouter]);
 
   const query = useQuery({
     queryKey: ['router', id],
@@ -659,7 +667,7 @@ export default function RouterDetailScreen() {
           }
         />
       </ScrollView>
-      <BottomNav active="routeurs" />
+      <BottomNav active="index" />
     </View>
   );
 }

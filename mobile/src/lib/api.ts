@@ -638,10 +638,13 @@ export const api = {
       );
       return unwrap(res);
     },
-    async recentClients(limit = 30): Promise<RecentClient[]> {
+    async recentClients(
+      limit = 30,
+      routerId?: string,
+    ): Promise<RecentClient[]> {
       const res = await apiClient.get<ApiEnvelope<RecentClient[]>>(
         '/metrics/clients',
-        { params: { limit } },
+        { params: { limit, ...(routerId ? { routerId } : {}) } },
       );
       return unwrap(res);
     },

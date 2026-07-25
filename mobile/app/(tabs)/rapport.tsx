@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, View, Text } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { api, type MetricsPeriod } from '@/src/lib/api';
@@ -13,6 +14,7 @@ import {
   theme,
   Title,
 } from '@/src/components/ui';
+import { BottomNav } from '@/src/components/BottomNav';
 
 const PERIODS: { label: string; value: MetricsPeriod }[] = [
   { label: "Aujourd'hui", value: 'today' },
@@ -21,22 +23,24 @@ const PERIODS: { label: string; value: MetricsPeriod }[] = [
 ];
 
 export default function RapportScreen() {
+  const { routerId } = useLocalSearchParams<{ routerId?: string }>();
   const [period, setPeriod] = useState<MetricsPeriod>('30d');
   const metrics = useQuery({
-    queryKey: ['metrics', period],
-    queryFn: () => api.metrics.summary(period),
+    queryKey: ['metrics', period, routerId],
+    queryFn: () => api.metrics.summary(period, routerId),
   });
   const clients = useQuery({
-    queryKey: ['clients'],
-    queryFn: () => api.metrics.recentClients(30),
+    queryKey: ['clients', routerId],
+    queryFn: () => api.metrics.recentClients(30, routerId),
   });
   const data = metrics.data;
   const maxRevenue = Math.max(1, ...(data?.byPlan.map((p) => p.revenueXof) ?? []));
 
   return (
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
     <ScrollView
       style={{ flex: 1, backgroundColor: theme.bg }}
-      contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 32 }}
+      contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 100 }}
     >
       <Row>
         <View>
@@ -213,5 +217,7 @@ export default function RapportScreen() {
         )}
       </View>
     </ScrollView>
+    <BottomNav active="rapport" />
+    </View>
   );
 }
