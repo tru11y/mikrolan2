@@ -33,7 +33,8 @@ const GLOBAL_TABS: Tab[] = [
 ];
 
 // Router-connected tab set — Maison becomes the router dashboard, and
-// Plans/Tickets/Rapport are implicitly scoped to this router.
+// Plans/Tickets/Fichiers/Rapport are implicitly scoped to this router
+// (matches the reference's 5-tab connected-router nav).
 function routerTabs(routerId: string): Tab[] {
   return [
     {
@@ -53,6 +54,12 @@ function routerTabs(routerId: string): Tab[] {
       label: 'Tickets',
       icon: 'ticket-outline',
       href: { pathname: '/generate-vouchers', params: { routerId } } as Href,
+    },
+    {
+      key: 'fichiers',
+      label: 'Fichiers',
+      icon: 'folder-outline',
+      href: { pathname: '/fichiers', params: { routerId } } as Href,
     },
     {
       key: 'rapport',
@@ -142,12 +149,13 @@ export function BottomNav({ active }: { active?: string }) {
             >
               <Ionicons
                 name={t.icon}
-                size={22}
+                size={20}
                 color={on ? theme.primary : theme.textMuted}
               />
               <Text
+                numberOfLines={1}
                 style={{
-                  fontSize: 11,
+                  fontSize: tabs.length > 4 ? 10 : 11,
                   fontWeight: '600',
                   color: on ? theme.primary : theme.textMuted,
                 }}
