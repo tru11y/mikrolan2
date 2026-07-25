@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, Share, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   api,
@@ -11,20 +12,9 @@ import {
 } from '@/src/lib/api';
 import { getLocalCredentials } from '@/src/lib/router-credentials';
 import { pushVouchersLan } from '@/src/services/mikrotik-lan/hotspotLan';
-import { TicketQr } from '@/src/components/TicketQr';
+import { TicketCard } from '@/src/components/TicketCard';
 import { printTickets } from '@/src/lib/ticketsPdf';
-import {
-  Badge,
-  Banner,
-  Button,
-  Card,
-  Empty,
-  Field,
-  Label,
-  Subtitle,
-  Title,
-  theme,
-} from '@/src/components/ui';
+import { Badge, Banner, Button, Card, Empty, theme } from '@/src/components/ui';
 import { BottomNav } from '@/src/components/BottomNav';
 
 const STATUS_TONE: Record<
@@ -37,6 +27,29 @@ const STATUS_TONE: Record<
   EXPIRED: 'warning',
   REVOKED: 'danger',
 };
+
+function FieldLabel({ children }: { children: string }) {
+  return (
+    <Text
+      style={{
+        color: theme.textMuted,
+        fontSize: 12,
+        fontWeight: '500',
+        marginBottom: 4,
+      }}
+    >
+      {children}
+    </Text>
+  );
+}
+
+function fmtDuration(min: number): string {
+  if (min % 1440 === 0) return `${min / 1440}j`;
+  if (min % 60 === 0) return `${min / 60}h`;
+  return `${min}min`;
+}
+
+type OutputFormat = 'screen' | 'pdf';
 
 export default function GenerateVouchersScreen() {
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
@@ -64,17 +77,39 @@ export default function GenerateVouchersScreen() {
   });
 
   const [planId, setPlanId] = useState<string | null>(null);
-  const [quantity, setQuantity] = useState('10');
+  const [quantity, setQuantity] = useState(1);
+  const [outputFormat, setOutputFormat] = useState<OutputFormat>('screen');
+  const [formatOpen, setFormatOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [justGenerated, setJustGenerated] = useState<VoucherItem[] | null>(null);
   const [printBusy, setPrintBusy] = useState(false);
   const [reprintId, setReprintId] = useState<string | null>(null);
 
+  const selectedPlan = plansQuery.data?.find((p) => p.id === planId) ?? null;
+
+  async function printBatch(codes: VoucherItem[], plan: Plan) {
+    setError(null);
+    setPrintBusy(true);
+    try {
+      const r = routerQuery.data;
+      await printTickets({
+        routerName: r?.alias || r?.identity || 'WiFi',
+        planName: plan.name,
+        durationMinutes: plan.durationMinutes,
+        priceXof: plan.priceXof,
+        tickets: codes.map((v) => ({ code: v.code })),
+      });
+    } catch (e) {
+      setError(extractErrorMessage(e));
+    } finally {
+      setPrintBusy(false);
+    }
+  }
+
   async function generate() {
     setError(null);
-    const qty = Number.parseInt(quantity, 10);
-    if (!planId || !qty || qty < 1) {
+    if (!planId || quantity < 1) {
       setError('Choisissez un forfait et une quantité.');
       return;
     }
@@ -82,7 +117,7 @@ export default function GenerateVouchersScreen() {
     try {
       const res = await api.routers.generateVouchers(routerId, {
         planId,
-        quantity: qty,
+        quantity,
       });
       // LOCAL (free) router: the backend recorded the codes but the app must
       // push them to the router over the LAN, then confirm the RouterOS ids.
@@ -103,34 +138,13 @@ export default function GenerateVouchersScreen() {
       setJustGenerated(res.vouchers);
       await qc.invalidateQueries({ queryKey: ['vouchers', routerId] });
       await qc.invalidateQueries({ queryKey: ['batches', routerId] });
+      if (outputFormat === 'pdf' && selectedPlan) {
+        await printBatch(res.vouchers, selectedPlan);
+      }
     } catch (e) {
       setError(extractErrorMessage(e));
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function printBatch(codes: VoucherItem[]) {
-    const plan = plansQuery.data?.find((p) => p.id === codes[0]?.planId);
-    if (!plan) {
-      setError('Forfait introuvable pour ces tickets.');
-      return;
-    }
-    setError(null);
-    setPrintBusy(true);
-    try {
-      const r = routerQuery.data;
-      await printTickets({
-        routerName: r?.alias || r?.identity || 'WiFi',
-        planName: plan.name,
-        durationMinutes: plan.durationMinutes,
-        priceXof: plan.priceXof,
-        tickets: codes.map((v) => ({ code: v.code })),
-      });
-    } catch (e) {
-      setError(extractErrorMessage(e));
-    } finally {
-      setPrintBusy(false);
     }
   }
 
@@ -175,114 +189,275 @@ export default function GenerateVouchersScreen() {
     }
   }
 
+  const r = routerQuery.data;
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: 100 }}>
-        <Title>Créer des tickets</Title>
-        <Subtitle>
-          Générez des codes d’accès WiFi uniques, puis distribuez-les à vos
-          clients (partage ou lecture).
-        </Subtitle>
+        <View>
+          <Text style={{ color: theme.text, fontSize: 20, fontWeight: '700' }}>
+            Créer des Tickets
+          </Text>
+          <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
+            Générez des codes d’accès WiFi uniques RouterOS
+          </Text>
+        </View>
 
         {error ? <Banner tone="danger">{error}</Banner> : null}
 
-        <Card>
-          <Label>Forfait</Label>
-          {plansQuery.isLoading ? (
-            <Subtitle>Chargement des forfaits…</Subtitle>
-          ) : !plansQuery.data?.length ? (
-            <Subtitle>Aucun forfait — créez-en un dans « Forfaits ».</Subtitle>
-          ) : (
-            plansQuery.data.map((p: Plan) => {
-              const selected = p.id === planId;
-              return (
-                <Pressable
-                  key={p.id}
-                  onPress={() => setPlanId(p.id)}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: selected ? theme.primary : theme.border,
-                    backgroundColor: selected ? theme.surfaceAlt : 'transparent',
-                    borderRadius: 10,
-                    padding: 12,
-                    flexDirection: 'row',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                  }}
-                >
-                  <Text style={{ color: theme.text, fontWeight: '600' }}>
-                    {p.name}
-                  </Text>
-                  <Badge
-                    label={`${p.priceXof.toLocaleString('fr-FR')} FCFA`}
-                    tone="gold"
-                  />
-                </Pressable>
-              );
-            })
-          )}
-          <Label>Quantité de tickets</Label>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <Pressable
-              accessibilityLabel="Diminuer la quantité"
-              onPress={() =>
-                setQuantity((q) =>
-                  String(Math.max(1, (Number.parseInt(q, 10) || 1) - 1)),
-                )
-              }
+        <Card style={{ gap: 16 }}>
+          {/* Serveur Hotspot (routeur déjà sélectionné) */}
+          <View>
+            <FieldLabel>Serveur Hotspot</FieldLabel>
+            <View
               style={{
-                width: 46,
-                height: 46,
-                borderRadius: 12,
+                backgroundColor: theme.surfaceAlt,
                 borderWidth: 1,
                 borderColor: theme.border,
-                backgroundColor: theme.surfaceAlt,
-                alignItems: 'center',
-                justifyContent: 'center',
+                borderRadius: 12,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
               }}
             >
-              <Text style={{ color: theme.text, fontSize: 22, fontWeight: '700' }}>
-                −
+              <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>
+                {r ? `${r.alias || r.identity} (${r.localAddress ?? r.identity})` : '…'}
               </Text>
-            </Pressable>
-            <View style={{ flex: 1 }}>
-              <Field
-                value={quantity}
-                onChangeText={setQuantity}
-                keyboardType="number-pad"
-                textAlign="center"
-              />
             </View>
-            <Pressable
-              accessibilityLabel="Augmenter la quantité"
-              onPress={() =>
-                setQuantity((q) => String((Number.parseInt(q, 10) || 0) + 1))
-              }
+          </View>
+
+          {/* Forfait / Plan WiFi */}
+          <View>
+            <FieldLabel>Forfait / Plan WiFi</FieldLabel>
+            {plansQuery.isLoading ? (
+              <Text style={{ color: theme.textMuted, fontSize: 13 }}>
+                Chargement des forfaits…
+              </Text>
+            ) : !plansQuery.data?.length ? (
+              <Text style={{ color: theme.textMuted, fontSize: 13 }}>
+                Aucun forfait — créez-en un dans « Forfaits ».
+              </Text>
+            ) : (
+              <View style={{ gap: 8 }}>
+                {plansQuery.data.map((p: Plan) => {
+                  const selected = p.id === planId;
+                  return (
+                    <Pressable
+                      key={p.id}
+                      onPress={() => setPlanId(p.id)}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: selected ? theme.primary : theme.border,
+                        backgroundColor: selected ? theme.surfaceAlt : 'transparent',
+                        borderRadius: 12,
+                        paddingHorizontal: 14,
+                        paddingVertical: 12,
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <Text style={{ color: theme.text, fontSize: 14, fontWeight: '500' }}>
+                        {p.name}
+                      </Text>
+                      <Text
+                        style={{ color: theme.success, fontSize: 12, fontWeight: '700' }}
+                      >
+                        {p.priceXof.toLocaleString('fr-FR')} FCFA
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+
+          {/* Résumé du forfait sélectionné */}
+          {selectedPlan ? (
+            <View
               style={{
-                width: 46,
-                height: 46,
-                borderRadius: 12,
+                backgroundColor: theme.surfaceAlt,
                 borderWidth: 1,
                 borderColor: theme.border,
-                backgroundColor: theme.surfaceAlt,
-                alignItems: 'center',
-                justifyContent: 'center',
+                borderRadius: 12,
+                padding: 12,
+                gap: 2,
               }}
             >
-              <Text style={{ color: theme.text, fontSize: 22, fontWeight: '700' }}>
-                +
+              <View
+                style={{
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>
+                  {selectedPlan.name}
+                </Text>
+                <Text style={{ color: theme.success, fontSize: 12, fontWeight: '700' }}>
+                  {selectedPlan.priceXof.toLocaleString('fr-FR')} FCFA
+                </Text>
+              </View>
+              <Text style={{ color: theme.textMuted, fontSize: 12 }}>
+                Durée : {fmtDuration(selectedPlan.durationMinutes)}
               </Text>
+            </View>
+          ) : null}
+
+          {/* Format de sortie */}
+          <View>
+            <FieldLabel>Format de Sortie (Impression / Export)</FieldLabel>
+            <Pressable
+              onPress={() => setFormatOpen((v) => !v)}
+              style={{
+                backgroundColor: theme.surfaceAlt,
+                borderWidth: 1,
+                borderColor: theme.border,
+                borderRadius: 12,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Ionicons
+                  name={outputFormat === 'screen' ? 'phone-portrait-outline' : 'document-text-outline'}
+                  size={18}
+                  color={outputFormat === 'screen' ? theme.secondary : theme.primary}
+                />
+                <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>
+                  {outputFormat === 'screen' ? 'Ticket à l’écran' : 'Fichier PDF'}
+                </Text>
+              </View>
+              <Ionicons name="chevron-down" size={16} color={theme.textMuted} />
             </Pressable>
+
+            {formatOpen ? (
+              <View style={{ gap: 8, marginTop: 8 }}>
+                {(
+                  [
+                    {
+                      value: 'screen' as const,
+                      icon: 'phone-portrait-outline' as const,
+                      color: theme.secondary,
+                      title: 'Ticket à l’écran',
+                      desc: 'Afficher les tickets générés avec QR code',
+                    },
+                    {
+                      value: 'pdf' as const,
+                      icon: 'document-text-outline' as const,
+                      color: theme.primary,
+                      title: 'Fichier PDF',
+                      desc: 'Générer un PDF imprimable de tous les tickets',
+                    },
+                  ]
+                ).map((opt) => {
+                  const active = outputFormat === opt.value;
+                  return (
+                    <Pressable
+                      key={opt.value}
+                      onPress={() => {
+                        setOutputFormat(opt.value);
+                        setFormatOpen(false);
+                      }}
+                      style={{
+                        borderWidth: 1,
+                        borderColor: active ? theme.primary : theme.border,
+                        backgroundColor: active ? theme.primary + '18' : theme.surfaceAlt,
+                        borderRadius: 14,
+                        padding: 12,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                      }}
+                    >
+                      <View
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}
+                      >
+                        <Ionicons name={opt.icon} size={18} color={opt.color} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>
+                            {opt.title}
+                          </Text>
+                          <Text style={{ color: theme.textMuted, fontSize: 11 }}>
+                            {opt.desc}
+                          </Text>
+                        </View>
+                      </View>
+                      {active ? (
+                        <Ionicons name="checkmark" size={18} color={theme.primary} />
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : null}
           </View>
+
+          {/* Quantité */}
+          <View>
+            <FieldLabel>Quantité de Tickets à Générer</FieldLabel>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <Pressable
+                accessibilityLabel="Diminuer la quantité"
+                onPress={() => setQuantity((q) => Math.max(1, q - 1))}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  backgroundColor: theme.surfaceAlt,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="remove" size={20} color={theme.text} />
+              </Pressable>
+              <View
+                style={{
+                  flex: 1,
+                  backgroundColor: theme.surfaceAlt,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  borderRadius: 12,
+                  paddingVertical: 10,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700' }}>
+                  {quantity}
+                </Text>
+              </View>
+              <Pressable
+                accessibilityLabel="Augmenter la quantité"
+                onPress={() => setQuantity((q) => Math.min(500, q + 1))}
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  backgroundColor: theme.surfaceAlt,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="add" size={20} color={theme.text} />
+              </Pressable>
+            </View>
+          </View>
+
           <Button
-            title={`Générer ${Number.parseInt(quantity, 10) || 0} tickets`}
+            title={`+ Créer des tickets (${quantity})`}
             onPress={generate}
             loading={busy}
           />
         </Card>
 
         {justGenerated?.length ? (
-          <Card>
+          <View style={{ gap: 12 }}>
             <View
               style={{
                 flexDirection: 'row',
@@ -290,31 +465,27 @@ export default function GenerateVouchersScreen() {
                 alignItems: 'center',
               }}
             >
-              <Label>{justGenerated.length} code(s) généré(s)</Label>
+              <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
+                {justGenerated.length} ticket(s) généré(s)
+              </Text>
               <Badge label="Nouveau" tone="success" />
             </View>
-            {justGenerated.map((v) => (
-              <View
+            {justGenerated.map((v, i) => (
+              <TicketCard
                 key={v.id}
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}
-              >
-                <TicketQr code={v.code} />
-                <Text
-                  style={{
-                    flex: 1,
-                    color: theme.text,
-                    fontFamily: theme.mono,
-                    fontSize: 18,
-                    letterSpacing: 1,
-                  }}
-                >
-                  {v.code}
-                </Text>
-              </View>
+                code={v.code}
+                planName={selectedPlan?.name ?? ''}
+                priceXof={selectedPlan?.priceXof ?? 0}
+                durationLabel={
+                  selectedPlan ? fmtDuration(selectedPlan.durationMinutes) : ''
+                }
+                ticketNumber={i + 1}
+                createdAt={new Date(v.createdAt)}
+              />
             ))}
             <Button
               title="Imprimer les tickets (PDF)"
-              onPress={() => printBatch(justGenerated)}
+              onPress={() => selectedPlan && printBatch(justGenerated, selectedPlan)}
               loading={printBusy}
             />
             <Button
@@ -322,12 +493,14 @@ export default function GenerateVouchersScreen() {
               variant="ghost"
               onPress={() => shareCodes(justGenerated)}
             />
-          </Card>
+          </View>
         ) : null}
 
         {batchesQuery.data?.length ? (
           <View style={{ gap: 12 }}>
-            <Label>Lots générés (réimpression)</Label>
+            <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
+              Lots générés (réimpression)
+            </Text>
             {batchesQuery.data.map((b) => (
               <Card key={b.id} style={{ gap: 10 }}>
                 <View
@@ -362,51 +535,49 @@ export default function GenerateVouchersScreen() {
           </View>
         ) : null}
 
-        <Label>Codes existants</Label>
+        <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
+          Codes existants
+        </Text>
         {vouchersQuery.isLoading ? (
-          <Subtitle>Chargement…</Subtitle>
+          <Text style={{ color: theme.textMuted, fontSize: 13 }}>Chargement…</Text>
         ) : !vouchersQuery.data?.length ? (
           <Empty text="Aucun code pour ce routeur." />
         ) : (
-          vouchersQuery.data.map((v) => (
-            <Card key={v.id}>
-              <View
-                style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}
-              >
-                <TicketQr code={v.code} size={56} />
-                <Text
-                  style={{
-                    flex: 1,
-                    color: theme.text,
-                    fontFamily: theme.mono,
-                    fontSize: 15,
-                    letterSpacing: 1,
-                  }}
-                >
-                  {v.code}
-                </Text>
-                <Badge label={v.status} tone={STATUS_TONE[v.status]} />
-              </View>
-              <View style={{ flexDirection: 'row', gap: 12 }}>
-                <View style={{ flex: 1 }}>
-                  <Button
-                    title="Partager"
-                    variant="ghost"
-                    onPress={() => shareCodes([v])}
+          <View style={{ gap: 12 }}>
+            {vouchersQuery.data.map((v) => {
+              const plan = plansQuery.data?.find((p) => p.id === v.planId);
+              return (
+                <View key={v.id} style={{ gap: 8 }}>
+                  <TicketCard
+                    code={v.code}
+                    planName={plan?.name ?? ''}
+                    priceXof={plan?.priceXof ?? 0}
+                    durationLabel={plan ? fmtDuration(plan.durationMinutes) : ''}
+                    compact
                   />
-                </View>
-                {v.status !== 'REVOKED' ? (
-                  <View style={{ flex: 1 }}>
-                    <Button
-                      title="Révoquer"
-                      variant="danger"
-                      onPress={() => revoke(v.id)}
-                    />
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <Badge label={v.status} tone={STATUS_TONE[v.status]} />
+                    <View style={{ flex: 1 }}>
+                      <Button
+                        title="Partager"
+                        variant="ghost"
+                        onPress={() => shareCodes([v])}
+                      />
+                    </View>
+                    {v.status !== 'REVOKED' ? (
+                      <View style={{ flex: 1 }}>
+                        <Button
+                          title="Révoquer"
+                          variant="danger"
+                          onPress={() => revoke(v.id)}
+                        />
+                      </View>
+                    ) : null}
                   </View>
-                ) : null}
-              </View>
-            </Card>
-          ))
+                </View>
+              );
+            })}
+          </View>
         )}
       </ScrollView>
       <BottomNav active="tickets" />

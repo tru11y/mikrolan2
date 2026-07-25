@@ -12,8 +12,8 @@ export default function TabsLayout() {
 
   const icon =
     (name: IoniconName) =>
-    ({ color, size }: { color: string; size: number }) => (
-      <Ionicons name={name} size={size} color={color} />
+    ({ color }: { color: string }) => (
+      <Ionicons name={name} size={22} color={color} />
     );
 
   return (

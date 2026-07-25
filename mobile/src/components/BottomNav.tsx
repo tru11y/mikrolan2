@@ -31,7 +31,7 @@ export function BottomNav({ active }: { active?: string }) {
         backgroundColor: theme.surface,
         borderTopWidth: 1,
         borderTopColor: theme.border,
-        paddingBottom: insets.bottom || 6,
+        paddingBottom: 8 + insets.bottom,
         paddingTop: 6,
         flexDirection: 'row',
       }}
@@ -43,7 +43,7 @@ export function BottomNav({ active }: { active?: string }) {
             key={t.key}
             accessibilityLabel={t.label}
             onPress={() => router.navigate(t.href)}
-            style={{ flex: 1, alignItems: 'center', gap: 2, paddingVertical: 4 }}
+            style={{ flex: 1, alignItems: 'center', gap: 2, paddingVertical: 0 }}
           >
             <Ionicons
               name={t.icon}
