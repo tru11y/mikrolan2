@@ -145,6 +145,8 @@ model User {
   tenantId      String
   tenant        Tenant         @relation(fields: [tenantId], references: [id])
   email         String         @unique
+  name          String?
+  country       String?
   passwordHash  String // Argon2id
   role          UserRole       @default(MEMBER)
   status        UserStatus     @default(ACTIVE)
