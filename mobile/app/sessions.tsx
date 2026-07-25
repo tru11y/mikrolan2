@@ -262,7 +262,7 @@ export default function SessionsScreen() {
           </View>
         )}
       </ScrollView>
-      <BottomNav active="routeurs" />
+      <BottomNav />
     </View>
   );
 }

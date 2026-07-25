@@ -13,6 +13,7 @@ import {
   theme,
   Title,
 } from '@/src/components/ui';
+import { BottomNav } from '@/src/components/BottomNav';
 
 export default function TicketsScreen() {
   const router = useRouter();
@@ -20,9 +21,10 @@ export default function TicketsScreen() {
   const list = routers.data ?? [];
 
   return (
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
     <ScrollView
       style={{ flex: 1, backgroundColor: theme.bg }}
-      contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 32 }}
+      contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 100 }}
     >
       <View>
         <Title>Créer des tickets</Title>
@@ -90,5 +92,7 @@ export default function TicketsScreen() {
         </View>
       )}
     </ScrollView>
+    <BottomNav />
+    </View>
   );
 }

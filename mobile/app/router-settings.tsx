@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, extractErrorMessage } from '@/src/lib/api';
 import { deleteLocalCredentials } from '@/src/lib/router-credentials';
+import { useActiveRouter } from '@/src/providers/active-router-provider';
 import {
   Banner,
   Button,
@@ -33,6 +34,7 @@ export default function RouterSettingsScreen() {
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const router = useRouter();
   const qc = useQueryClient();
+  const { clearActiveRouter } = useActiveRouter();
   const [rebootOpen, setRebootOpen] = useState(false);
 
   const routerQuery = useQuery({
@@ -71,6 +73,7 @@ export default function RouterSettingsScreen() {
     try {
       await api.routers.remove(routerId);
       await deleteLocalCredentials(routerId);
+      await clearActiveRouter();
       await qc.invalidateQueries({ queryKey: ['routers'] });
       router.dismissTo('/(tabs)/routeurs');
     } catch (e) {
@@ -343,7 +346,7 @@ export default function RouterSettingsScreen() {
         </View>
       ) : null}
 
-      <BottomNav active="routeurs" />
+      <BottomNav />
     </View>
   );
 }

@@ -76,7 +76,7 @@ export default function HotspotSetupScreen() {
           <Button title="Configurer" onPress={configure} loading={busy} />
         </Card>
       </ScrollView>
-      <BottomNav active="routeurs" />
+      <BottomNav />
     </View>
   );
 }
