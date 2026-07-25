@@ -381,13 +381,12 @@ export async function setInternetSharingBlocked(
   }
   if (existingIds.length > 0) return; // already enabled, idempotent
 
-  // RouterOS's mangle `ttl` matcher takes a `lo-hi` range, not a comma-list
-  // ("63,127" → "invalid value for argument ttl") — model "TTL is 63 OR 127"
-  // as two separate rules. The API is also stricter than the CLI here: a bare
-  // "63" is rejected too ("invalid value for argument ttl") — the CLI silently
-  // normalizes a single value to "63-63" before sending it over the API, but
-  // the API itself requires the explicit "lo-hi" form.
-  for (const ttl of ['63-63', '127-127']) {
+  // RouterOS's mangle `ttl` matcher is a plain `integer: 0..255`, not a range
+  // type (per official doc: help.mikrotik.com "Common Firewall Matchers and
+  // Actions" — "ttl (integer: 0..255; Default: )"). A comma-list ("63,127")
+  // is rejected ("invalid value for argument ttl"); model "TTL is 63 OR 127"
+  // as two separate rules with plain single values instead.
+  for (const ttl of ['63', '127']) {
     await c.command([
       '/ip/firewall/mangle/add',
       ...attrs({
