@@ -41,6 +41,7 @@ export type Me = {
     country: string | null;
     role: UserRole;
     status: string;
+    notificationsEnabled: boolean;
   };
   tenant: { id: string; name: string; slug: string; status: string };
   subscription: {
@@ -451,6 +452,15 @@ export const api = {
     async logout(): Promise<void> {
       if (!refreshToken) return;
       await apiClient.post('/auth/logout', { refreshToken });
+    },
+    async updateNotifications(enabled: boolean): Promise<void> {
+      await apiClient.patch('/auth/me/notifications', { enabled });
+    },
+    async logoutAllSessions(): Promise<void> {
+      await apiClient.post('/auth/logout-all');
+    },
+    async deleteAccount(password: string): Promise<void> {
+      await apiClient.delete('/auth/me', { data: { password } });
     },
   },
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
@@ -100,6 +100,51 @@ export default function AccountScreen() {
     }
   }
 
+  const [notifBusy, setNotifBusy] = useState(false);
+  async function toggleNotifications(enabled: boolean) {
+    setNotifBusy(true);
+    try {
+      await api.auth.updateNotifications(enabled);
+      await refreshProfile();
+    } catch (e) {
+      setProfileMsg({ tone: 'danger', text: extractErrorMessage(e) });
+    } finally {
+      setNotifBusy(false);
+    }
+  }
+
+  const [loggingOutAll, setLoggingOutAll] = useState(false);
+  async function logoutAllSessions() {
+    setLoggingOutAll(true);
+    try {
+      await api.auth.logoutAllSessions();
+    } catch {
+      // fall through to local logout regardless — the goal is a clean session
+    } finally {
+      await logout();
+    }
+  }
+
+  const [editingDelete, setEditingDelete] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteMsg, setDeleteMsg] = useState<
+    { tone: 'success' | 'danger'; text: string } | null
+  >(null);
+
+  async function confirmDeleteAccount() {
+    setDeleteBusy(true);
+    setDeleteMsg(null);
+    try {
+      await api.auth.deleteAccount(deletePassword);
+      await logout();
+    } catch (e) {
+      setDeleteMsg({ tone: 'danger', text: extractErrorMessage(e) });
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
   const [editingPassword, setEditingPassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -174,6 +219,32 @@ export default function AccountScreen() {
         <StaticRow label="Pays" value={me?.user.country || '—'} />
         <Divider />
 
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingVertical: 14,
+            gap: 10,
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: theme.text, fontSize: 15, fontWeight: '600' }}>
+              Notifications Push
+            </Text>
+            <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
+              Alertes déconnexions & activité tickets
+            </Text>
+          </View>
+          <Switch
+            value={me?.user.notificationsEnabled ?? true}
+            onValueChange={toggleNotifications}
+            disabled={notifBusy}
+            trackColor={{ false: theme.border, true: theme.primary }}
+            thumbColor="#fff"
+          />
+        </View>
+        <Divider />
+
         <ActionRow
           title="Changer le mot de passe"
           open={editingPassword}
@@ -217,7 +288,38 @@ export default function AccountScreen() {
           </>
         ) : null}
 
-        <ActionRow title="Se déconnecter" danger onPress={logout} />
+        <ActionRow
+          title="Se déconnecter de toutes les sessions"
+          subtitle={loggingOutAll ? 'Déconnexion en cours…' : undefined}
+          onPress={logoutAllSessions}
+        />
+        <Divider />
+
+        <ActionRow
+          title="Supprimer mon compte"
+          subtitle="Supprimer définitivement le compte et l'accès à MikroLan2"
+          danger
+          open={editingDelete}
+          onPress={() => setEditingDelete((v) => !v)}
+        />
+        {editingDelete ? (
+          <View style={{ gap: 12, paddingBottom: 16 }}>
+            {deleteMsg ? <Banner tone={deleteMsg.tone}>{deleteMsg.text}</Banner> : null}
+            <Field
+              label="Confirmez avec votre mot de passe"
+              value={deletePassword}
+              onChangeText={setDeletePassword}
+              secureTextEntry
+            />
+            <Button
+              title="Supprimer définitivement mon compte"
+              variant="danger"
+              onPress={confirmDeleteAccount}
+              loading={deleteBusy}
+              disabled={deletePassword.length < 1}
+            />
+          </View>
+        ) : null}
 
         <Text
           style={{

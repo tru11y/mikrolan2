@@ -16,8 +16,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { TokenService, TokenPair } from './token.service';
 import {
   ChangePasswordDto,
+  DeleteAccountDto,
   LoginDto,
   SignupDto,
+  UpdateNotificationsDto,
   UpdateProfileDto,
 } from './dto/auth.schemas';
 
@@ -126,6 +128,7 @@ export class AuthService {
           country: true,
           role: true,
           status: true,
+          notificationsEnabled: true,
         },
       }),
       this.prisma.tenant.findUnique({
@@ -156,6 +159,7 @@ export class AuthService {
         country: true,
         role: true,
         status: true,
+        notificationsEnabled: true,
       },
     });
     return user;
@@ -188,5 +192,39 @@ export class AuthService {
   async logout(refreshToken: string): Promise<{ revoked: true }> {
     await this.tokens.revoke(refreshToken);
     return { revoked: true };
+  }
+
+  async updateNotifications(userId: string, dto: UpdateNotificationsDto) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { notificationsEnabled: dto.enabled },
+    });
+    return { notificationsEnabled: dto.enabled };
+  }
+
+  async revokeAllSessions(userId: string): Promise<{ revoked: true }> {
+    await this.prisma.refreshToken.updateMany({
+      where: { userId, revoked: false },
+      data: { revoked: true },
+    });
+    return { revoked: true };
+  }
+
+  async deleteAccount(userId: string, dto: DeleteAccountDto): Promise<void> {
+    const user = await this.prisma.user.findFirst({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('Account not found');
+
+    const ok = await argon2.verify(user.passwordHash, dto.password);
+    if (!ok) throw new UnauthorizedException('Mot de passe incorrect');
+
+    // Soft delete — no cascade. Login already rejects non-ACTIVE users.
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { status: UserStatus.DELETED },
+    });
+    await this.prisma.refreshToken.updateMany({
+      where: { userId, revoked: false },
+      data: { revoked: true },
+    });
   }
 }
