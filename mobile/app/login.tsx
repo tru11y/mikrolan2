@@ -1,97 +1,10 @@
 import { useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { useAuth } from '@/src/providers/auth-provider';
-import { Banner, Button, theme } from '@/src/components/ui';
-
-// Outlined field with a floating label notched into the top border —
-// matches the real app's input style (verified from device screenshots,
-// not the approximate reference code dump).
-function OutlinedField({
-  label,
-  value,
-  onChangeText,
-  secureTextEntry,
-  onToggleSecure,
-  autoCapitalize,
-  keyboardType,
-  autoComplete,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChangeText: (v: string) => void;
-  secureTextEntry?: boolean;
-  onToggleSecure?: () => void;
-  autoCapitalize?: 'none' | 'words';
-  keyboardType?: 'default' | 'email-address' | 'url';
-  autoComplete?: 'email';
-  placeholder?: string;
-}) {
-  return (
-    <View>
-      <View
-        style={{
-          position: 'absolute',
-          top: -8,
-          left: 12,
-          backgroundColor: theme.bg,
-          paddingHorizontal: 6,
-          zIndex: 1,
-        }}
-      >
-        <Text style={{ color: theme.textMuted, fontSize: 12 }}>{label}</Text>
-      </View>
-      <View
-        style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          borderWidth: 1,
-          borderColor: theme.border,
-          borderRadius: 14,
-          paddingHorizontal: 16,
-        }}
-      >
-        <TextInput
-          value={value}
-          onChangeText={onChangeText}
-          placeholder={placeholder}
-          placeholderTextColor={theme.textMuted}
-          secureTextEntry={secureTextEntry}
-          autoCapitalize={autoCapitalize ?? 'none'}
-          keyboardType={keyboardType}
-          autoComplete={autoComplete}
-          style={{
-            flex: 1,
-            color: theme.text,
-            fontSize: 16,
-            fontWeight: '600',
-            paddingVertical: 16,
-          }}
-        />
-        {onToggleSecure ? (
-          <Pressable onPress={onToggleSecure} hitSlop={10}>
-            <Ionicons
-              name={secureTextEntry ? 'eye-outline' : 'eye-off-outline'}
-              size={20}
-              color={theme.textMuted}
-            />
-          </Pressable>
-        ) : null}
-      </View>
-    </View>
-  );
-}
+import { Banner, Button, OutlinedField, theme } from '@/src/components/ui';
 
 export default function LoginScreen() {
   const { login, signup, isBusy, error, clearError, apiBaseUrl, updateApiBaseUrl } =
@@ -104,6 +17,12 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [baseUrl, setBaseUrl] = useState(apiBaseUrl);
+  const [oauthNotice, setOauthNotice] = useState(false);
+
+  function oauthComingSoon() {
+    clearError();
+    setOauthNotice(true);
+  }
 
   async function submit() {
     clearError();
@@ -158,6 +77,11 @@ export default function LoginScreen() {
           </View>
 
           {error ? <Banner tone="danger">{error}</Banner> : null}
+          {oauthNotice ? (
+            <Banner tone="warning">
+              Connexion via Google/Apple — bientôt disponible.
+            </Banner>
+          ) : null}
 
           <View style={{ gap: 20 }}>
             {mode === 'signup' ? (
@@ -222,6 +146,59 @@ export default function LoginScreen() {
                   : "J'ai déjà un compte"}
               </Text>
             </Pressable>
+          </View>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View style={{ flex: 1, height: 1, backgroundColor: theme.border }} />
+            <Text style={{ color: theme.textMuted, fontSize: 12 }}>
+              ou continuer avec
+            </Text>
+            <View style={{ flex: 1, height: 1, backgroundColor: theme.border }} />
+          </View>
+
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <Pressable
+              onPress={oauthComingSoon}
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                height: 50,
+                borderRadius: 25,
+                borderWidth: 1,
+                borderColor: theme.border,
+                backgroundColor: theme.surface,
+              }}
+            >
+              <Ionicons name="logo-google" size={18} color={theme.text} />
+              <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>
+                Google
+              </Text>
+            </Pressable>
+            {Platform.OS === 'ios' ? (
+              <Pressable
+                onPress={oauthComingSoon}
+                style={{
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  height: 50,
+                  borderRadius: 25,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  backgroundColor: theme.surface,
+                }}
+              >
+                <Ionicons name="logo-apple" size={20} color={theme.text} />
+                <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>
+                  Apple
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
 
           <View style={{ flex: 1, minHeight: 12 }} />

@@ -22,6 +22,7 @@ export default function RootLayout() {
             >
               <Stack.Screen name="index" options={{ headerShown: false }} />
               <Stack.Screen name="login" options={{ headerShown: false }} />
+              <Stack.Screen name="verify-email" options={{ headerShown: false }} />
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
               <Stack.Screen
                 name="add-router"
@@ -54,6 +55,10 @@ export default function RootLayout() {
               <Stack.Screen
                 name="internet-sharing"
                 options={{ title: 'Partage Internet' }}
+              />
+              <Stack.Screen
+                name="ticket-settings"
+                options={{ title: 'Paramètres du ticket' }}
               />
             </Stack>
           </ActiveRouterProvider>
