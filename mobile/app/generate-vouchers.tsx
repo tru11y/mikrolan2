@@ -10,6 +10,7 @@ import { TicketCard } from '@/src/components/TicketCard';
 import { printTickets } from '@/src/lib/ticketsPdf';
 import { Badge, Banner, Button, theme } from '@/src/components/ui';
 import { BottomNav } from '@/src/components/BottomNav';
+import { RouterTopBar } from '@/src/components/RouterTopBar';
 
 function FieldLabel({ children }: { children: string }) {
   return (
@@ -130,6 +131,7 @@ export default function GenerateVouchersScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <RouterTopBar title="Tickets" />
       <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: 100 }}>
         <View
           style={{

@@ -13,6 +13,7 @@ import { printTickets, printTicketsDirect } from '@/src/lib/ticketsPdf';
 import { TicketCard } from '@/src/components/TicketCard';
 import { Badge, Banner, Button, Empty, Subtitle, Title, theme } from '@/src/components/ui';
 import { BottomNav } from '@/src/components/BottomNav';
+import { RouterTopBar } from '@/src/components/RouterTopBar';
 
 // U+0300-U+036F = plage des diacritiques combinants (issus de normalize('NFD'))
 const DIACRITICS_RE = new RegExp('[̀-ͯ]', 'g');
@@ -127,6 +128,7 @@ export default function FichiersScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <RouterTopBar title="Fichiers" />
       <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: 100 }}>
         <View>
           <Title>Fichiers &amp; Impression</Title>
