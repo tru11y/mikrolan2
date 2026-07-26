@@ -17,6 +17,9 @@ const PLAN_PUBLIC = {
   sharedUsers: true,
   expirationMode: true,
   userProfile: true,
+  codePrefix: true,
+  codeLength: true,
+  codeFormat: true,
   status: true,
   displayOrder: true,
   createdAt: true,
@@ -57,6 +60,9 @@ export class PlansService {
         sharedUsers: dto.sharedUsers ?? 1,
         expirationMode: dto.expirationMode ?? 'RADIO_PAUSE',
         userProfile: slug,
+        codePrefix: dto.codePrefix || null,
+        codeLength: dto.codeLength ?? 8,
+        codeFormat: dto.codeFormat ?? 'ALPHANUMERIC',
         displayOrder: dto.displayOrder ?? 0,
       } as unknown as Prisma.PlanUncheckedCreateInput,
       select: PLAN_PUBLIC,
@@ -99,6 +105,9 @@ export class PlansService {
       data.expirationMode = dto.expirationMode;
     if (dto.displayOrder !== undefined) data.displayOrder = dto.displayOrder;
     if (dto.status !== undefined) data.status = dto.status;
+    if (dto.codePrefix !== undefined) data.codePrefix = dto.codePrefix || null;
+    if (dto.codeLength !== undefined) data.codeLength = dto.codeLength;
+    if (dto.codeFormat !== undefined) data.codeFormat = dto.codeFormat;
 
     // Middleware rewrites update→updateMany (tenant-scoped); no select here.
     await this.prisma.plan.update({ where: { id }, data });
