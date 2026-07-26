@@ -95,6 +95,12 @@ enum PlanExpiration {
   RADIO_PAUSE
 }
 
+// Format des codes voucher générés pour ce plan.
+enum PlanCodeFormat {
+  ALPHANUMERIC // lettres + chiffres (sans glyphes ambigus)
+  NUMERIC // chiffres uniquement
+}
+
 enum VoucherStatus {
   GENERATED // créé, poussé sur le routeur, jamais utilisé
   ACTIVE // première connexion faite, session en cours
@@ -135,6 +141,7 @@ model Tenant {
   voucherBatches VoucherBatch[]
   vouchers       Voucher[]
   sessions       Session[]
+  notifications  Notification[]
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   deletedAt      DateTime?
@@ -286,6 +293,9 @@ model Plan {
   sharedUsers     Int            @default(1) // logins simultanés (RouterOS shared-users)
   expirationMode  PlanExpiration @default(RADIO_PAUSE) // Temps écoulé vs Pause radio
   userProfile     String         @default("default") // nom du profile RouterOS
+  codePrefix      String? // préfixe collé devant le code généré (ex. "3d")
+  codeLength      Int            @default(8) // longueur de la partie aléatoire du code
+  codeFormat      PlanCodeFormat @default(ALPHANUMERIC)
   status          PlanStatus     @default(ACTIVE)
   displayOrder    Int            @default(0)
   voucherBatches  VoucherBatch[]
@@ -376,4 +386,25 @@ model Session {
   @@index([tenantId])
   @@index([tenantId, status])
   @@index([routerId])
+}
+
+enum NotificationType {
+  VOUCHER_ACTIVATED // un ticket vient de se connecter au hotspot
+}
+
+// ─── NOTIFICATION (flux in-app, pas de push OS pour l'instant) ─
+model Notification {
+  id        String           @id @default(uuid())
+  tenantId  String
+  tenant    Tenant           @relation(fields: [tenantId], references: [id])
+  type      NotificationType
+  title     String
+  body      String
+  voucherId String?
+  routerId  String?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, readAt])
 }

@@ -26,8 +26,14 @@ import type {
 } from './dto/voucher.schemas';
 
 // No ambiguous glyphs (0/O, 1/I) — codes get read aloud and typed by hand.
-const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const CODE_LEN = 8;
+const ALPHANUMERIC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const NUMERIC = '0123456789';
+
+type CodeFormatOptions = {
+  codePrefix: string | null;
+  codeLength: number;
+  codeFormat: 'ALPHANUMERIC' | 'NUMERIC';
+};
 
 const VOUCHER_PUBLIC = {
   id: true,
@@ -77,6 +83,9 @@ export class VoucherService {
         downloadKbps: true,
         uploadKbps: true,
         sharedUsers: true,
+        codePrefix: true,
+        codeLength: true,
+        codeFormat: true,
       },
     });
     if (!plan) throw new NotFoundException('Plan not found');
@@ -85,7 +94,11 @@ export class VoucherService {
     const tenantId = ctx?.tenantId;
     if (!tenantId) throw new BadRequestException('Contexte tenant manquant');
 
-    const codes = await this.uniqueCodes(dto.quantity);
+    const codes = await this.uniqueCodes(dto.quantity, {
+      codePrefix: plan.codePrefix,
+      codeLength: plan.codeLength,
+      codeFormat: plan.codeFormat,
+    });
     const push: VoucherPushParams = {
       userProfile: plan.userProfile,
       // RouterOS rate-limit = "rx/tx" (client upload/download). Only when both set.
@@ -277,9 +290,12 @@ export class VoucherService {
     return { revoked: true };
   }
 
-  private async uniqueCodes(quantity: number): Promise<string[]> {
+  private async uniqueCodes(
+    quantity: number,
+    opts: CodeFormatOptions,
+  ): Promise<string[]> {
     const set = new Set<string>();
-    while (set.size < quantity) set.add(this.genCode());
+    while (set.size < quantity) set.add(this.genCode(opts));
     let codes = [...set];
 
     const existing = await this.prisma.voucher.findMany({
@@ -290,18 +306,20 @@ export class VoucherService {
       const taken = new Set(existing.map((v) => v.code));
       codes = codes.filter((c) => !taken.has(c));
       while (codes.length < quantity) {
-        const c = this.genCode();
+        const c = this.genCode(opts);
         if (!taken.has(c) && !codes.includes(c)) codes.push(c);
       }
     }
     return codes;
   }
 
-  private genCode(): string {
-    const b = randomBytes(CODE_LEN);
+  private genCode(opts: CodeFormatOptions): string {
+    const alphabet = opts.codeFormat === 'NUMERIC' ? NUMERIC : ALPHANUMERIC;
+    const length = opts.codeLength || 8;
+    const b = randomBytes(length);
     let s = '';
-    for (let i = 0; i < CODE_LEN; i += 1) s += ALPHABET[b[i] % ALPHABET.length];
-    return s;
+    for (let i = 0; i < length; i += 1) s += alphabet[b[i] % alphabet.length];
+    return (opts.codePrefix || '') + s;
   }
 
   private async audit(

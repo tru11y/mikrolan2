@@ -1,9 +1,15 @@
 import { z } from 'zod';
-import { PlanExpiration, PlanStatus } from '@prisma/client';
+import { PlanCodeFormat, PlanExpiration, PlanStatus } from '@prisma/client';
 
 const kbps = z.number().int().positive().max(1_000_000);
 const minutes = z.number().int().positive().max(525_600); // ≤ 1 an
 const sharedUsers = z.number().int().min(1).max(1000);
+const codePrefix = z
+  .string()
+  .trim()
+  .max(12)
+  .regex(/^[A-Za-z0-9]*$/, { message: 'Invalid prefix' });
+const codeLength = z.number().int().min(4).max(12);
 
 export const createPlanSchema = z.object({
   name: z.string().trim().min(2).max(100),
@@ -16,6 +22,9 @@ export const createPlanSchema = z.object({
   sharedUsers: sharedUsers.optional(),
   expirationMode: z.nativeEnum(PlanExpiration).optional(),
   displayOrder: z.number().int().min(0).max(1000).optional(),
+  codePrefix: codePrefix.nullable().optional(),
+  codeLength: codeLength.optional(),
+  codeFormat: z.nativeEnum(PlanCodeFormat).optional(),
 });
 export type CreatePlanDto = z.infer<typeof createPlanSchema>;
 
@@ -32,6 +41,9 @@ export const updatePlanSchema = z
     expirationMode: z.nativeEnum(PlanExpiration).optional(),
     displayOrder: z.number().int().min(0).max(1000).optional(),
     status: z.nativeEnum(PlanStatus).optional(),
+    codePrefix: codePrefix.nullable().optional(),
+    codeLength: codeLength.optional(),
+    codeFormat: z.nativeEnum(PlanCodeFormat).optional(),
   })
   .strict();
 export type UpdatePlanDto = z.infer<typeof updatePlanSchema>;
