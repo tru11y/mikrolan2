@@ -76,6 +76,7 @@ export default function FichiersScreen() {
         durationMinutes: plan?.durationMinutes ?? 0,
         priceXof: batch.plan.priceXof,
         tickets: codes.map((v) => ({ code: v.code })),
+        template: r?.ticketTemplate,
       });
     } catch (e) {
       setError(extractErrorMessage(e));

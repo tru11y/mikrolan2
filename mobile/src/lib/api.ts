@@ -51,6 +51,46 @@ export type Me = {
   } | null;
 };
 
+export type TicketTemplate = {
+  showCompanyName: boolean;
+  companyName?: string;
+  showWifiName: boolean;
+  showPrice: boolean;
+  currency: string;
+  showTicketNumber: boolean;
+  showQrCode: boolean;
+  showPlanName: boolean;
+  showCreatedAt: boolean;
+  showPoweredBy: boolean;
+  showNote: boolean;
+  note?: string;
+  showHeader: boolean;
+  header?: string;
+  showFooter: boolean;
+  footer?: string;
+  showPageNumber: boolean;
+  showLogo: boolean;
+  logoDataUri?: string;
+};
+
+export const DEFAULT_TICKET_TEMPLATE: TicketTemplate = {
+  showCompanyName: false,
+  showWifiName: true,
+  showPrice: true,
+  currency: 'FCFA',
+  showTicketNumber: true,
+  showQrCode: true,
+  showPlanName: true,
+  showCreatedAt: true,
+  showPoweredBy: true,
+  showNote: true,
+  note: 'Conservez le ticket pendant le service',
+  showHeader: false,
+  showFooter: false,
+  showPageNumber: false,
+  showLogo: false,
+};
+
 export type RouterItem = {
   id: string;
   identity: string;
@@ -60,6 +100,7 @@ export type RouterItem = {
   mode: ManagementMode;
   health: RouterHealth;
   lastHeartbeat: string | null;
+  ticketTemplate: TicketTemplate | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -490,6 +531,16 @@ export const api = {
     async remove(id: string): Promise<{ deleted: boolean }> {
       const res = await apiClient.delete<ApiEnvelope<{ deleted: boolean }>>(
         `/routers/${id}`,
+      );
+      return unwrap(res);
+    },
+    async updateTicketTemplate(
+      id: string,
+      template: TicketTemplate,
+    ): Promise<RouterItem> {
+      const res = await apiClient.patch<ApiEnvelope<RouterItem>>(
+        `/routers/${id}/ticket-template`,
+        template,
       );
       return unwrap(res);
     },

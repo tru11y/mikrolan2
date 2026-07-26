@@ -72,6 +72,85 @@ export function Field(props: TextInputProps & { label?: string }) {
   );
 }
 
+// Outlined field with a floating label notched into the top border —
+// matches the real app's input style (verified from device screenshots,
+// not the approximate reference code dump).
+export function OutlinedField({
+  label,
+  value,
+  onChangeText,
+  secureTextEntry,
+  onToggleSecure,
+  autoCapitalize,
+  keyboardType,
+  autoComplete,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (v: string) => void;
+  secureTextEntry?: boolean;
+  onToggleSecure?: () => void;
+  autoCapitalize?: 'none' | 'words' | 'characters';
+  keyboardType?: TextInputProps['keyboardType'];
+  autoComplete?: TextInputProps['autoComplete'];
+  placeholder?: string;
+}) {
+  return (
+    <View>
+      <View
+        style={{
+          position: 'absolute',
+          top: -8,
+          left: 12,
+          backgroundColor: theme.bg,
+          paddingHorizontal: 6,
+          zIndex: 1,
+        }}
+      >
+        <Text style={{ color: theme.textMuted, fontSize: 12 }}>{label}</Text>
+      </View>
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          borderWidth: 1,
+          borderColor: theme.border,
+          borderRadius: 14,
+          paddingHorizontal: 16,
+        }}
+      >
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor={theme.textMuted}
+          secureTextEntry={secureTextEntry}
+          autoCapitalize={autoCapitalize ?? 'none'}
+          keyboardType={keyboardType}
+          autoComplete={autoComplete}
+          style={{
+            flex: 1,
+            color: theme.text,
+            fontSize: 16,
+            fontWeight: '600',
+            paddingVertical: 16,
+          }}
+        />
+        {onToggleSecure ? (
+          <Pressable onPress={onToggleSecure} hitSlop={10}>
+            <Ionicons
+              name={secureTextEntry ? 'eye-outline' : 'eye-off-outline'}
+              size={20}
+              color={theme.textMuted}
+            />
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
 export function Button({
   title,
   onPress,

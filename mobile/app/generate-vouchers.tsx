@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Pressable, ScrollView, Share, Text, View } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, extractErrorMessage, type Plan, type VoucherItem } from '@/src/lib/api';
@@ -8,7 +8,7 @@ import { getLocalCredentials } from '@/src/lib/router-credentials';
 import { pushVouchersLan } from '@/src/services/mikrotik-lan/hotspotLan';
 import { TicketCard } from '@/src/components/TicketCard';
 import { printTickets } from '@/src/lib/ticketsPdf';
-import { Badge, Banner, Button, Card, theme } from '@/src/components/ui';
+import { Badge, Banner, Button, theme } from '@/src/components/ui';
 import { BottomNav } from '@/src/components/BottomNav';
 
 function FieldLabel({ children }: { children: string }) {
@@ -36,6 +36,7 @@ type OutputFormat = 'screen' | 'pdf';
 
 export default function GenerateVouchersScreen() {
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
+  const router = useRouter();
   const qc = useQueryClient();
 
   const plansQuery = useQuery({
@@ -70,6 +71,7 @@ export default function GenerateVouchersScreen() {
         durationMinutes: plan.durationMinutes,
         priceXof: plan.priceXof,
         tickets: codes.map((v) => ({ code: v.code })),
+        template: r?.ticketTemplate,
       });
     } catch (e) {
       setError(extractErrorMessage(e));
@@ -129,18 +131,44 @@ export default function GenerateVouchersScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: 100 }}>
-        <View>
-          <Text style={{ color: theme.text, fontSize: 20, fontWeight: '700' }}>
-            Créer des Tickets
-          </Text>
-          <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
-            Générez des codes d’accès WiFi uniques RouterOS
-          </Text>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: theme.text, fontSize: 20, fontWeight: '700' }}>
+              Créer des Tickets
+            </Text>
+            <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
+              Générez des codes d’accès WiFi uniques RouterOS
+            </Text>
+          </View>
+          <Pressable
+            accessibilityLabel="Paramètres du ticket"
+            onPress={() =>
+              router.push({ pathname: '/ticket-settings', params: { routerId } })
+            }
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: theme.border,
+              backgroundColor: theme.surfaceAlt,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons name="settings-outline" size={20} color={theme.textMuted} />
+          </Pressable>
         </View>
 
         {error ? <Banner tone="danger">{error}</Banner> : null}
 
-        <Card style={{ gap: 16 }}>
+        <View style={{ gap: 16 }}>
           {/* Serveur Hotspot (routeur déjà sélectionné) */}
           <View>
             <FieldLabel>Serveur Hotspot</FieldLabel>
@@ -330,53 +358,51 @@ export default function GenerateVouchersScreen() {
             ) : null}
           </View>
 
-          {/* Quantité */}
           <View>
             <FieldLabel>Quantité de Tickets à Générer</FieldLabel>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                backgroundColor: theme.surfaceAlt,
+                borderWidth: 1,
+                borderColor: theme.border,
+                borderRadius: 12,
+                padding: 6,
+              }}
+            >
               <Pressable
                 accessibilityLabel="Diminuer la quantité"
                 onPress={() => setQuantity((q) => Math.max(1, q - 1))}
+                disabled={quantity <= 1}
                 style={{
                   width: 44,
                   height: 44,
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: theme.border,
-                  backgroundColor: theme.surfaceAlt,
+                  borderRadius: 10,
+                  backgroundColor: theme.surface,
                   alignItems: 'center',
                   justifyContent: 'center',
+                  opacity: quantity <= 1 ? 0.4 : 1,
                 }}
               >
                 <Ionicons name="remove" size={20} color={theme.text} />
               </Pressable>
-              <View
-                style={{
-                  flex: 1,
-                  backgroundColor: theme.surfaceAlt,
-                  borderWidth: 1,
-                  borderColor: theme.border,
-                  borderRadius: 12,
-                  paddingVertical: 10,
-                  alignItems: 'center',
-                }}
-              >
-                <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700' }}>
-                  {quantity}
-                </Text>
-              </View>
+              <Text style={{ color: theme.text, fontSize: 20, fontWeight: '800' }}>
+                {quantity}
+              </Text>
               <Pressable
                 accessibilityLabel="Augmenter la quantité"
                 onPress={() => setQuantity((q) => Math.min(500, q + 1))}
+                disabled={quantity >= 500}
                 style={{
                   width: 44,
                   height: 44,
-                  borderRadius: 12,
-                  borderWidth: 1,
-                  borderColor: theme.border,
-                  backgroundColor: theme.surfaceAlt,
+                  borderRadius: 10,
+                  backgroundColor: theme.surface,
                   alignItems: 'center',
                   justifyContent: 'center',
+                  opacity: quantity >= 500 ? 0.4 : 1,
                 }}
               >
                 <Ionicons name="add" size={20} color={theme.text} />
@@ -389,7 +415,7 @@ export default function GenerateVouchersScreen() {
             onPress={generate}
             loading={busy}
           />
-        </Card>
+        </View>
 
         {justGenerated?.length ? (
           <View style={{ gap: 12 }}>
