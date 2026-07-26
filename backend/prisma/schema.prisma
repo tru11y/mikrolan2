@@ -188,6 +188,7 @@ model Router {
   mode           ManagementMode @default(LOCAL)
   health         RouterHealth   @default(UNKNOWN)
   lastHeartbeat  DateTime?
+  ticketTemplate Json? // options d'affichage du reçu ticket (voir ticket-template.schemas.ts)
   remotePeer     RemotePeer?
   plans          Plan[]
   voucherBatches VoucherBatch[]
