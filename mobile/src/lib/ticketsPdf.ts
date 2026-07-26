@@ -22,14 +22,16 @@ function esc(s: string): string {
   );
 }
 
-export async function printTickets(opts: {
+export type TicketsPdfOpts = {
   routerName: string;
   planName: string;
   durationMinutes: number;
   priceXof: number;
   tickets: PrintableTicket[];
   template?: TicketTemplate | null;
-}): Promise<void> {
+};
+
+async function buildTicketsHtml(opts: TicketsPdfOpts): Promise<string> {
   const {
     routerName,
     planName,
@@ -112,6 +114,13 @@ export async function printTickets(opts: {
     ${tpl.showPageNumber ? `<div class="page-footer">Page <span class="page-number"></span></div>` : ''}
   </body></html>`;
 
+  return html;
+}
+
+// "Télécharger" — génère le PDF et ouvre la feuille de partage OS (enregistrer,
+// envoyer, imprimer via une appli tierce).
+export async function printTickets(opts: TicketsPdfOpts): Promise<void> {
+  const html = await buildTicketsHtml(opts);
   const { uri } = await Print.printToFileAsync({ html });
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(uri, {
@@ -119,4 +128,12 @@ export async function printTickets(opts: {
       dialogTitle: 'Imprimer / partager les tickets',
     });
   }
+}
+
+// "Imprimer" — ouvre directement la boîte de dialogue d'impression OS
+// (sélection imprimante Bluetooth/AirPrint), sans passer par la feuille de
+// partage.
+export async function printTicketsDirect(opts: TicketsPdfOpts): Promise<void> {
+  const html = await buildTicketsHtml(opts);
+  await Print.printAsync({ html });
 }
