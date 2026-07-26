@@ -127,6 +127,7 @@ export type RemoteStatus = {
 };
 
 export type PlanStatus = 'ACTIVE' | 'ARCHIVED';
+export type PlanCodeFormat = 'ALPHANUMERIC' | 'NUMERIC';
 export type Plan = {
   id: string;
   name: string;
@@ -140,6 +141,9 @@ export type Plan = {
   sharedUsers: number;
   expirationMode: PlanExpiration;
   userProfile: string;
+  codePrefix: string | null;
+  codeLength: number;
+  codeFormat: PlanCodeFormat;
   status: PlanStatus;
   displayOrder: number;
 };
@@ -177,6 +181,17 @@ export type RecentClient = {
   online: boolean;
 };
 
+export type AppNotification = {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  voucherId: string | null;
+  routerId: string | null;
+  read: boolean;
+  createdAt: string;
+};
+
 export type CreatePlanPayload = {
   name: string;
   durationMinutes: number;
@@ -187,6 +202,9 @@ export type CreatePlanPayload = {
   sharedUsers?: number;
   expirationMode?: PlanExpiration;
   description?: string;
+  codePrefix?: string | null;
+  codeLength?: number;
+  codeFormat?: PlanCodeFormat;
 };
 
 export type UpdatePlanPayload = Partial<CreatePlanPayload>;
@@ -713,6 +731,28 @@ export const api = {
         { mikrotikId },
       );
       return unwrap(res);
+    },
+  },
+
+  notifications: {
+    async list(unreadOnly = false, limit = 30): Promise<AppNotification[]> {
+      const res = await apiClient.get<ApiEnvelope<AppNotification[]>>(
+        '/notifications',
+        { params: { unreadOnly: String(unreadOnly), limit } },
+      );
+      return unwrap(res);
+    },
+    async unreadCount(): Promise<number> {
+      const res = await apiClient.get<ApiEnvelope<{ count: number }>>(
+        '/notifications/unread-count',
+      );
+      return unwrap(res).count;
+    },
+    async markRead(id: string): Promise<void> {
+      await apiClient.patch(`/notifications/${id}/read`);
+    },
+    async markAllRead(): Promise<void> {
+      await apiClient.patch('/notifications/read-all');
     },
   },
 

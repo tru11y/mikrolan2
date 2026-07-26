@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/src/lib/api';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
+import { NotificationBell } from './NotificationBell';
 import { Banner, theme } from './ui';
 
 // Persistent header shown on every screen while a router is selected —
@@ -116,6 +117,7 @@ export function RouterTopBar({ title }: { title: string }) {
               Routeur
             </Text>
           </View>
+          <NotificationBell />
           <Pressable
             accessibilityLabel="Support"
             onPress={() => setSupportNotice(true)}
