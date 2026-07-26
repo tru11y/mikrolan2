@@ -30,6 +30,7 @@ import {
   type IoniconName,
 } from '@/src/components/ui';
 import { BottomNav } from '@/src/components/BottomNav';
+import { RouterTopBar } from '@/src/components/RouterTopBar';
 
 function memPercent(res: SystemResource): number {
   const rec = res as unknown as Record<string, string>;
@@ -333,16 +334,22 @@ export default function RouterDetailScreen() {
 
   if (query.isLoading) {
     return (
-      <Screen>
-        <Subtitle>Chargement…</Subtitle>
-      </Screen>
+      <View style={{ flex: 1, backgroundColor: theme.bg }}>
+        <RouterTopBar title="Maison" />
+        <Screen>
+          <Subtitle>Chargement…</Subtitle>
+        </Screen>
+      </View>
     );
   }
   if (query.isError || !query.data) {
     return (
-      <Screen>
-        <Banner tone="danger">{extractErrorMessage(query.error)}</Banner>
-      </Screen>
+      <View style={{ flex: 1, backgroundColor: theme.bg }}>
+        <RouterTopBar title="Maison" />
+        <Screen>
+          <Banner tone="danger">{extractErrorMessage(query.error)}</Banner>
+        </Screen>
+      </View>
     );
   }
 
@@ -350,6 +357,7 @@ export default function RouterDetailScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <RouterTopBar title="Maison" />
       <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: 100 }}>
         <Card>
           <Row style={{ gap: 12, alignItems: 'flex-start' }}>

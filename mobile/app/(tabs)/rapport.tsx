@@ -15,6 +15,9 @@ import {
   Title,
 } from '@/src/components/ui';
 import { BottomNav } from '@/src/components/BottomNav';
+import { RouterTopBar } from '@/src/components/RouterTopBar';
+import { TopBar } from '@/src/components/TopBar';
+import { useActiveRouter } from '@/src/providers/active-router-provider';
 
 const PERIODS: { label: string; value: MetricsPeriod }[] = [
   { label: "Aujourd'hui", value: 'today' },
@@ -24,6 +27,7 @@ const PERIODS: { label: string; value: MetricsPeriod }[] = [
 
 export default function RapportScreen() {
   const { routerId } = useLocalSearchParams<{ routerId?: string }>();
+  const { activeRouterId } = useActiveRouter();
   const [period, setPeriod] = useState<MetricsPeriod>('30d');
   const metrics = useQuery({
     queryKey: ['metrics', period, routerId],
@@ -38,6 +42,7 @@ export default function RapportScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
+    {activeRouterId ? <RouterTopBar title="Rapport" /> : <TopBar />}
     <ScrollView
       style={{ flex: 1, backgroundColor: theme.bg }}
       contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 100 }}
