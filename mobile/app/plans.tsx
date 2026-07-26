@@ -7,6 +7,7 @@ import {
   api,
   extractErrorMessage,
   type Plan,
+  type PlanCodeFormat,
   type PlanExpiration,
 } from '@/src/lib/api';
 import {
@@ -92,6 +93,9 @@ export default function PlansScreen() {
   const [days, setDays] = useState('0');
   const [hours, setHours] = useState('1');
   const [minutes, setMinutes] = useState('0');
+  const [codePrefix, setCodePrefix] = useState('');
+  const [codeLength, setCodeLength] = useState('8');
+  const [codeFormat, setCodeFormat] = useState<PlanCodeFormat>('ALPHANUMERIC');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -106,6 +110,9 @@ export default function PlansScreen() {
     setDays('0');
     setHours('1');
     setMinutes('0');
+    setCodePrefix('');
+    setCodeLength('8');
+    setCodeFormat('ALPHANUMERIC');
   }
 
   function startEdit(p: Plan) {
@@ -121,6 +128,9 @@ export default function PlansScreen() {
     setDays(String(Math.floor(p.durationMinutes / 1440)));
     setHours(String(Math.floor((p.durationMinutes % 1440) / 60)));
     setMinutes(String(p.durationMinutes % 60));
+    setCodePrefix(p.codePrefix ?? '');
+    setCodeLength(String(p.codeLength));
+    setCodeFormat(p.codeFormat);
     setShowForm(true);
   }
 
@@ -145,6 +155,9 @@ export default function PlansScreen() {
         uploadKbps: upMbps ? Number.parseInt(upMbps, 10) * 1000 : null,
         sharedUsers: Number.parseInt(maxUsers, 10) || 1,
         expirationMode,
+        codePrefix: codePrefix.trim() || null,
+        codeLength: Math.min(12, Math.max(4, Number.parseInt(codeLength, 10) || 8)),
+        codeFormat,
       };
       if (editingId) {
         await api.plans.update(routerId, editingId, payload);
@@ -330,6 +343,72 @@ export default function PlansScreen() {
                     keyboardType="number-pad"
                   />
                 </View>
+              </Row>
+            </View>
+
+            <View>
+              <Label>Format du code</Label>
+              <Row style={{ gap: 12 }}>
+                <View style={{ flex: 2 }}>
+                  <Field
+                    label="Préfixe"
+                    value={codePrefix}
+                    onChangeText={(v) => setCodePrefix(v.replace(/[^A-Za-z0-9]/g, ''))}
+                    placeholder="Ex. 1h"
+                    autoCapitalize="none"
+                    maxLength={12}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Field
+                    label="Longueur"
+                    value={codeLength}
+                    onChangeText={setCodeLength}
+                    keyboardType="number-pad"
+                    placeholder="8"
+                  />
+                </View>
+              </Row>
+              <Row style={{ gap: 8, marginTop: 12 }}>
+                <Pressable
+                  onPress={() => setCodeFormat('ALPHANUMERIC')}
+                  style={{
+                    flex: 1,
+                    borderWidth: 1,
+                    borderColor:
+                      codeFormat === 'ALPHANUMERIC' ? theme.secondary : theme.border,
+                    backgroundColor:
+                      codeFormat === 'ALPHANUMERIC' ? theme.secondary + '18' : theme.surfaceAlt,
+                    borderRadius: 12,
+                    padding: 10,
+                  }}
+                >
+                  <Text style={{ color: theme.text, fontWeight: '700', fontSize: 12 }}>
+                    Lettres + Chiffres
+                  </Text>
+                  <Text style={{ color: theme.textMuted, fontSize: 10, marginTop: 2 }}>
+                    Ex. 3K7F9QXZ
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setCodeFormat('NUMERIC')}
+                  style={{
+                    flex: 1,
+                    borderWidth: 1,
+                    borderColor: codeFormat === 'NUMERIC' ? theme.secondary : theme.border,
+                    backgroundColor:
+                      codeFormat === 'NUMERIC' ? theme.secondary + '18' : theme.surfaceAlt,
+                    borderRadius: 12,
+                    padding: 10,
+                  }}
+                >
+                  <Text style={{ color: theme.text, fontWeight: '700', fontSize: 12 }}>
+                    Chiffres uniquement
+                  </Text>
+                  <Text style={{ color: theme.textMuted, fontSize: 10, marginTop: 2 }}>
+                    Ex. 98317204 (PIN)
+                  </Text>
+                </Pressable>
               </Row>
             </View>
 
