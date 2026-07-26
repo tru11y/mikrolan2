@@ -28,20 +28,20 @@ export default function RootLayout() {
                 name="add-router"
                 options={{ title: 'Ajouter un routeur', presentation: 'modal' }}
               />
-              <Stack.Screen name="router/[id]" options={{ title: 'Routeur' }} />
-              <Stack.Screen name="plans" options={{ title: 'Forfaits' }} />
+              <Stack.Screen name="router/[id]" options={{ headerShown: false }} />
+              <Stack.Screen name="plans" options={{ headerShown: false }} />
               <Stack.Screen
                 name="hotspot-setup"
                 options={{ title: 'Configurer le hotspot' }}
               />
               <Stack.Screen
                 name="generate-vouchers"
-                options={{ title: 'Créer des tickets' }}
+                options={{ headerShown: false }}
               />
               <Stack.Screen name="sessions" options={{ title: 'Sessions' }} />
               <Stack.Screen
                 name="fichiers"
-                options={{ title: 'Fichiers & Impression' }}
+                options={{ headerShown: false }}
               />
               <Stack.Screen name="pro" options={{ title: 'MikroLan2 PRO' }} />
               <Stack.Screen

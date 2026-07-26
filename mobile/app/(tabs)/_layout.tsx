@@ -28,7 +28,7 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="rapport"
-        options={{ title: 'Rapport', href: null }}
+        options={{ title: 'Rapport', href: null, headerShown: false }}
       />
       <Tabs.Screen name="modeles" options={{ title: 'Modèles' }} />
       <Tabs.Screen name="account" options={{ title: 'Paramètres' }} />
