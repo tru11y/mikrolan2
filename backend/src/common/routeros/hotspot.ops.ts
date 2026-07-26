@@ -350,11 +350,15 @@ export async function addIpBinding(
 // paying customers.
 const TETHER_RULE_COMMENT = 'mikrolan-antitether';
 
+// `drop` is a /ip/firewall/filter action, not a mangle one (mangle only
+// marks/rewrites packets — accept/drop decisions belong to the filter
+// table). Confirmed live: mangle rejected action=drop with "input does not
+// match any value of action".
 export async function isInternetSharingBlocked(
   c: RouterOsApiClient,
 ): Promise<boolean> {
   const rows = await c.command([
-    '/ip/firewall/mangle/print',
+    '/ip/firewall/filter/print',
     '=.proplist=.id,comment',
   ]);
   return rows.some((r) => r.comment === TETHER_RULE_COMMENT);
@@ -365,7 +369,7 @@ export async function setInternetSharingBlocked(
   blocked: boolean,
 ): Promise<void> {
   const rows = await c.command([
-    '/ip/firewall/mangle/print',
+    '/ip/firewall/filter/print',
     '=.proplist=.id,comment',
   ]);
   const existingIds = rows
@@ -375,28 +379,21 @@ export async function setInternetSharingBlocked(
 
   if (!blocked) {
     for (const id of existingIds) {
-      await c.command(['/ip/firewall/mangle/remove', `=.id=${id}`]);
+      await c.command(['/ip/firewall/filter/remove', `=.id=${id}`]);
     }
     return;
   }
   if (existingIds.length > 0) return; // already enabled, idempotent
 
-  // RouterOS's mangle `ttl` matcher is documented as a plain `integer:
-  // 0..255` (help.mikrotik.com "Common Firewall Matchers and Actions"). On
-  // this router (RB951Ui-2HnD, RouterOS 7.20.8 long-term) it is recognized as
-  // a valid parameter name (confirmed: a bogus name yields "unknown
-  // parameter X", this yields "invalid value for argument ttl" instead) but
-  // EVERY value tested is rejected — bare ("63"), degenerate range ("63-63"),
-  // real range ("60-70"), the edge case "0", and hex ("0x3F") — across
-  // /ip/firewall/mangle, /filter, and /raw alike. This looks like a firmware
-  // bug/limitation specific to this router rather than a request-format
-  // issue on our side. Keeping the doc-correct plain-integer form here (the
-  // right shape per spec even though it currently fails on this device); see
-  // project memory for the full diagnostic trail before trying yet another
-  // value format blind.
-  for (const ttl of ['63', '127']) {
+  // RouterOS 7.x's `ttl` matcher takes an operator-prefixed value, not a bare
+  // integer: confirmed via `/ip/firewall/mangle/export` on the live router,
+  // which showed a GUI-created rule stored as `ttl=equal:63` (also accepts
+  // `less-than:`/`greater-than:`). The plain integer form ("63") is rejected
+  // by the API with "invalid value for argument ttl" even though it matches
+  // the older help.mikrotik.com wording — that doc is stale for this syntax.
+  for (const ttl of ['equal:63', 'equal:127']) {
     await c.command([
-      '/ip/firewall/mangle/add',
+      '/ip/firewall/filter/add',
       ...attrs({
         chain: 'forward',
         protocol: 'tcp',
