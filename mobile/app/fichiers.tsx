@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { ScrollView, Share, Text, View } from 'react-native';
+import { Pressable, ScrollView, Share, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   api,
@@ -8,10 +9,21 @@ import {
   type VoucherBatch,
   type VoucherItem,
 } from '@/src/lib/api';
-import { printTickets } from '@/src/lib/ticketsPdf';
+import { printTickets, printTicketsDirect } from '@/src/lib/ticketsPdf';
 import { TicketCard } from '@/src/components/TicketCard';
-import { Badge, Banner, Button, Card, Empty, theme } from '@/src/components/ui';
+import { Badge, Banner, Button, Empty, Subtitle, Title, theme } from '@/src/components/ui';
 import { BottomNav } from '@/src/components/BottomNav';
+
+// U+0300-U+036F = plage des diacritiques combinants (issus de normalize('NFD'))
+const DIACRITICS_RE = new RegExp('[̀-ͯ]', 'g');
+
+function slug(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(DIACRITICS_RE, '')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
 
 const STATUS_TONE: Record<
   VoucherItem['status'],
@@ -30,11 +42,20 @@ function fmtDuration(min: number): string {
   return `${min}min`;
 }
 
+function batchFileName(b: VoucherBatch): string {
+  const d = new Date(b.createdAt);
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  return `Batch_Tickets_${slug(b.plan.name)}_${dd}${mm}${d.getFullYear()}.pdf`;
+}
+
+type BatchAction = { batchId: string; kind: 'download' | 'print' } | null;
+
 export default function FichiersScreen() {
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
-  const [reprintId, setReprintId] = useState<string | null>(null);
+  const [busy, setBusy] = useState<BatchAction>(null);
 
   const routerQuery = useQuery({
     queryKey: ['router', routerId],
@@ -57,9 +78,9 @@ export default function FichiersScreen() {
     enabled: Boolean(routerId),
   });
 
-  async function reprintBatch(batch: VoucherBatch) {
+  async function batchAction(batch: VoucherBatch, kind: 'download' | 'print') {
     setError(null);
-    setReprintId(batch.id);
+    setBusy({ batchId: batch.id, kind });
     try {
       const codes = await api.routers.listVouchers(routerId, {
         batchId: batch.id,
@@ -70,18 +91,23 @@ export default function FichiersScreen() {
       }
       const plan = plansQuery.data?.find((p) => p.id === batch.planId);
       const r = routerQuery.data;
-      await printTickets({
+      const opts = {
         routerName: r?.alias || r?.identity || 'WiFi',
         planName: batch.plan.name,
         durationMinutes: plan?.durationMinutes ?? 0,
         priceXof: batch.plan.priceXof,
         tickets: codes.map((v) => ({ code: v.code })),
         template: r?.ticketTemplate,
-      });
+      };
+      if (kind === 'download') {
+        await printTickets(opts);
+      } else {
+        await printTicketsDirect(opts);
+      }
     } catch (e) {
       setError(extractErrorMessage(e));
     } finally {
-      setReprintId(null);
+      setBusy(null);
     }
   }
 
@@ -103,54 +129,98 @@ export default function FichiersScreen() {
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: 100 }}>
         <View>
-          <Text style={{ color: theme.text, fontSize: 20, fontWeight: '700' }}>
-            Fichiers & Impression
-          </Text>
-          <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
-            Historique des lots générés et codes existants pour ce routeur
-          </Text>
+          <Title>Fichiers &amp; Impression</Title>
+          <Subtitle>
+            Historique des lots PDF générés et file d&rsquo;impression thermique
+          </Subtitle>
         </View>
 
         {error ? <Banner tone="danger">{error}</Banner> : null}
 
-        <View style={{ gap: 12 }}>
-          <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
-            Lots générés (réimpression)
-          </Text>
+        <View style={{ gap: 10 }}>
           {!batchesQuery.data?.length ? (
             <Empty text="Aucun lot généré pour ce routeur." />
           ) : (
-            batchesQuery.data.map((b) => (
-              <Card key={b.id} style={{ gap: 10 }}>
+            batchesQuery.data.map((b) => {
+              const isDownloading =
+                busy?.batchId === b.id && busy.kind === 'download';
+              const isPrinting = busy?.batchId === b.id && busy.kind === 'print';
+              return (
                 <View
+                  key={b.id}
                   style={{
                     flexDirection: 'row',
-                    justifyContent: 'space-between',
                     alignItems: 'center',
+                    gap: 12,
+                    backgroundColor: theme.surface,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    borderRadius: 16,
+                    padding: 14,
                   }}
                 >
+                  <View
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 12,
+                      backgroundColor: theme.primary + '22',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Ionicons name="document-text" size={22} color={theme.primary} />
+                  </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: theme.text, fontWeight: '700' }}>
-                      {b.plan.name}
+                    <Text
+                      numberOfLines={1}
+                      style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}
+                    >
+                      {batchFileName(b)}
                     </Text>
-                    <Text style={{ color: theme.textMuted, fontSize: 12 }}>
-                      {new Date(b.createdAt).toLocaleString('fr-FR')} ·{' '}
-                      {b.generated}/{b.quantity} tickets
+                    <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 2 }}>
+                      {b.generated} tickets · {new Date(b.createdAt).toLocaleDateString('fr-FR')}
                     </Text>
                   </View>
-                  <Badge
-                    label={`${b.plan.priceXof.toLocaleString('fr-FR')} F`}
-                    tone="gold"
-                  />
+                  <Pressable
+                    accessibilityLabel="Télécharger le lot"
+                    onPress={() => batchAction(b, 'download')}
+                    disabled={busy !== null}
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 10,
+                      borderWidth: 1,
+                      borderColor: theme.secondary + '40',
+                      backgroundColor: theme.secondary + '18',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      opacity: isDownloading ? 0.5 : 1,
+                    }}
+                  >
+                    <Ionicons name="download-outline" size={17} color={theme.secondary} />
+                  </Pressable>
+                  <Pressable
+                    accessibilityLabel="Imprimer le lot"
+                    onPress={() => batchAction(b, 'print')}
+                    disabled={busy !== null}
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 10,
+                      borderWidth: 1,
+                      borderColor: theme.primary + '40',
+                      backgroundColor: theme.primary + '18',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      opacity: isPrinting ? 0.5 : 1,
+                    }}
+                  >
+                    <Ionicons name="print-outline" size={17} color={theme.primary} />
+                  </Pressable>
                 </View>
-                <Button
-                  title="Réimprimer ce lot (PDF)"
-                  variant="ghost"
-                  onPress={() => reprintBatch(b)}
-                  loading={reprintId === b.id}
-                />
-              </Card>
-            ))
+              );
+            })
           )}
         </View>
 
