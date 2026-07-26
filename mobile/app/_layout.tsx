@@ -60,6 +60,10 @@ export default function RootLayout() {
                 name="ticket-settings"
                 options={{ title: 'Paramètres du ticket' }}
               />
+              <Stack.Screen
+                name="notifications"
+                options={{ title: 'Notifications' }}
+              />
             </Stack>
           </ActiveRouterProvider>
         </AuthProvider>

@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/src/lib/api';
+import { NotificationBell } from './NotificationBell';
 import { theme } from './ui';
 
 export function TopBar() {
@@ -49,6 +50,7 @@ export function TopBar() {
         </View>
 
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+          <NotificationBell />
           <Pressable
             accessibilityLabel="Passer à PRO"
             onPress={() => router.push('/pro')}
