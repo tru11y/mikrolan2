@@ -81,6 +81,7 @@ export default function PlansScreen() {
 
   const [showForm, setShowForm] = useState(false);
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
   const [maxUsers, setMaxUsers] = useState('1');
@@ -94,6 +95,7 @@ export default function PlansScreen() {
   const [error, setError] = useState<string | null>(null);
 
   function resetForm() {
+    setEditingId(null);
     setName('');
     setPrice('');
     setMaxUsers('1');
@@ -105,7 +107,23 @@ export default function PlansScreen() {
     setMinutes('0');
   }
 
-  async function create() {
+  function startEdit(p: Plan) {
+    setMenuFor(null);
+    setError(null);
+    setEditingId(p.id);
+    setName(p.name);
+    setPrice(String(p.priceXof));
+    setMaxUsers(String(p.sharedUsers));
+    setUpMbps(p.uploadKbps ? String(Math.round(p.uploadKbps / 1000)) : '');
+    setDownMbps(p.downloadKbps ? String(Math.round(p.downloadKbps / 1000)) : '');
+    setExpirationMode(p.expirationMode);
+    setDays(String(Math.floor(p.durationMinutes / 1440)));
+    setHours(String(Math.floor((p.durationMinutes % 1440) / 60)));
+    setMinutes(String(p.durationMinutes % 60));
+    setShowForm(true);
+  }
+
+  async function submit() {
     setError(null);
     const durationMinutes =
       (Number.parseInt(days, 10) || 0) * 1440 +
@@ -118,7 +136,7 @@ export default function PlansScreen() {
     }
     setBusy(true);
     try {
-      await api.plans.create(routerId, {
+      const payload = {
         name: name.trim(),
         durationMinutes,
         priceXof,
@@ -126,7 +144,12 @@ export default function PlansScreen() {
         uploadKbps: upMbps ? Number.parseInt(upMbps, 10) * 1000 : null,
         sharedUsers: Number.parseInt(maxUsers, 10) || 1,
         expirationMode,
-      });
+      };
+      if (editingId) {
+        await api.plans.update(routerId, editingId, payload);
+      } else {
+        await api.plans.create(routerId, payload);
+      }
       resetForm();
       setShowForm(false);
       await qc.invalidateQueries({ queryKey: ['plans', routerId] });
@@ -156,7 +179,15 @@ export default function PlansScreen() {
           </View>
           <Pressable
             accessibilityLabel="Nouveau forfait"
-            onPress={() => setShowForm((v) => !v)}
+            onPress={() => {
+              if (showForm) {
+                setShowForm(false);
+                resetForm();
+              } else {
+                resetForm();
+                setShowForm(true);
+              }
+            }}
             style={{
               width: 44,
               height: 44,
@@ -178,7 +209,7 @@ export default function PlansScreen() {
 
         {showForm ? (
           <Card>
-            <Label>Nouveau forfait</Label>
+            <Label>{editingId ? 'Modifier le forfait' : 'Nouveau forfait'}</Label>
             <Row style={{ gap: 12 }}>
               <View style={{ flex: 2 }}>
                 <Field label="Nom" value={name} onChangeText={setName} placeholder="Ex. 1 Heure" />
@@ -300,7 +331,25 @@ export default function PlansScreen() {
               </Row>
             </View>
 
-            <Button title="Créer le forfait" onPress={create} loading={busy} />
+            {editingId ? (
+              <Row style={{ gap: 8 }}>
+                <View style={{ flex: 1 }}>
+                  <Button
+                    title="Annuler"
+                    variant="ghost"
+                    onPress={() => {
+                      setShowForm(false);
+                      resetForm();
+                    }}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Button title="Mettre à jour" onPress={submit} loading={busy} />
+                </View>
+              </Row>
+            ) : (
+              <Button title="Créer le forfait" onPress={submit} loading={busy} />
+            )}
           </Card>
         ) : null}
 
@@ -369,28 +418,49 @@ export default function PlansScreen() {
                 </Row>
 
                 {menuFor === p.id ? (
-                  <Pressable
-                    onPress={() => {
-                      setMenuFor(null);
-                      remove(p.id);
-                    }}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 8,
-                      paddingVertical: 10,
-                      paddingHorizontal: 12,
-                      borderRadius: 12,
-                      backgroundColor: theme.danger + '18',
-                      borderWidth: 1,
-                      borderColor: theme.danger + '40',
-                    }}
-                  >
-                    <Ionicons name="trash-outline" size={16} color={theme.danger} />
-                    <Text style={{ color: theme.danger, fontWeight: '600', fontSize: 13 }}>
-                      Supprimer ce forfait
-                    </Text>
-                  </Pressable>
+                  <View style={{ gap: 8 }}>
+                    <Pressable
+                      onPress={() => startEdit(p)}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 8,
+                        paddingVertical: 10,
+                        paddingHorizontal: 12,
+                        borderRadius: 12,
+                        backgroundColor: theme.primary + '18',
+                        borderWidth: 1,
+                        borderColor: theme.primary + '40',
+                      }}
+                    >
+                      <Ionicons name="create-outline" size={16} color={theme.primary} />
+                      <Text style={{ color: theme.primary, fontWeight: '600', fontSize: 13 }}>
+                        Modifier ce forfait
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => {
+                        setMenuFor(null);
+                        remove(p.id);
+                      }}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 8,
+                        paddingVertical: 10,
+                        paddingHorizontal: 12,
+                        borderRadius: 12,
+                        backgroundColor: theme.danger + '18',
+                        borderWidth: 1,
+                        borderColor: theme.danger + '40',
+                      }}
+                    >
+                      <Ionicons name="trash-outline" size={16} color={theme.danger} />
+                      <Text style={{ color: theme.danger, fontWeight: '600', fontSize: 13 }}>
+                        Supprimer ce forfait
+                      </Text>
+                    </Pressable>
+                  </View>
                 ) : null}
 
                 <Row

@@ -189,6 +189,8 @@ export type CreatePlanPayload = {
   description?: string;
 };
 
+export type UpdatePlanPayload = Partial<CreatePlanPayload>;
+
 export type VoucherStatus =
   | 'GENERATED'
   | 'ACTIVE'
@@ -747,6 +749,17 @@ export const api = {
     async create(routerId: string, payload: CreatePlanPayload): Promise<Plan> {
       const res = await apiClient.post<ApiEnvelope<Plan>>(
         `/routers/${routerId}/plans`,
+        payload,
+      );
+      return unwrap(res);
+    },
+    async update(
+      routerId: string,
+      planId: string,
+      payload: UpdatePlanPayload,
+    ): Promise<Plan> {
+      const res = await apiClient.patch<ApiEnvelope<Plan>>(
+        `/routers/${routerId}/plans/${planId}`,
         payload,
       );
       return unwrap(res);
