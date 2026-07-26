@@ -3,7 +3,12 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, extractErrorMessage, type Plan } from '@/src/lib/api';
+import {
+  api,
+  extractErrorMessage,
+  type Plan,
+  type PlanExpiration,
+} from '@/src/lib/api';
 import {
   Badge,
   Banner,
@@ -77,19 +82,38 @@ export default function PlansScreen() {
   const [showForm, setShowForm] = useState(false);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [name, setName] = useState('');
-  const [duration, setDuration] = useState('');
   const [price, setPrice] = useState('');
-  const [down, setDown] = useState('');
-  const [up, setUp] = useState('');
+  const [maxUsers, setMaxUsers] = useState('1');
+  const [downMbps, setDownMbps] = useState('');
+  const [upMbps, setUpMbps] = useState('');
+  const [expirationMode, setExpirationMode] = useState<PlanExpiration>('ELAPSED');
+  const [days, setDays] = useState('0');
+  const [hours, setHours] = useState('1');
+  const [minutes, setMinutes] = useState('0');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  function resetForm() {
+    setName('');
+    setPrice('');
+    setMaxUsers('1');
+    setDownMbps('');
+    setUpMbps('');
+    setExpirationMode('ELAPSED');
+    setDays('0');
+    setHours('1');
+    setMinutes('0');
+  }
+
   async function create() {
     setError(null);
-    const durationMinutes = Number.parseInt(duration, 10);
+    const durationMinutes =
+      (Number.parseInt(days, 10) || 0) * 1440 +
+      (Number.parseInt(hours, 10) || 0) * 60 +
+      (Number.parseInt(minutes, 10) || 0);
     const priceXof = Number.parseInt(price, 10);
     if (!name.trim() || !durationMinutes || Number.isNaN(priceXof)) {
-      setError('Nom, durée (min) et prix sont requis.');
+      setError('Nom, durée et prix sont requis.');
       return;
     }
     setBusy(true);
@@ -98,14 +122,12 @@ export default function PlansScreen() {
         name: name.trim(),
         durationMinutes,
         priceXof,
-        downloadKbps: down ? Number.parseInt(down, 10) : null,
-        uploadKbps: up ? Number.parseInt(up, 10) : null,
+        downloadKbps: downMbps ? Number.parseInt(downMbps, 10) * 1000 : null,
+        uploadKbps: upMbps ? Number.parseInt(upMbps, 10) * 1000 : null,
+        sharedUsers: Number.parseInt(maxUsers, 10) || 1,
+        expirationMode,
       });
-      setName('');
-      setDuration('');
-      setPrice('');
-      setDown('');
-      setUp('');
+      resetForm();
       setShowForm(false);
       await qc.invalidateQueries({ queryKey: ['plans', routerId] });
     } catch (e) {
@@ -157,41 +179,127 @@ export default function PlansScreen() {
         {showForm ? (
           <Card>
             <Label>Nouveau forfait</Label>
-            <Field label="Nom" value={name} onChangeText={setName} placeholder="Ex. 1 Heure" />
-            <Field
-              label="Durée (minutes)"
-              value={duration}
-              onChangeText={setDuration}
-              keyboardType="number-pad"
-              placeholder="60"
-            />
-            <Field
-              label="Prix (FCFA)"
-              value={price}
-              onChangeText={setPrice}
-              keyboardType="number-pad"
-              placeholder="200"
-            />
             <Row style={{ gap: 12 }}>
-              <View style={{ flex: 1 }}>
-                <Field
-                  label="Débit ↓ (kbps)"
-                  value={down}
-                  onChangeText={setDown}
-                  keyboardType="number-pad"
-                  placeholder="optionnel"
-                />
+              <View style={{ flex: 2 }}>
+                <Field label="Nom" value={name} onChangeText={setName} placeholder="Ex. 1 Heure" />
               </View>
               <View style={{ flex: 1 }}>
                 <Field
-                  label="Débit ↑ (kbps)"
-                  value={up}
-                  onChangeText={setUp}
+                  label="Prix (FCFA)"
+                  value={price}
+                  onChangeText={setPrice}
                   keyboardType="number-pad"
-                  placeholder="optionnel"
+                  placeholder="200"
                 />
               </View>
             </Row>
+
+            <Row style={{ gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                <Field
+                  label="Users max"
+                  value={maxUsers}
+                  onChangeText={setMaxUsers}
+                  keyboardType="number-pad"
+                  placeholder="1"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Field
+                  label="Upload (Mb/s)"
+                  value={upMbps}
+                  onChangeText={setUpMbps}
+                  keyboardType="number-pad"
+                  placeholder="1"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Field
+                  label="Download (Mb/s)"
+                  value={downMbps}
+                  onChangeText={setDownMbps}
+                  keyboardType="number-pad"
+                  placeholder="5"
+                />
+              </View>
+            </Row>
+
+            <View>
+              <Label>Type de décompte temps</Label>
+              <Row style={{ gap: 8 }}>
+                <Pressable
+                  onPress={() => setExpirationMode('ELAPSED')}
+                  style={{
+                    flex: 1,
+                    borderWidth: 1,
+                    borderColor:
+                      expirationMode === 'ELAPSED' ? theme.secondary : theme.border,
+                    backgroundColor:
+                      expirationMode === 'ELAPSED' ? theme.secondary + '18' : theme.surfaceAlt,
+                    borderRadius: 12,
+                    padding: 10,
+                  }}
+                >
+                  <Text style={{ color: theme.text, fontWeight: '700', fontSize: 12 }}>
+                    Temps écoulé
+                  </Text>
+                  <Text style={{ color: theme.textMuted, fontSize: 10, marginTop: 2 }}>
+                    Le chrono tourne dès la 1ère connexion
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setExpirationMode('RADIO_PAUSE')}
+                  style={{
+                    flex: 1,
+                    borderWidth: 1,
+                    borderColor:
+                      expirationMode === 'RADIO_PAUSE' ? theme.secondary : theme.border,
+                    backgroundColor:
+                      expirationMode === 'RADIO_PAUSE' ? theme.secondary + '18' : theme.surfaceAlt,
+                    borderRadius: 12,
+                    padding: 10,
+                  }}
+                >
+                  <Text style={{ color: theme.text, fontWeight: '700', fontSize: 12 }}>
+                    Pause radio
+                  </Text>
+                  <Text style={{ color: theme.textMuted, fontSize: 10, marginTop: 2 }}>
+                    Le décompte s'arrête à la déconnexion
+                  </Text>
+                </Pressable>
+              </Row>
+            </View>
+
+            <View>
+              <Label>Durée de validité</Label>
+              <Row style={{ gap: 12 }}>
+                <View style={{ flex: 1 }}>
+                  <Field
+                    label="Jours"
+                    value={days}
+                    onChangeText={setDays}
+                    keyboardType="number-pad"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Field
+                    label="Heures"
+                    value={hours}
+                    onChangeText={setHours}
+                    keyboardType="number-pad"
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Field
+                    label="Minutes"
+                    value={minutes}
+                    onChangeText={setMinutes}
+                    keyboardType="number-pad"
+                  />
+                </View>
+              </Row>
+            </View>
+
             <Button title="Créer le forfait" onPress={create} loading={busy} />
           </Card>
         ) : null}
@@ -237,7 +345,7 @@ export default function PlansScreen() {
                         </Text>
                         <Text style={{ color: theme.textMuted, fontSize: 12 }}>•</Text>
                         <Text style={{ color: theme.warning, fontSize: 12, fontWeight: '500' }}>
-                          Temps écoulé
+                          {p.expirationMode === 'RADIO_PAUSE' ? 'Pause radio' : 'Temps écoulé'}
                         </Text>
                       </Row>
                       {p.description ? (
@@ -294,7 +402,11 @@ export default function PlansScreen() {
                   }}
                 >
                   <Chip icon="flash-outline" color={theme.gold} label={speedLabel(p)} />
-                  <Chip icon="people-outline" color={theme.secondary} label="1 user" />
+                  <Chip
+                    icon="people-outline"
+                    color={theme.secondary}
+                    label={`${p.sharedUsers} user${p.sharedUsers > 1 ? 's' : ''}`}
+                  />
                   <Chip
                     icon="layers-outline"
                     color={theme.primary}
