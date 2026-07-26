@@ -51,10 +51,12 @@ export class MetricsService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Sales dashboard for the current tenant. Revenue is booked per non-revoked
-   * voucher generated in the window (the operator prints and sells prepaid
-   * codes). All reads go through tenant-scoped Prisma actions (findMany/count),
-   * never groupBy — the isolation middleware does not scope groupBy.
+   * Sales dashboard for the current tenant. Revenue is booked per voucher
+   * that has actually been redeemed (ACTIVE or USED) in the window — a
+   * GENERATED voucher is a printed code that may never sell, so it does not
+   * count as revenue until a client connects with it. All reads go through
+   * tenant-scoped Prisma actions (findMany/count), never groupBy — the
+   * isolation middleware does not scope groupBy.
    */
   async summary(query: MetricsQueryDto): Promise<MetricsSummary> {
     const start = periodStart(query.period);
@@ -85,20 +87,23 @@ export class MetricsService {
         status: { not: VoucherStatus.REVOKED },
         ...routerFilter,
       },
-      select: { plan: { select: { priceXof: true } } },
+      select: { status: true, plan: { select: { priceXof: true } } },
     });
-    const previousRevenueXof = prevVouchers.reduce(
-      (sum, v) => sum + v.plan.priceXof,
-      0,
-    );
+    const isRedeemed = (status: VoucherStatus) =>
+      status === VoucherStatus.USED || status === VoucherStatus.ACTIVE;
+
+    const previousRevenueXof = prevVouchers
+      .filter((v) => isRedeemed(v.status))
+      .reduce((sum, v) => sum + v.plan.priceXof, 0);
 
     const byPlanMap = new Map<string, PlanBreakdown>();
     let revenueXof = 0;
     let ticketsUsed = 0;
 
     for (const v of vouchers) {
-      revenueXof += v.plan.priceXof;
-      if (v.status === VoucherStatus.USED || v.status === VoucherStatus.ACTIVE) {
+      const redeemed = isRedeemed(v.status);
+      if (redeemed) {
+        revenueXof += v.plan.priceXof;
         ticketsUsed += 1;
       }
       const entry = byPlanMap.get(v.plan.id) ?? {
@@ -108,8 +113,10 @@ export class MetricsService {
         sold: 0,
         revenueXof: 0,
       };
-      entry.sold += 1;
-      entry.revenueXof += v.plan.priceXof;
+      if (redeemed) {
+        entry.sold += 1;
+        entry.revenueXof += v.plan.priceXof;
+      }
       byPlanMap.set(v.plan.id, entry);
     }
 
