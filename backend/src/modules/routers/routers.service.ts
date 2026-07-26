@@ -10,6 +10,7 @@ import { CryptoService } from '../../common/crypto/crypto.service';
 import { getTenantContext } from '../../common/context/tenant-context';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { CreateRouterDto, UpdateRouterDto } from './dto/router.schemas';
+import { TicketTemplateDto } from './dto/ticket-template.schemas';
 
 // Never expose credEncrypted to the API.
 const ROUTER_PUBLIC = {
@@ -21,6 +22,7 @@ const ROUTER_PUBLIC = {
   mode: true,
   health: true,
   lastHeartbeat: true,
+  ticketTemplate: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.RouterSelect;
@@ -137,6 +139,15 @@ export class RoutersService {
 
     // Middleware rewrites update→updateMany (tenant-scoped); no select here.
     await this.prisma.router.update({ where: { id }, data });
+    return this.findOne(id);
+  }
+
+  async updateTicketTemplate(id: string, dto: TicketTemplateDto) {
+    await this.findOne(id); // ownership + existence (404 if cross-tenant)
+    await this.prisma.router.update({
+      where: { id },
+      data: { ticketTemplate: dto as Prisma.InputJsonValue },
+    });
     return this.findOne(id);
   }
 
