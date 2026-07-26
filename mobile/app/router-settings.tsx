@@ -129,6 +129,14 @@ export default function RouterSettingsScreen() {
       onPress: () => go('/sessions'),
     },
     {
+      id: 'ticket_template',
+      title: 'Paramètres du ticket',
+      subtitle: 'Personnaliser le reçu imprimé (logo, notes, mentions)',
+      icon: 'receipt-outline',
+      color: theme.gold,
+      onPress: () => go('/ticket-settings'),
+    },
+    {
       id: 'change_password',
       title: 'Changer MDP administrateur',
       subtitle: 'Mettre à jour le mot de passe admin RouterOS',
