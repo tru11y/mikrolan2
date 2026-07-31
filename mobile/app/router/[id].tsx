@@ -639,7 +639,7 @@ export default function RouterDetailScreen() {
                 </Text>
               </Row>
               <Text style={{ color: theme.text, fontSize: 12 }}>
-                Bloquer le partage via TTL=1 dans RouterOS.
+                Bloquer le partage via détection TTL dans RouterOS.
               </Text>
               <Text style={{ color: theme.primary, fontSize: 11, fontWeight: '600' }}>
                 Configurer →
