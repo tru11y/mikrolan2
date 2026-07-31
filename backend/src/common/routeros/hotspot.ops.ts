@@ -206,6 +206,22 @@ async function profileNameForServer(
   return server.profile;
 }
 
+/** Resolves the LAN interface a given hotspot server is bound to. */
+async function hotspotInterface(
+  c: RouterOsApiClient,
+  serverName: string,
+): Promise<string> {
+  const servers = await c.command([
+    '/ip/hotspot/print',
+    '=.proplist=.id,name,interface',
+  ]);
+  const server = servers.find((s) => s.name === serverName);
+  if (!server?.interface) {
+    throw new Error(`Hotspot server "${serverName}" not found`);
+  }
+  return server.interface;
+}
+
 /** Reads idle-timeout + dns-name from the profile behind a hotspot server. */
 export async function getHotspotSettings(
   c: RouterOsApiClient,
@@ -385,6 +401,12 @@ export async function setInternetSharingBlocked(
   }
   if (existingIds.length > 0) return; // already enabled, idempotent
 
+  // Scope to the actual hotspot interface: an unscoped chain=forward rule
+  // matches ALL forwarded traffic on the router (VPN, management, other
+  // interfaces), not just hotspot clients. Resolve it from the hotspot
+  // server itself rather than assuming an interface-list exists.
+  const inInterface = await hotspotInterface(c, HS_SERVER);
+
   // RouterOS 7.x's `ttl` matcher takes an operator-prefixed value, not a bare
   // integer: confirmed via `/ip/firewall/mangle/export` on the live router,
   // which showed a GUI-created rule stored as `ttl=equal:63` (also accepts
@@ -396,6 +418,7 @@ export async function setInternetSharingBlocked(
       '/ip/firewall/filter/add',
       ...attrs({
         chain: 'forward',
+        'in-interface': inInterface,
         protocol: 'tcp',
         'connection-state': 'new',
         ttl,
