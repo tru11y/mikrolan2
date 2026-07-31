@@ -108,7 +108,7 @@ export default function InternetSharingScreen() {
       await api.routers.setInternetSharing(routerId, selected === 'block');
       setMsg({
         tone: 'success',
-        text: 'Configuration TTL mise à jour sur le routeur !',
+        text: 'Règle anti-tethering mise à jour sur le routeur !',
       });
     } catch (e) {
       setMsg({ tone: 'danger', text: extractErrorMessage(e) });
@@ -138,7 +138,7 @@ export default function InternetSharingScreen() {
               textTransform: 'uppercase',
             }}
           >
-            Schéma de blocage anti-tethering TTL = 1
+            Schéma de blocage anti-tethering (détection TTL)
           </Text>
 
           <View
@@ -197,7 +197,7 @@ export default function InternetSharingScreen() {
                     textTransform: 'uppercase',
                   }}
                 >
-                  Partage bloqué (TTL=1)
+                  Partage bloqué (TTL décrémenté)
                 </Text>
               </View>
             </View>
@@ -231,11 +231,14 @@ export default function InternetSharingScreen() {
             }}
           >
             <Text style={{ color: theme.textMuted, fontSize: 12, lineHeight: 18 }}>
-              En fixant le paramètre{' '}
-              <Text style={{ color: theme.text, fontWeight: '700' }}>TTL = 1</Text>{' '}
-              dans le pare-feu RouterOS Mangle, tout paquet partagé via un point
-              d'accès secondaire (USB ou partage WiFi) expire immédiatement,
-              empêchant le vol de bande passante.
+              Un appareil qui redistribue votre connexion (partage WiFi, USB)
+              ajoute un saut réseau : son trafic arrive avec un{' '}
+              <Text style={{ color: theme.text, fontWeight: '700' }}>
+                TTL diminué de 1
+              </Text>
+              . Le pare-feu RouterOS détecte cette signature et bloque
+              uniquement ce trafic-là, sans toucher au TTL des vrais clients
+              ni couper leur accès internet.
             </Text>
           </View>
         </Card>
@@ -250,7 +253,7 @@ export default function InternetSharingScreen() {
             icon="ban"
             iconColor={theme.success}
             title="Bloquer le partage internet"
-            subtitle="Active les règles RouterOS IP Firewall Mangle (TTL Change = 1)"
+            subtitle="Active les règles RouterOS IP Firewall Filter (détection TTL)"
             onPress={() => setSelected('block')}
           />
           <OptionCard
