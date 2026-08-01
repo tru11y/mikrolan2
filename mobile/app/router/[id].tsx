@@ -23,15 +23,16 @@ import {
   Button,
   Card,
   Field,
+  icon,
   IconChip,
   Label,
   Mono,
+  radius,
+  routerHealth,
   Row,
   Screen,
-  Subtitle,
-  icon,
-  radius,
   space,
+  Subtitle,
   theme,
   type,
   type IoniconName,
@@ -399,20 +400,8 @@ export default function RouterDetailScreen() {
                   {r.alias || r.identity}
                 </Text>
                 <Badge
-                  label={
-                    r.health === 'ONLINE'
-                      ? 'CONNECTÉ'
-                      : r.health === 'OFFLINE'
-                        ? 'HORS LIGNE'
-                        : r.health
-                  }
-                  tone={
-                    r.health === 'ONLINE'
-                      ? 'success'
-                      : r.health === 'ERROR'
-                        ? 'danger'
-                        : 'warning'
-                  }
+                  label={routerHealth(r.health).label}
+                  tone={routerHealth(r.health).tone}
                 />
               </Row>
               <Mono
