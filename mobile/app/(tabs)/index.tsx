@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { api, type RouterItem } from '@/src/lib/api';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
+import { useAuth } from '@/src/providers/auth-provider';
 import {
   AuroraCard,
   Badge,
@@ -26,13 +27,6 @@ function initialsOf(name?: string): string {
   if (!name) return 'ML';
   const parts = name.trim().split(/\s+/);
   return (parts[0]?.[0] ?? 'M').concat(parts[1]?.[0] ?? '').toUpperCase();
-}
-
-function trialDaysLeft(end?: string | null): number | null {
-  if (!end) return null;
-  const ms = new Date(end).getTime() - Date.now();
-  if (!Number.isFinite(ms) || ms <= 0) return null;
-  return Math.ceil(ms / 86_400_000);
 }
 
 function StatCard({
@@ -98,6 +92,7 @@ export default function MaisonScreen() {
   const router = useRouter();
   const { isReady, activeRouterId } = useActiveRouter();
   const navHeight = useBottomNavHeight();
+  const { entitlement } = useAuth();
   const me = useQuery({ queryKey: ['me'], queryFn: api.auth.me });
   const routers = useQuery({ queryKey: ['routers'], queryFn: api.routers.list });
   const metrics = useQuery({
@@ -107,12 +102,10 @@ export default function MaisonScreen() {
 
   const list: RouterItem[] = routers.data ?? [];
   const online = list.filter((r) => r.health === 'ONLINE').length;
-  const isPro = me.data?.subscription?.plan === 'PRO';
   const tenantName = me.data?.tenant.name ?? 'MikroLan2';
   const firstName = tenantName.split(/\s+/)[0];
-  const trial = !isPro
-    ? trialDaysLeft(me.data?.subscription?.currentPeriodEnd)
-    : null;
+  const isPro = entitlement.tier === 'PRO';
+  const trial = entitlement.tier === 'TRIAL' ? entitlement.daysLeft : null;
 
   // A router is already selected (persisted or just activated): Maison becomes
   // its dashboard and the bottom nav switches to router-connected mode.
@@ -239,11 +232,12 @@ export default function MaisonScreen() {
                   PÉRIODE D'ESSAI ACTIVE
                 </Text>
                 <Text style={{ color: theme.text, fontSize: type.body, marginTop: 2 }}>
-                  Il vous reste{' '}
+                  Encore{' '}
                   <Text style={{ color: theme.warning, fontWeight: '700' }}>
                     {trial} jour{trial > 1 ? 's' : ''}
-                  </Text>{' '}
-                  d'essai complet.
+                  </Text>
+                  . Ensuite, l’accès à vos routeurs sera suspendu jusqu’à
+                  l’activation d’un forfait.
                 </Text>
               </View>
             </Row>
@@ -257,7 +251,7 @@ export default function MaisonScreen() {
               }}
             >
               <Text style={{ color: theme.goldText, fontWeight: '700', fontSize: type.caption }}>
-                Prolonger
+                Activer
               </Text>
             </Pressable>
           </Row>

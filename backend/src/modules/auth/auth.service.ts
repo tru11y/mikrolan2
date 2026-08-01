@@ -15,6 +15,10 @@ import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TokenService, TokenPair } from './token.service';
 import {
+  SubscriptionsService,
+  TRIAL_DAYS,
+} from '../subscriptions/subscriptions.service';
+import {
   ChangePasswordDto,
   DeleteAccountDto,
   LoginDto,
@@ -47,10 +51,14 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tokens: TokenService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   async signup(dto: SignupDto): Promise<TokenPair> {
     const passwordHash = await argon2.hash(dto.password, ARGON);
+    // Essai gratuit ouvert à l'inscription : l'app entière est utilisable en
+    // local pendant TRIAL_DAYS, puis tout se verrouille jusqu'au passage PRO.
+    const now = new Date();
 
     let user;
     try {
@@ -62,7 +70,11 @@ export class AuthService {
             subscription: {
               create: {
                 plan: SubscriptionPlan.FREE,
-                status: SubscriptionStatus.ACTIVE,
+                status: SubscriptionStatus.TRIALING,
+                currentPeriodStart: now,
+                currentPeriodEnd: new Date(
+                  now.getTime() + TRIAL_DAYS * 86_400_000,
+                ),
               },
             },
           },
@@ -141,7 +153,9 @@ export class AuthService {
       }),
     ]);
     if (!user || !tenant) throw new UnauthorizedException('Account not found');
-    return { user, tenant, subscription };
+    // L'app dessine ses cadenas à partir de ceci ; le serveur les applique.
+    const entitlement = await this.subscriptions.getEntitlement(tenantId);
+    return { user, tenant, subscription, entitlement };
   }
 
   async updateProfile(userId: string, dto: UpdateProfileDto) {
