@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import { Image, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
@@ -180,6 +180,24 @@ export default function AccountScreen() {
         style={{ flex: 1, backgroundColor: theme.bg }}
         contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
       >
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            marginBottom: 12,
+          }}
+        >
+          <Image
+            source={require('@/assets/images/logo.png')}
+            style={{ width: 24, height: 24 }}
+            resizeMode="contain"
+          />
+          <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
+            MikroLan2
+          </Text>
+        </View>
+
         <Title>Mon compte</Title>
         <View style={{ height: 12 }} />
 

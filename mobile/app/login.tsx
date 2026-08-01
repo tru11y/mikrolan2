@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
@@ -59,18 +59,11 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={{ alignItems: 'center', gap: 16 }}>
-            <View
-              style={{
-                width: 96,
-                height: 96,
-                borderRadius: 48,
-                backgroundColor: theme.primary,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Ionicons name="ticket" size={44} color={theme.primaryText} />
-            </View>
+            <Image
+              source={require('@/assets/images/logo.png')}
+              style={{ width: 96, height: 96 }}
+              resizeMode="contain"
+            />
             <Text style={{ color: theme.text, fontSize: 28, fontWeight: '800' }}>
               {mode === 'signup' ? 'Créer un compte' : 'Bienvenue'}
             </Text>
@@ -204,35 +197,39 @@ export default function LoginScreen() {
           <View style={{ flex: 1, minHeight: 12 }} />
 
           <View style={{ gap: 12 }}>
-            <Pressable onPress={() => setShowConfig((v) => !v)} style={{ alignItems: 'center' }}>
-              <Text style={{ color: theme.textMuted, fontSize: 11 }}>
-                {showConfig ? 'Masquer la configuration' : 'Configurer le serveur'}
-              </Text>
-            </Pressable>
-            {showConfig ? (
-              <View
-                style={{
-                  backgroundColor: theme.surface,
-                  borderWidth: 1,
-                  borderColor: theme.border,
-                  borderRadius: 16,
-                  padding: 16,
-                  gap: 10,
-                }}
-              >
-                <OutlinedField
-                  label="URL du serveur API"
-                  value={baseUrl}
-                  onChangeText={setBaseUrl}
-                  keyboardType="url"
-                  placeholder="http://10.0.2.2:3001/api"
-                />
-                <Button
-                  title="Enregistrer l'URL"
-                  variant="ghost"
-                  onPress={() => updateApiBaseUrl(baseUrl)}
-                />
-              </View>
+            {__DEV__ ? (
+              <>
+                <Pressable onPress={() => setShowConfig((v) => !v)} style={{ alignItems: 'center' }}>
+                  <Text style={{ color: theme.textMuted, fontSize: 11 }}>
+                    {showConfig ? 'Masquer la configuration' : 'Configurer le serveur'}
+                  </Text>
+                </Pressable>
+                {showConfig ? (
+                  <View
+                    style={{
+                      backgroundColor: theme.surface,
+                      borderWidth: 1,
+                      borderColor: theme.border,
+                      borderRadius: 16,
+                      padding: 16,
+                      gap: 10,
+                    }}
+                  >
+                    <OutlinedField
+                      label="URL du serveur API"
+                      value={baseUrl}
+                      onChangeText={setBaseUrl}
+                      keyboardType="url"
+                      placeholder="http://10.0.2.2:3001/api"
+                    />
+                    <Button
+                      title="Enregistrer l'URL"
+                      variant="ghost"
+                      onPress={() => updateApiBaseUrl(baseUrl)}
+                    />
+                  </View>
+                ) : null}
+              </>
             ) : null}
 
             <Text style={{ color: theme.textMuted, fontSize: 11, textAlign: 'center' }}>

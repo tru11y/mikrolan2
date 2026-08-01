@@ -313,7 +313,8 @@ export type UpdateRouterPayload = {
 };
 
 const DEFAULT_API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_BASE_URL?.trim() || 'http://10.0.2.2:3001/api';
+  process.env.EXPO_PUBLIC_API_BASE_URL?.trim() ||
+  (__DEV__ ? 'http://10.0.2.2:3001/api' : 'https://api.mikrolan.net:9443/api');
 
 let apiBaseUrl = normalizeApiBaseUrl(DEFAULT_API_BASE_URL);
 let accessToken: string | null = null;
@@ -336,7 +337,7 @@ export function normalizeApiBaseUrl(input: string): string {
 
   const withProtocol = /^https?:\/\//i.test(raw)
     ? raw
-    : looksLikeIpOrLocalhost(raw)
+    : __DEV__ && looksLikeIpOrLocalhost(raw)
       ? `http://${raw}`
       : `https://${raw}`;
 
@@ -585,6 +586,12 @@ export const api = {
     async revokeRemote(id: string): Promise<{ revoked: boolean }> {
       const res = await apiClient.post<ApiEnvelope<{ revoked: boolean }>>(
         `/routers/${id}/remote/revoke`,
+      );
+      return unwrap(res);
+    },
+    async rebootRemote(id: string): Promise<{ rebooted: boolean }> {
+      const res = await apiClient.post<ApiEnvelope<{ rebooted: boolean }>>(
+        `/routers/${id}/remote/reboot`,
       );
       return unwrap(res);
     },
