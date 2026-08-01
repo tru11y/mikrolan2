@@ -9,8 +9,17 @@ import {
   DEFAULT_TICKET_TEMPLATE,
   type TicketTemplate,
 } from '@/src/lib/api';
-import { Banner, Button, Field, Title, Subtitle, theme } from '@/src/components/ui';
-import { BottomNav } from '@/src/components/BottomNav';
+import {
+  Banner,
+  Button,
+  Field,
+  space,
+  Subtitle,
+  theme,
+  Title,
+} from '@/src/components/ui';
+import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
+import { AppHeader } from '@/src/components/AppHeader';
 
 function Toggle({
   label,
@@ -48,6 +57,7 @@ function Divider() {
 }
 
 export default function TicketSettingsScreen() {
+  const navHeight = useBottomNavHeight();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const qc = useQueryClient();
 
@@ -101,9 +111,11 @@ export default function TicketSettingsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
-        <Title>Paramètres du ticket</Title>
-        <Subtitle>Personnalisez le reçu imprimé pour ce routeur</Subtitle>
+      <AppHeader title="Paramètres du ticket" back />
+      <ScrollView
+        contentContainerStyle={{ padding: space.lg, paddingBottom: navHeight }}
+      >
+                <Subtitle>Personnalisez le reçu imprimé pour ce routeur</Subtitle>
         <View style={{ height: 12 }} />
 
         {msg ? <Banner tone={msg.tone}>{msg.text}</Banner> : null}
@@ -258,7 +270,7 @@ export default function TicketSettingsScreen() {
         <View style={{ height: 12 }} />
         <Button title="Mise à jour" onPress={save} loading={busy} />
       </ScrollView>
-      <BottomNav />
+      <BottomNav active="index" />
     </View>
   );
 }

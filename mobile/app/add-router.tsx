@@ -19,6 +19,7 @@ import {
 import { scanLan } from '@/src/services/mikrotik-lan/lanScan';
 import { saveLocalCredentials } from '@/src/lib/router-credentials';
 import { Banner, Button, Card, Field, Screen, theme } from '@/src/components/ui';
+import { AppHeader } from '@/src/components/AppHeader';
 
 type TestState =
   | { kind: 'idle' }
@@ -127,7 +128,9 @@ export default function AddRouterScreen() {
   const canSave = identity.trim().length >= 2;
 
   return (
-    <Screen>
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <AppHeader title="Ajouter un routeur" back />
+      <Screen>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
@@ -305,6 +308,7 @@ export default function AddRouterScreen() {
           </Card>
         </ScrollView>
       </KeyboardAvoidingView>
-    </Screen>
+      </Screen>
+    </View>
   );
 }

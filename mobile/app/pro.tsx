@@ -2,7 +2,17 @@ import { useState } from 'react';
 import { ScrollView, View, Text, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { api, extractErrorMessage } from '@/src/lib/api';
-import { Banner, Button, Row, Subtitle, theme, Title } from '@/src/components/ui';
+import {
+  Banner,
+  Button,
+  Row,
+  Subtitle,
+  space,
+  theme,
+  Title,
+} from '@/src/components/ui';
+import { AppHeader } from '@/src/components/AppHeader';
+import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 
 type TierKey = 'essentiel' | 'avance' | 'entreprise';
 
@@ -69,6 +79,7 @@ function fmt(n: number): string {
 }
 
 export default function ProScreen() {
+  const navHeight = useBottomNavHeight();
   const [annual, setAnnual] = useState(true);
   const [selected, setSelected] = useState<TierKey>('avance');
   const [busy, setBusy] = useState(false);
@@ -94,10 +105,16 @@ export default function ProScreen() {
   }
 
   return (
-    <ScrollView
-      style={{ flex: 1, backgroundColor: theme.bg }}
-      contentContainerStyle={{ padding: 16, gap: 20, paddingBottom: 40 }}
-    >
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <AppHeader title="Abonnement PRO" back />
+      <ScrollView
+        style={{ flex: 1, backgroundColor: theme.bg }}
+        contentContainerStyle={{
+          padding: space.lg,
+          gap: space.xl,
+          paddingBottom: navHeight,
+        }}
+      >
       {/* Header */}
       <View style={{ alignItems: 'center', gap: 6 }}>
         <View
@@ -333,6 +350,8 @@ export default function ProScreen() {
       <Text style={{ color: theme.textMuted, fontSize: 12, textAlign: 'center' }}>
         Un administrateur validera votre paiement Wave / Orange Money sous 24h. Sans engagement.
       </Text>
-    </ScrollView>
+      </ScrollView>
+      <BottomNav />
+    </View>
   );
 }

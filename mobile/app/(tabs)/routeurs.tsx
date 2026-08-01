@@ -18,10 +18,12 @@ import {
   Empty,
   Mono,
   Row,
+  space,
   theme,
   Title,
 } from '@/src/components/ui';
-import { BottomNav } from '@/src/components/BottomNav';
+import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
+import { AppHeader } from '@/src/components/AppHeader';
 
 function healthTone(h: RouterItem['health']) {
   return h === 'ONLINE'
@@ -44,6 +46,7 @@ function Dot({ color }: { color: string }) {
 export default function RouteursScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const navHeight = useBottomNavHeight();
   const query = useQuery({ queryKey: ['routers'], queryFn: api.routers.list });
 
   const list = query.data ?? [];
@@ -110,14 +113,14 @@ export default function RouteursScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <AppHeader title="Routeurs" />
       <FlatList
-        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+        contentContainerStyle={{ padding: space.lg, paddingBottom: navHeight }}
         data={list}
         keyExtractor={(r) => r.id}
         renderItem={renderItem}
         ListHeaderComponent={
-          <View style={{ marginBottom: 16, gap: 8 }}>
-            <Title>Mes routeurs</Title>
+          <View style={{ marginBottom: space.lg, gap: space.sm }}>
             <Row style={{ justifyContent: 'flex-start', gap: 16 }}>
               <Row style={{ gap: 6, justifyContent: 'flex-start' }}>
                 <Dot color={theme.secondary} />
