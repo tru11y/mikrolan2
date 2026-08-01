@@ -91,23 +91,81 @@ npx ts-node prisma/seed.ts  # crée le SUPER_ADMIN (ou node avec un seed compil�
 ```
 
 ## 7. Service systemd
+Tourne en utilisateur dédié `mikrolan` + `CAP_NET_ADMIN` (pas root) — cap
+juste ce qu'il faut pour `wg set wg-mgmt ...`.
 ```bash
+useradd --system --no-create-home --shell /usr/sbin/nologin mikrolan
+chown -R mikrolan:mikrolan /opt/mikrolan/backend
 cp deploy/mikrolan-api.service /etc/systemd/system/
 systemctl daemon-reload && systemctl enable --now mikrolan-api
 curl -s http://127.0.0.1:3002/api/health   # {"success":true,...}
 ```
+Si le service refuse de démarrer après ce changement (`journalctl -u mikrolan-api`),
+c'est probablement une permission manquante sur un fichier lu/écrit par
+l'app hors de `/opt/mikrolan/backend` — élargir `ReadWritePaths` dans
+`mikrolan-api.service` plutôt que de repasser en root.
 
-## 8. Exposition
-Pas de nginx (interdit). Ouvrir le port haut directement :
+## 8. Exposition (transitoire, avant TLS)
+Pas de nginx **v1** (interdit d'y toucher). Ouvrir le port haut directement :
 ```bash
 iptables -A INPUT -p tcp --dport 3002 -j ACCEPT
 ```
 Mobile → « Configurer le serveur » → `http://139.84.241.27:3002/api`.
-⚠️ HTTP clair : pour la prod publique, prévoir un domaine + TLS (Let's Encrypt).
+⚠️ HTTP clair — remplacé par TLS à l'étape 9, à faire avant tout lancement public.
+
+## 9. TLS — Caddy dédié v2 (`api.mikrolan.net:9443`, jamais le nginx v1)
+
+> Le nginx v1 (conteneur `docker-nginx-1`, projet compose `docker`) occupe déjà
+> **80 et 443** sur ce VPS via `docker-proxy` — vérifié (`ss -tlnp`). Caddy ne
+> peut donc partager ni l'un ni l'autre sans toucher au nginx v1 (interdit). On
+> utilise un défi **DNS-01** via Route 53 (domaine `mikrolan.net` sur AWS) pour
+> éviter le port 80 lors de l'émission du certificat, et Caddy **sert** le
+> trafic HTTPS sur le port **9443** (libre, vérifié via `ss -tlnp` — 9002-9254
+> sont déjà réservés par un autre usage) plutôt que 443. Zéro contact avec le
+> nginx v1.
+
+Prérequis : DNS `A api.mikrolan.net → 139.84.241.27` déjà propagé et vérifié
+(`nslookup api.mikrolan.net`, deux résolveurs indépendants).
+
+Chemin réel sur le VPS : `/opt/mikrolan-nest/` (pas de sous-dossier `deploy/` —
+`.env`, `.dbpass`, `docker-compose.prod.yml` à la racine ; `DATABASE_URL`,
+`REDIS_HOST/PORT` déjà en place, `CORS_ORIGINS` vide à ce stade).
+
+```bash
+# 1. Build local de l'image Caddy custom (plugin route53 via xcaddy)
+cd backend/deploy && docker build -f Dockerfile.caddy -t mikrolan2-caddy:latest .
+docker save mikrolan2-caddy:latest | gzip > caddy.tar.gz
+scp caddy.tar.gz Caddyfile caddy.env root@139.84.241.27:/opt/mikrolan-nest/
+ssh root@139.84.241.27 'cd /opt/mikrolan-nest && gunzip -c caddy.tar.gz | docker load'
+
+# 2. Ouvrir le port 9443 (443/80 restent au nginx v1, on n'y touche pas)
+ssh root@139.84.241.27 'iptables -A INPUT -p tcp --dport 9443 -j ACCEPT'
+
+# 3. Lancer Caddy (host network — atteint l'API sur 127.0.0.1:3002 directement)
+ssh root@139.84.241.27 'docker run -d --name mikrolan2-caddy --network host \
+  --env-file /opt/mikrolan-nest/caddy.env \
+  -v /opt/mikrolan-nest/Caddyfile:/etc/caddy/Caddyfile:ro \
+  -v caddy_data:/data \
+  --restart unless-stopped mikrolan2-caddy:latest'
+
+# 4. Vérifier le certificat + la route
+curl -I https://api.mikrolan.net:9443/api/health
+
+# 5. Une fois HTTPS confirmé stable : fermer le port 3002 en public
+#    (Caddy → API reste possible via loopback, déjà autorisé par la règle
+#    `-i lo -j ACCEPT` du piège ufw documenté en tête de fichier)
+ssh root@139.84.241.27 'iptables -D INPUT -p tcp --dport 3002 -j ACCEPT'
+```
+
+`.env` API : ajouter `CORS_ORIGINS=https://api.mikrolan.net:9443` (et toute
+autre origine web future) avant redémarrage du conteneur `mikrolan2-api`.
+
+Mobile → « Configurer le serveur » → `https://api.mikrolan.net:9443/api`.
 
 ## Rollback complet
 ```bash
 systemctl disable --now mikrolan-api wg-quick@wg-mgmt
+docker rm -f mikrolan2-caddy
 docker compose -f /opt/mikrolan/backend/deploy/docker-compose.prod.yml down
 iptables -D INPUT -p udp --dport 51822 -j ACCEPT
 iptables -D INPUT -p tcp --dport 3002 -j ACCEPT
