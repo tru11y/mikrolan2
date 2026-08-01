@@ -49,7 +49,9 @@ function memPercent(res: SystemResource): number {
   return 0;
 }
 
-function Sparkline({
+// Une jauge, pas un historique : la version précédente dessinait huit barres
+// inventées en dur et n'affichait de réel que la dernière valeur.
+function Gauge({
   label,
   value,
   color,
@@ -58,42 +60,43 @@ function Sparkline({
   value: number;
   color: string;
 }) {
-  const bars = [20, 35, 15, 40, 25, 18, 22, 30, Math.max(4, Math.min(100, value))];
+  const pct = Math.max(0, Math.min(100, value));
   return (
     <View
       style={{
         flex: 1,
         backgroundColor: theme.surfaceAlt,
-        borderRadius: 14,
+        borderRadius: radius.md,
         borderWidth: 1,
         borderColor: theme.border,
-        padding: 12,
+        padding: space.md,
+        gap: space.sm,
       }}
     >
+      <Row>
+        <Text style={{ color: theme.textMuted, fontSize: type.micro }}>
+          {label}
+        </Text>
+        <Text style={{ color, fontWeight: '700', fontSize: type.caption }}>
+          {pct}%
+        </Text>
+      </Row>
       <View
         style={{
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-          marginBottom: 6,
+          height: space.sm,
+          borderRadius: radius.pill,
+          backgroundColor: theme.border,
+          overflow: 'hidden',
         }}
       >
-        <Text style={{ color: theme.textMuted, fontSize: 11 }}>{label}</Text>
-        <Text style={{ color, fontWeight: '700', fontSize: 12 }}>{value}%</Text>
-      </View>
-      <View
-        style={{ height: 34, flexDirection: 'row', alignItems: 'flex-end', gap: 3 }}
-      >
-        {bars.map((b, i) => (
-          <View
-            key={i}
-            style={{
-              flex: 1,
-              height: `${b}%`,
-              backgroundColor: color + '66',
-              borderRadius: 3,
-            }}
-          />
-        ))}
+        <View
+          style={{
+            height: '100%',
+            width: `${pct}%`,
+            borderRadius: radius.pill,
+            backgroundColor: color,
+          }}
+        />
       </View>
     </View>
   );
@@ -290,25 +293,6 @@ export default function RouterDetailScreen() {
     }
   }
 
-  async function disableRemote() {
-    if (!id) return;
-    setRemoteBusy(true);
-    setRemoteMsg(null);
-    try {
-      await api.routers.revokeRemote(id);
-      // Opt-out: drop the server-side credentials (they stay on-device for LOCAL).
-      await api.routers.update(id, { credentials: null });
-      await qc.invalidateQueries({ queryKey: ['router', id] });
-      await qc.invalidateQueries({ queryKey: ['router-remote', id] });
-      await qc.invalidateQueries({ queryKey: ['routers'] });
-      setRemoteMsg({ tone: 'success', text: 'Tunnel désactivé.' });
-    } catch (e) {
-      setRemoteMsg({ tone: 'danger', text: extractErrorMessage(e) });
-    } finally {
-      setRemoteBusy(false);
-    }
-  }
-
   const [resource, setResource] = useState<SystemResource | null>(null);
   const [resourceVia, setResourceVia] = useState<'lan' | 'remote' | null>(null);
   const [lanState, setLanState] = useState<
@@ -481,12 +465,12 @@ export default function RouterDetailScreen() {
               <Badge label="EN DIRECT" tone="success" />
             </Row>
             <Row style={{ gap: space.sm + 2, alignItems: 'stretch' }}>
-              <Sparkline
+              <Gauge
                 label="CPU"
                 value={Number(resource['cpu-load']) || 0}
                 color={theme.secondary}
               />
-              <Sparkline
+              <Gauge
                 label="Mémoire"
                 value={memPercent(resource)}
                 color={theme.gold}
@@ -530,16 +514,9 @@ export default function RouterDetailScreen() {
               {remoteMsg ? (
                 <Banner tone={remoteMsg.tone}>{remoteMsg.text}</Banner>
               ) : null}
-              {remoteQuery.data?.status === 'ACTIVE' ? (
+              {remoteQuery.data?.status === 'ACTIVE' ? null : (
                 <Button
-                  title="Désactiver le tunnel"
-                  variant="danger"
-                  onPress={disableRemote}
-                  loading={remoteBusy}
-                />
-              ) : (
-                <Button
-                  title="Activer le tunnel à distance"
+                  title="Activer l’accès à distance"
                   onPress={enableRemote}
                   loading={remoteBusy}
                 />
@@ -551,7 +528,7 @@ export default function RouterDetailScreen() {
                     title={
                       showCreds
                         ? 'Masquer les identifiants'
-                        : 'Saisir les identifiants RouterOS (hors LAN)'
+                        : 'Modifier les identifiants du routeur'
                     }
                     variant="ghost"
                     onPress={() => setShowCreds((v) => !v)}

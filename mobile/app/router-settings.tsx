@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -15,6 +15,7 @@ import { useAuth } from '@/src/providers/auth-provider';
 import {
   Banner,
   Button,
+  ConfirmDialog,
   Field,
   Label,
   space,
@@ -35,8 +36,6 @@ type Item = {
   danger?: boolean;
   onPress: () => void;
 };
-
-const SOON = 'Bientôt disponible';
 
 // Only attempt LAN when the router's host is on the current Wi-Fi subnet —
 // otherwise the pinned TCP socket hard-crashes the app (see router/[id].tsx).
@@ -70,7 +69,11 @@ export default function RouterSettingsScreen() {
   });
 
   const [alias, setAlias] = useState('');
-  const [busy, setBusy] = useState(false);
+  // États séparés : un seul `busy` partagé faisait tourner le spinner des deux
+  // boutons à la fois.
+  const [aliasBusy, setAliasBusy] = useState(false);
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const [removeBusy, setRemoveBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -79,7 +82,7 @@ export default function RouterSettingsScreen() {
 
   async function saveAlias() {
     if (!routerId) return;
-    setBusy(true);
+    setAliasBusy(true);
     setError(null);
     try {
       await api.routers.update(routerId, { alias: alias.trim() || null });
@@ -88,31 +91,30 @@ export default function RouterSettingsScreen() {
     } catch (e) {
       setError(extractErrorMessage(e));
     } finally {
-      setBusy(false);
+      setAliasBusy(false);
     }
   }
 
   async function removeRouter() {
     if (!routerId) return;
-    setBusy(true);
+    setRemoveBusy(true);
     setError(null);
     try {
       await api.routers.remove(routerId);
       await deleteLocalCredentials(routerId);
       await clearActiveRouter();
       await qc.invalidateQueries({ queryKey: ['routers'] });
+      setRemoveOpen(false);
       router.dismissTo('/(tabs)/routeurs');
     } catch (e) {
       setError(extractErrorMessage(e));
-      setBusy(false);
+      setRemoveBusy(false);
+      setRemoveOpen(false);
     }
   }
 
   const go = (pathname: string) =>
     router.push({ pathname, params: { routerId } });
-  const soon = (label: string) =>
-    Alert.alert(label, `${SOON} sur cette version.`);
-
   async function rebootRouter() {
     if (!routerId) return;
     setRebootBusy(true);
@@ -174,14 +176,6 @@ export default function RouterSettingsScreen() {
       onPress: () => go('/internet-sharing'),
     },
     {
-      id: 'free_trial',
-      title: 'Essai gratuit Hotspot',
-      subtitle: 'Accès 15 min offert pour nouveaux utilisateurs',
-      icon: 'gift-outline',
-      color: theme.success,
-      onPress: () => soon('Essai gratuit Hotspot'),
-    },
-    {
       id: 'dns_name',
       title: 'Page de connexion',
       subtitle: 'Adresse de la page vue par les clients',
@@ -212,22 +206,6 @@ export default function RouterSettingsScreen() {
       icon: 'receipt-outline',
       color: theme.gold,
       onPress: () => go('/ticket-settings'),
-    },
-    {
-      id: 'change_password',
-      title: 'Changer MDP administrateur',
-      subtitle: 'Mettre à jour le mot de passe admin RouterOS',
-      icon: 'key-outline',
-      color: theme.danger,
-      onPress: () => soon('Changer le mot de passe administrateur'),
-    },
-    {
-      id: 'auto_disconnect',
-      title: 'Coupure auto inactivité',
-      subtitle: 'Déconnexion après 10 min sans trafic',
-      icon: 'timer-outline',
-      color: theme.warning,
-      onPress: () => soon('Coupure auto inactivité'),
     },
     {
       id: 'reboot',
@@ -328,113 +306,43 @@ export default function RouterSettingsScreen() {
         >
           <Label>Alias</Label>
           <Field value={alias} onChangeText={setAlias} placeholder="Nom du routeur" />
-          <Button title="Enregistrer" onPress={saveAlias} loading={busy} />
+          <Button title="Enregistrer" onPress={saveAlias} loading={aliasBusy} />
         </View>
 
         <Button
           title="Supprimer le routeur"
           variant="danger"
-          onPress={removeRouter}
-          loading={busy}
+          onPress={() => setRemoveOpen(true)}
         />
       </ScrollView>
 
-      {/* Reboot confirmation modal */}
-      {rebootOpen ? (
-        <View
-          style={{
-            position: 'absolute',
-            inset: 0,
-            backgroundColor: '#000000cc',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-          }}
-        >
-          <View
-            style={{
-              width: '100%',
-              maxWidth: 360,
-              backgroundColor: theme.surface,
-              borderWidth: 1,
-              borderColor: theme.danger + '66',
-              borderRadius: 16,
-              padding: 20,
-              gap: 16,
-              alignItems: 'center',
-            }}
-          >
-            <View
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: 16,
-                backgroundColor: theme.danger + '22',
-                borderWidth: 1,
-                borderColor: theme.danger + '55',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Ionicons name="refresh-outline" size={24} color={theme.danger} />
-            </View>
-            <View style={{ alignItems: 'center', gap: 4 }}>
-              <Text style={{ color: theme.text, fontSize: 16, fontWeight: '700' }}>
-                Redémarrer le routeur MikroTik ?
-              </Text>
-              <Text
-                style={{
-                  color: theme.textMuted,
-                  fontSize: 12,
-                  textAlign: 'center',
-                }}
-              >
-                Toutes les sessions hotspot seront interrompues pendant ~45 secondes.
-              </Text>
-            </View>
-            {rebootResult ? (
-              <Banner tone={rebootResult.tone}>{rebootResult.text}</Banner>
-            ) : null}
-            <View style={{ flexDirection: 'row', gap: 8, width: '100%' }}>
-              <Pressable
-                onPress={() => {
-                  setRebootOpen(false);
-                  setRebootResult(null);
-                }}
-                style={{
-                  flex: 1,
-                  paddingVertical: 12,
-                  borderRadius: 12,
-                  backgroundColor: theme.surfaceAlt,
-                  alignItems: 'center',
-                }}
-              >
-                <Text style={{ color: theme.textMuted, fontWeight: '700', fontSize: 13 }}>
-                  {rebootResult?.tone === 'success' ? 'Fermer' : 'Annuler'}
-                </Text>
-              </Pressable>
-              {rebootResult?.tone !== 'success' ? (
-                <Pressable
-                  onPress={rebootRouter}
-                  disabled={rebootBusy}
-                  style={{
-                    flex: 1,
-                    paddingVertical: 12,
-                    borderRadius: 12,
-                    backgroundColor: theme.danger,
-                    alignItems: 'center',
-                    opacity: rebootBusy ? 0.6 : 1,
-                  }}
-                >
-                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>
-                    {rebootBusy ? 'Redémarrage…' : 'Confirmer'}
-                  </Text>
-                </Pressable>
-              ) : null}
-            </View>
-          </View>
-        </View>
-      ) : null}
+      <ConfirmDialog
+        visible={rebootOpen}
+        icon="refresh-outline"
+        title="Redémarrer le routeur ?"
+        message="Toutes les connexions en cours seront interrompues pendant environ 45 secondes."
+        confirmLabel="Redémarrer"
+        busy={rebootBusy}
+        banner={rebootResult}
+        onConfirm={rebootRouter}
+        onCancel={() => {
+          setRebootOpen(false);
+          setRebootResult(null);
+        }}
+      />
+
+      {/* La suppression était déclenchée par un simple appui : elle détruit le
+          routeur et ses identifiants locaux, elle mérite une confirmation. */}
+      <ConfirmDialog
+        visible={removeOpen}
+        icon="trash-outline"
+        title="Supprimer ce routeur ?"
+        message={`« ${routerQuery.data?.alias || routerQuery.data?.identity || 'Ce routeur'} » sera retiré de votre compte, ainsi que ses identifiants enregistrés sur ce téléphone. Les tickets déjà vendus sont conservés.`}
+        confirmLabel="Supprimer"
+        busy={removeBusy}
+        onConfirm={removeRouter}
+        onCancel={() => setRemoveOpen(false)}
+      />
 
       <BottomNav active="index" />
     </View>

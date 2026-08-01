@@ -228,8 +228,8 @@ export default function AccountScreen() {
           }}
         >
           <View style={{ flex: 1 }}>
-            <Text style={{ color: theme.text, fontSize: 15, fontWeight: '600' }}>
-              Notifications Push
+            <Text style={{ color: theme.text, fontSize: type.bodyLg, fontWeight: '600' }}>
+              Notifications
             </Text>
             <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
               Alertes déconnexions & activité tickets
