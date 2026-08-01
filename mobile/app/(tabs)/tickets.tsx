@@ -8,6 +8,7 @@ import {
   Button,
   Card,
   Mono,
+  routerHealth,
   Row,
   space,
   Subtitle,
@@ -87,8 +88,8 @@ export default function TicketsScreen() {
                     </View>
                   </Row>
                   <Badge
-                    label={r.health === 'ONLINE' ? 'EN LIGNE' : 'HORS LIGNE'}
-                    tone={r.health === 'ONLINE' ? 'secondary' : 'danger'}
+                    label={routerHealth(r.health).label}
+                    tone={routerHealth(r.health).tone}
                   />
                 </Row>
               </Card>

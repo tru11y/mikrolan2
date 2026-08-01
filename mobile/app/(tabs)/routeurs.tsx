@@ -17,6 +17,7 @@ import {
   Card,
   Empty,
   Mono,
+  routerHealth,
   Row,
   space,
   theme,
@@ -24,16 +25,6 @@ import {
 } from '@/src/components/ui';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
-
-function healthTone(h: RouterItem['health']) {
-  return h === 'ONLINE'
-    ? 'secondary'
-    : h === 'ERROR'
-      ? 'danger'
-      : h === 'OFFLINE'
-        ? 'warning'
-        : 'muted';
-}
 
 function Dot({ color }: { color: string }) {
   return (
@@ -51,7 +42,9 @@ export default function RouteursScreen() {
 
   const list = query.data ?? [];
   const online = list.filter((r) => r.health === 'ONLINE').length;
-  const offline = list.length - online;
+  // Compté explicitement : `total - online` rangeait les routeurs au statut
+  // encore inconnu parmi les hors-ligne.
+  const offline = list.filter((r) => r.health === 'OFFLINE').length;
 
   const renderItem = useCallback(
     ({ item }: { item: RouterItem }) => {
@@ -94,8 +87,8 @@ export default function RouteursScreen() {
                 </View>
                 <View style={{ alignItems: 'flex-end', gap: 6 }}>
                   <Badge
-                    label={item.health === 'ONLINE' ? 'EN LIGNE' : 'HORS LIGNE'}
-                    tone={healthTone(item.health)}
+                    label={routerHealth(item.health).label}
+                    tone={routerHealth(item.health).tone}
                   />
                   <Badge
                     label={item.mode === 'REMOTE' ? 'À DISTANCE' : 'LOCAL'}

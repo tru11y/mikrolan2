@@ -9,6 +9,7 @@ import {
   Badge,
   Card,
   Empty,
+  icon,
   Mono,
   Row,
   SectionTitle,
@@ -16,6 +17,7 @@ import {
   Subtitle,
   theme,
   Title,
+  type,
 } from '@/src/components/ui';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
@@ -138,18 +140,26 @@ export default function RapportScreen() {
           {metrics.isLoading ? '…' : (data?.revenueXof ?? 0).toLocaleString('fr-FR')} FCFA
         </Mono>
         {data?.trendPct != null ? (
-          <Row style={{ justifyContent: 'flex-start', gap: 6 }}>
-            <Ionicons
-              name={data.trendPct >= 0 ? 'trending-up' : 'trending-down'}
-              size={16}
-              color={theme.success}
-            />
-            <Text style={{ color: theme.success, fontSize: 12 }}>
-              {data.trendPct >= 0 ? '+' : ''}
-              {data.trendPct.toFixed(0)}% par rapport à la période précédente (
-              {data.ticketsGenerated} tickets vendus)
-            </Text>
-          </Row>
+          // La couleur suit le signe : une baisse de chiffre d'affaires
+          // s'affichait en vert, avec une flèche descendante verte.
+          (() => {
+            const up = data.trendPct >= 0;
+            const trendColor = up ? theme.success : theme.danger;
+            return (
+              <Row style={{ justifyContent: 'flex-start', gap: space.xs + 2 }}>
+                <Ionicons
+                  name={up ? 'trending-up' : 'trending-down'}
+                  size={icon.sm}
+                  color={trendColor}
+                />
+                <Text style={{ color: trendColor, fontSize: type.caption, flex: 1 }}>
+                  {up ? '+' : ''}
+                  {data.trendPct.toFixed(0)}% par rapport à la période précédente (
+                  {data.ticketsUsed} tickets vendus)
+                </Text>
+              </Row>
+            );
+          })()
         ) : null}
       </Card>
 
