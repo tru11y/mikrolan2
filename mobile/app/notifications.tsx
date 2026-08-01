@@ -2,7 +2,9 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type AppNotification } from '@/src/lib/api';
-import { Empty, theme } from '@/src/components/ui';
+import { Empty, radius, space, theme, type } from '@/src/components/ui';
+import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
+import { AppHeader } from '@/src/components/AppHeader';
 
 function timeAgo(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
@@ -20,6 +22,7 @@ function iconFor(type: string): keyof typeof Ionicons.glyphMap {
 }
 
 export default function NotificationsScreen() {
+  const navHeight = useBottomNavHeight();
   const qc = useQueryClient();
   const query = useQuery({
     queryKey: ['notifications', 'list'],
@@ -43,17 +46,21 @@ export default function NotificationsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <ScrollView contentContainerStyle={{ gap: 12, padding: 16, paddingBottom: 40 }}>
+      <AppHeader title="Notifications" back />
+      <ScrollView
+        contentContainerStyle={{
+          gap: space.md,
+          padding: space.lg,
+          paddingBottom: navHeight,
+        }}
+      >
         <View
           style={{
             flexDirection: 'row',
             alignItems: 'center',
-            justifyContent: 'space-between',
+            justifyContent: 'flex-end',
           }}
         >
-          <Text style={{ color: theme.text, fontSize: 20, fontWeight: '700' }}>
-            Notifications
-          </Text>
           {hasUnread ? (
             <Pressable onPress={markAllRead}>
               <Text style={{ color: theme.primary, fontWeight: '700', fontSize: 13 }}>
@@ -128,6 +135,7 @@ export default function NotificationsScreen() {
           ))
         )}
       </ScrollView>
+      <BottomNav />
     </View>
   );
 }

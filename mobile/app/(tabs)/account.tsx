@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { Image, Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { useAuth } from '@/src/providers/auth-provider';
 import { api, extractErrorMessage } from '@/src/lib/api';
-import { Banner, Button, Field, Title, theme } from '@/src/components/ui';
-import { BottomNav } from '@/src/components/BottomNav';
+import { Banner, Button, Field, space, theme, type } from '@/src/components/ui';
+import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
+import { AppHeader } from '@/src/components/AppHeader';
 
 function Divider() {
   return <View style={{ height: 1, backgroundColor: theme.border }} />;
@@ -70,6 +71,7 @@ function ActionRow({
 }
 
 export default function AccountScreen() {
+  const navHeight = useBottomNavHeight();
   const router = useRouter();
   const { me, isPro, logout, refreshProfile } = useAuth();
   const version = Constants.expoConfig?.version ?? '0.1.0';
@@ -176,31 +178,11 @@ export default function AccountScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <AppHeader title="Mon compte" />
       <ScrollView
         style={{ flex: 1, backgroundColor: theme.bg }}
-        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+        contentContainerStyle={{ padding: space.lg, paddingBottom: navHeight }}
       >
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
-            marginBottom: 12,
-          }}
-        >
-          <Image
-            source={require('@/assets/images/logo.png')}
-            style={{ width: 24, height: 24 }}
-            resizeMode="contain"
-          />
-          <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
-            MikroLan2
-          </Text>
-        </View>
-
-        <Title>Mon compte</Title>
-        <View style={{ height: 12 }} />
-
         <StaticRow label="E-mail" value={me?.user.email ?? '—'} />
         <Divider />
 

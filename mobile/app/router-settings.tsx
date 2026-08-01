@@ -17,12 +17,14 @@ import {
   Button,
   Field,
   Label,
+  space,
   Subtitle,
   theme,
   Title,
   type IoniconName,
 } from '@/src/components/ui';
-import { BottomNav } from '@/src/components/BottomNav';
+import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
+import { AppHeader } from '@/src/components/AppHeader';
 
 type Item = {
   id: string;
@@ -43,6 +45,7 @@ function sameSubnet24(a: string, b: string): boolean {
 }
 
 export default function RouterSettingsScreen() {
+  const navHeight = useBottomNavHeight();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const router = useRouter();
   const qc = useQueryClient();
@@ -164,8 +167,8 @@ export default function RouterSettingsScreen() {
   const items: Item[] = [
     {
       id: 'anti_tethering',
-      title: 'Partager WiFi (TTL Anti-Tethering)',
-      subtitle: 'Bloquer la répartition Hotspot sur PC / téléphones',
+      title: 'Bloquer le partage de connexion',
+      subtitle: 'Empêcher un client de partager son accès',
       icon: 'share-social-outline',
       color: theme.warning,
       onPress: () => go('/internet-sharing'),
@@ -180,16 +183,16 @@ export default function RouterSettingsScreen() {
     },
     {
       id: 'dns_name',
-      title: 'Nom DNS Portail captif',
-      subtitle: 'Domaine du portail de connexion',
+      title: 'Page de connexion',
+      subtitle: 'Adresse de la page vue par les clients',
       icon: 'globe-outline',
       color: theme.secondary,
       onPress: () => go('/hotspot-setup'),
     },
     {
       id: 'ip_bindings',
-      title: 'IP Bindings & Bypasses',
-      subtitle: 'Autoriser ou bloquer des adresses MAC',
+      title: 'Appareils autorisés',
+      subtitle: 'Donner ou retirer l’accès à un appareil précis',
       icon: 'shield-outline',
       color: theme.primary,
       onPress: () => go('/ip-bindings'),
@@ -229,7 +232,7 @@ export default function RouterSettingsScreen() {
     {
       id: 'reboot',
       title: 'Redémarrer le routeur',
-      subtitle: 'Exécuter /system reboot via API RouterOS',
+      subtitle: 'Coupe et relance le routeur',
       icon: 'refresh-outline',
       color: theme.danger,
       danger: true,
@@ -239,12 +242,10 @@ export default function RouterSettingsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <ScrollView contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 100 }}>
-        <View>
-          <Title>Paramètres routeur</Title>
-          <Subtitle>Réglages système & sécurité RouterOS</Subtitle>
-        </View>
-
+      <AppHeader title="Paramètres routeur" back />
+      <ScrollView
+        contentContainerStyle={{ padding: space.lg, gap: space.lg, paddingBottom: navHeight }}
+      >
         {/* Settings list (single card, dividers) */}
         <View
           style={{
@@ -435,7 +436,7 @@ export default function RouterSettingsScreen() {
         </View>
       ) : null}
 
-      <BottomNav />
+      <BottomNav active="index" />
     </View>
   );
 }

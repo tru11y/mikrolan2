@@ -10,8 +10,17 @@ import {
   listActiveLan,
   terminateActiveLan,
 } from '@/src/services/mikrotik-lan/hotspotLan';
-import { Banner, Empty, Row, Subtitle, Title, theme } from '@/src/components/ui';
-import { BottomNav } from '@/src/components/BottomNav';
+import {
+  Banner,
+  Empty,
+  Row,
+  space,
+  Subtitle,
+  theme,
+  Title,
+} from '@/src/components/ui';
+import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
+import { AppHeader } from '@/src/components/AppHeader';
 
 // Small "device is live" heartbeat — matches the reference's animate-pulse dot.
 function PulseDot({ color }: { color: string }) {
@@ -90,6 +99,7 @@ function fmtBytes(v: string): string {
 }
 
 export default function SessionsScreen() {
+  const navHeight = useBottomNavHeight();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
@@ -151,12 +161,14 @@ export default function SessionsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: 100 }}>
+      <AppHeader title="Utilisateurs actifs" back />
+      <ScrollView
+        contentContainerStyle={{ gap: space.lg, padding: space.lg, paddingBottom: navHeight }}
+      >
         <Row>
           <View style={{ flex: 1 }}>
-            <Title>Utilisateurs Actifs</Title>
             <Subtitle>
-              Sessions hotspot en cours sur RouterOS ({sessions.length})
+              {sessions.length} session{sessions.length > 1 ? 's' : ''} en cours
             </Subtitle>
           </View>
           <Pressable
@@ -324,7 +336,7 @@ export default function SessionsScreen() {
           </View>
         )}
       </ScrollView>
-      <BottomNav />
+      <BottomNav active="index" />
     </View>
   );
 }

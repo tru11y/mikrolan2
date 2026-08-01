@@ -4,8 +4,17 @@ import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { api, extractErrorMessage } from '@/src/lib/api';
-import { Banner, Button, Card, Subtitle, theme, Title } from '@/src/components/ui';
-import { BottomNav } from '@/src/components/BottomNav';
+import {
+  Banner,
+  Button,
+  Card,
+  space,
+  Subtitle,
+  theme,
+  Title,
+} from '@/src/components/ui';
+import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
+import { AppHeader } from '@/src/components/AppHeader';
 
 type Option = 'block' | 'allow';
 
@@ -82,6 +91,7 @@ function OptionCard({
 }
 
 export default function InternetSharingScreen() {
+  const navHeight = useBottomNavHeight();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
 
   const query = useQuery({
@@ -119,10 +129,12 @@ export default function InternetSharingScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: 100 }}>
+      <AppHeader title="Blocage du partage" back />
+      <ScrollView
+        contentContainerStyle={{ gap: space.lg, padding: space.lg, paddingBottom: navHeight }}
+      >
         <View>
-          <Title>Partage Internet (TTL)</Title>
-          <Subtitle>
+                    <Subtitle>
             Contrôlez la répartition de connexion (anti-tethering) sur MikroTik
           </Subtitle>
         </View>
@@ -253,7 +265,7 @@ export default function InternetSharingScreen() {
             icon="ban"
             iconColor={theme.success}
             title="Bloquer le partage internet"
-            subtitle="Active les règles RouterOS IP Firewall Filter (détection TTL)"
+            subtitle="Les clients ne peuvent plus repartager leur connexion"
             onPress={() => setSelected('block')}
           />
           <OptionCard
@@ -262,7 +274,7 @@ export default function InternetSharingScreen() {
             icon="flash"
             iconColor={theme.warning}
             title="Autoriser le partage internet"
-            subtitle="Conserver le TTL standard RouterOS sans restriction"
+            subtitle="Le partage de connexion reste autorisé"
             onPress={() => setSelected('allow')}
           />
         </View>
@@ -336,7 +348,7 @@ export default function InternetSharingScreen() {
           loading={busy}
         />
       </ScrollView>
-      <BottomNav />
+      <BottomNav active="index" />
     </View>
   );
 }
