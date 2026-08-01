@@ -49,4 +49,12 @@ export class RemoteAccessController {
   ) {
     return this.remote.revoke(id, user.userId);
   }
+
+  @Post('reboot')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  async reboot(@Param('id', ParseUUIDPipe) id: string) {
+    await this.remoteRouter.reboot(id);
+    return { rebooted: true };
+  }
 }

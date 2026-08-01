@@ -10,9 +10,18 @@ EnvironmentFile=/opt/mikrolan/backend/.env
 ExecStart=/usr/bin/node dist/main.js
 Restart=on-failure
 RestartSec=5
-# Runs as root so it can `wg set wg-mgmt ...` on the host interface.
-User=root
-NoNewPrivileges=false
+# Unprivileged user + CAP_NET_ADMIN only, for `wg set wg-mgmt ...`.
+# Prérequis one-shot sur le VPS avant premier démarrage avec cette unit :
+#   useradd --system --no-create-home --shell /usr/sbin/nologin mikrolan
+#   chown -R mikrolan:mikrolan /opt/mikrolan/backend
+User=mikrolan
+Group=mikrolan
+NoNewPrivileges=true
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/mikrolan/backend
 
 [Install]
 WantedBy=multi-user.target
