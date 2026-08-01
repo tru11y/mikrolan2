@@ -1,6 +1,7 @@
 import { PropsWithChildren, ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Modal,
   Platform,
   Pressable,
   StyleSheet,
@@ -34,6 +35,38 @@ export const theme = {
   warning: '#FBBF24',
   mono: Platform.select({ ios: 'Menlo', default: 'monospace' }) as string,
 } as const;
+
+// ─── Échelles ────────────────────────────────────────────────────────────────
+// Sans elles chaque écran réinventait ses tailles en littéraux inline, d'où
+// des cartes et des marges qui ne tombaient jamais juste. Toute nouvelle
+// dimension passe par ici — pas de nombre nu dans les écrans.
+
+export const radius = { sm: 10, md: 12, lg: 16, xl: 20, pill: 999 } as const;
+
+export const space = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  xxl: 24,
+  xxxl: 32,
+} as const;
+
+// `micro` est le plancher de lisibilité : rien en dessous de 11.
+export const type = {
+  micro: 11,
+  caption: 12,
+  body: 13,
+  bodyLg: 15,
+  title: 17,
+  h2: 20,
+  h1: 24,
+  display: 32,
+  hero: 40,
+} as const;
+
+export const icon = { sm: 16, md: 20, lg: 24, xl: 28 } as const;
 
 export function Screen({ children }: PropsWithChildren) {
   return <View style={styles.screen}>{children}</View>;
@@ -324,11 +357,7 @@ export function Stat({
   const c = accentColor(tone);
   return (
     <View style={[styles.stat, style]}>
-      {icon ? (
-        <View style={[styles.statIcon, { backgroundColor: c + '22' }]}>
-          <Ionicons name={icon} size={16} color={c} />
-        </View>
-      ) : null}
+      {icon ? <IconChip name={icon} color={c} size="sm" /> : null}
       <Text style={[styles.statValue, { color: c }]}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
@@ -367,6 +396,131 @@ export function Pill({
   );
 }
 
+const CHIP = {
+  sm: { box: 32, glyph: icon.sm, radius: radius.sm },
+  md: { box: 40, glyph: icon.md, radius: radius.md },
+  lg: { box: 48, glyph: icon.lg, radius: radius.lg },
+  xl: { box: 56, glyph: icon.xl, radius: radius.lg },
+} as const;
+
+// The tinted rounded square behind an icon — it was rewritten by hand in a
+// dozen screens, each with its own size and radius.
+export function IconChip({
+  name,
+  color = theme.primary,
+  size = 'md',
+  outlined,
+}: {
+  name: IoniconName;
+  color?: string;
+  size?: keyof typeof CHIP;
+  outlined?: boolean;
+}) {
+  const s = CHIP[size];
+  return (
+    <View
+      style={{
+        width: s.box,
+        height: s.box,
+        borderRadius: s.radius,
+        backgroundColor: color + '22',
+        borderWidth: outlined ? 1 : 0,
+        borderColor: color + '44',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Ionicons name={name} size={s.glyph} color={color} />
+    </View>
+  );
+}
+
+export function ScreenHeader({
+  title,
+  subtitle,
+}: {
+  title: string;
+  subtitle?: string;
+}) {
+  return (
+    <View style={{ gap: space.xs }}>
+      <Title>{title}</Title>
+      {subtitle ? <Subtitle>{subtitle}</Subtitle> : null}
+    </View>
+  );
+}
+
+// Confirmation for anything destructive. Uses a real Modal so it covers the
+// bottom nav and answers the Android back button.
+export function ConfirmDialog({
+  visible,
+  icon: iconName,
+  title,
+  message,
+  confirmLabel,
+  cancelLabel = 'Annuler',
+  tone = 'danger',
+  busy,
+  banner,
+  onConfirm,
+  onCancel,
+}: {
+  visible: boolean;
+  icon: IoniconName;
+  title: string;
+  message: string;
+  confirmLabel: string;
+  cancelLabel?: string;
+  tone?: 'danger' | 'primary';
+  busy?: boolean;
+  banner?: { tone: 'success' | 'danger'; text: string } | null;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const accent = tone === 'danger' ? theme.danger : theme.primary;
+  const done = banner?.tone === 'success';
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onCancel}
+    >
+      <View style={styles.dialogBackdrop}>
+        <View style={[styles.dialog, { borderColor: accent + '66' }]}>
+          <IconChip name={iconName} color={accent} size="lg" outlined />
+          <View style={{ alignItems: 'center', gap: space.xs }}>
+            <Text style={styles.dialogTitle}>{title}</Text>
+            <Text style={styles.dialogMessage}>{message}</Text>
+          </View>
+          {banner ? <Banner tone={banner.tone}>{banner.text}</Banner> : null}
+          <Row style={{ gap: space.sm, width: '100%' }}>
+            <Pressable onPress={onCancel} style={styles.dialogCancel}>
+              <Text style={styles.dialogCancelText}>
+                {done ? 'Fermer' : cancelLabel}
+              </Text>
+            </Pressable>
+            {done ? null : (
+              <Pressable
+                onPress={onConfirm}
+                disabled={busy}
+                style={[
+                  styles.dialogConfirm,
+                  { backgroundColor: accent, opacity: busy ? 0.6 : 1 },
+                ]}
+              >
+                <Text style={styles.dialogConfirmText}>
+                  {busy ? 'Patientez…' : confirmLabel}
+                </Text>
+              </Pressable>
+            )}
+          </Row>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 // Aurora gradient surface (violet -> cyan) for hero / revenue cards.
 export function AuroraCard({
   children,
@@ -385,45 +539,45 @@ export function AuroraCard({
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: theme.bg, padding: 16 },
+  screen: { flex: 1, backgroundColor: theme.bg, padding: space.lg },
   card: {
     backgroundColor: theme.surface,
-    borderRadius: 16,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: theme.border,
-    padding: 16,
-    gap: 12,
+    padding: space.lg,
+    gap: space.md,
   },
-  title: { color: theme.text, fontSize: 22, fontWeight: '700' },
-  subtitle: { color: theme.textMuted, fontSize: 14 },
-  label: { color: theme.textMuted, fontSize: 13, fontWeight: '600' },
+  title: { color: theme.text, fontSize: type.h1, fontWeight: '700' },
+  subtitle: { color: theme.textMuted, fontSize: type.body },
+  label: { color: theme.textMuted, fontSize: type.body, fontWeight: '600' },
   input: {
     backgroundColor: theme.surfaceAlt,
     borderWidth: 1,
     borderColor: theme.border,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
+    borderRadius: radius.sm,
+    paddingHorizontal: space.md,
+    paddingVertical: space.md,
     color: theme.text,
-    fontSize: 15,
+    fontSize: type.bodyLg,
   },
   button: {
-    borderRadius: 10,
+    borderRadius: radius.sm,
     borderWidth: 1,
-    paddingVertical: 14,
+    paddingVertical: space.lg - 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  buttonText: { fontSize: 15, fontWeight: '700' },
+  buttonText: { fontSize: type.bodyLg, fontWeight: '700' },
   badge: {
     borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
+    borderRadius: radius.pill,
+    paddingHorizontal: space.sm + 2,
     paddingVertical: 3,
     alignSelf: 'flex-start',
   },
   badgeText: {
-    fontSize: 11,
+    fontSize: type.micro,
     fontWeight: '700',
     fontFamily: theme.mono,
     textTransform: 'uppercase',
@@ -431,17 +585,21 @@ const styles = StyleSheet.create({
   },
   banner: {
     borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
+    borderRadius: radius.sm,
+    padding: space.md,
     backgroundColor: theme.surface,
   },
-  empty: { padding: 32, alignItems: 'center', justifyContent: 'center' },
-  monoText: { color: theme.text, fontFamily: theme.mono, fontSize: 13 },
+  empty: {
+    padding: space.xxxl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  monoText: { color: theme.text, fontFamily: theme.mono, fontSize: type.body },
   sectionTitle: {
     color: theme.text,
-    fontSize: 16,
+    fontSize: type.title,
     fontWeight: '700',
-    marginBottom: 8,
+    marginBottom: space.sm,
   },
   row: {
     flexDirection: 'row',
@@ -451,28 +609,72 @@ const styles = StyleSheet.create({
   stat: {
     flex: 1,
     backgroundColor: theme.surface,
-    borderRadius: 16,
+    borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: theme.border,
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    gap: 6,
+    paddingVertical: space.lg - 2,
+    paddingHorizontal: space.md,
+    gap: space.xs + 2,
   },
-  statIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statValue: { fontSize: 22, fontWeight: '800' },
-  statLabel: { color: theme.textMuted, fontSize: 11.5 },
+  statValue: { fontSize: type.h1, fontWeight: '800' },
+  statLabel: { color: theme.textMuted, fontSize: type.micro },
   pill: {
     borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+    borderRadius: radius.pill,
+    paddingHorizontal: space.lg - 2,
+    paddingVertical: space.sm - 1,
   },
-  pillText: { fontSize: 13, fontWeight: '600' },
-  aurora: { borderRadius: 20, padding: 20 },
+  pillText: { fontSize: type.body, fontWeight: '600' },
+  aurora: { borderRadius: radius.xl, padding: space.xl },
+  dialogBackdrop: {
+    flex: 1,
+    backgroundColor: '#000000cc',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: space.lg,
+  },
+  dialog: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderRadius: radius.lg,
+    padding: space.xl,
+    gap: space.lg,
+    alignItems: 'center',
+  },
+  dialogTitle: {
+    color: theme.text,
+    fontSize: type.title,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  dialogMessage: {
+    color: theme.textMuted,
+    fontSize: type.body,
+    textAlign: 'center',
+  },
+  dialogCancel: {
+    flex: 1,
+    paddingVertical: space.md,
+    borderRadius: radius.md,
+    backgroundColor: theme.surfaceAlt,
+    alignItems: 'center',
+  },
+  dialogCancelText: {
+    color: theme.textMuted,
+    fontWeight: '700',
+    fontSize: type.body,
+  },
+  dialogConfirm: {
+    flex: 1,
+    paddingVertical: space.md,
+    borderRadius: radius.md,
+    alignItems: 'center',
+  },
+  dialogConfirmText: {
+    color: theme.text,
+    fontWeight: '700',
+    fontSize: type.body,
+  },
 });
