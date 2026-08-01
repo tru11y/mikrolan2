@@ -8,13 +8,17 @@ import {
   AuroraCard,
   Badge,
   Card,
+  IconChip,
   Mono,
   Row,
+  icon,
+  radius,
+  space,
   theme,
-  Title,
+  type,
   type IoniconName,
 } from '@/src/components/ui';
-import { BottomNav } from '@/src/components/BottomNav';
+import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 
 function initialsOf(name?: string): string {
   if (!name) return 'ML';
@@ -34,7 +38,7 @@ function StatCard({
   value,
   sub,
   subTone = 'muted',
-  icon,
+  icon: iconName,
   iconColor,
   onPress,
 }: {
@@ -52,40 +56,38 @@ function StatCard({
       : subTone === 'secondary'
         ? theme.secondary
         : theme.textMuted;
+  // `flex: 1` et non `width: '48%'` : deux tuiles à 48 % plus une gouttière de
+  // 12 px débordaient sur un écran de 320 dp et retombaient sur une colonne.
   return (
     <Pressable
       onPress={onPress}
       style={{
-        width: '48%',
+        flex: 1,
         backgroundColor: theme.surface,
         borderWidth: 1,
         borderColor: theme.border,
-        borderRadius: 18,
-        padding: 14,
-        gap: 6,
+        borderRadius: radius.lg,
+        padding: space.lg - 2,
+        gap: space.xs + 2,
       }}
     >
-      <Row>
-        <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '500' }}>
-          {label}
-        </Text>
-        <View
+      <Row style={{ alignItems: 'flex-start' }}>
+        <Text
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: 10,
-            backgroundColor: iconColor + '22',
-            alignItems: 'center',
-            justifyContent: 'center',
+            flex: 1,
+            color: theme.textMuted,
+            fontSize: type.caption,
+            fontWeight: '500',
           }}
         >
-          <Ionicons name={icon} size={16} color={iconColor} />
-        </View>
+          {label}
+        </Text>
+        <IconChip name={iconName} color={iconColor} size="sm" />
       </Row>
-      <Text style={{ color: theme.text, fontSize: 24, fontWeight: '800' }}>
+      <Text style={{ color: theme.text, fontSize: type.h1, fontWeight: '800' }}>
         {value}
       </Text>
-      <Text style={{ color: subColor, fontSize: 11 }}>{sub}</Text>
+      <Text style={{ color: subColor, fontSize: type.micro }}>{sub}</Text>
     </Pressable>
   );
 }
@@ -93,6 +95,7 @@ function StatCard({
 export default function MaisonScreen() {
   const router = useRouter();
   const { isReady, activeRouterId } = useActiveRouter();
+  const navHeight = useBottomNavHeight();
   const me = useQuery({ queryKey: ['me'], queryFn: api.auth.me });
   const routers = useQuery({ queryKey: ['routers'], queryFn: api.routers.list });
   const metrics = useQuery({
@@ -119,9 +122,9 @@ export default function MaisonScreen() {
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
     <ScrollView
       style={{ flex: 1, backgroundColor: theme.bg }}
-      contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 100 }}
+      contentContainerStyle={{ padding: space.lg, gap: space.lg, paddingBottom: navHeight }}
     >
-      <Row style={{ gap: 8, justifyContent: 'flex-start' }}>
+      <Row style={{ gap: space.sm, justifyContent: 'flex-start' }}>
         <Image
           source={require('@/assets/images/logo.png')}
           style={{ width: 24, height: 24 }}
@@ -135,26 +138,32 @@ export default function MaisonScreen() {
       {/* Welcome card */}
       <Card>
         <Row>
-          <Row style={{ gap: 12, flex: 1, justifyContent: 'flex-start' }}>
+          <Row style={{ gap: space.md, flex: 1, justifyContent: 'flex-start' }}>
             <View
               style={{
                 width: 48,
                 height: 48,
-                borderRadius: 16,
+                borderRadius: radius.lg,
                 backgroundColor: theme.primary,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-              <Text style={{ color: theme.primaryText, fontWeight: '800', fontSize: 18 }}>
+              <Text
+                style={{
+                  color: theme.primaryText,
+                  fontWeight: '800',
+                  fontSize: type.title,
+                }}
+              >
                 {initialsOf(tenantName)}
               </Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ color: theme.text, fontSize: 17, fontWeight: '700' }}>
+              <Text style={{ color: theme.text, fontSize: type.title, fontWeight: '700' }}>
                 Bienvenue, {firstName}
               </Text>
-              <Row style={{ gap: 6, justifyContent: 'flex-start', marginTop: 2 }}>
+              <Row style={{ gap: space.xs + 2, justifyContent: 'flex-start', marginTop: 2 }}>
                 <View
                   style={{
                     width: 7,
@@ -163,7 +172,7 @@ export default function MaisonScreen() {
                     backgroundColor: theme.success,
                   }}
                 />
-                <Text style={{ color: theme.textMuted, fontSize: 12 }}>
+                <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
                   Compte administrateur vérifié
                 </Text>
               </Row>
@@ -172,15 +181,15 @@ export default function MaisonScreen() {
           <Pressable
             onPress={() => router.push('/(tabs)/account')}
             style={{
-              paddingHorizontal: 14,
-              paddingVertical: 8,
-              borderRadius: 12,
+              paddingHorizontal: space.lg - 2,
+              paddingVertical: space.sm,
+              borderRadius: radius.md,
               borderWidth: 1,
               borderColor: theme.border,
               backgroundColor: theme.surfaceAlt,
             }}
           >
-            <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>
+            <Text style={{ color: theme.textMuted, fontSize: type.caption, fontWeight: '600' }}>
               Profil
             </Text>
           </Pressable>
@@ -188,12 +197,12 @@ export default function MaisonScreen() {
       </Card>
 
       {/* Aurora hero — revenue (today) */}
-      <AuroraCard style={{ padding: 22 }}>
+      <AuroraCard>
         <Text style={{ color: theme.primaryText, fontWeight: '600', opacity: 0.9 }}>
           Revenu du jour
         </Text>
-        <Row style={{ alignItems: 'flex-end', justifyContent: 'flex-start', marginTop: 10 }}>
-          <Text style={{ color: theme.primaryText, fontSize: 40, fontWeight: '800' }}>
+        <Row style={{ alignItems: 'flex-end', justifyContent: 'flex-start', marginTop: space.sm + 2 }}>
+          <Text style={{ color: theme.primaryText, fontSize: type.hero, fontWeight: '800' }}>
             {metrics.isLoading
               ? '…'
               : (metrics.data?.revenueXof ?? 0).toLocaleString('fr-FR')}
@@ -202,15 +211,15 @@ export default function MaisonScreen() {
             style={{
               color: theme.primaryText,
               opacity: 0.8,
-              marginBottom: 8,
-              marginLeft: 8,
+              marginBottom: space.sm,
+              marginLeft: space.sm,
               fontWeight: '600',
             }}
           >
             FCFA
           </Text>
         </Row>
-        <Text style={{ color: theme.primaryText, opacity: 0.8, fontSize: 12, marginTop: 4 }}>
+        <Text style={{ color: theme.primaryText, opacity: 0.8, fontSize: type.caption, marginTop: space.xs }}>
           {metrics.data?.ticketsGenerated ?? 0} tickets vendus ·{' '}
           {metrics.data?.activeSessions ?? 0} sessions actives
         </Text>
@@ -220,31 +229,20 @@ export default function MaisonScreen() {
       {trial != null ? (
         <Card style={{ borderColor: theme.warning, borderWidth: 1.5 }}>
           <Row>
-            <Row style={{ gap: 12, flex: 1, justifyContent: 'flex-start' }}>
-              <View
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 12,
-                  backgroundColor: theme.warning + '22',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Ionicons name="time-outline" size={20} color={theme.warning} />
-              </View>
+            <Row style={{ gap: space.md, flex: 1, justifyContent: 'flex-start' }}>
+              <IconChip name="time-outline" color={theme.warning} size="md" />
               <View style={{ flex: 1 }}>
                 <Text
                   style={{
                     color: theme.warning,
-                    fontSize: 11,
+                    fontSize: type.micro,
                     fontWeight: '700',
                     letterSpacing: 0.5,
                   }}
                 >
                   PÉRIODE D'ESSAI ACTIVE
                 </Text>
-                <Text style={{ color: theme.text, fontSize: 13, marginTop: 2 }}>
+                <Text style={{ color: theme.text, fontSize: type.body, marginTop: 2 }}>
                   Il vous reste{' '}
                   <Text style={{ color: theme.warning, fontWeight: '700' }}>
                     {trial} jour{trial > 1 ? 's' : ''}
@@ -256,13 +254,13 @@ export default function MaisonScreen() {
             <Pressable
               onPress={() => router.push('/pro')}
               style={{
-                paddingHorizontal: 12,
-                paddingVertical: 8,
-                borderRadius: 12,
+                paddingHorizontal: space.md,
+                paddingVertical: space.sm,
+                borderRadius: radius.md,
                 backgroundColor: theme.warning,
               }}
             >
-              <Text style={{ color: theme.goldText, fontWeight: '700', fontSize: 12 }}>
+              <Text style={{ color: theme.goldText, fontWeight: '700', fontSize: type.caption }}>
                 Prolonger
               </Text>
             </Pressable>
@@ -275,25 +273,14 @@ export default function MaisonScreen() {
         <Pressable onPress={() => router.push('/pro')}>
           <Card style={{ borderColor: theme.gold, borderWidth: 1.5 }}>
             <Row>
-              <Row style={{ gap: 12, flex: 1, justifyContent: 'flex-start' }}>
-                <View
-                  style={{
-                    width: 40,
-                    height: 40,
-                    borderRadius: 12,
-                    backgroundColor: theme.gold + '22',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Ionicons name="diamond-outline" size={20} color={theme.gold} />
-                </View>
-                <View style={{ flex: 1, paddingRight: 8 }}>
-                  <Row style={{ justifyContent: 'flex-start', gap: 8 }}>
+              <Row style={{ gap: space.md, flex: 1, justifyContent: 'flex-start' }}>
+                <IconChip name="diamond-outline" color={theme.gold} size="md" />
+                <View style={{ flex: 1, paddingRight: space.sm }}>
+                  <Row style={{ justifyContent: 'flex-start', gap: space.sm }}>
                     <Text
                       style={{
                         color: theme.gold,
-                        fontSize: 11,
+                        fontSize: type.micro,
                         fontWeight: '700',
                         letterSpacing: 0.5,
                       }}
@@ -302,61 +289,65 @@ export default function MaisonScreen() {
                     </Text>
                     <Badge label="PRO" tone="gold" />
                   </Row>
-                  <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: theme.textMuted, fontSize: type.caption, marginTop: 2 }}>
                     Multi-routeurs, cloud backup & impression thermique.
                   </Text>
                 </View>
               </Row>
-              <Ionicons name="chevron-forward" size={20} color={theme.textMuted} />
+              <Ionicons name="chevron-forward" size={icon.md} color={theme.textMuted} />
             </Row>
           </Card>
         </Pressable>
       ) : null}
 
-      {/* 2x2 stats grid (clickable) */}
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
-        <StatCard
-          label="Routeurs"
-          value={`${list.length}`}
-          sub={`${online} en ligne`}
-          subTone="success"
-          icon="hardware-chip-outline"
-          iconColor={theme.secondary}
-          onPress={() => router.push('/(tabs)/routeurs')}
-        />
-        <StatCard
-          label="Clients"
-          value={`${metrics.data?.ticketsUsed ?? 0}`}
-          sub="tickets utilisés"
-          icon="people-circle-outline"
-          iconColor={theme.primary}
-          onPress={() => router.push('/(tabs)/rapport')}
-        />
-        <StatCard
-          label="Tickets"
-          value={`${metrics.data?.ticketsGenerated ?? 0}`}
-          sub="générés aujourd'hui"
-          icon="ticket-outline"
-          iconColor={theme.gold}
-          onPress={() => router.push('/(tabs)/tickets')}
-        />
-        <StatCard
-          label="Sessions"
-          value={`${metrics.data?.activeSessions ?? 0}`}
-          sub="actifs live"
-          subTone="secondary"
-          icon="people-outline"
-          iconColor={theme.success}
-          onPress={() => router.push('/(tabs)/rapport')}
-        />
+      {/* Grille 2×2 (cliquable) — deux rangées de `flex: 1`, hauteurs alignées */}
+      <View style={{ gap: space.md }}>
+        <Row style={{ gap: space.md, alignItems: 'stretch' }}>
+          <StatCard
+            label="Routeurs"
+            value={`${list.length}`}
+            sub={`${online} en ligne`}
+            subTone="success"
+            icon="hardware-chip-outline"
+            iconColor={theme.secondary}
+            onPress={() => router.push('/(tabs)/routeurs')}
+          />
+          <StatCard
+            label="Clients"
+            value={`${metrics.data?.ticketsUsed ?? 0}`}
+            sub="tickets utilisés"
+            icon="people-circle-outline"
+            iconColor={theme.primary}
+            onPress={() => router.push('/(tabs)/rapport')}
+          />
+        </Row>
+        <Row style={{ gap: space.md, alignItems: 'stretch' }}>
+          <StatCard
+            label="Tickets"
+            value={`${metrics.data?.ticketsGenerated ?? 0}`}
+            sub="générés aujourd'hui"
+            icon="ticket-outline"
+            iconColor={theme.gold}
+            onPress={() => router.push('/(tabs)/tickets')}
+          />
+          <StatCard
+            label="Sessions"
+            value={`${metrics.data?.activeSessions ?? 0}`}
+            sub="actives maintenant"
+            subTone="secondary"
+            icon="people-outline"
+            iconColor={theme.success}
+            onPress={() => router.push('/(tabs)/rapport')}
+          />
+        </Row>
       </View>
 
       {/* Routers section */}
-      <Card style={{ gap: 12 }}>
+      <Card style={{ gap: space.md }}>
         <Row>
-          <Row style={{ gap: 8, justifyContent: 'flex-start' }}>
-            <Ionicons name="hardware-chip" size={18} color={theme.primary} />
-            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>
+          <Row style={{ gap: space.sm, justifyContent: 'flex-start' }}>
+            <Ionicons name="hardware-chip" size={icon.md} color={theme.primary} />
+            <Text style={{ color: theme.text, fontWeight: '700', fontSize: type.bodyLg }}>
               Mes routeurs connectés
             </Text>
           </Row>
@@ -365,15 +356,15 @@ export default function MaisonScreen() {
             style={{
               flexDirection: 'row',
               alignItems: 'center',
-              gap: 4,
-              paddingHorizontal: 10,
-              paddingVertical: 7,
-              borderRadius: 10,
+              gap: space.xs,
+              paddingHorizontal: space.md,
+              paddingVertical: space.sm,
+              borderRadius: radius.sm,
               backgroundColor: theme.primary,
             }}
           >
-            <Ionicons name="add" size={15} color={theme.primaryText} />
-            <Text style={{ color: theme.primaryText, fontWeight: '700', fontSize: 12 }}>
+            <Ionicons name="add" size={icon.sm} color={theme.primaryText} />
+            <Text style={{ color: theme.primaryText, fontWeight: '700', fontSize: type.caption }}>
               Ajouter
             </Text>
           </Pressable>
@@ -391,32 +382,17 @@ export default function MaisonScreen() {
                   backgroundColor: theme.surfaceAlt,
                   borderWidth: 1,
                   borderColor: theme.border,
-                  borderRadius: 14,
-                  padding: 12,
+                  borderRadius: radius.md,
+                  padding: space.md,
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: 12,
+                  gap: space.md,
                 }}
               >
-                <View
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 12,
-                    backgroundColor: theme.primary + '22',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Ionicons
-                    name="hardware-chip-outline"
-                    size={22}
-                    color={theme.primary}
-                  />
-                </View>
+                <IconChip name="hardware-chip-outline" size="md" />
                 <View style={{ flex: 1 }}>
-                  <Row style={{ justifyContent: 'flex-start', gap: 8 }}>
-                    <Text style={{ color: theme.text, fontWeight: '700', fontSize: 14 }}>
+                  <Row style={{ justifyContent: 'flex-start', gap: space.sm }}>
+                    <Text style={{ color: theme.text, fontWeight: '700', fontSize: type.body }}>
                       {r.alias || r.identity}
                     </Text>
                     <Badge
@@ -424,12 +400,12 @@ export default function MaisonScreen() {
                       tone={r.health === 'ONLINE' ? 'secondary' : 'danger'}
                     />
                   </Row>
-                  <Mono style={{ color: theme.textMuted, fontSize: 11, marginTop: 2 }}>
+                  <Mono style={{ color: theme.textMuted, fontSize: type.micro, marginTop: 2 }}>
                     {r.model ? `${r.model} · ` : ''}
                     {r.identity}
                   </Mono>
                 </View>
-                <Ionicons name="chevron-forward" size={20} color={theme.textMuted} />
+                <Ionicons name="chevron-forward" size={icon.md} color={theme.textMuted} />
               </View>
             </Pressable>
           ))
@@ -438,37 +414,37 @@ export default function MaisonScreen() {
 
       {/* Tickets quick info */}
       <Pressable onPress={() => router.push('/(tabs)/tickets')}>
-        <Card style={{ gap: 8 }}>
-          <Row style={{ gap: 8, justifyContent: 'flex-start' }}>
-            <Ionicons name="ticket" size={18} color={theme.primary} />
-            <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>
+        <Card style={{ gap: space.sm }}>
+          <Row style={{ gap: space.sm, justifyContent: 'flex-start' }}>
+            <Ionicons name="ticket" size={icon.md} color={theme.primary} />
+            <Text style={{ color: theme.text, fontWeight: '700', fontSize: type.bodyLg }}>
               Aperçu rapide des Tickets
             </Text>
           </Row>
-          <Text style={{ color: theme.textMuted, fontSize: 12, lineHeight: 18 }}>
+          <Text style={{ color: theme.textMuted, fontSize: type.caption, lineHeight: 18 }}>
             Sélectionnez un routeur pour générer, imprimer et exporter vos tickets
             WiFi au format thermique, PDF ou écran.
           </Text>
-          <Row style={{ marginTop: 4 }}>
+          <Row style={{ marginTop: space.xs }}>
             <View
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 6,
+                gap: space.xs + 2,
                 backgroundColor: theme.gold + '18',
                 borderWidth: 1,
                 borderColor: theme.gold + '33',
-                borderRadius: 10,
-                paddingHorizontal: 10,
-                paddingVertical: 6,
+                borderRadius: radius.sm,
+                paddingHorizontal: space.md,
+                paddingVertical: space.xs + 2,
               }}
             >
-              <Ionicons name="information-circle-outline" size={14} color={theme.gold} />
-              <Text style={{ color: theme.gold, fontSize: 11 }}>
+              <Ionicons name="information-circle-outline" size={icon.sm} color={theme.gold} />
+              <Text style={{ color: theme.gold, fontSize: type.micro }}>
                 {metrics.data?.ticketsGenerated ?? 0} générés aujourd'hui
               </Text>
             </View>
-            <Text style={{ color: theme.primary, fontWeight: '700', fontSize: 12 }}>
+            <Text style={{ color: theme.primary, fontWeight: '700', fontSize: type.caption }}>
               Créer un ticket →
             </Text>
           </Row>
