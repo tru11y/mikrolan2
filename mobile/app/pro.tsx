@@ -324,14 +324,14 @@ export default function ProScreen() {
       </View>
 
       <Button
-        title={`Acheter MikroLan2 ${tier.name}`}
+        title={`Demander l'activation ${tier.name}`}
         variant="gold"
         onPress={buy}
         loading={busy}
       />
 
       <Text style={{ color: theme.textMuted, fontSize: 12, textAlign: 'center' }}>
-        Paiement Mobile Money (Wave / Orange). Sans engagement.
+        Un administrateur validera votre paiement Wave / Orange Money sous 24h. Sans engagement.
       </Text>
     </ScrollView>
   );

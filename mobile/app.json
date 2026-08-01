@@ -7,10 +7,20 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
+    "icon": "./assets/images/logo.png",
+    "backgroundColor": "#0B0B12",
+    "splash": {
+      "image": "./assets/images/logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0B0B12"
+    },
     "android": {
       "package": "com.mikrolan.app",
-      "usesCleartextTraffic": true,
-      "versionCode": 3
+      "versionCode": 3,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/logo.png",
+        "backgroundColor": "#0B0B12"
+      }
     },
     "ios": {
       "supportsTablet": true,

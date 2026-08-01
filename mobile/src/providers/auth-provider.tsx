@@ -19,6 +19,18 @@ import {
   setAuthTokens,
   type Me,
 } from '@/src/lib/api';
+import { deleteLocalCredentials } from '@/src/lib/router-credentials';
+
+async function clearAllLocalRouterCredentials(): Promise<void> {
+  try {
+    const routers = await api.routers.list();
+    await Promise.all(
+      routers.map((router) => deleteLocalCredentials(router.id)),
+    );
+  } catch {
+    // best-effort — logout must not be blocked by this cleanup
+  }
+}
 
 type AuthContextValue = {
   isReady: boolean;
@@ -123,6 +135,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   async function logout(): Promise<void> {
     setIsBusy(true);
     try {
+      await clearAllLocalRouterCredentials();
       await api.auth.logout();
     } catch {
       // best-effort

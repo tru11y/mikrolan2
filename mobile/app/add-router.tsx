@@ -273,7 +273,8 @@ export default function AddRouterScreen() {
             />
             {test.kind === 'ok' ? (
               <Banner tone="success">
-                Connecté ✓ — identité : {test.identity}
+                <Ionicons name="checkmark-circle" size={14} color={theme.success} />{' '}
+                Connecté — identité : {test.identity}
               </Banner>
             ) : null}
             {test.kind === 'error' ? (
