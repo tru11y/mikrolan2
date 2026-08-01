@@ -9,6 +9,7 @@ import {
   getStoredValue,
   setStoredValue,
 } from '@/src/lib/storage';
+import { errorMessage } from '@/src/lib/errors';
 
 const ACCESS_TOKEN_KEY = 'mikrolan_access_token';
 const REFRESH_TOKEN_KEY = 'mikrolan_refresh_token';
@@ -62,6 +63,10 @@ export type Entitlement = {
   remoteAllowed: boolean;
   endsAt: string | null;
   daysLeft: number;
+  /** Clé de la formule souscrite ; `null` en essai ou après retour au gratuit. */
+  tierKey: string | null;
+  /** Routeurs autorisés par la formule ; `null` = illimité. */
+  routerLimit: number | null;
 };
 
 export type TicketTemplate = {
@@ -849,39 +854,312 @@ export const api = {
   },
 
   subscriptions: {
-    async requestUpgrade(note?: string): Promise<{
-      invoice: { id: string; amount: number; currency: string; status: string };
-      instructions: string;
-    }> {
-      const res = await apiClient.post<
-        ApiEnvelope<{
-          invoice: {
-            id: string;
-            amount: number;
-            currency: string;
-            status: string;
-          };
-          instructions: string;
-        }>
-      >('/subscriptions/request-upgrade', note ? { note } : {});
+    /** Grille tarifaire publiée par le super admin. */
+    async tiers(): Promise<Tier[]> {
+      const res = await apiClient.get<ApiEnvelope<Tier[]>>('/subscriptions/tiers');
+      return unwrap(res);
+    },
+    async requestUpgrade(payload: {
+      note?: string;
+      tierKey?: string;
+      billingPeriod?: BillingPeriod;
+    }): Promise<UpgradeRequestResult> {
+      const res = await apiClient.post<ApiEnvelope<UpgradeRequestResult>>(
+        '/subscriptions/request-upgrade',
+        payload,
+      );
+      return unwrap(res);
+    },
+
+    // ── Plateforme (SUPER_ADMIN) ────────────────────────────
+    // Le serveur refuse ces deux routes à tout autre rôle ; l'app se contente
+    // de ne pas les proposer, elle ne les autorise pas.
+    async activate(
+      tenantId: string,
+      periodDays: number,
+    ): Promise<TenantSubscription> {
+      const res = await apiClient.post<ApiEnvelope<TenantSubscription>>(
+        `/subscriptions/${tenantId}/activate`,
+        { periodDays },
+      );
+      return unwrap(res);
+    },
+    async deactivate(tenantId: string): Promise<TenantSubscription> {
+      const res = await apiClient.post<ApiEnvelope<TenantSubscription>>(
+        `/subscriptions/${tenantId}/deactivate`,
+        {},
+      );
+      return unwrap(res);
+    },
+  },
+
+  // ── Back-office plateforme (SUPER_ADMIN) ────────────────
+  // Le serveur ferme ces routes à tout autre rôle (403) ; l'application se
+  // contente de ne pas les afficher.
+  admin: {
+    async metrics(): Promise<PlatformMetrics> {
+      const res = await apiClient.get<ApiEnvelope<PlatformMetrics>>('/admin/metrics');
+      return unwrap(res);
+    },
+    async tenants(
+      params: { q?: string; cursor?: string; limit?: number } = {},
+    ): Promise<Page<AdminTenant>> {
+      const res = await apiClient.get<ApiEnvelope<Page<AdminTenant>>>(
+        '/admin/tenants',
+        { params },
+      );
+      return unwrap(res);
+    },
+    async tenant(id: string): Promise<AdminTenantDetail> {
+      const res = await apiClient.get<ApiEnvelope<AdminTenantDetail>>(
+        `/admin/tenants/${id}`,
+      );
+      return unwrap(res);
+    },
+    async setTenantStatus(
+      id: string,
+      status: 'ACTIVE' | 'SUSPENDED',
+      reason?: string,
+    ): Promise<{ id: string; name: string; status: TenantStatus }> {
+      const res = await apiClient.patch<
+        ApiEnvelope<{ id: string; name: string; status: TenantStatus }>
+      >(`/admin/tenants/${id}/status`, { status, ...(reason ? { reason } : {}) });
+      return unwrap(res);
+    },
+    async users(
+      params: { q?: string; tenantId?: string; cursor?: string; limit?: number } = {},
+    ): Promise<Page<AdminUser>> {
+      const res = await apiClient.get<ApiEnvelope<Page<AdminUser>>>('/admin/users', {
+        params,
+      });
+      return unwrap(res);
+    },
+    async setUserStatus(
+      id: string,
+      status: 'ACTIVE' | 'SUSPENDED',
+      reason?: string,
+    ): Promise<{ id: string; email: string; status: UserStatus }> {
+      const res = await apiClient.patch<
+        ApiEnvelope<{ id: string; email: string; status: UserStatus }>
+      >(`/admin/users/${id}/status`, { status, ...(reason ? { reason } : {}) });
+      return unwrap(res);
+    },
+    async invoices(
+      params: { status?: string; cursor?: string; limit?: number } = {},
+    ): Promise<Page<AdminInvoice>> {
+      const res = await apiClient.get<ApiEnvelope<Page<AdminInvoice>>>(
+        '/admin/invoices',
+        { params },
+      );
+      return unwrap(res);
+    },
+    async tiers(): Promise<Tier[]> {
+      const res = await apiClient.get<ApiEnvelope<Tier[]>>('/admin/tiers');
+      return unwrap(res);
+    },
+    async updateTier(id: string, patch: TierPatch): Promise<Tier> {
+      const res = await apiClient.patch<ApiEnvelope<Tier>>(`/admin/tiers/${id}`, patch);
+      return unwrap(res);
+    },
+    async audit(
+      params: { tenantId?: string; cursor?: string; limit?: number } = {},
+    ): Promise<Page<AuditEntry>> {
+      const res = await apiClient.get<ApiEnvelope<Page<AuditEntry>>>('/admin/audit', {
+        params,
+      });
       return unwrap(res);
     },
   },
 };
 
+// ── Types du back-office ──────────────────────────────────
+
+export type BillingPeriod = 'MONTHLY' | 'ANNUAL';
+export type TenantStatus = 'ACTIVE' | 'SUSPENDED' | 'DELETED';
+export type UserStatus = 'ACTIVE' | 'SUSPENDED' | 'DELETED';
+
+export type Page<T> = { items: T[]; nextCursor: string | null };
+
+export type TierFeature = { label: string; included: boolean };
+
+export type Tier = {
+  id: string;
+  key: string;
+  name: string;
+  monthlyXof: number;
+  /** Mensualité effective si le client règle l'année. */
+  annualMonthlyXof: number;
+  annualDiscount: number;
+  routerLimit: number | null;
+  remoteAccess: boolean;
+  a4Printing: boolean;
+  cloudBackup: boolean;
+  prioritySupport: boolean;
+  badge: string | null;
+  tagline: string | null;
+  features: TierFeature[];
+  displayOrder: number;
+  active: boolean;
+};
+
+export type TierPatch = Partial<
+  Pick<
+    Tier,
+    | 'name'
+    | 'monthlyXof'
+    | 'annualDiscount'
+    | 'routerLimit'
+    | 'badge'
+    | 'tagline'
+    | 'displayOrder'
+    | 'active'
+  >
+>;
+
+export type UpgradeRequestResult = {
+  invoice: {
+    id: string;
+    amount: number;
+    currency: string;
+    status: string;
+    tierKey: string;
+    tierName: string;
+    billingPeriod: BillingPeriod;
+  };
+  instructions: string;
+};
+
+export type PlatformMetrics = {
+  tenants: {
+    total: number;
+    pro: number;
+    trialing: number;
+    suspended: number;
+    locked: number;
+  };
+  revenue: { mrrXof: number; currency: string; untieredActive: number };
+  trialsExpiringIn7Days: number;
+  pendingInvoices: number;
+  routers: { total: number; online: number };
+  vouchers30d: { generated: number; activated: number };
+  generatedAt: string;
+};
+
+export type AdminTenant = {
+  id: string;
+  name: string;
+  slug: string;
+  status: TenantStatus;
+  createdAt: string;
+  plan: SubscriptionPlan;
+  subscriptionStatus: string | null;
+  tierKey: string | null;
+  tierName: string | null;
+  currentPeriodEnd: string | null;
+  userCount: number;
+  routerCount: number;
+};
+
+export type AdminTenantDetail = {
+  id: string;
+  name: string;
+  slug: string;
+  status: TenantStatus;
+  createdAt: string;
+  subscription: {
+    plan: SubscriptionPlan;
+    status: string;
+    billingPeriod: BillingPeriod | null;
+    currentPeriodStart: string | null;
+    currentPeriodEnd: string | null;
+    tier: { key: string; name: string; monthlyXof: number } | null;
+  } | null;
+  users: {
+    id: string;
+    email: string;
+    name: string | null;
+    role: UserRole;
+    status: UserStatus;
+    lastLoginAt: string | null;
+    createdAt: string;
+  }[];
+  routers: {
+    id: string;
+    identity: string;
+    alias: string | null;
+    mode: ManagementMode;
+    health: RouterHealth;
+    lastHeartbeat: string | null;
+  }[];
+  invoices: {
+    id: string;
+    amount: number;
+    currency: string;
+    status: string;
+    billingPeriod: BillingPeriod;
+    note: string | null;
+    createdAt: string;
+    paidAt: string | null;
+    tier: { key: string; name: string } | null;
+  }[];
+};
+
+export type AdminUser = {
+  id: string;
+  email: string;
+  name: string | null;
+  role: UserRole;
+  status: UserStatus;
+  lastLoginAt: string | null;
+  createdAt: string;
+  tenantId: string;
+  tenantName: string;
+};
+
+export type AdminInvoice = {
+  id: string;
+  tenantId: string;
+  tenantName: string;
+  amount: number;
+  currency: string;
+  status: string;
+  billingPeriod: BillingPeriod;
+  periodDays: number;
+  /** Résumé laissé par le conseiller d'abonnement côté client. */
+  note: string | null;
+  tierKey: string | null;
+  tierName: string | null;
+  createdAt: string;
+  paidAt: string | null;
+};
+
+export type AuditEntry = {
+  id: string;
+  tenantId: string;
+  tenantName: string;
+  userId: string | null;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  metadata: unknown;
+  ip: string | null;
+  createdAt: string;
+};
+
+export type TenantSubscription = {
+  plan: SubscriptionPlan;
+  status: string;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  updatedAt: string;
+};
+
+/**
+ * Conservé pour les appelants existants. La logique vit dans
+ * `src/lib/errors.ts` : ce fichier ne fait plus que déléguer, pour que tous
+ * les écrans profitent de la même traduction sans être réécrits un par un.
+ * Préférer `describeError()` quand on a besoin du retry ou des erreurs de champ.
+ */
 export function extractErrorMessage(error: unknown): string {
-  if (axios.isAxiosError(error)) {
-    // Prefer the backend's explicit message (e.g. "Invalid credentials").
-    const body = error.response?.data as { message?: string } | undefined;
-    if (body?.message) return body.message;
-    if (error.response?.status === 401) {
-      return 'Session expirée. Merci de vous reconnecter.';
-    }
-    if (error.code === 'ERR_NETWORK') {
-      return 'Serveur injoignable. Vérifiez l’URL du serveur et votre connexion.';
-    }
-    if (error.message) return error.message;
-  }
-  if (error instanceof Error) return error.message;
-  return 'Une erreur est survenue.';
+  return errorMessage(error);
 }
