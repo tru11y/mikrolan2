@@ -49,6 +49,19 @@ export type Me = {
     status: string;
     currentPeriodEnd: string | null;
   } | null;
+  entitlement: Entitlement;
+};
+
+/**
+ * Ce que le compte a le droit de faire, tel que le serveur le décide. L'app
+ * dessine ses cadenas à partir d'ici — elle ne les invente pas.
+ */
+export type Entitlement = {
+  tier: 'TRIAL' | 'PRO' | 'LOCKED';
+  localAllowed: boolean;
+  remoteAllowed: boolean;
+  endsAt: string | null;
+  daysLeft: number;
 };
 
 export type TicketTemplate = {

@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { AlwaysAllowed } from '../../common/decorators/always-allowed.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { TenantContext } from '../../common/context/tenant-context';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -21,6 +22,7 @@ import {
 } from './dto/subscription.schemas';
 
 @Controller('subscriptions')
+@AlwaysAllowed() // un client verrouille doit pouvoir payer
 export class SubscriptionsController {
   constructor(private readonly subs: SubscriptionsService) {}
 

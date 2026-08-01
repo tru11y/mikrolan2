@@ -17,6 +17,7 @@ import {
   setApiBaseUrl,
   setApiEventHandlers,
   setAuthTokens,
+  type Entitlement,
   type Me,
 } from '@/src/lib/api';
 import { deleteLocalCredentials } from '@/src/lib/router-credentials';
@@ -38,6 +39,10 @@ type AuthContextValue = {
   isBusy: boolean;
   me: Me | null;
   isPro: boolean;
+  /** Décidé par le serveur ; l'app ne fait que le refléter. */
+  entitlement: Entitlement;
+  /** L'essai est terminé et aucun forfait n'est actif. */
+  isLocked: boolean;
   apiBaseUrl: string;
   error: string | null;
   clearError: () => void;
@@ -155,15 +160,25 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setApiBaseUrlState(await setApiBaseUrl(value));
   }
 
+  // Tant que /auth/me n'a pas répondu on ne verrouille rien : un faux cadenas
+  // au démarrage serait pire qu'un écran vide.
+  const entitlement: Entitlement = me?.entitlement ?? {
+    tier: 'TRIAL',
+    localAllowed: true,
+    remoteAllowed: false,
+    endsAt: null,
+    daysLeft: 0,
+  };
+
   const contextValue = useMemo<AuthContextValue>(
     () => ({
       isReady,
       isAuthenticated: Boolean(me),
       isBusy,
       me,
-      isPro:
-        me?.subscription?.plan === 'PRO' &&
-        me?.subscription?.status === 'ACTIVE',
+      isPro: entitlement.tier === 'PRO',
+      entitlement,
+      isLocked: entitlement.tier === 'LOCKED',
       apiBaseUrl,
       error,
       clearError: () => setError(null),
@@ -173,7 +188,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       refreshProfile,
       updateApiBaseUrl,
     }),
-    [apiBaseUrl, error, isBusy, isReady, me],
+    [apiBaseUrl, entitlement, error, isBusy, isReady, me],
   );
 
   return (
