@@ -5,6 +5,7 @@ import { QueryProvider } from '@/src/providers/query-provider';
 import { AuthProvider } from '@/src/providers/auth-provider';
 import { AppLockProvider } from '@/src/providers/app-lock-provider';
 import { ActiveRouterProvider } from '@/src/providers/active-router-provider';
+import { PaywallLock } from '@/src/components/PaywallLock';
 import { theme } from '@/src/components/ui';
 
 export default function RootLayout() {
@@ -29,6 +30,7 @@ export default function RootLayout() {
                   options={{ presentation: 'modal' }}
                 />
               </Stack>
+              <PaywallLock />
             </ActiveRouterProvider>
           </AppLockProvider>
         </AuthProvider>

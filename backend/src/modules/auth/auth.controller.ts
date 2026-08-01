@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Public } from '../../common/decorators/public.decorator';
+import { AlwaysAllowed } from '../../common/decorators/always-allowed.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { TenantContext } from '../../common/context/tenant-context';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -31,6 +32,7 @@ import {
 } from './dto/auth.schemas';
 
 @Controller('auth')
+@AlwaysAllowed() // se connecter et consulter son compte restent possibles
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
