@@ -3,6 +3,7 @@ import { Interval } from '@nestjs/schedule';
 import {
   ManagementMode,
   NotificationType,
+  SessionStatus,
   UserRole,
   VoucherStatus,
 } from '@prisma/client';
@@ -44,14 +45,108 @@ export class SessionsService {
   ) {}
 
   /**
-   * Background poller: every REMOTE router's `/ip/hotspot/active` is checked
-   * for a username matching a GENERATED voucher's code. First sight of a match
-   * promotes the voucher to ACTIVE, opens its Session row, and raises a
-   * VOUCHER_ACTIVATED notification — this is the only place in the codebase
-   * that ever marks a voucher ACTIVE (nothing else did before this existed,
-   * which is why revenue and "ticket activé" notifications never worked).
-   * Runs outside any HTTP request, so it manually opens a tenant context per
-   * router (remote.run()/the Prisma tenant middleware both require one).
+   * Brings the DB in line with what the router reports as connected. First
+   * sight of a code promotes its voucher to ACTIVE, opens the Session row and
+   * raises a VOUCHER_ACTIVATED notification — this is the only place in the
+   * codebase that ever marks a voucher ACTIVE, which is what makes revenue
+   * non-zero. Codes that have disappeared close their session, so
+   * `activeSessions` can go back down.
+   *
+   * Both modes funnel through here: REMOTE reads the router over the tunnel
+   * (syncActivations), LOCAL has the mobile app post what it read over the LAN
+   * (syncFromLan). Requires an open tenant context.
+   */
+  private async reconcileActive(
+    routerId: string,
+    tenantId: string,
+    active: LiveSession[],
+  ): Promise<void> {
+    const now = new Date();
+    const codes = [...new Set(active.map((r) => r.user).filter(Boolean))];
+
+    const open = await this.prisma.session.findMany({
+      where: { routerId, status: SessionStatus.ACTIVE },
+      select: { id: true, voucher: { select: { code: true } } },
+    });
+    const ended = open.filter((s) => !codes.includes(s.voucher.code));
+    if (ended.length) {
+      await this.prisma.session.updateMany({
+        where: { id: { in: ended.map((s) => s.id) } },
+        data: { status: SessionStatus.TERMINATED, terminatedAt: now },
+      });
+    }
+
+    if (!codes.length) return;
+
+    const vouchers = await this.prisma.voucher.findMany({
+      where: {
+        routerId,
+        code: { in: codes },
+        status: { in: [VoucherStatus.GENERATED, VoucherStatus.ACTIVE] },
+      },
+      select: {
+        id: true,
+        code: true,
+        status: true,
+        session: { select: { id: true } },
+      },
+    });
+
+    for (const voucher of vouchers) {
+      const row = active.find((r) => r.user === voucher.code);
+      if (!row) continue;
+
+      const seen = {
+        mikrotikId: row.id || null,
+        macAddress: row.macAddress,
+        ipAddress: row.ipAddress,
+        bytesIn: BigInt(row.bytesIn || '0'),
+        bytesOut: BigInt(row.bytesOut || '0'),
+        lastSeenAt: now,
+      };
+
+      // Session already opened: refresh its counters, and reopen it if the
+      // same code came back after having been closed.
+      if (voucher.session) {
+        await this.prisma.session.update({
+          where: { id: voucher.session.id },
+          data: { ...seen, status: SessionStatus.ACTIVE, terminatedAt: null },
+        });
+        continue;
+      }
+
+      const firstSight = voucher.status === VoucherStatus.GENERATED;
+      if (firstSight) {
+        const promoted = await this.prisma.voucher.updateMany({
+          where: { id: voucher.id, status: VoucherStatus.GENERATED },
+          data: { status: VoucherStatus.ACTIVE, usedAt: now },
+        });
+        if (promoted.count === 0) continue; // another tick got there first
+      }
+
+      await this.prisma.session.create({
+        data: { tenantId, voucherId: voucher.id, routerId, ...seen },
+      });
+
+      if (firstSight) {
+        await this.prisma.notification.create({
+          data: {
+            tenantId,
+            type: NotificationType.VOUCHER_ACTIVATED,
+            title: 'Ticket activé',
+            body: `Le ticket ${voucher.code} vient de se connecter au hotspot.`,
+            voucherId: voucher.id,
+            routerId,
+          },
+        });
+      }
+    }
+  }
+
+  /**
+   * Background poller for REMOTE routers. Runs outside any HTTP request, so it
+   * manually opens a tenant context per router (remote.run()/the Prisma tenant
+   * middleware both require one).
    */
   @Interval(25_000)
   async syncActivations(): Promise<void> {
@@ -70,53 +165,11 @@ export class SessionsService {
           });
 
           const active = await this.remote.run(router.id, (c) => listActive(c));
-          if (!active.length) return;
-
-          const codes = active.map((r) => r.user).filter(Boolean);
-          if (!codes.length) return;
-
-          const pending = await this.prisma.voucher.findMany({
-            where: {
-              routerId: router.id,
-              status: VoucherStatus.GENERATED,
-              code: { in: codes },
-            },
-          });
-
-          for (const voucher of pending) {
-            const row = active.find((r) => r.user === voucher.code);
-            if (!row) continue;
-
-            const promoted = await this.prisma.voucher.updateMany({
-              where: { id: voucher.id, status: VoucherStatus.GENERATED },
-              data: { status: VoucherStatus.ACTIVE, usedAt: new Date() },
-            });
-            if (promoted.count === 0) continue; // already processed this tick
-
-            await this.prisma.session.create({
-              data: {
-                tenantId: router.tenantId,
-                voucherId: voucher.id,
-                routerId: router.id,
-                mikrotikId: row.id || null,
-                macAddress: row.macAddress,
-                ipAddress: row.ipAddress,
-                bytesIn: BigInt(row.bytesIn || '0'),
-                bytesOut: BigInt(row.bytesOut || '0'),
-              },
-            });
-
-            await this.prisma.notification.create({
-              data: {
-                tenantId: router.tenantId,
-                type: NotificationType.VOUCHER_ACTIVATED,
-                title: 'Ticket activé',
-                body: `Le ticket ${voucher.code} vient de se connecter au hotspot.`,
-                voucherId: voucher.id,
-                routerId: router.id,
-              },
-            });
-          }
+          await this.reconcileActive(
+            router.id,
+            router.tenantId,
+            active.map(mapActive),
+          );
         });
       } catch (e) {
         this.logger.warn(
@@ -124,6 +177,23 @@ export class SessionsService {
         );
       }
     }
+  }
+
+  /**
+   * LOCAL counterpart of syncActivations: the VPS cannot reach a router on a
+   * private LAN, so the mobile app reads `/ip/hotspot/active` itself and posts
+   * it here. Without this, a free (LOCAL) operator's revenue, clients and
+   * per-plan breakdown stay at zero forever.
+   */
+  async syncFromLan(routerId: string, active: LiveSession[]) {
+    const router = await this.getRouter(routerId);
+    if (router.mode === ManagementMode.REMOTE) {
+      throw new BadRequestException(
+        'Routeur distant : les sessions sont synchronisées par le serveur',
+      );
+    }
+    await this.reconcileActive(routerId, router.tenantId, active);
+    return { synced: active.length };
   }
 
   /**
@@ -150,13 +220,20 @@ export class SessionsService {
       );
     }
     await this.remote.run(routerId, (c) => removeActive(c, mikrotikId));
+
+    // Close the DB row too, otherwise the session stays ACTIVE forever and the
+    // "sessions actives" counter never comes back down.
+    await this.prisma.session.updateMany({
+      where: { routerId, mikrotikId, status: SessionStatus.ACTIVE },
+      data: { status: SessionStatus.TERMINATED, terminatedAt: new Date() },
+    });
     return { terminated: true };
   }
 
   private async getRouter(routerId: string) {
     const router = await this.prisma.router.findFirst({
       where: { id: routerId, deletedAt: null },
-      select: { id: true, mode: true },
+      select: { id: true, mode: true, tenantId: true },
     });
     if (!router) throw new NotFoundException('Router not found');
     return router;
