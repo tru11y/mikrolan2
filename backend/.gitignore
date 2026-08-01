@@ -3,5 +3,7 @@ dist/
 *.log
 .env
 .env.local
+deploy/caddy.env
+deploy/*.tar.gz
 *.tsbuildinfo
 coverage/
