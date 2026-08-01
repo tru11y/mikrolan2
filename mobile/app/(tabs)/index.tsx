@@ -1,4 +1,4 @@
-import { ScrollView, View, Text, Pressable } from 'react-native';
+import { Image, ScrollView, View, Text, Pressable } from 'react-native';
 import { Redirect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
@@ -121,6 +121,17 @@ export default function MaisonScreen() {
       style={{ flex: 1, backgroundColor: theme.bg }}
       contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 100 }}
     >
+      <Row style={{ gap: 8, justifyContent: 'flex-start' }}>
+        <Image
+          source={require('@/assets/images/logo.png')}
+          style={{ width: 24, height: 24 }}
+          resizeMode="contain"
+        />
+        <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
+          MikroLan2
+        </Text>
+      </Row>
+
       {/* Welcome card */}
       <Card>
         <Row>
@@ -141,7 +152,7 @@ export default function MaisonScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ color: theme.text, fontSize: 17, fontWeight: '700' }}>
-                Bienvenu, {firstName}
+                Bienvenue, {firstName}
               </Text>
               <Row style={{ gap: 6, justifyContent: 'flex-start', marginTop: 2 }}>
                 <View

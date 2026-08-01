@@ -286,6 +286,10 @@ export class MikroTikApiClient {
     );
   }
 
+  reboot(): Promise<void> {
+    return this.talk(['/system/reboot']).then(() => undefined);
+  }
+
   print(path: string, extra: string[] = []): Promise<ApiRow[]> {
     return this.talk([`${path}/print`, ...extra]);
   }

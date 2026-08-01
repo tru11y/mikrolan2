@@ -13,6 +13,7 @@ import { pushWireGuardConfig } from '@/src/services/mikrotik-lan/pushWireGuard';
 import {
   getLocalCredentials,
 } from '@/src/lib/router-credentials';
+import { listActiveLan } from '@/src/services/mikrotik-lan/hotspotLan';
 import { getWifiInfo } from '@/src/lib/lanBinder';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
 import {
@@ -179,6 +180,31 @@ export default function RouterDetailScreen() {
     queryKey: ['router-metrics', id],
     queryFn: () => api.metrics.summary('30d', id),
     enabled: Boolean(id),
+  });
+
+  // "Actifs" doit être un compte live, pas le compteur DB `activeSessions` :
+  // ce dernier n'est alimenté que par le sync backend des routeurs REMOTE
+  // (mode LOCAL = défaut → toujours 0, jamais mis à jour). On lit donc en
+  // direct, comme le fait déjà l'écran Sessions (LAN pour LOCAL, tunnel pour
+  // REMOTE), avec la même garde de sous-réseau que loadLocal ci-dessous.
+  const activeSessionsQuery = useQuery({
+    queryKey: ['router-active-sessions', id, query.data?.mode],
+    enabled: Boolean(id) && query.isSuccess,
+    queryFn: async (): Promise<number> => {
+      if (query.data!.mode === 'REMOTE') {
+        const list = await api.routers.listSessions(id);
+        return list.length;
+      }
+      const creds = await getLocalCredentials(id);
+      if (!creds) return 0;
+      const wifi = await getWifiInfo();
+      const onRouterLan =
+        !!wifi &&
+        (creds.host === wifi.gateway || sameSubnet24(creds.host, wifi.ipAddress));
+      if (!onRouterLan) return 0;
+      const list = await listActiveLan(creds);
+      return list.length;
+    },
   });
 
   const plansQuery = useQuery({
@@ -553,7 +579,7 @@ export default function RouterDetailScreen() {
           <StatSquare
             icon="people"
             color={theme.success}
-            value={`${salesQuery.data?.activeSessions ?? 0}`}
+            value={`${activeSessionsQuery.data ?? 0}`}
             label="Actifs"
             onPress={() =>
               router.push({ pathname: '/sessions', params: { routerId: id } })
