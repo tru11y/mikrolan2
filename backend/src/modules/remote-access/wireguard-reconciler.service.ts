@@ -4,8 +4,13 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { RemotePeerStatus, RouterHealth } from '@prisma/client';
+import {
+  NotificationType,
+  RemotePeerStatus,
+  RouterHealth,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { EventsService } from '../events/events.service';
 import { WireGuardService } from '../../common/wireguard/wireguard.service';
 
 const RECONCILE_INTERVAL_MS = 60_000;
@@ -27,6 +32,7 @@ export class WireGuardReconciler implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly events: EventsService,
     private readonly wg: WireGuardService,
   ) {}
 
@@ -69,13 +75,31 @@ export class WireGuardReconciler implements OnModuleInit, OnModuleDestroy {
     for (const p of peers) {
       const last = handshakes[p.wgPublicKey] ?? 0;
       const online = last > 0 && now - last < HANDSHAKE_FRESH_S;
+      const next = online ? RouterHealth.ONLINE : RouterHealth.OFFLINE;
+
+      // On lit l'état précédent pour n'émettre que sur la transition : sans
+      // ça un routeur éteint réémettrait une alerte toutes les minutes.
+      const before = await this.prisma.router.findUnique({
+        where: { id: p.routerId },
+        select: { health: true, tenantId: true, identity: true, alias: true },
+      });
+
       await this.prisma.router.update({
         where: { id: p.routerId },
         data: {
-          health: online ? RouterHealth.ONLINE : RouterHealth.OFFLINE,
+          health: next,
           ...(online ? { lastHeartbeat: new Date(last * 1000) } : {}),
         },
       });
+
+      if (before && before.health === RouterHealth.ONLINE && !online) {
+        this.events.publish(before.tenantId, {
+          type: NotificationType.ROUTER_OFFLINE,
+          title: 'Routeur injoignable',
+          body: `${before.alias || before.identity} ne répond plus.`,
+          data: { routerId: p.routerId },
+        });
+      }
     }
   }
 }

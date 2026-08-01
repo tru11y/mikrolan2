@@ -1,8 +1,23 @@
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type AppNotification } from '@/src/lib/api';
-import { Empty, radius, space, theme, type } from '@/src/components/ui';
+import { describeError } from '@/src/lib/errors';
+import { useLiveEvents } from '@/src/providers/live-events-provider';
+import {
+  Empty,
+  ErrorState,
+  FadeIn,
+  IconChip,
+  Press,
+  radius,
+  Row,
+  Skeleton,
+  space,
+  theme,
+  type,
+  useToast,
+} from '@/src/components/ui';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
@@ -21,24 +36,54 @@ function iconFor(type: string): keyof typeof Ionicons.glyphMap {
   return 'notifications';
 }
 
+/** Petit voyant : dit si le fil tourne, sans jargon technique. */
+function LiveDot({ live }: { live: boolean }) {
+  return (
+    <Row style={{ gap: 6, justifyContent: 'flex-start' }}>
+      <View
+        style={{
+          width: 7,
+          height: 7,
+          borderRadius: 4,
+          backgroundColor: live ? theme.success : theme.textMuted,
+        }}
+      />
+      <Text style={{ color: theme.textMuted, fontSize: type.micro }}>
+        {live ? 'Suivi en direct' : 'En pause'}
+      </Text>
+    </Row>
+  );
+}
+
 export default function NotificationsScreen() {
   const navHeight = useBottomNavHeight();
   const qc = useQueryClient();
+  const toast = useToast();
+  const { live } = useLiveEvents();
+
   const query = useQuery({
     queryKey: ['notifications', 'list'],
     queryFn: () => api.notifications.list(false, 50),
-    refetchInterval: 15_000,
+    refetchInterval: 10_000,
   });
 
   async function markRead(n: AppNotification) {
     if (n.read) return;
-    await api.notifications.markRead(n.id);
-    await qc.invalidateQueries({ queryKey: ['notifications'] });
+    try {
+      await api.notifications.markRead(n.id);
+      await qc.invalidateQueries({ queryKey: ['notifications'] });
+    } catch (e) {
+      toast.error(describeError(e).message);
+    }
   }
 
   async function markAllRead() {
-    await api.notifications.markAllRead();
-    await qc.invalidateQueries({ queryKey: ['notifications'] });
+    try {
+      await api.notifications.markAllRead();
+      await qc.invalidateQueries({ queryKey: ['notifications'] });
+    } catch (e) {
+      toast.error(describeError(e).message);
+    }
   }
 
   const items = query.data ?? [];
@@ -54,84 +99,89 @@ export default function NotificationsScreen() {
           paddingBottom: navHeight,
         }}
       >
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'flex-end',
-          }}
-        >
+        <Row>
+          <LiveDot live={live} />
           {hasUnread ? (
-            <Pressable onPress={markAllRead}>
-              <Text style={{ color: theme.primary, fontWeight: '700', fontSize: 13 }}>
+            <Press accessibilityLabel="Tout marquer comme lu" onPress={markAllRead}>
+              <Text style={{ color: theme.primary, fontWeight: '700', fontSize: type.body }}>
                 Tout marquer comme lu
               </Text>
-            </Pressable>
+            </Press>
           ) : null}
-        </View>
+        </Row>
 
         {query.isLoading ? (
-          <Text style={{ color: theme.textMuted }}>Chargement…</Text>
+          <View style={{ gap: space.md }}>
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} height={78} radius={radius.lg} />
+            ))}
+          </View>
+        ) : query.isError ? (
+          <ErrorState
+            message={describeError(query.error).message}
+            onRetry={() => query.refetch()}
+            retrying={query.isFetching}
+          />
         ) : !items.length ? (
-          <Empty text="Aucune notification pour l'instant." />
+          <Empty
+            icon="notifications-off-outline"
+            text="Aucune notification. Vous serez prévenu dès qu’un client se connectera avec un ticket."
+          />
         ) : (
-          items.map((n) => (
-            <Pressable key={n.id} onPress={() => markRead(n)}>
-              <View
-                style={{
-                  flexDirection: 'row',
-                  gap: 12,
-                  padding: 14,
-                  borderRadius: 16,
-                  backgroundColor: n.read ? theme.surface : theme.surfaceAlt,
-                  borderWidth: 1,
-                  borderColor: n.read ? theme.border : theme.primary + '55',
-                }}
-              >
-                <View
+          items.map((n, index) => (
+            <FadeIn key={n.id} delay={index * 40}>
+              <Press accessibilityLabel={n.title} onPress={() => markRead(n)} scaleTo={0.99}>
+                <Row
                   style={{
-                    width: 38,
-                    height: 38,
-                    borderRadius: 12,
-                    backgroundColor: theme.primary + '22',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    gap: space.md,
+                    padding: 14,
+                    borderRadius: radius.lg,
+                    backgroundColor: n.read ? theme.surface : theme.surfaceAlt,
+                    borderWidth: 1,
+                    borderColor: n.read ? theme.border : theme.primary + '55',
+                    alignItems: 'flex-start',
                   }}
                 >
-                  <Ionicons name={iconFor(n.type)} size={18} color={theme.primary} />
-                </View>
-                <View style={{ flex: 1, gap: 2 }}>
-                  <View
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 8,
-                    }}
-                  >
-                    <Text
-                      style={{ color: theme.text, fontWeight: '700', fontSize: 14, flex: 1 }}
-                    >
-                      {n.title}
-                    </Text>
-                    {!n.read ? (
-                      <View
+                  <IconChip
+                    name={iconFor(n.type)}
+                    color={n.read ? theme.textMuted : theme.primary}
+                    size="md"
+                  />
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Row style={{ gap: space.sm }}>
+                      <Text
                         style={{
-                          width: 8,
-                          height: 8,
-                          borderRadius: 4,
-                          backgroundColor: theme.primary,
+                          color: theme.text,
+                          fontWeight: '700',
+                          fontSize: type.bodyLg - 1,
+                          flex: 1,
                         }}
-                      />
-                    ) : null}
+                      >
+                        {n.title}
+                      </Text>
+                      {!n.read ? (
+                        <View
+                          style={{
+                            width: 8,
+                            height: 8,
+                            borderRadius: 4,
+                            backgroundColor: theme.primary,
+                          }}
+                        />
+                      ) : null}
+                    </Row>
+                    <Text style={{ color: theme.textMuted, fontSize: type.body }}>
+                      {n.body}
+                    </Text>
+                    <Text
+                      style={{ color: theme.textMuted, fontSize: type.micro, marginTop: 2 }}
+                    >
+                      {timeAgo(n.createdAt)}
+                    </Text>
                   </View>
-                  <Text style={{ color: theme.textMuted, fontSize: 13 }}>{n.body}</Text>
-                  <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 2 }}>
-                    {timeAgo(n.createdAt)}
-                  </Text>
-                </View>
-              </View>
-            </Pressable>
+                </Row>
+              </Press>
+            </FadeIn>
           ))
         )}
       </ScrollView>

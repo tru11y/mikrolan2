@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type PropsWithChildren } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type PropsWithChildren,
+} from 'react';
 import {
   AppState,
   type AppStateStatus,
@@ -11,13 +18,34 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import { Ionicons } from '@expo/vector-icons';
 import { Button, theme } from '@/src/components/ui';
 import { useAuth } from '@/src/providers/auth-provider';
+import { getStoredValue, setStoredValue } from '@/src/lib/storage';
 
 const INACTIVITY_TIMEOUT_MS = 2 * 60 * 1000;
+const PREF_KEY = (userId: string) => `mikrolan_applock_enabled_${userId}`;
+
+type AppLockContextValue = {
+  /** L'appareil a une biométrie/un code enrollé — sinon le toggle n'a pas de sens. */
+  supported: boolean;
+  /** Préférence de CET utilisateur sur CET appareil (stockée localement). */
+  enabled: boolean;
+  setEnabled: (value: boolean) => Promise<void>;
+};
+
+const AppLockContext = createContext<AppLockContextValue | null>(null);
+
+export function useAppLock(): AppLockContextValue {
+  const value = useContext(AppLockContext);
+  if (!value) throw new Error('useAppLock must be used inside AppLockProvider');
+  return value;
+}
 
 export function AppLockProvider({ children }: PropsWithChildren) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, me } = useAuth();
+  const userId = me?.user.id ?? null;
+
   const [locked, setLocked] = useState(false);
   const [supported, setSupported] = useState(false);
+  const [enabled, setEnabledState] = useState(true);
   const backgroundedAt = useRef<number | null>(null);
   const appState = useRef<AppStateStatus>(AppState.currentState);
 
@@ -33,6 +61,27 @@ export function AppLockProvider({ children }: PropsWithChildren) {
     };
   }, []);
 
+  // Préférence par compte : chaque utilisateur qui se connecte sur cet
+  // appareil garde son propre choix (par défaut activé si dispo).
+  useEffect(() => {
+    if (!userId) return;
+    let mounted = true;
+    (async () => {
+      const stored = await getStoredValue(PREF_KEY(userId));
+      if (mounted) setEnabledState(stored !== 'false');
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [userId]);
+
+  async function setEnabled(value: boolean): Promise<void> {
+    setEnabledState(value);
+    if (userId) await setStoredValue(PREF_KEY(userId), value ? 'true' : 'false');
+  }
+
+  const active = isAuthenticated && supported && enabled;
+
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next) => {
       const prev = appState.current;
@@ -46,22 +95,17 @@ export function AppLockProvider({ children }: PropsWithChildren) {
       if (next === 'active' && prev !== 'active') {
         const since = backgroundedAt.current;
         backgroundedAt.current = null;
-        if (
-          isAuthenticated &&
-          supported &&
-          since !== null &&
-          Date.now() - since > INACTIVITY_TIMEOUT_MS
-        ) {
+        if (active && since !== null && Date.now() - since > INACTIVITY_TIMEOUT_MS) {
           setLocked(true);
         }
       }
     });
     return () => sub.remove();
-  }, [isAuthenticated, supported]);
+  }, [active]);
 
   useEffect(() => {
-    if (!isAuthenticated) setLocked(false);
-  }, [isAuthenticated]);
+    if (!active) setLocked(false);
+  }, [active]);
 
   async function unlock(): Promise<void> {
     const result = await LocalAuthentication.authenticateAsync({
@@ -78,7 +122,7 @@ export function AppLockProvider({ children }: PropsWithChildren) {
   }, [locked]);
 
   return (
-    <>
+    <AppLockContext.Provider value={{ supported, enabled, setEnabled }}>
       {children}
       <Modal visible={locked} animationType="fade" statusBarTranslucent>
         <View style={styles.container}>
@@ -90,7 +134,7 @@ export function AppLockProvider({ children }: PropsWithChildren) {
           <Button title="Déverrouiller" onPress={() => void unlock()} />
         </View>
       </Modal>
-    </>
+    </AppLockContext.Provider>
   );
 }
 
