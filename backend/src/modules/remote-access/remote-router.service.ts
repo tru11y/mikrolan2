@@ -99,4 +99,8 @@ export class RemoteRouterService {
     );
     return rows[0] ?? {};
   }
+
+  async reboot(routerId: string): Promise<void> {
+    await this.run(routerId, (c) => c.command(['/system/reboot']));
+  }
 }
