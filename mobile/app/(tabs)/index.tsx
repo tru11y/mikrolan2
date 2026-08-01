@@ -8,11 +8,12 @@ import {
   AuroraCard,
   Badge,
   Card,
+  icon,
   IconChip,
   Mono,
-  Row,
-  icon,
   radius,
+  routerHealth,
+  Row,
   space,
   theme,
   type,
@@ -391,8 +392,8 @@ export default function MaisonScreen() {
                       {r.alias || r.identity}
                     </Text>
                     <Badge
-                      label={r.health === 'ONLINE' ? 'EN LIGNE' : 'HORS LIGNE'}
-                      tone={r.health === 'ONLINE' ? 'secondary' : 'danger'}
+                      label={routerHealth(r.health).label}
+                      tone={routerHealth(r.health).tone}
                     />
                   </Row>
                   <Mono style={{ color: theme.textMuted, fontSize: type.micro, marginTop: 2 }}>
