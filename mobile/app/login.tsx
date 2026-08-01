@@ -1,10 +1,25 @@
 import { useState } from 'react';
-import { Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import {
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { useAuth } from '@/src/providers/auth-provider';
-import { Banner, Button, OutlinedField, theme } from '@/src/components/ui';
+import {
+  Banner,
+  Button,
+  OutlinedField,
+  radius,
+  space,
+  theme,
+  type,
+} from '@/src/components/ui';
 
 export default function LoginScreen() {
   const { login, signup, isBusy, error, clearError, apiBaseUrl, updateApiBaseUrl } =
@@ -17,12 +32,6 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [baseUrl, setBaseUrl] = useState(apiBaseUrl);
-  const [oauthNotice, setOauthNotice] = useState(false);
-
-  function oauthComingSoon() {
-    clearError();
-    setOauthNotice(true);
-  }
 
   async function submit() {
     clearError();
@@ -51,32 +60,27 @@ export default function LoginScreen() {
         <ScrollView
           contentContainerStyle={{
             flexGrow: 1,
-            paddingTop: insets.top + 48,
-            paddingHorizontal: 24,
-            paddingBottom: 24 + insets.bottom,
-            gap: 28,
+            paddingTop: insets.top + space.xxxl + space.lg,
+            paddingHorizontal: space.xxl,
+            paddingBottom: space.xxl + insets.bottom,
+            gap: space.xxl + space.xs,
           }}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={{ alignItems: 'center', gap: 16 }}>
+          <View style={{ alignItems: 'center', gap: space.lg }}>
             <Image
               source={require('@/assets/images/logo.png')}
               style={{ width: 96, height: 96 }}
               resizeMode="contain"
             />
-            <Text style={{ color: theme.text, fontSize: 28, fontWeight: '800' }}>
+            <Text style={{ color: theme.text, fontSize: type.display, fontWeight: '800' }}>
               {mode === 'signup' ? 'Créer un compte' : 'Bienvenue'}
             </Text>
           </View>
 
           {error ? <Banner tone="danger">{error}</Banner> : null}
-          {oauthNotice ? (
-            <Banner tone="warning">
-              Connexion via Google/Apple — bientôt disponible.
-            </Banner>
-          ) : null}
 
-          <View style={{ gap: 20 }}>
+          <View style={{ gap: space.xl }}>
             {mode === 'signup' ? (
               <OutlinedField
                 label="Nom de l'organisation"
@@ -104,27 +108,15 @@ export default function LoginScreen() {
             />
           </View>
 
-          <View style={{ gap: 16 }}>
-            <Pressable
+          <View style={{ gap: space.lg }}>
+            {/* Le Button partagé, pas une pilule maison : le premier écran vu
+                par un client doit ressembler au reste de l'app. */}
+            <Button
+              title={mode === 'signup' ? 'Créer mon compte' : 'Se connecter'}
               onPress={submit}
-              disabled={!canSubmit || isBusy}
-              style={{
-                height: 54,
-                borderRadius: 27,
-                backgroundColor: theme.primary,
-                opacity: !canSubmit || isBusy ? 0.6 : 1,
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Text style={{ color: theme.primaryText, fontWeight: '700', fontSize: 16 }}>
-                {isBusy
-                  ? 'Patientez…'
-                  : mode === 'signup'
-                    ? 'Créer mon compte'
-                    : 'Se connecter'}
-              </Text>
-            </Pressable>
+              loading={isBusy}
+              disabled={!canSubmit}
+            />
 
             <Pressable
               onPress={() => {
@@ -133,7 +125,13 @@ export default function LoginScreen() {
               }}
               style={{ alignItems: 'center' }}
             >
-              <Text style={{ color: theme.primary, fontWeight: '700', fontSize: 14 }}>
+              <Text
+                style={{
+                  color: theme.primary,
+                  fontWeight: '700',
+                  fontSize: type.body,
+                }}
+              >
                 {mode === 'login'
                   ? 'Pas de compte ? Créer un compte'
                   : "J'ai déjà un compte"}
@@ -141,66 +139,13 @@ export default function LoginScreen() {
             </Pressable>
           </View>
 
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <View style={{ flex: 1, height: 1, backgroundColor: theme.border }} />
-            <Text style={{ color: theme.textMuted, fontSize: 12 }}>
-              ou continuer avec
-            </Text>
-            <View style={{ flex: 1, height: 1, backgroundColor: theme.border }} />
-          </View>
+          <View style={{ flex: 1, minHeight: space.md }} />
 
-          <View style={{ flexDirection: 'row', gap: 12 }}>
-            <Pressable
-              onPress={oauthComingSoon}
-              style={{
-                flex: 1,
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                height: 50,
-                borderRadius: 25,
-                borderWidth: 1,
-                borderColor: theme.border,
-                backgroundColor: theme.surface,
-              }}
-            >
-              <Ionicons name="logo-google" size={18} color={theme.text} />
-              <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>
-                Google
-              </Text>
-            </Pressable>
-            {Platform.OS === 'ios' ? (
-              <Pressable
-                onPress={oauthComingSoon}
-                style={{
-                  flex: 1,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  height: 50,
-                  borderRadius: 25,
-                  borderWidth: 1,
-                  borderColor: theme.border,
-                  backgroundColor: theme.surface,
-                }}
-              >
-                <Ionicons name="logo-apple" size={20} color={theme.text} />
-                <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>
-                  Apple
-                </Text>
-              </Pressable>
-            ) : null}
-          </View>
-
-          <View style={{ flex: 1, minHeight: 12 }} />
-
-          <View style={{ gap: 12 }}>
+          <View style={{ gap: space.md }}>
             {__DEV__ ? (
               <>
                 <Pressable onPress={() => setShowConfig((v) => !v)} style={{ alignItems: 'center' }}>
-                  <Text style={{ color: theme.textMuted, fontSize: 11 }}>
+                  <Text style={{ color: theme.textMuted, fontSize: type.micro }}>
                     {showConfig ? 'Masquer la configuration' : 'Configurer le serveur'}
                   </Text>
                 </Pressable>
@@ -210,9 +155,9 @@ export default function LoginScreen() {
                       backgroundColor: theme.surface,
                       borderWidth: 1,
                       borderColor: theme.border,
-                      borderRadius: 16,
-                      padding: 16,
-                      gap: 10,
+                      borderRadius: radius.lg,
+                      padding: space.lg,
+                      gap: space.sm + 2,
                     }}
                   >
                     <OutlinedField
@@ -232,7 +177,7 @@ export default function LoginScreen() {
               </>
             ) : null}
 
-            <Text style={{ color: theme.textMuted, fontSize: 11, textAlign: 'center' }}>
+            <Text style={{ color: theme.textMuted, fontSize: type.micro, textAlign: 'center' }}>
               MikroLan2 v{Constants.expoConfig?.version ?? '0.1.0'}
             </Text>
           </View>
