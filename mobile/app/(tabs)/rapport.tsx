@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, View, Text } from 'react-native';
+import { Pressable, ScrollView, View, Text } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { api, type MetricsPeriod } from '@/src/lib/api';
+import { exportMetricsCsv } from '@/src/lib/metricsCsv';
 import {
   Badge,
   Card,
@@ -55,7 +56,11 @@ export default function RapportScreen() {
           </Text>
         </View>
         <Pressable
-          onPress={() => Alert.alert('Exporter CSV', 'Bientôt disponible sur cette version.')}
+          onPress={() => {
+            if (!data) return;
+            const periodLabel = PERIODS.find((p) => p.value === period)!.label;
+            exportMetricsCsv(data, periodLabel);
+          }}
           style={{
             flexDirection: 'row',
             alignItems: 'center',

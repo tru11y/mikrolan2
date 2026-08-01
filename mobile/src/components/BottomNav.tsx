@@ -9,7 +9,7 @@ import { theme, type IoniconName } from './ui';
 
 type Tab = { key: string; label: string; icon: IoniconName; href: Href };
 
-// Matches the reference's global tab set exactly: Maison/Routeurs/Modèles/Paramètres.
+// Global tab set: Maison/Routeurs/Paramètres (Modèles masqué — pas encore backé).
 const GLOBAL_TABS: Tab[] = [
   { key: 'index', label: 'Maison', icon: 'home-outline', href: '/(tabs)' },
   {
@@ -17,12 +17,6 @@ const GLOBAL_TABS: Tab[] = [
     label: 'Routeurs',
     icon: 'hardware-chip-outline',
     href: '/(tabs)/routeurs',
-  },
-  {
-    key: 'modeles',
-    label: 'Modèles',
-    icon: 'color-palette-outline',
-    href: '/(tabs)/modeles',
   },
   {
     key: 'account',

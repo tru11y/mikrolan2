@@ -4,8 +4,14 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, extractErrorMessage } from '@/src/lib/api';
-import { deleteLocalCredentials } from '@/src/lib/router-credentials';
+import {
+  deleteLocalCredentials,
+  getLocalCredentials,
+} from '@/src/lib/router-credentials';
+import { withApi } from '@/src/services/mikrotik-lan/MikroTikApiClient';
+import { getWifiInfo } from '@/src/lib/lanBinder';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
+import { useAuth } from '@/src/providers/auth-provider';
 import {
   Banner,
   Button,
@@ -30,17 +36,34 @@ type Item = {
 
 const SOON = 'Bientôt disponible';
 
+// Only attempt LAN when the router's host is on the current Wi-Fi subnet —
+// otherwise the pinned TCP socket hard-crashes the app (see router/[id].tsx).
+function sameSubnet24(a: string, b: string): boolean {
+  return a.split('.').slice(0, 3).join('.') === b.split('.').slice(0, 3).join('.');
+}
+
 export default function RouterSettingsScreen() {
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const router = useRouter();
   const qc = useQueryClient();
   const { clearActiveRouter } = useActiveRouter();
+  const { isPro } = useAuth();
   const [rebootOpen, setRebootOpen] = useState(false);
+  const [rebootBusy, setRebootBusy] = useState(false);
+  const [rebootResult, setRebootResult] = useState<
+    { tone: 'success' | 'danger'; text: string } | null
+  >(null);
 
   const routerQuery = useQuery({
     queryKey: ['router', routerId],
     queryFn: () => api.routers.get(routerId),
     enabled: Boolean(routerId),
+  });
+
+  const remoteQuery = useQuery({
+    queryKey: ['router-remote', routerId],
+    queryFn: () => api.routers.remoteStatus(routerId),
+    enabled: Boolean(routerId) && isPro,
   });
 
   const [alias, setAlias] = useState('');
@@ -86,6 +109,57 @@ export default function RouterSettingsScreen() {
     router.push({ pathname, params: { routerId } });
   const soon = (label: string) =>
     Alert.alert(label, `${SOON} sur cette version.`);
+
+  async function rebootRouter() {
+    if (!routerId) return;
+    setRebootBusy(true);
+    setRebootResult(null);
+
+    // 1) LAN first: works offline on the router's Wi-Fi, only when on-subnet.
+    const creds = await getLocalCredentials(routerId);
+    const wifi = await getWifiInfo();
+    const onRouterLan =
+      !!creds &&
+      !!wifi &&
+      (creds.host === wifi.gateway || sameSubnet24(creds.host, wifi.ipAddress));
+    if (creds && onRouterLan) {
+      try {
+        await withApi(creds, (c) => c.reboot());
+        setRebootResult({
+          tone: 'success',
+          text: 'Redémarrage en cours (~45s).',
+        });
+        return;
+      } catch (e) {
+        setRebootResult({ tone: 'danger', text: extractErrorMessage(e) });
+        return;
+      } finally {
+        setRebootBusy(false);
+      }
+    }
+
+    // 2) Remote fallback (PRO tunnel).
+    if (remoteQuery.data?.status === 'ACTIVE') {
+      try {
+        await api.routers.rebootRemote(routerId);
+        setRebootResult({
+          tone: 'success',
+          text: 'Redémarrage en cours (~45s).',
+        });
+      } catch (e) {
+        setRebootResult({ tone: 'danger', text: extractErrorMessage(e) });
+      } finally {
+        setRebootBusy(false);
+      }
+      return;
+    }
+
+    setRebootBusy(false);
+    setRebootResult({
+      tone: 'danger',
+      text: 'Routeur injoignable (hors LAN et hors tunnel PRO).',
+    });
+  }
 
   const items: Item[] = [
     {
@@ -317,9 +391,15 @@ export default function RouterSettingsScreen() {
                 Toutes les sessions hotspot seront interrompues pendant ~45 secondes.
               </Text>
             </View>
+            {rebootResult ? (
+              <Banner tone={rebootResult.tone}>{rebootResult.text}</Banner>
+            ) : null}
             <View style={{ flexDirection: 'row', gap: 8, width: '100%' }}>
               <Pressable
-                onPress={() => setRebootOpen(false)}
+                onPress={() => {
+                  setRebootOpen(false);
+                  setRebootResult(null);
+                }}
                 style={{
                   flex: 1,
                   paddingVertical: 12,
@@ -329,26 +409,27 @@ export default function RouterSettingsScreen() {
                 }}
               >
                 <Text style={{ color: theme.textMuted, fontWeight: '700', fontSize: 13 }}>
-                  Annuler
+                  {rebootResult?.tone === 'success' ? 'Fermer' : 'Annuler'}
                 </Text>
               </Pressable>
-              <Pressable
-                onPress={() => {
-                  setRebootOpen(false);
-                  soon('Redémarrer le routeur');
-                }}
-                style={{
-                  flex: 1,
-                  paddingVertical: 12,
-                  borderRadius: 12,
-                  backgroundColor: theme.danger,
-                  alignItems: 'center',
-                }}
-              >
-                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>
-                  Confirmer
-                </Text>
-              </Pressable>
+              {rebootResult?.tone !== 'success' ? (
+                <Pressable
+                  onPress={rebootRouter}
+                  disabled={rebootBusy}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 12,
+                    borderRadius: 12,
+                    backgroundColor: theme.danger,
+                    alignItems: 'center',
+                    opacity: rebootBusy ? 0.6 : 1,
+                  }}
+                >
+                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 13 }}>
+                    {rebootBusy ? 'Redémarrage…' : 'Confirmer'}
+                  </Text>
+                </Pressable>
+              ) : null}
             </View>
           </View>
         </View>
