@@ -19,11 +19,13 @@ import {
   Label,
   Mono,
   Row,
+  space,
   Subtitle,
   theme,
   Title,
 } from '@/src/components/ui';
-import { BottomNav } from '@/src/components/BottomNav';
+import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
+import { AppHeader } from '@/src/components/AppHeader';
 
 const MAC_RE = /^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/;
 const IP_RE = /^(\d{1,3}\.){3}\d{1,3}$/;
@@ -48,6 +50,7 @@ function TypeDot({ type }: { type: IpBindingType }) {
 }
 
 export default function IpBindingsScreen() {
+  const navHeight = useBottomNavHeight();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const qc = useQueryClient();
 
@@ -128,16 +131,18 @@ export default function IpBindingsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: 100 }}>
+      <AppHeader title="Appareils autorisés" back />
+      <ScrollView
+        contentContainerStyle={{ gap: space.lg, padding: space.lg, paddingBottom: navHeight }}
+      >
         <Row style={{ alignItems: 'flex-start' }}>
           <View style={{ flex: 1, paddingRight: 12 }}>
-            <Title>IP Bindings & MAC</Title>
-            <Subtitle>
+                        <Subtitle>
               Autoriser ou bloquer des appareils spécifiques sur RouterOS
             </Subtitle>
           </View>
           <Pressable
-            accessibilityLabel="Nouveau IP Binding"
+            accessibilityLabel="Autoriser un appareil"
             onPress={() => {
               resetForm();
               setFormOpen(true);
@@ -452,7 +457,7 @@ export default function IpBindingsScreen() {
         </View>
       ) : null}
 
-      <BottomNav />
+      <BottomNav active="index" />
     </View>
   );
 }

@@ -1,4 +1,4 @@
-import { Image, ScrollView, View, Text, Pressable } from 'react-native';
+import { ScrollView, View, Text, Pressable } from 'react-native';
 import { Redirect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
@@ -19,6 +19,7 @@ import {
   type IoniconName,
 } from '@/src/components/ui';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
+import { AppHeader } from '@/src/components/AppHeader';
 
 function initialsOf(name?: string): string {
   if (!name) return 'ML';
@@ -120,21 +121,15 @@ export default function MaisonScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-    <ScrollView
-      style={{ flex: 1, backgroundColor: theme.bg }}
-      contentContainerStyle={{ padding: space.lg, gap: space.lg, paddingBottom: navHeight }}
-    >
-      <Row style={{ gap: space.sm, justifyContent: 'flex-start' }}>
-        <Image
-          source={require('@/assets/images/logo.png')}
-          style={{ width: 24, height: 24 }}
-          resizeMode="contain"
-        />
-        <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
-          MikroLan2
-        </Text>
-      </Row>
-
+      <AppHeader title="Maison" />
+      <ScrollView
+        style={{ flex: 1, backgroundColor: theme.bg }}
+        contentContainerStyle={{
+          padding: space.lg,
+          gap: space.lg,
+          paddingBottom: navHeight,
+        }}
+      >
       {/* Welcome card */}
       <Card>
         <Row>
@@ -450,8 +445,8 @@ export default function MaisonScreen() {
           </Row>
         </Card>
       </Pressable>
-    </ScrollView>
-    <BottomNav active="index" />
+      </ScrollView>
+      <BottomNav active="index" />
     </View>
   );
 }

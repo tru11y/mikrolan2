@@ -8,13 +8,16 @@ import {
   Card,
   Field,
   Label,
+  space,
   Subtitle,
   theme,
   Title,
 } from '@/src/components/ui';
-import { BottomNav } from '@/src/components/BottomNav';
+import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
+import { AppHeader } from '@/src/components/AppHeader';
 
 export default function HotspotSetupScreen() {
+  const navHeight = useBottomNavHeight();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const [iface, setIface] = useState('');
   const [network, setNetwork] = useState('');
@@ -45,9 +48,11 @@ export default function HotspotSetupScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: 100 }}>
-        <Title>Configurer le hotspot</Title>
-        <Banner tone="warning">
+      <AppHeader title="Configurer le hotspot" back />
+      <ScrollView
+        contentContainerStyle={{ gap: space.lg, padding: space.lg, paddingBottom: navHeight }}
+      >
+                <Banner tone="warning">
           Cette action modifie le réseau du routeur (adresse, DHCP, serveur
           hotspot). À n’utiliser que sur un routeur sans hotspot existant.
         </Banner>
@@ -76,7 +81,7 @@ export default function HotspotSetupScreen() {
           <Button title="Configurer" onPress={configure} loading={busy} />
         </Card>
       </ScrollView>
-      <BottomNav />
+      <BottomNav active="index" />
     </View>
   );
 }
