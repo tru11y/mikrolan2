@@ -243,34 +243,63 @@ export function Button({
   );
 }
 
+export type Tone =
+  | 'muted'
+  | 'success'
+  | 'danger'
+  | 'warning'
+  | 'primary'
+  | 'secondary'
+  | 'gold';
+
+export function toneColor(tone: Tone): string {
+  switch (tone) {
+    case 'success':
+      return theme.success;
+    case 'danger':
+      return theme.danger;
+    case 'warning':
+      return theme.warning;
+    case 'primary':
+      return theme.primary;
+    case 'secondary':
+      return theme.secondary;
+    case 'gold':
+      return theme.gold;
+    default:
+      return theme.textMuted;
+  }
+}
+
+/**
+ * Single source of truth for how a router's state reads. Three screens each had
+ * their own mapping: the same ONLINE router was cyan here, green there, and
+ * labelled "EN LIGNE" in the list but "CONNECTÉ" in the detail.
+ */
+export function routerHealth(h: 'UNKNOWN' | 'ONLINE' | 'OFFLINE' | 'ERROR'): {
+  label: string;
+  tone: Tone;
+} {
+  switch (h) {
+    case 'ONLINE':
+      return { label: 'En ligne', tone: 'success' };
+    case 'OFFLINE':
+      return { label: 'Hors ligne', tone: 'warning' };
+    case 'ERROR':
+      return { label: 'Erreur', tone: 'danger' };
+    default:
+      return { label: 'Inconnu', tone: 'muted' };
+  }
+}
+
 export function Badge({
   label,
   tone = 'muted',
 }: {
   label: string;
-  tone?:
-    | 'muted'
-    | 'success'
-    | 'danger'
-    | 'warning'
-    | 'primary'
-    | 'secondary'
-    | 'gold';
+  tone?: Tone;
 }) {
-  const color =
-    tone === 'success'
-      ? theme.success
-      : tone === 'danger'
-        ? theme.danger
-        : tone === 'warning'
-          ? theme.warning
-          : tone === 'primary'
-            ? theme.primary
-            : tone === 'secondary'
-              ? theme.secondary
-              : tone === 'gold'
-                ? theme.gold
-                : theme.textMuted;
+  const color = toneColor(tone);
   return (
     <View style={[styles.badge, { borderColor: color }]}>
       <Text style={[styles.badgeText, { color }]}>{label}</Text>

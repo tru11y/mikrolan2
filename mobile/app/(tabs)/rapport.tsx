@@ -12,12 +12,13 @@ import {
   Mono,
   Row,
   SectionTitle,
+  space,
+  Subtitle,
   theme,
   Title,
 } from '@/src/components/ui';
-import { BottomNav } from '@/src/components/BottomNav';
-import { RouterTopBar } from '@/src/components/RouterTopBar';
-import { TopBar } from '@/src/components/TopBar';
+import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
+import { AppHeader } from '@/src/components/AppHeader';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
 
 const PERIODS: { label: string; value: MetricsPeriod }[] = [
@@ -29,6 +30,7 @@ const PERIODS: { label: string; value: MetricsPeriod }[] = [
 export default function RapportScreen() {
   const { routerId } = useLocalSearchParams<{ routerId?: string }>();
   const { activeRouterId } = useActiveRouter();
+  const navHeight = useBottomNavHeight();
   const [period, setPeriod] = useState<MetricsPeriod>('30d');
   const metrics = useQuery({
     queryKey: ['metrics', period, routerId],
@@ -43,17 +45,18 @@ export default function RapportScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-    {activeRouterId ? <RouterTopBar title="Rapport" /> : <TopBar />}
+    <AppHeader title="Rapport financier" back={Boolean(activeRouterId)} />
     <ScrollView
       style={{ flex: 1, backgroundColor: theme.bg }}
-      contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 100 }}
+      contentContainerStyle={{
+        padding: space.lg,
+        gap: space.lg,
+        paddingBottom: navHeight,
+      }}
     >
       <Row>
-        <View>
-          <Title>Rapport financier</Title>
-          <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
-            Statistiques de vente de tickets WiFi
-          </Text>
+        <View style={{ flex: 1 }}>
+          <Subtitle>Statistiques de vente de tickets WiFi</Subtitle>
         </View>
         <Pressable
           onPress={() => {

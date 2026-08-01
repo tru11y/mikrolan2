@@ -9,27 +9,32 @@ import {
   Card,
   Mono,
   Row,
+  space,
   Subtitle,
   theme,
   Title,
 } from '@/src/components/ui';
-import { BottomNav } from '@/src/components/BottomNav';
+import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
+import { AppHeader } from '@/src/components/AppHeader';
 
 export default function TicketsScreen() {
+  const navHeight = useBottomNavHeight();
   const router = useRouter();
   const routers = useQuery({ queryKey: ['routers'], queryFn: api.routers.list });
   const list = routers.data ?? [];
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-    <ScrollView
-      style={{ flex: 1, backgroundColor: theme.bg }}
-      contentContainerStyle={{ padding: 16, gap: 16, paddingBottom: 100 }}
-    >
-      <View>
-        <Title>Créer des tickets</Title>
-        <Subtitle>Choisissez un routeur pour générer des codes WiFi</Subtitle>
-      </View>
+      <AppHeader title="Créer des tickets" />
+      <ScrollView
+        style={{ flex: 1, backgroundColor: theme.bg }}
+        contentContainerStyle={{
+          padding: space.lg,
+          gap: space.lg,
+          paddingBottom: navHeight,
+        }}
+      >
+      <Subtitle>Choisissez un routeur pour générer des codes WiFi</Subtitle>
 
       {list.length === 0 ? (
         <Card>
@@ -91,8 +96,8 @@ export default function TicketsScreen() {
           ))}
         </View>
       )}
-    </ScrollView>
-    <BottomNav />
+      </ScrollView>
+      <BottomNav active="tickets" />
     </View>
   );
 }
