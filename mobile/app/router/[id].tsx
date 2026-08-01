@@ -23,15 +23,20 @@ import {
   Button,
   Card,
   Field,
+  IconChip,
   Label,
   Mono,
   Row,
   Screen,
   Subtitle,
+  icon,
+  radius,
+  space,
   theme,
+  type,
   type IoniconName,
 } from '@/src/components/ui';
-import { BottomNav } from '@/src/components/BottomNav';
+import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { RouterTopBar } from '@/src/components/RouterTopBar';
 
 function memPercent(res: SystemResource): number {
@@ -104,7 +109,7 @@ function sameSubnet24(a: string, b: string): boolean {
 }
 
 function StatSquare({
-  icon,
+  icon: iconName,
   color,
   value,
   label,
@@ -116,36 +121,32 @@ function StatSquare({
   label: string;
   onPress: () => void;
 }) {
+  // `flex: 1` et non une largeur en pourcentage : quatre tuiles à 23 % dans un
+  // Row en space-between laissaient un reliquat réparti dans les gouttières,
+  // qui devenaient inégales.
   return (
     <Pressable
       onPress={onPress}
       style={{
-        width: '23%',
+        flex: 1,
         backgroundColor: theme.surface,
         borderWidth: 1,
         borderColor: theme.border,
-        borderRadius: 16,
-        paddingVertical: 12,
+        borderRadius: radius.lg,
+        paddingVertical: space.md,
+        paddingHorizontal: space.xs,
         alignItems: 'center',
-        gap: 4,
+        gap: space.xs,
       }}
     >
-      <View
-        style={{
-          width: 32,
-          height: 32,
-          borderRadius: 10,
-          backgroundColor: color + '22',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        <Ionicons name={icon} size={16} color={color} />
-      </View>
-      <Text style={{ color: theme.text, fontSize: 18, fontWeight: '800' }}>
+      <IconChip name={iconName} color={color} size="sm" />
+      <Text style={{ color: theme.text, fontSize: type.title, fontWeight: '800' }}>
         {value}
       </Text>
-      <Text style={{ color: theme.textMuted, fontSize: 10 }} numberOfLines={1}>
+      <Text
+        style={{ color: theme.textMuted, fontSize: type.micro }}
+        numberOfLines={1}
+      >
         {label}
       </Text>
     </Pressable>
@@ -158,6 +159,7 @@ export default function RouterDetailScreen() {
   const qc = useQueryClient();
   const { isPro } = useAuth();
   const { selectRouter } = useActiveRouter();
+  const navHeight = useBottomNavHeight();
 
   // Opening a router always activates it: the bottom nav + Maison switch to
   // router-connected mode (mirrors the reference's handleSelectRouter).
@@ -389,26 +391,27 @@ export default function RouterDetailScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <RouterTopBar title="Maison" />
-      <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: 100 }}>
+      <ScrollView
+        contentContainerStyle={{
+          gap: space.lg,
+          padding: space.lg,
+          paddingBottom: navHeight,
+        }}
+      >
         <Card>
-          <Row style={{ gap: 12, alignItems: 'flex-start' }}>
-            <View
-              style={{
-                width: 56,
-                height: 56,
-                borderRadius: 16,
-                backgroundColor: theme.primary + '22',
-                borderWidth: 1,
-                borderColor: theme.primary + '44',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <Ionicons name="hardware-chip" size={28} color={theme.primary} />
-            </View>
+          <Row style={{ gap: space.md, alignItems: 'flex-start' }}>
+            <IconChip name="hardware-chip" size="xl" outlined />
             <View style={{ flex: 1 }}>
-              <Row style={{ justifyContent: 'flex-start', gap: 8, flexWrap: 'wrap' }}>
-                <Text style={{ color: theme.text, fontSize: 18, fontWeight: '800' }}>
+              <Row
+                style={{
+                  justifyContent: 'flex-start',
+                  gap: space.sm,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <Text
+                  style={{ color: theme.text, fontSize: type.title, fontWeight: '800' }}
+                >
                   {r.alias || r.identity}
                 </Text>
                 <Badge
@@ -428,10 +431,16 @@ export default function RouterDetailScreen() {
                   }
                 />
               </Row>
-              <Mono style={{ color: theme.textMuted, fontSize: 12, marginTop: 3 }}>
+              <Mono
+                style={{
+                  color: theme.textMuted,
+                  fontSize: type.caption,
+                  marginTop: space.xs - 1,
+                }}
+              >
                 {r.identity}
               </Mono>
-              <Row style={{ justifyContent: 'flex-start', marginTop: 6 }}>
+              <Row style={{ justifyContent: 'flex-start', marginTop: space.xs + 2 }}>
                 <Badge
                   label={r.mode === 'REMOTE' ? 'À DISTANCE' : 'LOCAL'}
                   tone={r.mode === 'REMOTE' ? 'gold' : 'secondary'}
@@ -449,7 +458,7 @@ export default function RouterDetailScreen() {
               style={{
                 width: 40,
                 height: 40,
-                borderRadius: 12,
+                borderRadius: radius.md,
                 borderWidth: 1,
                 borderColor: theme.border,
                 backgroundColor: theme.surfaceAlt,
@@ -457,7 +466,7 @@ export default function RouterDetailScreen() {
                 justifyContent: 'center',
               }}
             >
-              <Ionicons name="settings-outline" size={20} color={theme.text} />
+              <Ionicons name="settings-outline" size={icon.md} color={theme.text} />
             </Pressable>
           </Row>
         </Card>
@@ -465,13 +474,13 @@ export default function RouterDetailScreen() {
         {lanState === 'ok' && resource ? (
           <Card>
             <Row>
-              <Row style={{ gap: 6, justifyContent: 'flex-start' }}>
-                <Ionicons name="pulse-outline" size={16} color={theme.secondary} />
+              <Row style={{ gap: space.xs + 2, justifyContent: 'flex-start' }}>
+                <Ionicons name="pulse-outline" size={icon.sm} color={theme.secondary} />
                 <Label>Moniteur performance</Label>
               </Row>
               <Badge label="EN DIRECT" tone="success" />
             </Row>
-            <Row style={{ gap: 10, alignItems: 'stretch' }}>
+            <Row style={{ gap: space.sm + 2, alignItems: 'stretch' }}>
               <Sparkline
                 label="CPU"
                 value={Number(resource['cpu-load']) || 0}
@@ -493,8 +502,8 @@ export default function RouterDetailScreen() {
         {/* Accès à distance (réf: carte bleue après le moniteur) */}
         <Card style={{ borderColor: theme.gold + '55' }}>
           <Row>
-            <Row style={{ gap: 6, justifyContent: 'flex-start' }}>
-              <Ionicons name="globe-outline" size={16} color={theme.gold} />
+            <Row style={{ gap: space.xs + 2, justifyContent: 'flex-start' }}>
+              <Ionicons name="globe-outline" size={icon.sm} color={theme.gold} />
               <Label>Gestion à distance</Label>
             </Row>
             <Badge label="PRO" tone="gold" />
@@ -580,7 +589,13 @@ export default function RouterDetailScreen() {
         </Card>
 
         {/* Rangée de 4 tuiles carrées (réf) */}
-        <Row style={{ gap: 8, alignItems: 'stretch' }}>
+        <Row
+          style={{
+            gap: space.sm,
+            alignItems: 'stretch',
+            justifyContent: 'flex-start',
+          }}
+        >
           <StatSquare
             icon="people"
             color={theme.success}
@@ -626,24 +641,20 @@ export default function RouterDetailScreen() {
         {/* Réseau Sans Fil (SSID) */}
         <Card>
           <Row>
-            <Row style={{ gap: 12, flex: 1, justifyContent: 'flex-start' }}>
-              <View
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 12,
-                  backgroundColor: theme.primary + '22',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Ionicons name="wifi" size={20} color={theme.primary} />
-              </View>
+            <Row style={{ gap: space.md, flex: 1, justifyContent: 'flex-start' }}>
+              <IconChip name="wifi" size="md" />
               <View style={{ flex: 1 }}>
-                <Text style={{ color: theme.textMuted, fontSize: 12 }}>
-                  Réseau Sans Fil (SSID)
+                <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
+                  Réseau Wi-Fi
                 </Text>
-                <Text style={{ color: theme.text, fontWeight: '700', marginTop: 1 }}>
+                <Text
+                  style={{
+                    color: theme.text,
+                    fontSize: type.bodyLg,
+                    fontWeight: '700',
+                    marginTop: 1,
+                  }}
+                >
                   Hotspot du routeur
                 </Text>
               </View>
@@ -653,46 +664,91 @@ export default function RouterDetailScreen() {
                 router.push({ pathname: '/hotspot-setup', params: { routerId: id } })
               }
             >
-              <Text style={{ color: theme.secondary, fontWeight: '600' }}>Modifier</Text>
+              <Text
+                style={{
+                  color: theme.secondary,
+                  fontSize: type.body,
+                  fontWeight: '600',
+                }}
+              >
+                Modifier
+              </Text>
             </Pressable>
           </Row>
         </Card>
 
-        {/* Cartes astuce */}
-        <Row style={{ gap: 12, alignItems: 'stretch' }}>
+        {/* Cartes astuce — `flex: 1` sur la Card elle-même, pas seulement sur
+            le Pressable : sinon `alignItems: stretch` n'étire que le parent et
+            les deux cartes finissent à des hauteurs différentes. */}
+        <Row style={{ gap: space.md, alignItems: 'stretch' }}>
           <Pressable
             style={{ flex: 1 }}
             onPress={() =>
               router.push({ pathname: '/internet-sharing', params: { routerId: id } })
             }
           >
-            <Card style={{ gap: 6 }}>
-              <Row style={{ gap: 6, justifyContent: 'flex-start' }}>
-                <Ionicons name="shield-outline" size={15} color={theme.warning} />
-                <Text style={{ color: theme.warning, fontSize: 11, fontWeight: '700' }}>
-                  ANTI-TETHERING
+            <Card style={{ flex: 1, gap: space.xs + 2 }}>
+              <Row style={{ gap: space.xs + 2, justifyContent: 'flex-start' }}>
+                <Ionicons name="shield-outline" size={icon.sm} color={theme.warning} />
+                <Text
+                  style={{
+                    color: theme.warning,
+                    fontSize: type.micro,
+                    fontWeight: '700',
+                  }}
+                >
+                  PARTAGE BLOQUÉ
                 </Text>
               </Row>
-              <Text style={{ color: theme.text, fontSize: 12 }}>
-                Bloquer le partage via détection TTL dans RouterOS.
+              <Text style={{ color: theme.text, fontSize: type.caption }}>
+                Empêcher un client de repartager sa connexion.
               </Text>
-              <Text style={{ color: theme.primary, fontSize: 11, fontWeight: '600' }}>
+              <Text
+                style={{
+                  color: theme.primary,
+                  fontSize: type.micro,
+                  fontWeight: '600',
+                  marginTop: 'auto',
+                }}
+              >
                 Configurer →
               </Text>
             </Card>
           </Pressable>
-          <Pressable style={{ flex: 1 }} onPress={() => router.push('/(tabs)/rapport')}>
-            <Card style={{ gap: 6 }}>
-              <Row style={{ gap: 6, justifyContent: 'flex-start' }}>
-                <Ionicons name="trending-up-outline" size={15} color={theme.secondary} />
-                <Text style={{ color: theme.secondary, fontSize: 11, fontWeight: '700' }}>
+          <Pressable
+            style={{ flex: 1 }}
+            onPress={() =>
+              router.push({ pathname: '/(tabs)/rapport', params: { routerId: id } })
+            }
+          >
+            <Card style={{ flex: 1, gap: space.xs + 2 }}>
+              <Row style={{ gap: space.xs + 2, justifyContent: 'flex-start' }}>
+                <Ionicons
+                  name="trending-up-outline"
+                  size={icon.sm}
+                  color={theme.secondary}
+                />
+                <Text
+                  style={{
+                    color: theme.secondary,
+                    fontSize: type.micro,
+                    fontWeight: '700',
+                  }}
+                >
                   ANALYSE VENTES
                 </Text>
               </Row>
-              <Text style={{ color: theme.text, fontSize: 12 }}>
+              <Text style={{ color: theme.text, fontSize: type.caption }}>
                 Rapport financier & journal de caisse.
               </Text>
-              <Text style={{ color: theme.primary, fontSize: 11, fontWeight: '600' }}>
+              <Text
+                style={{
+                  color: theme.primary,
+                  fontSize: type.micro,
+                  fontWeight: '600',
+                  marginTop: 'auto',
+                }}
+              >
                 Voir le rapport →
               </Text>
             </Card>

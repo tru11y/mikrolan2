@@ -5,9 +5,25 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/src/lib/api';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
-import { theme, type IoniconName } from './ui';
+import { icon, space, theme, type, type IoniconName } from './ui';
 
 type Tab = { key: string; label: string; icon: IoniconName; href: Href };
+
+const TAB_ROW = space.sm - 2 + icon.md + 2 + type.micro + 6 + space.sm; // ≈ 50
+const ROUTER_STRIP = space.sm - 2 + type.micro + 6 + space.sm - 2 + 1; // ≈ 27
+
+/**
+ * Height the bottom nav actually occupies, safe-area and router strip included.
+ * Screens use it for their scroll padding — a hardcoded value left the last
+ * item under the bar in router mode, or on phones with a gesture bar.
+ */
+export function useBottomNavHeight(): number {
+  const insets = useSafeAreaInsets();
+  const { activeRouterId } = useActiveRouter();
+  return (
+    TAB_ROW + insets.bottom + (activeRouterId ? ROUTER_STRIP : 0) + space.lg
+  );
+}
 
 // Global tab set: Maison/Routeurs/Paramètres (Modèles masqué — pas encore backé).
 const GLOBAL_TABS: Tab[] = [
@@ -106,29 +122,31 @@ export function BottomNav({ active }: { active?: string }) {
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 6,
-            paddingVertical: 6,
+            gap: space.xs + 2,
+            paddingVertical: space.sm - 2,
             borderBottomWidth: 1,
             borderBottomColor: theme.border,
             backgroundColor: theme.surfaceAlt,
           }}
         >
-          <Ionicons name="hardware-chip" size={12} color={theme.gold} />
-          <Text style={{ color: theme.text, fontSize: 11, fontWeight: '700' }}>
+          <Ionicons name="hardware-chip" size={type.caption} color={theme.gold} />
+          <Text style={{ color: theme.text, fontSize: type.micro, fontWeight: '700' }}>
             {activeRouterQuery.data?.alias ||
               activeRouterQuery.data?.identity ||
               'Routeur'}
           </Text>
-          <Text style={{ color: theme.textMuted, fontSize: 11 }}>·</Text>
-          <Text style={{ color: theme.primary, fontSize: 11, fontWeight: '700' }}>
+          <Text style={{ color: theme.textMuted, fontSize: type.micro }}>·</Text>
+          <Text
+            style={{ color: theme.primary, fontSize: type.micro, fontWeight: '700' }}
+          >
             Quitter
           </Text>
         </Pressable>
       ) : null}
       <View
         style={{
-          paddingBottom: 8 + insets.bottom,
-          paddingTop: 6,
+          paddingBottom: space.sm + insets.bottom,
+          paddingTop: space.sm - 2,
           flexDirection: 'row',
         }}
       >
@@ -143,13 +161,13 @@ export function BottomNav({ active }: { active?: string }) {
             >
               <Ionicons
                 name={t.icon}
-                size={20}
+                size={icon.md}
                 color={on ? theme.primary : theme.textMuted}
               />
               <Text
                 numberOfLines={1}
                 style={{
-                  fontSize: tabs.length > 4 ? 10 : 11,
+                  fontSize: type.micro,
                   fontWeight: '600',
                   color: on ? theme.primary : theme.textMuted,
                 }}
