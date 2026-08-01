@@ -14,6 +14,28 @@ import { PrismaService } from '../../prisma/prisma.service';
 // No automatic payment: upgrades are validated manually by a platform admin.
 export const PRO_MONTHLY_XOF = 15000;
 
+/** Free trial granted at signup. Local management only — remote is PRO. */
+export const TRIAL_DAYS = 15;
+
+export type EntitlementTier = 'TRIAL' | 'PRO' | 'LOCKED';
+
+export interface Entitlement {
+  tier: EntitlementTier;
+  /** Local (LAN) management of routers, tickets, plans, reports. */
+  localAllowed: boolean;
+  /** Cloud + WireGuard management. PRO only. */
+  remoteAllowed: boolean;
+  /** End of the trial or of the paid period, whichever applies. */
+  endsAt: Date | null;
+  /** Whole days remaining, 0 once expired. */
+  daysLeft: number;
+}
+
+function daysUntil(end: Date | null): number {
+  if (!end) return 0;
+  return Math.max(0, Math.ceil((end.getTime() - Date.now()) / 86_400_000));
+}
+
 @Injectable()
 export class SubscriptionsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -31,18 +53,58 @@ export class SubscriptionsService {
     });
   }
 
-  /** True when the tenant may use remote (cloud + WireGuard) management. */
-  async isRemoteAllowed(tenantId: string): Promise<boolean> {
+  /**
+   * What a tenant is allowed to do right now.
+   *
+   * A new account gets TRIAL_DAYS of full local management. Once that runs out
+   * without a paid plan, everything locks until PRO is activated — the padlock
+   * shown in the app is only a mirror of this, the API is the authority.
+   */
+  async getEntitlement(tenantId: string): Promise<Entitlement> {
     const sub = await this.prisma.subscription.findUnique({
       where: { tenantId },
       select: { plan: true, status: true, currentPeriodEnd: true },
     });
-    if (!sub || sub.plan !== SubscriptionPlan.PRO) return false;
-    if (sub.status !== SubscriptionStatus.ACTIVE) return false;
-    if (sub.currentPeriodEnd && sub.currentPeriodEnd.getTime() < Date.now()) {
-      return false;
+
+    const expired =
+      !sub?.currentPeriodEnd || sub.currentPeriodEnd.getTime() < Date.now();
+
+    if (
+      sub?.plan === SubscriptionPlan.PRO &&
+      sub.status === SubscriptionStatus.ACTIVE &&
+      !expired
+    ) {
+      return {
+        tier: 'PRO',
+        localAllowed: true,
+        remoteAllowed: true,
+        endsAt: sub.currentPeriodEnd,
+        daysLeft: daysUntil(sub.currentPeriodEnd),
+      };
     }
-    return true;
+
+    if (sub?.status === SubscriptionStatus.TRIALING && !expired) {
+      return {
+        tier: 'TRIAL',
+        localAllowed: true,
+        remoteAllowed: false,
+        endsAt: sub.currentPeriodEnd,
+        daysLeft: daysUntil(sub.currentPeriodEnd),
+      };
+    }
+
+    return {
+      tier: 'LOCKED',
+      localAllowed: false,
+      remoteAllowed: false,
+      endsAt: sub?.currentPeriodEnd ?? null,
+      daysLeft: 0,
+    };
+  }
+
+  /** True when the tenant may use remote (cloud + WireGuard) management. */
+  async isRemoteAllowed(tenantId: string): Promise<boolean> {
+    return (await this.getEntitlement(tenantId)).remoteAllowed;
   }
 
   /** Tenant OWNER requests PRO. Creates (or returns) a PENDING manual invoice. */

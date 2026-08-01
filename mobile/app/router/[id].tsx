@@ -484,11 +484,11 @@ export default function RouterDetailScreen() {
           {!isPro ? (
             <>
               <Subtitle>
-                Réservé au plan PRO. Le pilotage hors du réseau local nécessite un
-                abonnement.
+                Piloter ce routeur en dehors de son Wi-Fi nécessite un forfait
+                PRO. Inclus pendant l’essai : la gestion sur place.
               </Subtitle>
               <Button
-                title="Voir l’abonnement"
+                title="Découvrir PRO"
                 variant="ghost"
                 onPress={() => router.push('/(tabs)/account')}
               />

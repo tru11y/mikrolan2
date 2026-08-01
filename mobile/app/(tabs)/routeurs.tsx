@@ -142,7 +142,7 @@ export default function RouteursScreen() {
         }
         ListEmptyComponent={
           query.isLoading ? null : (
-            <Empty text="Aucun routeur. Ajoutez-en un pour commencer — gratuit en local." />
+            <Empty text="Aucun routeur pour l’instant. Ajoutez-en un pour commencer." />
           )
         }
       />
