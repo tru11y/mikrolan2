@@ -1,14 +1,22 @@
-import { View, Text, Pressable } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Animated, Text } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/src/lib/api';
-import { theme } from './ui';
+import { useLiveEvents } from '@/src/providers/live-events-provider';
+import { Press, theme, useReduceMotion } from './ui';
 
-// Polled (no push infra yet) — good enough for near-real-time without device
-// tokens/APNs/FCM. See skills_rn_otp… sibling note in project memory re: scope.
+/**
+ * Cloche + compteur. Le flux est tenu par `LiveEventsProvider` (sondage 5 s au
+ * premier plan) ; ici on ne fait qu'afficher, et on secoue la cloche quand un
+ * évènement tombe pour que le changement de badge ne passe pas inaperçu.
+ */
 export function NotificationBell() {
   const router = useRouter();
+  const reduced = useReduceMotion();
+  const { lastEventAt } = useLiveEvents();
+
   const unread = useQuery({
     queryKey: ['notifications', 'unread-count'],
     queryFn: api.notifications.unreadCount,
@@ -16,24 +24,82 @@ export function NotificationBell() {
   });
   const count = unread.data ?? 0;
 
+  const shake = useRef(new Animated.Value(0)).current;
+  const badgePop = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (!lastEventAt || reduced) return;
+    Animated.sequence([
+      Animated.timing(shake, {
+        toValue: 1,
+        duration: 90,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shake, {
+        toValue: -1,
+        duration: 90,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shake, {
+        toValue: 0,
+        duration: 90,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    Animated.sequence([
+      Animated.spring(badgePop, {
+        toValue: 1.5,
+        useNativeDriver: true,
+        speed: 30,
+        bounciness: 14,
+      }),
+      Animated.spring(badgePop, {
+        toValue: 1,
+        useNativeDriver: true,
+        speed: 20,
+        bounciness: 10,
+      }),
+    ]).start();
+  }, [badgePop, lastEventAt, reduced, shake]);
+
   return (
-    <Pressable
-      accessibilityLabel="Notifications"
+    <Press
+      accessibilityLabel={
+        count > 0 ? `Notifications, ${count} non lues` : 'Notifications'
+      }
       onPress={() => router.push('/notifications')}
+      scaleTo={0.88}
       style={{
         width: 34,
         height: 34,
         borderRadius: 11,
         borderWidth: 1,
-        borderColor: theme.border,
-        backgroundColor: theme.surfaceAlt,
+        borderColor: count > 0 ? theme.primary + '66' : theme.border,
+        backgroundColor: count > 0 ? theme.primary + '18' : theme.surfaceAlt,
         alignItems: 'center',
         justifyContent: 'center',
       }}
     >
-      <Ionicons name="notifications-outline" size={16} color={theme.text} />
+      <Animated.View
+        style={{
+          transform: [
+            {
+              rotate: shake.interpolate({
+                inputRange: [-1, 1],
+                outputRange: ['-14deg', '14deg'],
+              }),
+            },
+          ],
+        }}
+      >
+        <Ionicons
+          name={count > 0 ? 'notifications' : 'notifications-outline'}
+          size={16}
+          color={count > 0 ? theme.primary : theme.text}
+        />
+      </Animated.View>
       {count > 0 ? (
-        <View
+        <Animated.View
           style={{
             position: 'absolute',
             top: -3,
@@ -47,13 +113,14 @@ export function NotificationBell() {
             justifyContent: 'center',
             borderWidth: 1.5,
             borderColor: theme.surface,
+            transform: [{ scale: badgePop }],
           }}
         >
           <Text style={{ color: '#fff', fontSize: 9, fontWeight: '800' }}>
             {count > 9 ? '9+' : count}
           </Text>
-        </View>
+        </Animated.View>
       ) : null}
-    </Pressable>
+    </Press>
   );
 }

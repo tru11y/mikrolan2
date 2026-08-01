@@ -8,6 +8,7 @@ import {
   VoucherStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { EventsService } from '../events/events.service';
 import { RemoteRouterService } from '../remote-access/remote-router.service';
 import { listActive, removeActive } from '../../common/routeros/hotspot.ops';
 import type { ApiRow } from '../../common/routeros/routeros-api.client';
@@ -42,6 +43,7 @@ export class SessionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly remote: RemoteRouterService,
+    private readonly events: EventsService,
   ) {}
 
   /**
@@ -74,6 +76,16 @@ export class SessionsService {
         where: { id: { in: ended.map((s) => s.id) } },
         data: { status: SessionStatus.TERMINATED, terminatedAt: now },
       });
+      // Poussé sur le flux mais pas persisté en notification : une fin de
+      // session est un fait de tableau de bord, pas une alerte à relire.
+      for (const session of ended) {
+        this.events.publish(tenantId, {
+          type: NotificationType.SESSION_ENDED,
+          title: 'Session terminée',
+          body: `Le ticket ${session.voucher.code} s'est déconnecté.`,
+          data: { routerId, sessionId: session.id, code: session.voucher.code },
+        });
+      }
     }
 
     if (!codes.length) return;
@@ -129,15 +141,26 @@ export class SessionsService {
       });
 
       if (firstSight) {
+        const title = 'Ticket activé';
+        const body = `Le ticket ${voucher.code} vient de se connecter au hotspot.`;
         await this.prisma.notification.create({
           data: {
             tenantId,
             type: NotificationType.VOUCHER_ACTIVATED,
-            title: 'Ticket activé',
-            body: `Le ticket ${voucher.code} vient de se connecter au hotspot.`,
+            title,
+            body,
             voucherId: voucher.id,
             routerId,
           },
+        });
+        // La notification est l'historique ; l'évènement est l'immédiat. Les
+        // deux, parce que l'opérateur peut être hors ligne au moment précis
+        // où le client se connecte.
+        this.events.publish(tenantId, {
+          type: NotificationType.VOUCHER_ACTIVATED,
+          title,
+          body,
+          data: { voucherId: voucher.id, routerId, code: voucher.code },
         });
       }
     }

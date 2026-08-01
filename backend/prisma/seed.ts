@@ -52,7 +52,95 @@ async function main(): Promise<void> {
     },
   });
 
+  await seedTiers();
+
   console.log(`Seeded SUPER_ADMIN: ${SUPER_ADMIN_EMAIL}`);
+}
+
+/**
+ * Grille tarifaire initiale.
+ *
+ * Les montants reprennent **exactement** ceux que l'application affichait en
+ * dur (`mobile/src/config/tiers.ts`) : au premier déploiement, aucun client ne
+ * doit voir son prix changer. `update: {}` sur l'upsert est délibéré — une
+ * fois la grille publiée, c'est le super admin qui la pilote, pas le seed.
+ */
+async function seedTiers(): Promise<void> {
+  const tiers = [
+    {
+      key: 'essentiel',
+      name: 'Essentiel',
+      monthlyXof: 5000,
+      tagline: 'Jusqu’à 3 routeurs',
+      routerLimit: 3,
+      remoteAccess: false,
+      a4Printing: false,
+      cloudBackup: false,
+      prioritySupport: false,
+      badge: null,
+      displayOrder: 0,
+      features: [
+        { label: 'Jusqu’à 3 routeurs MikroTik', included: true },
+        { label: 'Génération de tickets illimitée', included: true },
+        { label: 'Impression thermique Bluetooth', included: true },
+        { label: 'Templates de tickets basiques', included: true },
+        { label: 'Sauvegarde Cloud automatique', included: false },
+        { label: 'Accès distant multi-sites', included: false },
+      ],
+    },
+    {
+      key: 'avance',
+      name: 'Avancé',
+      monthlyXof: 15000,
+      tagline: 'Jusqu’à 10 routeurs',
+      routerLimit: 10,
+      remoteAccess: true,
+      a4Printing: true,
+      cloudBackup: true,
+      prioritySupport: false,
+      badge: 'LE PLUS CHOISI',
+      displayOrder: 1,
+      features: [
+        { label: 'Jusqu’à 10 routeurs MikroTik', included: true },
+        { label: 'Génération de tickets illimitée', included: true },
+        { label: 'Impression thermique + PDF A4/A3', included: true },
+        { label: 'Tous les templates Premium', included: true },
+        { label: 'Sauvegarde Cloud automatique 24/7', included: true },
+        { label: 'Accès distant multi-sites', included: true },
+      ],
+    },
+    {
+      key: 'entreprise',
+      name: 'Entreprise',
+      monthlyXof: 35000,
+      tagline: 'Routeurs illimités',
+      routerLimit: null,
+      remoteAccess: true,
+      a4Printing: true,
+      cloudBackup: true,
+      prioritySupport: true,
+      badge: null,
+      displayOrder: 2,
+      features: [
+        { label: 'Routeurs MikroTik illimités', included: true },
+        { label: 'Tickets & baux DHCP illimités', included: true },
+        { label: 'Support technique dédié 24/7', included: true },
+        { label: 'Personnalisation white-label', included: true },
+        { label: 'Sauvegarde Cloud & API', included: true },
+        { label: 'Accès distant multi-sites', included: true },
+      ],
+    },
+  ];
+
+  for (const tier of tiers) {
+    await prisma.subscriptionTier.upsert({
+      where: { key: tier.key },
+      update: {},
+      create: { ...tier, annualDiscount: 20, active: true },
+    });
+  }
+
+  console.log(`Seeded ${tiers.length} subscription tiers`);
 }
 
 main()
