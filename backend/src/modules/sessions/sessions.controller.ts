@@ -12,7 +12,9 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { SessionsService } from './sessions.service';
 import {
+  syncLanSessionsSchema,
   terminateSessionSchema,
+  type SyncLanSessionsDto,
   type TerminateSessionDto,
 } from './dto/session.schemas';
 
@@ -33,5 +35,19 @@ export class SessionsController {
     @Body(new ZodValidationPipe(terminateSessionSchema)) dto: TerminateSessionDto,
   ) {
     return this.sessions.terminate(id, dto.mikrotikId);
+  }
+
+  /**
+   * LOCAL routers only: the app reports what it sees on the router's LAN, which
+   * is the only way the server learns a ticket was actually used.
+   */
+  @Post('sync')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  sync(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(syncLanSessionsSchema)) dto: SyncLanSessionsDto,
+  ) {
+    return this.sessions.syncFromLan(id, dto.active);
   }
 }
