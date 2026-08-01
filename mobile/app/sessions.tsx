@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, extractErrorMessage, type LiveSession } from '@/src/lib/api';
 import { getLocalCredentials } from '@/src/lib/router-credentials';
+import { reportLanSessions } from '@/src/lib/sessionSync';
 import {
   listActiveLan,
   terminateActiveLan,
@@ -113,7 +114,11 @@ export default function SessionsScreen() {
           'Identifiants locaux requis : testez d’abord la connexion LAN.',
         );
       }
-      return listActiveLan(creds);
+      const active = await listActiveLan(creds);
+      // The server can't see this LAN — tell it what we saw so used tickets
+      // count as revenue and closed sessions stop counting as active.
+      void reportLanSessions(routerId, active);
+      return active;
     },
   });
 

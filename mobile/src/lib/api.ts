@@ -739,6 +739,19 @@ export const api = {
       );
       return unwrap(res);
     },
+    // LOCAL routers: the server can't reach a private LAN, so we report what we
+    // read on the router ourselves. This is what turns a used ticket into
+    // revenue — without it a free operator's reporting stays at zero.
+    async syncSessions(
+      id: string,
+      active: LiveSession[],
+    ): Promise<{ synced: number }> {
+      const res = await apiClient.post<ApiEnvelope<{ synced: number }>>(
+        `/routers/${id}/sessions/sync`,
+        { active },
+      );
+      return unwrap(res);
+    },
   },
 
   notifications: {

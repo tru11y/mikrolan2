@@ -15,6 +15,7 @@ import {
 } from '@/src/lib/router-credentials';
 import { listActiveLan } from '@/src/services/mikrotik-lan/hotspotLan';
 import { getWifiInfo } from '@/src/lib/lanBinder';
+import { reportLanSessions } from '@/src/lib/sessionSync';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
 import {
   Badge,
@@ -183,26 +184,30 @@ export default function RouterDetailScreen() {
   });
 
   // "Actifs" doit être un compte live, pas le compteur DB `activeSessions` :
-  // ce dernier n'est alimenté que par le sync backend des routeurs REMOTE
-  // (mode LOCAL = défaut → toujours 0, jamais mis à jour). On lit donc en
-  // direct, comme le fait déjà l'écran Sessions (LAN pour LOCAL, tunnel pour
+  // ce dernier n'est alimenté que par le sync des routeurs REMOTE. On lit donc
+  // en direct, comme le fait déjà l'écran Sessions (LAN pour LOCAL, tunnel pour
   // REMOTE), avec la même garde de sous-réseau que loadLocal ci-dessous.
+  // `null` = valeur indisponible (hors du Wi-Fi du routeur) — surtout pas 0,
+  // qui affirmerait à tort que personne n'est connecté.
   const activeSessionsQuery = useQuery({
     queryKey: ['router-active-sessions', id, query.data?.mode],
     enabled: Boolean(id) && query.isSuccess,
-    queryFn: async (): Promise<number> => {
+    queryFn: async (): Promise<number | null> => {
       if (query.data!.mode === 'REMOTE') {
         const list = await api.routers.listSessions(id);
         return list.length;
       }
       const creds = await getLocalCredentials(id);
-      if (!creds) return 0;
+      if (!creds) return null;
       const wifi = await getWifiInfo();
       const onRouterLan =
         !!wifi &&
         (creds.host === wifi.gateway || sameSubnet24(creds.host, wifi.ipAddress));
-      if (!onRouterLan) return 0;
+      if (!onRouterLan) return null;
       const list = await listActiveLan(creds);
+      // Le serveur ne voit pas ce LAN : on lui remonte ce qu'on observe, sans
+      // quoi les tickets utilisés ne deviennent jamais du chiffre d'affaires.
+      void reportLanSessions(id, list);
       return list.length;
     },
   });
@@ -579,7 +584,11 @@ export default function RouterDetailScreen() {
           <StatSquare
             icon="people"
             color={theme.success}
-            value={`${activeSessionsQuery.data ?? 0}`}
+            value={
+              activeSessionsQuery.data == null
+                ? '—'
+                : `${activeSessionsQuery.data}`
+            }
             label="Actifs"
             onPress={() =>
               router.push({ pathname: '/sessions', params: { routerId: id } })

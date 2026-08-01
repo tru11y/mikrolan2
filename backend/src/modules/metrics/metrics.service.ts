@@ -101,11 +101,13 @@ export class MetricsService {
     let ticketsUsed = 0;
 
     for (const v of vouchers) {
-      const redeemed = isRedeemed(v.status);
-      if (redeemed) {
-        revenueXof += v.plan.priceXof;
-        ticketsUsed += 1;
-      }
+      // Only redeemed vouchers are sales — a plan with nothing sold has no
+      // place in the breakdown (it would draw an empty bar).
+      if (!isRedeemed(v.status)) continue;
+
+      revenueXof += v.plan.priceXof;
+      ticketsUsed += 1;
+
       const entry = byPlanMap.get(v.plan.id) ?? {
         planId: v.plan.id,
         planName: v.plan.name,
@@ -113,10 +115,8 @@ export class MetricsService {
         sold: 0,
         revenueXof: 0,
       };
-      if (redeemed) {
-        entry.sold += 1;
-        entry.revenueXof += v.plan.priceXof;
-      }
+      entry.sold += 1;
+      entry.revenueXof += v.plan.priceXof;
       byPlanMap.set(v.plan.id, entry);
     }
 
