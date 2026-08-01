@@ -168,6 +168,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
     remoteAllowed: false,
     endsAt: null,
     daysLeft: 0,
+    tierKey: null,
+    routerLimit: null,
   };
 
   const contextValue = useMemo<AuthContextValue>(

@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { useAuth } from '@/src/providers/auth-provider';
+import { useAppLock } from '@/src/providers/app-lock-provider';
 import { api, extractErrorMessage } from '@/src/lib/api';
 import { Banner, Button, Field, space, theme, type } from '@/src/components/ui';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
@@ -74,6 +75,20 @@ export default function AccountScreen() {
   const navHeight = useBottomNavHeight();
   const router = useRouter();
   const { me, isPro, logout, refreshProfile } = useAuth();
+  const {
+    supported: appLockSupported,
+    enabled: appLockEnabled,
+    setEnabled: setAppLockEnabled,
+  } = useAppLock();
+  const [appLockBusy, setAppLockBusy] = useState(false);
+  async function toggleAppLock(value: boolean) {
+    setAppLockBusy(true);
+    try {
+      await setAppLockEnabled(value);
+    } finally {
+      setAppLockBusy(false);
+    }
+  }
   const version = Constants.expoConfig?.version ?? '0.1.0';
 
   const [editingProfile, setEditingProfile] = useState(false);
@@ -245,6 +260,36 @@ export default function AccountScreen() {
         </View>
         <Divider />
 
+        {appLockSupported ? (
+          <>
+            <View
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                paddingVertical: 14,
+                gap: 10,
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: theme.text, fontSize: type.bodyLg, fontWeight: '600' }}>
+                  Verrouillage biométrique
+                </Text>
+                <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
+                  Empreinte / Face ID / code après 2 min en arrière-plan
+                </Text>
+              </View>
+              <Switch
+                value={appLockEnabled}
+                onValueChange={toggleAppLock}
+                disabled={appLockBusy}
+                trackColor={{ false: theme.border, true: theme.primary }}
+                thumbColor="#fff"
+              />
+            </View>
+            <Divider />
+          </>
+        ) : null}
+
         <ActionRow
           title="Changer le mot de passe"
           open={editingPassword}
@@ -283,6 +328,19 @@ export default function AccountScreen() {
               title="Passer à PRO"
               subtitle="Gestion à distance multi-routeurs (WireGuard)"
               onPress={() => router.push('/pro')}
+            />
+            <Divider />
+          </>
+        ) : null}
+
+        {/* L'écran vérifie le rôle de son côté ; on ne l'affiche pas ici pour
+            ne pas exposer l'existence de l'administration aux clients. */}
+        {me?.user.role === 'SUPER_ADMIN' ? (
+          <>
+            <ActionRow
+              title="Administration de la plateforme"
+              subtitle="Activer les abonnements, consulter la grille tarifaire"
+              onPress={() => router.push('/admin')}
             />
             <Divider />
           </>

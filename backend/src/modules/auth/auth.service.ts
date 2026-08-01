@@ -122,6 +122,13 @@ export class AuthService {
     const ok = await argon2.verify(user.passwordHash, dto.password);
     if (!ok) throw invalid;
 
+    // Le back-office affiche la dernière connexion pour distinguer un compte
+    // abandonné d'un compte actif. Sans await bloquant sur l'échec : ne pas
+    // savoir horodater ne doit pas empêcher quelqu'un de se connecter.
+    await this.prisma.user
+      .update({ where: { id: user.id }, data: { lastLoginAt: new Date() } })
+      .catch(() => undefined);
+
     return this.tokens.issueTokens({
       id: user.id,
       tenantId: user.tenantId,

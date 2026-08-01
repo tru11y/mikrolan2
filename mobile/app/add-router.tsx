@@ -18,7 +18,15 @@ import {
 } from '@/src/services/mikrotik-lan/MikroTikApiClient';
 import { scanLan } from '@/src/services/mikrotik-lan/lanScan';
 import { saveLocalCredentials } from '@/src/lib/router-credentials';
-import { Banner, Button, Card, Field, Screen, theme } from '@/src/components/ui';
+import {
+  Banner,
+  Button,
+  Card,
+  Field,
+  NumberField,
+  Screen,
+  theme,
+} from '@/src/components/ui';
 import { AppHeader } from '@/src/components/AppHeader';
 
 type TestState =
@@ -178,13 +186,14 @@ export default function AddRouterScreen() {
                   keyboardType="numbers-and-punctuation"
                 />
               </View>
-              <View style={{ width: 84 }}>
-                <Field
+              <View style={{ width: 90 }}>
+                <NumberField
                   label="Port"
                   placeholder="8728"
                   value={port}
-                  onChangeText={(v) => setPort(v.replace(/[^0-9]/g, ''))}
-                  keyboardType="number-pad"
+                  onChangeValue={setPort}
+                  min={1}
+                  max={65535}
                 />
               </View>
             </View>

@@ -35,6 +35,14 @@ enum SubscriptionPlan {
   PRO // remote activé
 }
 
+// Périodicité facturée. Le prix mensuel est porté par le tier ; l'annuel
+// applique sa remise. Stocké sur l'invoice pour qu'un changement de grille
+// ne réécrive jamais une facture émise.
+enum BillingPeriod {
+  MONTHLY
+  ANNUAL
+}
+
 enum SubscriptionStatus {
   ACTIVE
   TRIALING
@@ -80,6 +88,8 @@ enum AuditAction {
   PROVISION
   REVOKE
   SUBSCRIBE
+  SUSPEND
+  RESTORE
 }
 
 // ─── HOTSPOT / VOUCHERS (P7 — boucle vendable) ───────────
@@ -145,25 +155,33 @@ model Tenant {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   deletedAt      DateTime?
+
+  // Le back-office trie les comptes du plus récent au plus ancien et pagine
+  // par curseur : sans cet index, chaque page est un seq scan de la table.
+  @@index([createdAt])
+  @@index([status])
 }
 
 // ─── USER (email global unique → résout le tenant au login) ─
 model User {
-  id            String         @id @default(uuid())
-  tenantId      String
-  tenant        Tenant         @relation(fields: [tenantId], references: [id])
-  email         String         @unique
-  name          String?
-  country       String?
-  passwordHash  String // Argon2id
-  role          UserRole       @default(MEMBER)
-  status        UserStatus     @default(ACTIVE)
-  notificationsEnabled Boolean @default(true)
-  refreshTokens RefreshToken[]
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  id                   String         @id @default(uuid())
+  tenantId             String
+  tenant               Tenant         @relation(fields: [tenantId], references: [id])
+  email                String         @unique
+  name                 String?
+  country              String?
+  passwordHash         String // Argon2id
+  role                 UserRole       @default(MEMBER)
+  status               UserStatus     @default(ACTIVE)
+  notificationsEnabled Boolean        @default(true)
+  lastLoginAt          DateTime? // dernière authentification réussie (vue admin)
+  refreshTokens        RefreshToken[]
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
 
   @@index([tenantId])
+  @@index([tenantId, createdAt])
+  @@index([createdAt])
 }
 
 // ─── REFRESH TOKEN (family rotation) ─────────────────────
@@ -229,6 +247,36 @@ model RemotePeer {
   @@index([tenantId])
 }
 
+// ─── SUBSCRIPTION TIER (grille tarifaire, hors tenant) ───
+//
+// Global à la plateforme : seul un SUPER_ADMIN écrit ici, tout le monde lit.
+// Les prix vivaient en dur des deux côtés (constante backend + écran mobile),
+// donc ils divergeaient en silence et changer un tarif imposait de publier
+// une nouvelle version de l'application.
+model SubscriptionTier {
+  id              String         @id @default(uuid())
+  key             String         @unique // essentiel | avance | entreprise
+  name            String
+  monthlyXof      Int
+  annualDiscount  Int            @default(20) // en %, appliqué au paiement annuel
+  routerLimit     Int? // null = illimité
+  remoteAccess    Boolean        @default(false)
+  a4Printing      Boolean        @default(false)
+  cloudBackup     Boolean        @default(false)
+  prioritySupport Boolean        @default(false)
+  badge           String?
+  tagline         String?
+  features        Json // [{ label: string, included: boolean }]
+  displayOrder    Int            @default(0)
+  active          Boolean        @default(true)
+  subscriptions   Subscription[]
+  invoices        Invoice[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([active, displayOrder])
+}
+
 // ─── SUBSCRIPTION (1 par tenant) ─────────────────────────
 model Subscription {
   id                 String             @id @default(uuid())
@@ -236,27 +284,43 @@ model Subscription {
   tenant             Tenant             @relation(fields: [tenantId], references: [id])
   plan               SubscriptionPlan   @default(FREE)
   status             SubscriptionStatus @default(ACTIVE)
+  tierId             String? // formule souscrite (null tant que FREE/essai)
+  tier               SubscriptionTier?  @relation(fields: [tierId], references: [id])
+  billingPeriod      BillingPeriod?
   currentPeriodStart DateTime?
   currentPeriodEnd   DateTime?
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
+
+  @@index([status])
+  @@index([tierId])
 }
 
 // ─── INVOICE / PAIEMENT (idempotent) ─────────────────────
 model Invoice {
-  id             String          @id @default(uuid())
+  id             String            @id @default(uuid())
   tenantId       String
-  tenant         Tenant          @relation(fields: [tenantId], references: [id])
+  tenant         Tenant            @relation(fields: [tenantId], references: [id])
+  // `amount` est figé à l'émission : une révision de la grille ne doit jamais
+  // réécrire ce qu'un client a déjà demandé à payer.
   amount         Int // XOF (entier)
-  currency       String          @default("XOF")
-  provider       PaymentProvider @default(MANUAL)
+  currency       String            @default("XOF")
+  tierId         String?
+  tier           SubscriptionTier? @relation(fields: [tierId], references: [id])
+  billingPeriod  BillingPeriod     @default(MONTHLY)
+  periodDays     Int               @default(30)
+  // Contexte laissé par le client (résumé du conseiller d'abonnement).
+  // Il vivait dans AuditLog.metadata, illisible depuis la file d'attente.
+  note           String?
+  provider       PaymentProvider   @default(MANUAL)
   providerRef    String?
-  idempotencyKey String          @unique
-  status         PaymentStatus   @default(PENDING)
+  idempotencyKey String            @unique
+  status         PaymentStatus     @default(PENDING)
   paidAt         DateTime?
-  createdAt      DateTime        @default(now())
+  createdAt      DateTime          @default(now())
 
   @@index([tenantId])
+  @@index([status, createdAt])
 }
 
 // ─── AUDIT LOG (append-only) ─────────────────────────────
@@ -390,6 +454,10 @@ model Session {
 
 enum NotificationType {
   VOUCHER_ACTIVATED // un ticket vient de se connecter au hotspot
+  SESSION_ENDED // une session hotspot s'est terminée
+  SUBSCRIPTION_ACTIVATED // paiement validé, abonnement PRO actif
+  UPGRADE_REQUESTED // un client demande PRO (destinée à la plateforme)
+  ROUTER_OFFLINE // heartbeat manqué
 }
 
 // ─── NOTIFICATION (flux in-app, pas de push OS pour l'instant) ─

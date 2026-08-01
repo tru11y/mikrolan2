@@ -1,16 +1,29 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, Share, Text, View } from 'react-native';
+import { ScrollView, Share, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, extractErrorMessage, type Plan, type VoucherItem } from '@/src/lib/api';
+import { api, type Plan, type VoucherItem } from '@/src/lib/api';
+import { describeError } from '@/src/lib/errors';
 import { getLocalCredentials } from '@/src/lib/router-credentials';
 import { pushVouchersLan } from '@/src/services/mikrotik-lan/hotspotLan';
 import { TicketCard } from '@/src/components/TicketCard';
 import { printTickets } from '@/src/lib/ticketsPdf';
-import { Badge, Banner, Button, theme } from '@/src/components/ui';
+import {
+  Badge,
+  Button,
+  ErrorState,
+  FadeIn,
+  Press,
+  Skeleton,
+  theme,
+  useToast,
+} from '@/src/components/ui';
 import { BottomNav } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
+
+/** Plafond serveur d'un lot de tickets. */
+const MAX_QUANTITY = 500;
 
 function FieldLabel({ children }: { children: string }) {
   return (
@@ -39,6 +52,7 @@ export default function GenerateVouchersScreen() {
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const router = useRouter();
   const qc = useQueryClient();
+  const toast = useToast();
 
   const plansQuery = useQuery({
     queryKey: ['plans', routerId],
@@ -55,14 +69,12 @@ export default function GenerateVouchersScreen() {
   const [outputFormat, setOutputFormat] = useState<OutputFormat>('screen');
   const [formatOpen, setFormatOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [justGenerated, setJustGenerated] = useState<VoucherItem[] | null>(null);
   const [printBusy, setPrintBusy] = useState(false);
 
   const selectedPlan = plansQuery.data?.find((p) => p.id === planId) ?? null;
 
   async function printBatch(codes: VoucherItem[], plan: Plan) {
-    setError(null);
     setPrintBusy(true);
     try {
       const r = routerQuery.data;
@@ -75,16 +87,19 @@ export default function GenerateVouchersScreen() {
         template: r?.ticketTemplate,
       });
     } catch (e) {
-      setError(extractErrorMessage(e));
+      toast.error(describeError(e).message);
     } finally {
       setPrintBusy(false);
     }
   }
 
   async function generate() {
-    setError(null);
-    if (!planId || quantity < 1) {
-      setError('Choisissez un forfait et une quantité.');
+    if (!planId) {
+      toast.error('Choisissez d’abord un forfait.');
+      return;
+    }
+    if (quantity < 1 || quantity > MAX_QUANTITY) {
+      toast.error(`La quantité doit être comprise entre 1 et ${MAX_QUANTITY}.`);
       return;
     }
     setBusy(true);
@@ -98,7 +113,7 @@ export default function GenerateVouchersScreen() {
       if (!res.pushedByServer && res.push) {
         const creds = await getLocalCredentials(routerId);
         if (!creds) {
-          setError(
+          toast.error(
             'Identifiants locaux requis : testez d’abord la connexion LAN sur ce routeur.',
           );
           return;
@@ -112,11 +127,14 @@ export default function GenerateVouchersScreen() {
       setJustGenerated(res.vouchers);
       await qc.invalidateQueries({ queryKey: ['vouchers', routerId] });
       await qc.invalidateQueries({ queryKey: ['batches', routerId] });
+      toast.success(
+        `${res.vouchers.length} ticket${res.vouchers.length > 1 ? 's' : ''} généré${res.vouchers.length > 1 ? 's' : ''}.`,
+      );
       if (outputFormat === 'pdf' && selectedPlan) {
         await printBatch(res.vouchers, selectedPlan);
       }
     } catch (e) {
-      setError(extractErrorMessage(e));
+      toast.error(describeError(e).message);
     } finally {
       setBusy(false);
     }
@@ -148,7 +166,7 @@ export default function GenerateVouchersScreen() {
               Générez des codes d’accès WiFi uniques RouterOS
             </Text>
           </View>
-          <Pressable
+          <Press
             accessibilityLabel="Paramètres du ticket"
             onPress={() =>
               router.push({ pathname: '/ticket-settings', params: { routerId } })
@@ -165,10 +183,8 @@ export default function GenerateVouchersScreen() {
             }}
           >
             <Ionicons name="settings-outline" size={20} color={theme.textMuted} />
-          </Pressable>
+          </Press>
         </View>
-
-        {error ? <Banner tone="danger">{error}</Banner> : null}
 
         <View style={{ gap: 16 }}>
           {/* Serveur Hotspot (routeur déjà sélectionné) */}
@@ -194,20 +210,47 @@ export default function GenerateVouchersScreen() {
           <View>
             <FieldLabel>Forfait / Plan WiFi</FieldLabel>
             {plansQuery.isLoading ? (
-              <Text style={{ color: theme.textMuted, fontSize: 13 }}>
-                Chargement des forfaits…
-              </Text>
+              <View style={{ gap: 8 }}>
+                {[0, 1, 2].map((i) => (
+                  <Skeleton key={i} height={46} radius={12} />
+                ))}
+              </View>
+            ) : plansQuery.isError ? (
+              <ErrorState
+                compact
+                message={describeError(plansQuery.error).message}
+                onRetry={() => plansQuery.refetch()}
+                retrying={plansQuery.isFetching}
+              />
             ) : !plansQuery.data?.length ? (
-              <Text style={{ color: theme.textMuted, fontSize: 13 }}>
-                Aucun forfait — créez-en un dans « Forfaits ».
-              </Text>
+              <Press
+                accessibilityLabel="Créer un forfait"
+                onPress={() => router.push({ pathname: '/plans', params: { routerId } })}
+                style={{
+                  borderWidth: 1,
+                  borderColor: theme.primary + '55',
+                  backgroundColor: theme.primary + '14',
+                  borderRadius: 12,
+                  padding: 14,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                }}
+              >
+                <Ionicons name="add-circle-outline" size={18} color={theme.primary} />
+                <Text style={{ color: theme.primary, fontSize: 13, fontWeight: '600' }}>
+                  Aucun forfait — créez-en un pour générer des tickets.
+                </Text>
+              </Press>
             ) : (
               <View style={{ gap: 8 }}>
-                {plansQuery.data.map((p: Plan) => {
+                {plansQuery.data.map((p: Plan, i: number) => {
                   const selected = p.id === planId;
                   return (
-                    <Pressable
-                      key={p.id}
+                    <FadeIn key={p.id} delay={i * 45}>
+                    <Press
+                      accessibilityRole="radio"
+                      accessibilityLabel={p.name}
                       onPress={() => setPlanId(p.id)}
                       style={{
                         borderWidth: 1,
@@ -229,7 +272,8 @@ export default function GenerateVouchersScreen() {
                       >
                         {p.priceXof.toLocaleString('fr-FR')} FCFA
                       </Text>
-                    </Pressable>
+                    </Press>
+                    </FadeIn>
                   );
                 })}
               </View>
@@ -271,7 +315,7 @@ export default function GenerateVouchersScreen() {
           {/* Format de sortie */}
           <View>
             <FieldLabel>Format de Sortie (Impression / Export)</FieldLabel>
-            <Pressable
+            <Press
               onPress={() => setFormatOpen((v) => !v)}
               style={{
                 backgroundColor: theme.surfaceAlt,
@@ -296,7 +340,7 @@ export default function GenerateVouchersScreen() {
                 </Text>
               </View>
               <Ionicons name="chevron-down" size={16} color={theme.textMuted} />
-            </Pressable>
+            </Press>
 
             {formatOpen ? (
               <View style={{ gap: 8, marginTop: 8 }}>
@@ -320,7 +364,7 @@ export default function GenerateVouchersScreen() {
                 ).map((opt) => {
                   const active = outputFormat === opt.value;
                   return (
-                    <Pressable
+                    <Press
                       key={opt.value}
                       onPress={() => {
                         setOutputFormat(opt.value);
@@ -353,7 +397,7 @@ export default function GenerateVouchersScreen() {
                       {active ? (
                         <Ionicons name="checkmark" size={18} color={theme.primary} />
                       ) : null}
-                    </Pressable>
+                    </Press>
                   );
                 })}
               </View>
@@ -374,7 +418,7 @@ export default function GenerateVouchersScreen() {
                 padding: 6,
               }}
             >
-              <Pressable
+              <Press
                 accessibilityLabel="Diminuer la quantité"
                 onPress={() => setQuantity((q) => Math.max(1, q - 1))}
                 disabled={quantity <= 1}
@@ -389,14 +433,37 @@ export default function GenerateVouchersScreen() {
                 }}
               >
                 <Ionicons name="remove" size={20} color={theme.text} />
-              </Pressable>
-              <Text style={{ color: theme.text, fontSize: 20, fontWeight: '800' }}>
-                {quantity}
-              </Text>
-              <Pressable
+              </Press>
+              {/* Saisie directe : générer 200 tickets ne peut pas passer par
+                  200 appuis sur « + ». */}
+              <TextInput
+                accessibilityLabel="Quantité de tickets"
+                value={String(quantity)}
+                onChangeText={(v) => {
+                  const digits = v.replace(/[^0-9]/g, '').slice(0, 3);
+                  setQuantity(
+                    digits === ''
+                      ? 0
+                      : Math.min(MAX_QUANTITY, Number.parseInt(digits, 10)),
+                  );
+                }}
+                onBlur={() => setQuantity((q) => Math.max(1, q))}
+                keyboardType="number-pad"
+                inputMode="numeric"
+                selectTextOnFocus
+                style={{
+                  color: theme.text,
+                  fontSize: 20,
+                  fontWeight: '800',
+                  minWidth: 70,
+                  textAlign: 'center',
+                  paddingVertical: 4,
+                }}
+              />
+              <Press
                 accessibilityLabel="Augmenter la quantité"
-                onPress={() => setQuantity((q) => Math.min(500, q + 1))}
-                disabled={quantity >= 500}
+                onPress={() => setQuantity((q) => Math.min(MAX_QUANTITY, q + 1))}
+                disabled={quantity >= MAX_QUANTITY}
                 style={{
                   width: 44,
                   height: 44,
@@ -404,11 +471,40 @@ export default function GenerateVouchersScreen() {
                   backgroundColor: theme.surface,
                   alignItems: 'center',
                   justifyContent: 'center',
-                  opacity: quantity >= 500 ? 0.4 : 1,
+                  opacity: quantity >= MAX_QUANTITY ? 0.4 : 1,
                 }}
               >
                 <Ionicons name="add" size={20} color={theme.text} />
-              </Pressable>
+              </Press>
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+              {[10, 25, 50, 100].map((n) => (
+                <Press
+                  key={n}
+                  accessibilityLabel={`${n} tickets`}
+                  onPress={() => setQuantity(n)}
+                  style={{
+                    flex: 1,
+                    borderWidth: 1,
+                    borderColor: quantity === n ? theme.primary : theme.border,
+                    backgroundColor:
+                      quantity === n ? theme.primary + '1A' : 'transparent',
+                    borderRadius: 10,
+                    paddingVertical: 8,
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: quantity === n ? theme.primary : theme.textMuted,
+                      fontSize: 13,
+                      fontWeight: '700',
+                    }}
+                  >
+                    {n}
+                  </Text>
+                </Press>
+              ))}
             </View>
           </View>
 
