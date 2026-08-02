@@ -13,9 +13,9 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { WireGuardService } from '../../common/wireguard/wireguard.service';
 
-const RECONCILE_INTERVAL_MS = 60_000;
+const RECONCILE_INTERVAL_MS = 20_000;
 // A router is ONLINE when its tunnel handshaked within this window.
-const HANDSHAKE_FRESH_S = 180;
+const HANDSHAKE_FRESH_S = 75;
 
 /**
  * Keeps the wg-mgmt interface in sync with the DB (source of truth). Runtime
@@ -97,6 +97,13 @@ export class WireGuardReconciler implements OnModuleInit, OnModuleDestroy {
           type: NotificationType.ROUTER_OFFLINE,
           title: 'Routeur injoignable',
           body: `${before.alias || before.identity} ne répond plus.`,
+          data: { routerId: p.routerId },
+        });
+      } else if (before && before.health !== RouterHealth.ONLINE && online) {
+        this.events.publish(before.tenantId, {
+          type: NotificationType.ROUTER_ONLINE,
+          title: 'Routeur de nouveau joignable',
+          body: `${before.alias || before.identity} est de retour en ligne.`,
           data: { routerId: p.routerId },
         });
       }

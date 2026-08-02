@@ -458,6 +458,7 @@ enum NotificationType {
   SUBSCRIPTION_ACTIVATED // paiement validé, abonnement PRO actif
   UPGRADE_REQUESTED // un client demande PRO (destinée à la plateforme)
   ROUTER_OFFLINE // heartbeat manqué
+  ROUTER_ONLINE // routeur de nouveau joignable après une coupure
 }
 
 // ─── NOTIFICATION (flux in-app, pas de push OS pour l'instant) ─

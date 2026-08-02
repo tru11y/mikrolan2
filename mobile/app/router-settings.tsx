@@ -337,7 +337,7 @@ export default function RouterSettingsScreen() {
         visible={removeOpen}
         icon="trash-outline"
         title="Supprimer ce routeur ?"
-        message={`« ${routerQuery.data?.alias || routerQuery.data?.identity || 'Ce routeur'} » sera retiré de votre compte, ainsi que ses identifiants enregistrés sur ce téléphone. Les tickets déjà vendus sont conservés.`}
+        message={`« ${routerQuery.data?.alias || routerQuery.data?.identity || 'Ce routeur'} » sera supprimé définitivement, comme s'il n'avait jamais été ajouté : accès à distance désactivé, tickets et fichiers générés effacés. Impossible à annuler.`}
         confirmLabel="Supprimer"
         busy={removeBusy}
         onConfirm={removeRouter}

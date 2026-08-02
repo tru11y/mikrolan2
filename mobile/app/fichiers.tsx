@@ -11,7 +11,7 @@ import {
 } from '@/src/lib/api';
 import { printTickets, printTicketsDirect } from '@/src/lib/ticketsPdf';
 import { TicketCard } from '@/src/components/TicketCard';
-import { Badge, Banner, Button, Empty, Subtitle, Title, theme } from '@/src/components/ui';
+import { Badge, Banner, Button, ConfirmDialog, Empty, Subtitle, Title, theme } from '@/src/components/ui';
 import { BottomNav } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
@@ -57,6 +57,9 @@ export default function FichiersScreen() {
   const qc = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<BatchAction>(null);
+  const [confirmVoucher, setConfirmVoucher] = useState<VoucherItem | null>(null);
+  const [confirmBatch, setConfirmBatch] = useState<VoucherBatch | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const routerQuery = useQuery({
     queryKey: ['router', routerId],
@@ -123,6 +126,37 @@ export default function FichiersScreen() {
       await qc.invalidateQueries({ queryKey: ['vouchers', routerId] });
     } catch (e) {
       setError(extractErrorMessage(e));
+    }
+  }
+
+  async function deleteVoucherConfirmed() {
+    if (!confirmVoucher) return;
+    setDeleteBusy(true);
+    setError(null);
+    try {
+      await api.routers.deleteVoucher(routerId, confirmVoucher.id);
+      await qc.invalidateQueries({ queryKey: ['vouchers', routerId] });
+      setConfirmVoucher(null);
+    } catch (e) {
+      setError(extractErrorMessage(e));
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
+  async function deleteBatchConfirmed() {
+    if (!confirmBatch) return;
+    setDeleteBusy(true);
+    setError(null);
+    try {
+      await api.routers.deleteBatch(routerId, confirmBatch.id);
+      await qc.invalidateQueries({ queryKey: ['batches', routerId] });
+      await qc.invalidateQueries({ queryKey: ['vouchers', routerId] });
+      setConfirmBatch(null);
+    } catch (e) {
+      setError(extractErrorMessage(e));
+    } finally {
+      setDeleteBusy(false);
     }
   }
 
@@ -220,6 +254,23 @@ export default function FichiersScreen() {
                   >
                     <Ionicons name="print-outline" size={17} color={theme.primary} />
                   </Pressable>
+                  <Pressable
+                    accessibilityLabel="Supprimer le lot"
+                    onPress={() => setConfirmBatch(b)}
+                    disabled={busy !== null}
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 10,
+                      borderWidth: 1,
+                      borderColor: theme.danger + '40',
+                      backgroundColor: theme.danger + '18',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Ionicons name="trash-outline" size={17} color={theme.danger} />
+                  </Pressable>
                 </View>
               );
             })
@@ -264,6 +315,13 @@ export default function FichiersScreen() {
                         />
                       </View>
                     ) : null}
+                    <View style={{ flex: 1 }}>
+                      <Button
+                        title="Supprimer"
+                        variant="danger"
+                        onPress={() => setConfirmVoucher(v)}
+                      />
+                    </View>
                   </View>
                 </View>
               );
@@ -272,6 +330,30 @@ export default function FichiersScreen() {
         )}
       </ScrollView>
       <BottomNav active="fichiers" />
+
+      <ConfirmDialog
+        visible={confirmVoucher !== null}
+        icon="trash-outline"
+        title="Supprimer ce ticket ?"
+        message={`Le code ${confirmVoucher?.code ?? ''} sera supprimé définitivement — impossible à annuler.`}
+        confirmLabel="Supprimer"
+        tone="danger"
+        busy={deleteBusy}
+        onConfirm={deleteVoucherConfirmed}
+        onCancel={() => setConfirmVoucher(null)}
+      />
+
+      <ConfirmDialog
+        visible={confirmBatch !== null}
+        icon="trash-outline"
+        title="Supprimer ce lot ?"
+        message={`${confirmBatch?.generated ?? 0} ticket(s) de ce lot seront supprimés définitivement — impossible à annuler.`}
+        confirmLabel="Supprimer"
+        tone="danger"
+        busy={deleteBusy}
+        onConfirm={deleteBatchConfirmed}
+        onCancel={() => setConfirmBatch(null)}
+      />
     </View>
   );
 }

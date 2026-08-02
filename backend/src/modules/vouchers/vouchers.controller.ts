@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
@@ -58,11 +59,23 @@ export class VouchersController {
     return this.vouchers.listBatches(id);
   }
 
+  @Delete('batches/:batchId')
+  @Roles(UserRole.ADMIN)
+  removeBatch(@Param('batchId', ParseUUIDPipe) batchId: string) {
+    return this.vouchers.removeBatch(batchId);
+  }
+
   @Post(':voucherId/revoke')
   @Roles(UserRole.ADMIN)
   @HttpCode(200)
   revoke(@Param('voucherId', ParseUUIDPipe) voucherId: string) {
     return this.vouchers.revoke(voucherId);
+  }
+
+  @Delete(':voucherId')
+  @Roles(UserRole.ADMIN)
+  remove(@Param('voucherId', ParseUUIDPipe) voucherId: string) {
+    return this.vouchers.remove(voucherId);
   }
 
   private asStatus(value?: string): VoucherStatus | undefined {
