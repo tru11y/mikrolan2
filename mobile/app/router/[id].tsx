@@ -41,7 +41,7 @@ import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 import { RouterStatusDot } from '@/src/components/RouterStatusDot';
 
-const LOCAL_POLL_INTERVAL_MS = 3_000;
+const LOCAL_POLL_INTERVAL_MS = 15_000;
 
 function memPercent(res: SystemResource): number {
   const rec = res as unknown as Record<string, string>;
@@ -169,14 +169,14 @@ export default function RouterDetailScreen() {
     queryKey: ['router', id],
     queryFn: () => api.routers.get(id),
     enabled: Boolean(id),
-    refetchInterval: 3_000,
+    refetchInterval: LOCAL_POLL_INTERVAL_MS,
   });
 
   const remoteQuery = useQuery({
     queryKey: ['router-remote', id],
     queryFn: () => api.routers.remoteStatus(id),
     enabled: Boolean(id) && isPro,
-    refetchInterval: 3_000,
+    refetchInterval: LOCAL_POLL_INTERVAL_MS,
   });
 
   const salesQuery = useQuery({
@@ -194,7 +194,7 @@ export default function RouterDetailScreen() {
   const activeSessionsQuery = useQuery({
     queryKey: ['router-active-sessions', id, query.data?.mode],
     enabled: Boolean(id) && query.isSuccess,
-    refetchInterval: 3_000,
+    refetchInterval: LOCAL_POLL_INTERVAL_MS,
     queryFn: async (): Promise<number | null> => {
       if (query.data!.mode === 'REMOTE') {
         const list = await api.routers.listSessions(id);
