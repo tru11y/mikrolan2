@@ -41,6 +41,7 @@ export default function RapportScreen() {
   const clients = useQuery({
     queryKey: ['clients', routerId],
     queryFn: () => api.metrics.recentClients(30, routerId),
+    refetchInterval: 3_000,
   });
   const data = metrics.data;
   const maxRevenue = Math.max(1, ...(data?.byPlan.map((p) => p.revenueXof) ?? []));
