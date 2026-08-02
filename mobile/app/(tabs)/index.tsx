@@ -1,10 +1,15 @@
+import { useCallback, useState } from 'react';
 import { ScrollView, View, Text, Pressable } from 'react-native';
-import { Redirect, useRouter } from 'expo-router';
+import { Redirect, useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
-import { api, type RouterItem } from '@/src/lib/api';
+import { api, type RouterHealth, type RouterItem } from '@/src/lib/api';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
 import { useAuth } from '@/src/providers/auth-provider';
+import { getLocalCredentials } from '@/src/lib/router-credentials';
+import { getWifiInfo, sameSubnet24 } from '@/src/lib/lanBinder';
+import { withApi } from '@/src/services/mikrotik-lan/MikroTikApiClient';
+import { RouterStatusDot } from '@/src/components/RouterStatusDot';
 import {
   AuroraCard,
   Badge,
@@ -22,6 +27,9 @@ import {
 } from '@/src/components/ui';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
+
+const LOCAL_PROBE_INTERVAL_MS = 20_000;
+const LOCAL_PROBE_TIMEOUT_MS = 3_000;
 
 function initialsOf(name?: string): string {
   if (!name) return 'ML';
@@ -94,14 +102,71 @@ export default function MaisonScreen() {
   const navHeight = useBottomNavHeight();
   const { entitlement } = useAuth();
   const me = useQuery({ queryKey: ['me'], queryFn: api.auth.me });
-  const routers = useQuery({ queryKey: ['routers'], queryFn: api.routers.list });
+  const routers = useQuery({
+    queryKey: ['routers'],
+    queryFn: api.routers.list,
+    // Filet de sécurité si le SSE (live-events-provider) dégrade en repli :
+    // le voyant ne doit jamais rester figé plus de ~20s sur un état obsolète.
+    refetchInterval: 20_000,
+  });
   const metrics = useQuery({
     queryKey: ['metrics', 'today'],
     queryFn: () => api.metrics.summary('today'),
   });
 
   const list: RouterItem[] = routers.data ?? [];
-  const online = list.filter((r) => r.health === 'ONLINE').length;
+
+  // Un routeur LOCAL n'est joignable que depuis le LAN du téléphone — le
+  // serveur ne peut pas le savoir (health reste UNKNOWN en base). On ne
+  // peut physiquement être connecté qu'à un seul LAN à la fois, donc on
+  // sonde uniquement celui dont l'hôte correspond au Wi-Fi courant.
+  const [localProbe, setLocalProbe] = useState<{
+    routerId: string;
+    health: RouterHealth;
+  } | null>(null);
+
+  const probeLocalRouter = useCallback(async () => {
+    const wifi = await getWifiInfo();
+    if (!wifi) {
+      setLocalProbe(null);
+      return;
+    }
+    for (const r of list) {
+      if (r.mode !== 'LOCAL') continue;
+      const creds = await getLocalCredentials(r.id);
+      if (!creds) continue;
+      const onLan =
+        creds.host === wifi.gateway || sameSubnet24(creds.host, wifi.ipAddress);
+      if (!onLan) continue;
+      try {
+        await withApi(
+          { ...creds, timeoutMs: LOCAL_PROBE_TIMEOUT_MS },
+          (c) => c.systemResource(),
+        );
+        setLocalProbe({ routerId: r.id, health: 'ONLINE' });
+      } catch {
+        setLocalProbe({ routerId: r.id, health: 'OFFLINE' });
+      }
+      return;
+    }
+    setLocalProbe(null);
+  }, [list]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void probeLocalRouter();
+      const timer = setInterval(() => void probeLocalRouter(), LOCAL_PROBE_INTERVAL_MS);
+      return () => clearInterval(timer);
+    }, [probeLocalRouter]),
+  );
+
+  function healthOf(r: RouterItem): RouterHealth {
+    return r.mode === 'LOCAL' && localProbe?.routerId === r.id
+      ? localProbe.health
+      : r.health;
+  }
+
+  const online = list.filter((r) => healthOf(r) === 'ONLINE').length;
   const tenantName = me.data?.tenant.name ?? 'MikroLan2';
   const firstName = tenantName.split(/\s+/)[0];
   const isPro = entitlement.tier === 'PRO';
@@ -365,7 +430,9 @@ export default function MaisonScreen() {
             Aucun routeur. Ajoutez-en un pour commencer.
           </Text>
         ) : (
-          list.map((r) => (
+          list.map((r) => {
+            const health = healthOf(r);
+            return (
             <Pressable key={r.id} onPress={() => router.push(`/router/${r.id}`)}>
               <View
                 style={{
@@ -385,9 +452,10 @@ export default function MaisonScreen() {
                     <Text style={{ color: theme.text, fontWeight: '700', fontSize: type.body }}>
                       {r.alias || r.identity}
                     </Text>
+                    <RouterStatusDot health={health} />
                     <Badge
-                      label={routerHealth(r.health).label}
-                      tone={routerHealth(r.health).tone}
+                      label={routerHealth(health).label}
+                      tone={routerHealth(health).tone}
                     />
                   </Row>
                   <Mono style={{ color: theme.textMuted, fontSize: type.micro, marginTop: 2 }}>
@@ -398,7 +466,8 @@ export default function MaisonScreen() {
                 <Ionicons name="chevron-forward" size={icon.md} color={theme.textMuted} />
               </View>
             </Pressable>
-          ))
+            );
+          })
         )}
       </Card>
 

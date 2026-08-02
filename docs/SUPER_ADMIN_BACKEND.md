@@ -1,171 +1,169 @@
-# Back-office super admin — contrat serveur à implémenter
+# Back-office super admin
 
-État au 2026-08-01. Le travail décrit ici **n'est pas fait** : l'application
-mobile est prête à le consommer, le backend NestJS ne l'expose pas encore.
+État au 2026-08-02. **Implémenté et vérifié en local** (migration appliquée,
+build vert, tests de rôle verts, parcours de bout en bout rejoué). Reste à
+déployer sur le VPS — voir la section « Déploiement » en fin de document.
 
-## Ce qui existe déjà
+## Modèle de données
 
-| Élément | Où |
-|---|---|
-| Rôle `SUPER_ADMIN` | `prisma/schema.prisma` → `enum UserRole` |
-| Bypass d'isolation tenant | `src/prisma/prisma.service.ts:60` |
-| Bypass d'entitlement | `src/common/guards/entitlement.guard.ts:46` |
-| Hiérarchie de rôles | `src/common/guards/roles.guard.ts:17` |
-| Activation manuelle d'un abonnement | `POST /subscriptions/:tenantId/activate` |
-| Désactivation | `POST /subscriptions/:tenantId/deactivate` |
+Migration `20260801223609_admin_backoffice_tiers_events`.
 
-L'écran `mobile/app/admin.tsx` consomme aujourd'hui **uniquement** ces deux
-routes. Tout le reste ci-dessous est manquant.
-
-## Ce qui manque
-
-### 1. Formules d'abonnement pilotées par le super admin
-
-Aujourd'hui les prix sont écrits en dur à deux endroits qui ne se parlent pas :
-
-- `mobile/src/config/tiers.ts` — la grille affichée au client (5 000 / 15 000 /
-  35 000 XOF) ;
-- `backend/src/modules/subscriptions/subscriptions.service.ts:15` —
-  `PRO_MONTHLY_XOF = 15000`, le montant réellement facturé.
-
-Changer un prix impose donc de publier un APK, et les deux valeurs peuvent
-diverger sans que rien ne le signale.
-
-**Modèle Prisma proposé :**
-
-```prisma
-model SubscriptionTier {
-  id              String   @id @default(uuid())
-  key             String   @unique   // essentiel | avance | entreprise
-  name            String
-  monthlyXof      Int
-  annualDiscount  Int      @default(20) // en %
-  routerLimit     Int?                  // null = illimité
-  remoteAccess    Boolean  @default(false)
-  a4Printing      Boolean  @default(false)
-  cloudBackup     Boolean  @default(false)
-  prioritySupport Boolean  @default(false)
-  badge           String?
-  features        Json                  // [{ label, included }]
-  displayOrder    Int      @default(0)
-  active          Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-}
-```
-
-**Routes :**
-
-| Méthode | Chemin | Rôle | Rôle métier |
-|---|---|---|---|
-| `GET` | `/subscriptions/tiers` | `@Public` / authentifié | grille lue par l'app cliente |
-| `POST` | `/admin/tiers` | `SUPER_ADMIN` | créer une formule |
-| `PATCH` | `/admin/tiers/:id` | `SUPER_ADMIN` | changer nom, prix, limites |
-| `DELETE` | `/admin/tiers/:id` | `SUPER_ADMIN` | archiver (soft delete) |
-
-Côté mobile, seul le corps de `loadTiers()` (`src/config/tiers.ts`) change :
-appel réseau, repli sur la constante locale si le serveur est injoignable.
-`Invoice.amount` doit être calculé à partir du tier, plus de `PRO_MONTHLY_XOF`.
-
-> Règle : un changement de prix ne modifie **jamais** rétroactivement une
-> `Invoice` déjà émise. Copier le montant dans l'invoice à la création.
-
-### 2. Liste des comptes et des utilisateurs
-
-Aucune route ne permet aujourd'hui de savoir qui utilise la plateforme.
-
-| Méthode | Chemin | Retour |
+| Ajout | Où | Pourquoi |
 |---|---|---|
-| `GET` | `/admin/tenants?status=&q=&cursor=` | pagination curseur : `id, name, slug, status, plan, tier, routerCount, userCount, createdAt, lastActivityAt` |
-| `GET` | `/admin/tenants/:id` | détail + abonnement + routeurs + dernières factures |
-| `GET` | `/admin/users?tenantId=&q=&cursor=` | `id, email, name, role, status, tenantName, lastLoginAt` |
-| `PATCH` | `/admin/users/:id/status` | suspendre / réactiver (jamais de suppression dure) |
-| `PATCH` | `/admin/tenants/:id/status` | `ACTIVE` / `SUSPENDED` |
+| `SubscriptionTier` | nouveau modèle, **hors tenant** | la grille tarifaire, pilotée par le super admin |
+| `BillingPeriod` (`MONTHLY`/`ANNUAL`) | enum | la périodicité est facturée, donc stockée |
+| `Subscription.tierId`, `.billingPeriod` | FK + colonne | savoir *quelle* formule un compte a souscrite |
+| `Invoice.tierId`, `.billingPeriod`, `.periodDays`, `.note` | colonnes | la note du conseiller vivait dans `AuditLog.metadata`, illisible depuis la file d'attente |
+| `User.lastLoginAt` | colonne | distinguer un compte actif d'un compte abandonné |
+| `AuditAction.SUSPEND` / `.RESTORE` | enum | tracer les décisions d'administration |
+| `NotificationType` × 4 | enum | `SESSION_ENDED`, `SUBSCRIPTION_ACTIVATED`, `UPGRADE_REQUESTED`, `ROUTER_OFFLINE` |
+| Index | `Tenant(createdAt)`, `Tenant(status)`, `User(tenantId, createdAt)`, `User(createdAt)`, `Invoice(status, createdAt)`, `Subscription(status)` | pagination par curseur et file d'attente sans seq scan |
 
-Contraintes :
+**Règle de facturation :** `Invoice.amount` est figé à l'émission. Une révision
+de la grille ne réécrit jamais une facture déjà émise — vérifié par un test de
+bout en bout (tarif porté à 18 000 puis ramené à 15 000 : la facture reste à
+162 000).
 
-- pagination **curseur** (`createdAt, id`), pas `offset` — la liste grandit ;
-- index requis : `User.email` existe déjà ; ajouter `Tenant.createdAt` et
-  `User(tenantId, createdAt)` ;
-- ces routes traversent l'isolation tenant : elles doivent être marquées
-  explicitement et couvertes par un test qui vérifie qu'un `OWNER` reçoit 403.
+## Routes
 
-### 3. Demandes d'activation en attente
+Toutes sous `/api`. `AdminController` porte `@Roles(SUPER_ADMIN)` **au niveau de
+la classe** : une route ajoutée demain est fermée par défaut.
 
-`requestUpgrade` crée une `Invoice` `PENDING` mais rien ne permet de les lister.
-C'est la file de travail quotidienne du super admin.
+### Grille tarifaire
 
-| Méthode | Chemin | Retour |
+| Méthode | Chemin | Rôle |
 |---|---|---|
-| `GET` | `/admin/invoices?status=PENDING` | `id, tenantId, tenantName, amount, createdAt, note` |
+| `GET` | `/subscriptions/tiers` | tout compte authentifié — c'est ce que lit l'app |
+| `GET` | `/admin/tiers` | `SUPER_ADMIN` (archivées comprises) |
+| `POST` | `/admin/tiers` | `SUPER_ADMIN` |
+| `PATCH` | `/admin/tiers/:id` | `SUPER_ADMIN` |
+| `DELETE` | `/admin/tiers/:id` | `SUPER_ADMIN` — **archive**, ne supprime pas |
 
-⚠️ La note du client (résumé du conseiller, cf. `src/lib/proAdvisor.ts`) est
-aujourd'hui rangée dans `AuditLog.metadata.note` et non sur l'`Invoice` : la
-remonter dans la réponse, ou ajouter `Invoice.note String?`.
+L'archivage plutôt que la suppression : des abonnements et des factures pointent
+sur la formule, et l'historique de facturation doit rester lisible.
 
-### 4. Chiffres de la plateforme
+### Comptes, utilisateurs, file d'attente
 
-| Méthode | Chemin | Retour |
+| Méthode | Chemin | Notes |
 |---|---|---|
-| `GET` | `/admin/metrics` | comptes actifs / en essai / verrouillés, MRR, essais expirant sous 7 jours, routeurs en ligne, tickets vendus sur 30 j |
+| `GET` | `/admin/tenants?q=&status=&cursor=&limit=` | pagination curseur |
+| `GET` | `/admin/tenants/:id` | détail + abonnement + utilisateurs + routeurs + 10 dernières factures |
+| `PATCH` | `/admin/tenants/:id/status` | `ACTIVE`/`SUSPENDED` |
+| `GET` | `/admin/users?q=&tenantId=&cursor=&limit=` | |
+| `PATCH` | `/admin/users/:id/status` | `ACTIVE`/`SUSPENDED` |
+| `GET` | `/admin/invoices?status=PENDING` | la file de travail quotidienne, avec la note du client |
+| `GET` | `/admin/metrics` | comptes, MRR, essais, routeurs, tickets 30 j |
+| `GET` | `/admin/audit?tenantId=&action=&cursor=` | lecture seule |
 
-Le MRR se calcule depuis les `Subscription` actives × prix du tier, pas depuis
-les `Invoice` (qui incluent l'annuel).
+Garde-fous codés dans `admin.service.ts` :
 
-### 5. Journal d'audit consultable
+- pagination **curseur** (`cursor` = id du dernier élément, `nextCursor: null`
+  en fin de liste) — un `offset` dérive dès qu'une ligne est insérée ;
+- recherche à partir de **3 caractères** — en dessous, `?q=a` reviendrait à
+  énumérer les adresses e-mail de la plateforme ;
+- impossible de suspendre son propre compte, ni un `SUPER_ADMIN` ;
+- une suspension révoque les refresh tokens. Les jetons d'accès déjà émis
+  restent valides jusqu'à expiration (quelques minutes) : le `JwtAuthGuard` ne
+  relit pas le statut en base à chaque requête, et l'y ajouter coûterait une
+  requête par appel.
 
-`AuditLog` est alimenté mais jamais lu.
+**MRR** : calculé sur les abonnements actifs ramenés au mois, jamais sur les
+factures — une facture annuelle encaisse douze mois d'un coup et ferait bondir
+la courbe sans que rien n'ait changé. Les abonnements activés avant la grille
+n'ont pas de formule : ils sont exclus du MRR et remontés dans
+`revenue.untieredActive` plutôt que de fausser le chiffre en silence.
 
-| Méthode | Chemin |
-|---|---|
-| `GET` | `/admin/audit?tenantId=&action=&cursor=` |
+### Temps réel (SSE)
 
-Append-only : aucune route d'écriture ou de suppression.
-
-### 6. Temps réel
-
-Le suivi « en direct » de l'application est un sondage toutes les 5 s
-(`mobile/src/providers/live-events-provider.tsx`). C'est un pis-aller : à
-100 comptes actifs cela fait 20 requêtes/seconde pour des évènements rares.
-
-**Cible :** `GET /notifications/stream` en SSE (`@Sse` de NestJS, déjà
-disponible ; Fastify le supporte via `fastify-sse-v2`).
-
-- un flux par tenant, filtré par le `TenantContext` du JWT ;
-- `Last-Event-ID` pour rattraper ce qui a été manqué hors ligne ;
-- heartbeat toutes les 20 s (les proxys coupent les connexions inactives) ;
-- côté mobile : seul le corps de `LiveEventsProvider` change, les écrans
-  consomment déjà `useLiveEvents()`.
-
-**Évènements à publier :**
-
-| Type | Déclencheur | Existe ? |
+| Méthode | Chemin | Rôle |
 |---|---|---|
-| `VOUCHER_ACTIVATED` | un ticket se connecte (`sessions.service.ts:132`) | ✅ créé, non poussé |
-| `SESSION_ENDED` | fin de session hotspot | ❌ |
-| `SUBSCRIPTION_ACTIVATED` | le super admin valide un paiement | ❌ |
-| `UPGRADE_REQUESTED` | un client demande PRO (à destination du super admin) | ❌ |
-| `ROUTER_OFFLINE` | heartbeat manqué | ❌ |
+| `GET` | `/events/stream` | tout compte — canal du tenant, `@AlwaysAllowed` |
+| `GET` | `/events/platform` | `SUPER_ADMIN` — demandes d'activation, incidents |
 
-Ajouter les valeurs correspondantes à `enum NotificationType`.
+Le canal du tenant reste ouvert même quand l'essai a expiré : c'est par là que
+le client apprend que son paiement a été validé.
 
-## Ordre d'implémentation conseillé
+- bus en mémoire (`events.service.ts`), un `Subject` RxJS par canal ;
+- **tampon de reprise** de 100 évènements par canal, battement de cœur toutes
+  les 20 s (sans quoi un proxy coupe la connexion), ménage des canaux inactifs
+  au bout de 15 min ;
+- `publish()` ne lève jamais : un évènement perdu ne doit pas faire échouer
+  l'opération métier qui l'a déclenché ;
+- `@NoEnvelope()` exclut ces routes de l'enveloppe `{ success, data, … }`, qui
+  emballait chaque message et rendait le flux illisible.
 
-1. `GET /admin/invoices?status=PENDING` — débloque le quotidien du super admin ;
-2. `SubscriptionTier` + CRUD — supprime les prix en dur des deux côtés ;
-3. `GET /admin/tenants` + `/admin/users` — visibilité sur le parc ;
-4. SSE — remplace le sondage ;
-5. `/admin/metrics` et `/admin/audit`.
+⚠️ **Piège vérifié :** NestJS écrit **sa propre numérotation** dans la ligne
+`id:` du flux — un battement de cœur émis sans id ressort quand même en
+« id: 1 ». Le curseur de reprise est donc l'identifiant porté par la **charge
+utile JSON**, pas la ligne `id:`, et `readLastEventId()` fait primer le
+paramètre de requête sur l'en-tête `Last-Event-ID`.
 
-## Points de vigilance
+Évènements publiés :
 
-- **Isolation.** Le middleware Prisma (`prisma.service.ts:60`) laisse passer
-  `SUPER_ADMIN` sans filtre `tenantId`. Chaque nouvelle route admin doit avoir
-  un test qui vérifie le 403 pour `OWNER`, `ADMIN` et `MEMBER`.
-- **Rate limiting.** Les routes admin listent des données sensibles :
-  Throttler strict, et pas d'énumération d'e-mails via `?q=`.
-- **Audit.** Toute action admin (activation, suspension, changement de prix)
-  écrit une `AuditLog`. Le service d'audit ne doit jamais lever.
-- **Migration.** L'ajout de `SubscriptionTier` nécessite un seed des trois
-  formules actuelles avec exactement les prix de `mobile/src/config/tiers.ts`,
-  faute de quoi les clients verront les prix changer au déploiement.
+| Type | Déclencheur | Source |
+|---|---|---|
+| `VOUCHER_ACTIVATED` | un ticket se connecte | `sessions.service.ts` |
+| `SESSION_ENDED` | fin de session hotspot | `sessions.service.ts` |
+| `SUBSCRIPTION_ACTIVATED` | le super admin valide un paiement | `subscriptions.service.ts` |
+| `UPGRADE_REQUESTED` | un client demande PRO (canal plateforme) | `subscriptions.service.ts` |
+| `ROUTER_OFFLINE` | transition en ligne → hors ligne | `wireguard-reconciler.service.ts` |
+
+`ROUTER_OFFLINE` n'est émis **que sur la transition** : sans cela un routeur
+éteint réémettrait une alerte toutes les minutes.
+
+## Portée assumée : un seul processus
+
+Le bus vit en mémoire. Les abonnés d'une instance ne voient que les évènements
+publiés par cette instance — exact tant que l'API tourne dans un conteneur
+unique, ce qui est le cas en production. Passer à plusieurs répliques impose de
+remplacer le `Subject` par un pub/sub Redis ; seul `events.service.ts`
+changerait.
+
+## Côté application
+
+- `src/lib/sse.ts` — client SSE sur `XMLHttpRequest`. `EventSource` n'existe pas
+  dans React Native et les implémentations tierces imposent un module natif,
+  donc une reconstruction de l'APK ; celle-ci n'ajoute **aucune dépendance** et
+  sait poser l'en-tête `Authorization`, ce qu'`EventSource` ne fait pas.
+  Reconnexion à attente croissante (2 s → 30 s).
+- `src/providers/live-events-provider.tsx` — ouvre le flux, remonte les
+  évènements en toast quel que soit l'écran, invalide les requêtes concernées,
+  ferme le socket quand l'écran s'éteint. **Repli automatique sur le sondage**
+  après 3 échecs consécutifs : un pare-feu qui casse les connexions longues ne
+  doit pas rendre l'app aveugle.
+- `src/config/tiers.ts` — `loadTiers()` lit le serveur, avec une copie hors
+  ligne pour l'affichage seul. Elle ne sert **jamais** à facturer : le montant
+  est calculé côté serveur à la demande d'activation.
+- `src/lib/proAdvisor.ts` — le conseiller raisonne sur les **capacités** des
+  formules (routeurs, accès distant, impression A4), jamais sur leurs noms : le
+  super admin peut renommer, retarifer ou ajouter une formule sans que ce
+  fichier bouge.
+- `app/admin.tsx` — back-office en quatre sections : Aperçu, Demandes (avec
+  compteur), Comptes/Utilisateurs, Formules.
+
+## Tests
+
+`src/modules/admin/admin.roles.spec.ts` — énumère les méthodes du contrôleur par
+réflexion et vérifie que `MEMBER`, `ADMIN` et `OWNER` sont refusés sur
+**chacune**, y compris celles ajoutées plus tard. Idem pour `/events/platform`.
+
+Vérifié aussi de bout en bout contre une base réelle : 403 pour un `OWNER` sur
+`/admin/*`, flux SSE livré, prix annuel calculé (15 000 −20 % → 12 000/mois →
+144 000/an), facture figée après changement de tarif, reprise `lastEventId`
+qui ne rejoue pas un évènement déjà vu.
+
+## Déploiement
+
+1. `npx prisma migrate deploy` sur le VPS (la migration ajoute des colonnes
+   *nullables* et des index : pas de réécriture de table, pas de verrou long).
+2. `npm run prisma:seed` — crée les trois formules aux **prix actuels**
+   (5 000 / 15 000 / 35 000, remise 20 %). Sans ce seed,
+   `/subscriptions/tiers` renvoie une liste vide et l'app retombe sur sa copie
+   hors ligne ; `request-upgrade` répondrait 400 « Aucune formule payante n'est
+   publiée ».
+3. Vérifier que le reverse proxy **ne met pas en tampon** `/api/events/*`
+   (`proxy_buffering off`, `proxy_read_timeout` généreux), sinon le SSE ne
+   sort pas. ⚠️ La configuration nginx est hors périmètre de cet agent : à
+   faire manuellement.
+4. Rattacher les abonnements historiques à une formule : ils apparaissent dans
+   `GET /admin/metrics` sous `revenue.untieredActive`.

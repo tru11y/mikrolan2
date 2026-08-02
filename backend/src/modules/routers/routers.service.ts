@@ -9,6 +9,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CryptoService } from '../../common/crypto/crypto.service';
 import { getTenantContext } from '../../common/context/tenant-context';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { WireGuardService } from '../../common/wireguard/wireguard.service';
 import { CreateRouterDto, UpdateRouterDto } from './dto/router.schemas';
 import { TicketTemplateDto } from './dto/ticket-template.schemas';
 
@@ -33,6 +34,7 @@ export class RoutersService {
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
     private readonly subscriptions: SubscriptionsService,
+    private readonly wg: WireGuardService,
   ) {}
 
   // Remote (cloud + WireGuard) management is a PRO-only feature.
@@ -151,12 +153,34 @@ export class RoutersService {
     return this.findOne(id);
   }
 
+  /**
+   * Permanent, cascading delete — not a soft delete. A deleted router (and, if
+   * PRO, its WireGuard tunnel) must behave as if it had never been added.
+   * Order follows the real FK dependencies in schema.prisma: Session →
+   * Voucher → VoucherBatch → Plan (router-scoped) → RemotePeer → Router.
+   * AuditLog/Notification keep their (FK-less) references — history survives.
+   */
   async remove(id: string) {
     await this.findOne(id);
-    await this.prisma.router.update({
-      where: { id },
-      data: { deletedAt: new Date() },
+
+    const peer = await this.prisma.remotePeer.findFirst({ where: { routerId: id } });
+    if (peer) {
+      try {
+        await this.wg.removePeer(peer.wgPublicKey);
+      } catch {
+        // best-effort, same as remote-access.service.ts revoke() — proceed regardless
+      }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.session.deleteMany({ where: { routerId: id } });
+      await tx.voucher.deleteMany({ where: { routerId: id } });
+      await tx.voucherBatch.deleteMany({ where: { routerId: id } });
+      await tx.plan.deleteMany({ where: { routerId: id } });
+      if (peer) await tx.remotePeer.delete({ where: { id: peer.id } });
+      await tx.router.delete({ where: { id } });
     });
+
     await this.audit(AuditAction.DELETE, id, {});
     return { deleted: true };
   }

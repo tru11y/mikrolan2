@@ -23,6 +23,15 @@ export async function getWifiInfo(): Promise<WifiInfo | null> {
   }
 }
 
+// The LAN client pins its TCP socket to Wi-Fi; opening it toward an unreachable
+// router (mobile data, or a Wi-Fi that isn't the router's) makes
+// react-native-tcp-socket throw on a native thread ("No socket with id 0") and
+// hard-crashes the app. So only attempt LAN when the router's host is on the
+// current Wi-Fi subnet; otherwise go straight to the tunnel.
+export function sameSubnet24(a: string, b: string): boolean {
+  return a.split('.').slice(0, 3).join('.') === b.split('.').slice(0, 3).join('.');
+}
+
 /**
  * Runs `fn` with the app's sockets pinned to Wi-Fi, so LAN requests reach the
  * router even when its Wi-Fi has no internet (Android would otherwise route
