@@ -116,6 +116,7 @@ export default function SessionsScreen() {
   const query = useQuery({
     queryKey: ['sessions', routerId, isRemote],
     enabled: Boolean(routerId) && routerQuery.isSuccess,
+    refetchInterval: 3_000,
     queryFn: async (): Promise<LiveSession[]> => {
       if (isRemote) return api.routers.listSessions(routerId);
       const creds = await getLocalCredentials(routerId);
