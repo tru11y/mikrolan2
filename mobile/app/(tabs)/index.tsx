@@ -28,7 +28,7 @@ import {
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
-const LOCAL_PROBE_INTERVAL_MS = 20_000;
+const LOCAL_PROBE_INTERVAL_MS = 3_000;
 const LOCAL_PROBE_TIMEOUT_MS = 3_000;
 
 function initialsOf(name?: string): string {
@@ -106,8 +106,9 @@ export default function MaisonScreen() {
     queryKey: ['routers'],
     queryFn: api.routers.list,
     // Filet de sécurité si le SSE (live-events-provider) dégrade en repli :
-    // le voyant ne doit jamais rester figé plus de ~20s sur un état obsolète.
-    refetchInterval: 20_000,
+    // le voyant ne doit jamais rester figé plus de quelques secondes sur un
+    // état obsolète.
+    refetchInterval: 3_000,
   });
   const metrics = useQuery({
     queryKey: ['metrics', 'today'],

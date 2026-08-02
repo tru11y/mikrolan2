@@ -38,7 +38,11 @@ export default function RouteursScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const navHeight = useBottomNavHeight();
-  const query = useQuery({ queryKey: ['routers'], queryFn: api.routers.list });
+  const query = useQuery({
+    queryKey: ['routers'],
+    queryFn: api.routers.list,
+    refetchInterval: 3_000,
+  });
 
   const list = query.data ?? [];
   const online = list.filter((r) => r.health === 'ONLINE').length;
