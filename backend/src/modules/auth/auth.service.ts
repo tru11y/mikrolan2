@@ -94,7 +94,7 @@ export class AuthService {
         e instanceof Prisma.PrismaClientKnownRequestError &&
         e.code === 'P2002'
       ) {
-        throw new ConflictException('Email already registered');
+        throw new ConflictException('Cette adresse e-mail est déjà utilisée.');
       }
       throw e;
     }
@@ -159,7 +159,7 @@ export class AuthService {
         select: { plan: true, status: true, currentPeriodEnd: true },
       }),
     ]);
-    if (!user || !tenant) throw new UnauthorizedException('Account not found');
+    if (!user || !tenant) throw new UnauthorizedException('Compte introuvable. Reconnectez-vous.');
     // L'app dessine ses cadenas à partir de ceci ; le serveur les applique.
     const entitlement = await this.subscriptions.getEntitlement(tenantId);
     return { user, tenant, subscription, entitlement };
@@ -188,7 +188,7 @@ export class AuthService {
 
   async changePassword(userId: string, dto: ChangePasswordDto): Promise<void> {
     const user = await this.prisma.user.findFirst({ where: { id: userId } });
-    if (!user) throw new UnauthorizedException('Account not found');
+    if (!user) throw new UnauthorizedException('Compte introuvable. Reconnectez-vous.');
 
     const ok = await argon2.verify(user.passwordHash, dto.currentPassword);
     if (!ok) throw new UnauthorizedException('Mot de passe actuel incorrect');
@@ -233,7 +233,7 @@ export class AuthService {
 
   async deleteAccount(userId: string, dto: DeleteAccountDto): Promise<void> {
     const user = await this.prisma.user.findFirst({ where: { id: userId } });
-    if (!user) throw new UnauthorizedException('Account not found');
+    if (!user) throw new UnauthorizedException('Compte introuvable. Reconnectez-vous.');
 
     const ok = await argon2.verify(user.passwordHash, dto.password);
     if (!ok) throw new UnauthorizedException('Mot de passe incorrect');

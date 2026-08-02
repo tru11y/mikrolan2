@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
@@ -34,6 +35,8 @@ const REQUEST_TIMEOUT_MS = 8000;
  */
 @Injectable()
 export class RemoteRouterService {
+  private readonly logger = new Logger(RemoteRouterService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
@@ -53,7 +56,7 @@ export class RemoteRouterService {
       where: { id: routerId, deletedAt: null },
       select: { id: true, credEncrypted: true },
     });
-    if (!router) throw new NotFoundException('Router not found');
+    if (!router) throw new NotFoundException('Routeur introuvable — il a peut-être été supprimé.');
     if (!router.credEncrypted) {
       throw new BadRequestException(
         'Identifiants RouterOS non configurés pour ce routeur',
@@ -87,7 +90,8 @@ export class RemoteRouterService {
         throw new BadRequestException('Identifiants RouterOS incorrects');
       }
       if (e instanceof RouterOsApiError) {
-        throw new ServiceUnavailableException(`RouterOS: ${e.message}`);
+        this.logger.warn(`RouterOS refused command on ${routerId}: ${e.message}`);
+        throw new ServiceUnavailableException('Le routeur a refusé la commande.');
       }
       throw new ServiceUnavailableException('Routeur injoignable via le tunnel');
     }

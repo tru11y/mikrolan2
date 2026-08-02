@@ -101,7 +101,7 @@ export class RoutersService {
         e instanceof Prisma.PrismaClientKnownRequestError &&
         e.code === 'P2002'
       ) {
-        throw new ConflictException('Router identity already exists');
+        throw new ConflictException('Un routeur avec cette identité existe déjà.');
       }
       throw e;
     }
@@ -120,7 +120,7 @@ export class RoutersService {
       where: { id, deletedAt: null },
       select: ROUTER_PUBLIC,
     });
-    if (!router) throw new NotFoundException('Router not found');
+    if (!router) throw new NotFoundException('Routeur introuvable — il a peut-être été supprimé.');
     return router;
   }
 

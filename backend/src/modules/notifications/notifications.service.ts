@@ -44,7 +44,7 @@ export class NotificationsService {
       where: { id },
       data: { readAt: new Date() },
     });
-    if (result.count === 0) throw new NotFoundException('Notification not found');
+    if (result.count === 0) throw new NotFoundException('Notification introuvable.');
     return { read: true };
   }
 

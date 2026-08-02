@@ -258,7 +258,7 @@ export class SessionsService {
       where: { id: routerId, deletedAt: null },
       select: { id: true, mode: true, tenantId: true },
     });
-    if (!router) throw new NotFoundException('Router not found');
+    if (!router) throw new NotFoundException('Routeur introuvable — il a peut-être été supprimé.');
     return router;
   }
 }
