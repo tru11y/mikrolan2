@@ -239,7 +239,7 @@ export class SubscriptionsService {
     invoiceId?: string,
   ) {
     const sub = await this.prisma.subscription.findUnique({ where: { tenantId } });
-    if (!sub) throw new NotFoundException('Subscription not found');
+    if (!sub) throw new NotFoundException('Abonnement introuvable.');
 
     const invoice = await this.prisma.invoice.findFirst({
       where: invoiceId
@@ -309,7 +309,7 @@ export class SubscriptionsService {
   /** Downgrade to FREE and revoke any remote access (paywall re-enforced). */
   async deactivate(tenantId: string, actorId: string) {
     const sub = await this.prisma.subscription.findUnique({ where: { tenantId } });
-    if (!sub) throw new NotFoundException('Subscription not found');
+    if (!sub) throw new NotFoundException('Abonnement introuvable.');
 
     await this.prisma.$transaction(async (tx) => {
       await tx.subscription.update({

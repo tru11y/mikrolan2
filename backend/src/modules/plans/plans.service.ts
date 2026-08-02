@@ -84,7 +84,7 @@ export class PlansService {
       where: { id, routerId, deletedAt: null },
       select: PLAN_PUBLIC,
     });
-    if (!plan) throw new NotFoundException('Plan not found');
+    if (!plan) throw new NotFoundException('Forfait introuvable.');
     return plan;
   }
 
@@ -131,7 +131,7 @@ export class PlansService {
       where: { id: routerId, deletedAt: null },
       select: { id: true },
     });
-    if (!router) throw new NotFoundException('Router not found');
+    if (!router) throw new NotFoundException('Routeur introuvable — il a peut-être été supprimé.');
   }
 
   // Unique per router, counting soft-deleted rows (they keep the slug via the

@@ -230,7 +230,11 @@ export class MikroTikApiClient {
       } else if (reply === '!trap' || reply === '!fatal') {
         const row = parseRow(words.slice(1));
         this.pending = null;
-        p.reject(new LanApiError(row.message ?? 'Erreur RouterOS'));
+        // Le texte protocole RouterOS (row.message) est technique et parfois en
+        // anglais — pas une phrase pour un opérateur. Gardé en console pour le
+        // diagnostic dev, jamais affiché tel quel côté client.
+        if (row.message) console.warn('[RouterOS]', row.message);
+        p.reject(new LanApiError('Le routeur a refusé cette action.'));
       }
     }
   }

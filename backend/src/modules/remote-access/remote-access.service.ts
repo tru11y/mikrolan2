@@ -60,13 +60,13 @@ export class RemoteAccessService {
       where: { id: routerId, deletedAt: null },
       select: { id: true },
     });
-    if (!router) throw new NotFoundException('Router not found');
+    if (!router) throw new NotFoundException('Routeur introuvable — il a peut-être été supprimé.');
 
     const existing = await this.prisma.remotePeer.findFirst({
       where: { routerId },
     });
     if (existing && existing.status === RemotePeerStatus.ACTIVE) {
-      throw new ConflictException('Remote access already provisioned');
+      throw new ConflictException('La gestion à distance est déjà activée pour ce routeur.');
     }
 
     // Reuse the router's existing tunnel IP/port on re-provision (previously
@@ -82,7 +82,9 @@ export class RemoteAccessService {
     try {
       await this.wg.addPeer(keys.publicKey, wgIp);
     } catch {
-      throw new ServiceUnavailableException('WireGuard peer setup failed');
+      throw new ServiceUnavailableException(
+        "Impossible d'activer la gestion à distance pour le moment. Réessayez plus tard.",
+      );
     }
 
     const data = {
@@ -127,7 +129,7 @@ export class RemoteAccessService {
   async revoke(routerId: string, actorId: string) {
     const tenantId = getTenantContext()?.tenantId;
     const peer = await this.prisma.remotePeer.findFirst({ where: { routerId } });
-    if (!peer) throw new NotFoundException('No remote access to revoke');
+    if (!peer) throw new NotFoundException('Aucun accès à distance actif pour ce routeur.');
 
     try {
       await this.wg.removePeer(peer.wgPublicKey);
@@ -188,7 +190,9 @@ export class RemoteAccessService {
     let host = 2; // .1 reserved for the server
     while (host <= maxHost && usedHosts.has(host)) host += 1;
     if (host > maxHost) {
-      throw new ServiceUnavailableException('WireGuard subnet exhausted');
+      throw new ServiceUnavailableException(
+        "Impossible d'activer la gestion à distance pour le moment. Réessayez plus tard.",
+      );
     }
     const wgIp = intToIp((baseInt + host) >>> 0);
 
@@ -198,7 +202,9 @@ export class RemoteAccessService {
     let port = portMin;
     while (port <= portMax && usedPorts.has(port)) port += 1;
     if (port > portMax) {
-      throw new ServiceUnavailableException('WireGuard port range exhausted');
+      throw new ServiceUnavailableException(
+        "Impossible d'activer la gestion à distance pour le moment. Réessayez plus tard.",
+      );
     }
 
     return { wgIp, allocatedPort: port };
