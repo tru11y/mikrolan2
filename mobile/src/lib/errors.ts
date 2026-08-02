@@ -82,8 +82,7 @@ export function describeError(error: unknown): DescribedError {
     }
     if (error.code === 'ERR_NETWORK' || status === null) {
       return {
-        message:
-          'Serveur injoignable. Vérifiez votre connexion et l’adresse du serveur.',
+        message: 'Serveur injoignable. Vérifiez votre connexion internet.',
         retryable: true,
         fieldErrors: {},
         status,

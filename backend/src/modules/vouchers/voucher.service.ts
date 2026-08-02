@@ -71,7 +71,7 @@ export class VoucherService {
       where: { id: routerId, deletedAt: null },
       select: { id: true, mode: true },
     });
-    if (!router) throw new NotFoundException('Router not found');
+    if (!router) throw new NotFoundException('Routeur introuvable — il a peut-être été supprimé.');
 
     const plan = await this.prisma.plan.findFirst({
       where: { id: dto.planId, routerId, deletedAt: null },
@@ -88,7 +88,7 @@ export class VoucherService {
         codeFormat: true,
       },
     });
-    if (!plan) throw new NotFoundException('Plan not found');
+    if (!plan) throw new NotFoundException('Forfait introuvable.');
 
     const ctx = getTenantContext();
     const tenantId = ctx?.tenantId;
@@ -265,7 +265,7 @@ export class VoucherService {
         router: { select: { mode: true } },
       },
     });
-    if (!voucher) throw new NotFoundException('Voucher not found');
+    if (!voucher) throw new NotFoundException('Ticket introuvable.');
     if (voucher.status === VoucherStatus.REVOKED) {
       throw new BadRequestException('Voucher déjà révoqué');
     }
@@ -305,7 +305,7 @@ export class VoucherService {
         router: { select: { mode: true } },
       },
     });
-    if (!voucher) throw new NotFoundException('Voucher not found');
+    if (!voucher) throw new NotFoundException('Ticket introuvable.');
 
     if (voucher.mikrotikId && voucher.router.mode === ManagementMode.REMOTE) {
       try {
@@ -331,7 +331,7 @@ export class VoucherService {
       where: { id: batchId },
       select: { id: true },
     });
-    if (!batch) throw new NotFoundException('Batch not found');
+    if (!batch) throw new NotFoundException('Lot introuvable.');
 
     await this.prisma.$transaction(async (tx) => {
       await tx.session.deleteMany({ where: { voucher: { batchId } } });

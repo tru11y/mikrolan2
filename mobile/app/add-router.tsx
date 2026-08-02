@@ -100,8 +100,8 @@ export default function AddRouterScreen() {
         e instanceof LanAuthFailedError
           ? 'Identifiants RouterOS incorrects'
           : e instanceof LanUnreachableError
-            ? e.message
-            : `Échec: ${extractErrorMessage(e)}`;
+            ? "Routeur injoignable — vérifiez l'adresse et que le routeur est allumé."
+            : extractErrorMessage(e);
       setTest({ kind: 'error', message });
     }
   }

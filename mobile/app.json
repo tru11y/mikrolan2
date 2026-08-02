@@ -16,7 +16,7 @@
     },
     "android": {
       "package": "com.mikrolan.app",
-      "versionCode": 3,
+      "versionCode": 25,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/logo.png",
         "backgroundColor": "#0B0B12"

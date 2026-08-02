@@ -136,7 +136,7 @@ export class HotspotService {
       where: { id: routerId, deletedAt: null },
       select: { id: true, mode: true },
     });
-    if (!router) throw new NotFoundException('Router not found');
+    if (!router) throw new NotFoundException('Routeur introuvable — il a peut-être été supprimé.');
     if (router.mode !== ManagementMode.REMOTE) {
       throw new BadRequestException(
         'Routeur local : les IP bindings se gèrent via le LAN',
@@ -149,6 +149,6 @@ export class HotspotService {
       where: { id: routerId, deletedAt: null },
       select: { id: true },
     });
-    if (!router) throw new NotFoundException('Router not found');
+    if (!router) throw new NotFoundException('Routeur introuvable — il a peut-être été supprimé.');
   }
 }
