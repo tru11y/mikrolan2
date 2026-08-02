@@ -35,6 +35,12 @@ export interface MetricsSummary {
   byPlan: PlanBreakdown[];
 }
 
+// A LOCAL router's Session rows only get reconciled when the app polls it
+// over the LAN (no server→router push possible on a private network) — a
+// client who left can stay `status: ACTIVE` in DB until the next poll. Past
+// this window we no longer call it "online", regardless of the DB status.
+const ONLINE_FRESHNESS_MS = 3 * 60 * 1000;
+
 function periodStart(period: MetricsQueryDto['period']): Date {
   const now = new Date();
   if (period === 'today') {
@@ -158,22 +164,33 @@ export class MetricsService {
         plan: { select: { name: true, priceXof: true } },
         router: { select: { identity: true, alias: true } },
         session: {
-          select: { macAddress: true, ipAddress: true, status: true },
+          select: {
+            macAddress: true,
+            ipAddress: true,
+            status: true,
+            lastSeenAt: true,
+            startedAt: true,
+          },
         },
       },
     });
 
-    return vouchers.map((v) => ({
-      voucherId: v.id,
-      code: v.code,
-      status: v.status,
-      planName: v.plan.name,
-      priceXof: v.plan.priceXof,
-      routerName: v.router.alias || v.router.identity,
-      redeemedAt: v.usedAt ? v.usedAt.toISOString() : null,
-      macAddress: v.session?.macAddress ?? null,
-      ipAddress: v.session?.ipAddress ?? null,
-      online: v.session?.status === SessionStatus.ACTIVE,
-    }));
+    const now = Date.now();
+    return vouchers.map((v) => {
+      const seenAt = v.session?.lastSeenAt ?? v.session?.startedAt ?? null;
+      const fresh = !!seenAt && now - seenAt.getTime() <= ONLINE_FRESHNESS_MS;
+      return {
+        voucherId: v.id,
+        code: v.code,
+        status: v.status,
+        planName: v.plan.name,
+        priceXof: v.plan.priceXof,
+        routerName: v.router.alias || v.router.identity,
+        redeemedAt: v.usedAt ? v.usedAt.toISOString() : null,
+        macAddress: v.session?.macAddress ?? null,
+        ipAddress: v.session?.ipAddress ?? null,
+        online: v.session?.status === SessionStatus.ACTIVE && fresh,
+      };
+    });
   }
 }

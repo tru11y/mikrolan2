@@ -5,5 +5,6 @@ dist/
 .env.local
 deploy/caddy.env
 deploy/*.tar.gz
+*.tar.gz
 *.tsbuildinfo
 coverage/

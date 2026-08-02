@@ -136,18 +136,9 @@ export class AdminService {
             createdAt: true,
           },
         },
-        routers: {
-          where: { deletedAt: null },
-          orderBy: { createdAt: 'asc' },
-          select: {
-            id: true,
-            identity: true,
-            alias: true,
-            mode: true,
-            health: true,
-            lastHeartbeat: true,
-          },
-        },
+        // Count only — jamais la liste nominative des routeurs d'un tenant.
+        // SUPER_ADMIN voit "combien", pas "lesquels" (isolation produit).
+        _count: { select: { routers: true } },
         invoices: {
           orderBy: { createdAt: 'desc' },
           take: 10,
