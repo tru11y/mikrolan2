@@ -34,6 +34,7 @@ type LiveEventType =
   | 'SUBSCRIPTION_ACTIVATED'
   | 'UPGRADE_REQUESTED'
   | 'ROUTER_OFFLINE'
+  | 'ROUTER_ONLINE'
   | 'HEARTBEAT';
 
 interface LiveEvent {
@@ -66,6 +67,7 @@ const ANNOUNCED: Partial<Record<LiveEventType, 'success' | 'danger' | 'info'>> =
   VOUCHER_ACTIVATED: 'success',
   SUBSCRIPTION_ACTIVATED: 'success',
   ROUTER_OFFLINE: 'danger',
+  ROUTER_ONLINE: 'success',
   UPGRADE_REQUESTED: 'info',
 };
 
@@ -105,7 +107,9 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
         void refreshProfile().catch(() => {});
       }
       if (event.type === 'UPGRADE_REQUESTED') keys.push(['admin']);
-      if (event.type === 'ROUTER_OFFLINE') keys.push(['routers'], ['router']);
+      if (event.type === 'ROUTER_OFFLINE' || event.type === 'ROUTER_ONLINE') {
+        keys.push(['routers'], ['router']);
+      }
       for (const queryKey of keys) void qc.invalidateQueries({ queryKey });
     },
     [qc, refreshProfile, toast],
@@ -136,9 +140,16 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
             setDegraded(false);
           },
           onMessage: (message) => {
-            if (message.id) lastEventId.current = message.id;
             try {
-              handleEvent(JSON.parse(message.data) as LiveEvent);
+              const event = JSON.parse(message.data) as LiveEvent;
+              // Le curseur de reprise vient de la charge utile, pas de la
+              // ligne `id:` du flux : NestJS y écrit son propre compteur de
+              // messages, qui n'a rien à voir avec la numérotation du canal
+              // (un battement de cœur sans id ressort quand même en « id: 1 »).
+              if (typeof event.id === 'number' && event.id >= 0) {
+                lastEventId.current = String(event.id);
+              }
+              handleEvent(event);
             } catch {
               // Charge utile illisible : on ignore plutôt que de faire tomber
               // le flux entier pour un message malformé.

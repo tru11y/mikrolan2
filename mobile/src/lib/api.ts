@@ -732,12 +732,29 @@ export const api = {
       );
       return unwrap(res);
     },
+    // Suppression définitive — pas de corbeille, le ticket/lot disparaît
+    // partout (DB + hotspot RouterOS si joignable), sans limite de statut.
+    async deleteBatch(id: string, batchId: string): Promise<{ deleted: boolean }> {
+      const res = await apiClient.delete<ApiEnvelope<{ deleted: boolean }>>(
+        `/routers/${id}/vouchers/batches/${batchId}`,
+      );
+      return unwrap(res);
+    },
     async revokeVoucher(
       id: string,
       voucherId: string,
     ): Promise<{ revoked: boolean }> {
       const res = await apiClient.post<ApiEnvelope<{ revoked: boolean }>>(
         `/routers/${id}/vouchers/${voucherId}/revoke`,
+      );
+      return unwrap(res);
+    },
+    async deleteVoucher(
+      id: string,
+      voucherId: string,
+    ): Promise<{ deleted: boolean }> {
+      const res = await apiClient.delete<ApiEnvelope<{ deleted: boolean }>>(
+        `/routers/${id}/vouchers/${voucherId}`,
       );
       return unwrap(res);
     },
@@ -1083,14 +1100,9 @@ export type AdminTenantDetail = {
     lastLoginAt: string | null;
     createdAt: string;
   }[];
-  routers: {
-    id: string;
-    identity: string;
-    alias: string | null;
-    mode: ManagementMode;
-    health: RouterHealth;
-    lastHeartbeat: string | null;
-  }[];
+  // Count seulement — jamais la liste nominative (isolation : SUPER_ADMIN
+  // voit "combien de routeurs", jamais "lesquels").
+  _count: { routers: number };
   invoices: {
     id: string;
     amount: number;

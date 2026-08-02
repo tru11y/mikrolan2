@@ -290,6 +290,58 @@ export class VoucherService {
     return { revoked: true };
   }
 
+  /**
+   * Permanent delete — any status (GENERATED/ACTIVE/USED/EXPIRED/REVOKED).
+   * Best-effort removal from the router itself (same pattern as revoke()),
+   * then the DB row and its Session go away for good.
+   */
+  async remove(id: string) {
+    const voucher = await this.prisma.voucher.findFirst({
+      where: { id },
+      select: {
+        id: true,
+        routerId: true,
+        mikrotikId: true,
+        router: { select: { mode: true } },
+      },
+    });
+    if (!voucher) throw new NotFoundException('Voucher not found');
+
+    if (voucher.mikrotikId && voucher.router.mode === ManagementMode.REMOTE) {
+      try {
+        await this.remote.run(voucher.routerId, (client) =>
+          removeHotspotUser(client, voucher.mikrotikId as string),
+        );
+      } catch {
+        // router unreachable — delete the DB row anyway
+      }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.session.deleteMany({ where: { voucherId: id } });
+      await tx.voucher.delete({ where: { id } });
+    });
+    await this.audit(AuditAction.DELETE, id, {});
+    return { deleted: true };
+  }
+
+  /** Permanent delete of a batch and every voucher (+ session) it contains. */
+  async removeBatch(batchId: string) {
+    const batch = await this.prisma.voucherBatch.findFirst({
+      where: { id: batchId },
+      select: { id: true },
+    });
+    if (!batch) throw new NotFoundException('Batch not found');
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.session.deleteMany({ where: { voucher: { batchId } } });
+      await tx.voucher.deleteMany({ where: { batchId } });
+      await tx.voucherBatch.delete({ where: { id: batchId } });
+    });
+    await this.audit(AuditAction.DELETE, batchId, {}, 'VoucherBatch');
+    return { deleted: true };
+  }
+
   private async uniqueCodes(
     quantity: number,
     opts: CodeFormatOptions,
@@ -326,6 +378,7 @@ export class VoucherService {
     action: AuditAction,
     entityId: string,
     metadata: Prisma.InputJsonValue,
+    entityType = 'Voucher',
   ): Promise<void> {
     const ctx = getTenantContext();
     if (!ctx) return;
@@ -335,7 +388,7 @@ export class VoucherService {
           tenantId: ctx.tenantId,
           userId: ctx.userId,
           action,
-          entityType: 'Voucher',
+          entityType,
           entityId,
           metadata,
         },

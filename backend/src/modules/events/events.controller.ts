@@ -10,14 +10,23 @@ import { TenantContext } from '../../common/context/tenant-context';
 import { EventsService } from './events.service';
 import { LiveEvent, PLATFORM_CHANNEL } from './events.types';
 
-/** `Last-Event-ID` est un en-tête standard ; certains clients ne peuvent pas
- *  le poser (EventSource natif le fait, `fetch` polyfillé non), d'où le
- *  paramètre de requête en repli. */
+/**
+ * Curseur de reprise.
+ *
+ * Le paramètre de requête **prime** sur l'en-tête `Last-Event-ID`, contre
+ * l'usage habituel : NestJS écrit sa propre numérotation dans la ligne `id:`
+ * du flux (un battement de cœur émis sans id ressort quand même en « id: 1 »),
+ * et un client qui renverrait cette valeur demanderait à reprendre au mauvais
+ * endroit. Nos clients renvoient l'identifiant porté par la charge utile, qui
+ * est celui du canal. L'en-tête reste accepté pour les clients qui n'ont que
+ * lui.
+ */
 function readLastEventId(
   headerValue: string | string[] | undefined,
   queryValue: string | undefined,
 ): number | undefined {
-  const raw = Array.isArray(headerValue) ? headerValue[0] : (headerValue ?? queryValue);
+  const header = Array.isArray(headerValue) ? headerValue[0] : headerValue;
+  const raw = queryValue ?? header;
   if (!raw) return undefined;
   const parsed = Number.parseInt(raw, 10);
   return Number.isNaN(parsed) || parsed < 0 ? undefined : parsed;

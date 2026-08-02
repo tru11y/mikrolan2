@@ -1,6 +1,13 @@
 import TcpSocket from 'react-native-tcp-socket';
 import { Buffer } from 'buffer';
 
+// RouterOS API binary protocol (8728) is unencrypted by design — no TLS
+// variant available to a plain TCP socket without a custom cert on every
+// router (RouterOS also exposes 8729/API-SSL, but that requires per-router
+// cert provisioning we don't do today). Traffic stays LAN-local between the
+// phone and the router it's managing, never crosses the internet, so the
+// exposure is limited to someone already on that WiFi network. Accepted
+// risk — revisit only if API-SSL provisioning becomes part of onboarding.
 export interface ApiConnectionParams {
   host: string;
   port: number; // RouterOS API, default 8728 (plaintext)

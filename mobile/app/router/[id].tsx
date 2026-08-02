@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, extractErrorMessage } from '@/src/lib/api';
@@ -14,7 +14,7 @@ import {
   getLocalCredentials,
 } from '@/src/lib/router-credentials';
 import { listActiveLan } from '@/src/services/mikrotik-lan/hotspotLan';
-import { getWifiInfo } from '@/src/lib/lanBinder';
+import { getWifiInfo, sameSubnet24 } from '@/src/lib/lanBinder';
 import { reportLanSessions } from '@/src/lib/sessionSync';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
 import {
@@ -39,6 +39,9 @@ import {
 } from '@/src/components/ui';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
+import { RouterStatusDot } from '@/src/components/RouterStatusDot';
+
+const LOCAL_POLL_INTERVAL_MS = 15_000;
 
 function memPercent(res: SystemResource): number {
   const rec = res as unknown as Record<string, string>;
@@ -101,15 +104,6 @@ function Gauge({
       </View>
     </View>
   );
-}
-
-// The LAN client pins its TCP socket to Wi-Fi; opening it toward an unreachable
-// router (mobile data, or a Wi-Fi that isn't the router's) makes
-// react-native-tcp-socket throw on a native thread ("No socket with id 0") and
-// hard-crashes the app. So only attempt LAN when the router's host is on the
-// current Wi-Fi subnet; otherwise go straight to the tunnel.
-function sameSubnet24(a: string, b: string): boolean {
-  return a.split('.').slice(0, 3).join('.') === b.split('.').slice(0, 3).join('.');
 }
 
 function StatSquare({
@@ -346,9 +340,16 @@ export default function RouterDetailScreen() {
     setLanState(creds || remoteActive ? 'error' : 'no-creds');
   }, [id, remoteActive]);
 
-  useEffect(() => {
-    void loadLocal();
-  }, [loadLocal]);
+  // Sondage périodique tant que l'écran a le focus (pause en arrière-plan/
+  // navigation ailleurs) : c'est ce qui fait "sentir" le temps réel et
+  // permet de détecter un retour en ligne sans quitter/rouvrir l'écran.
+  useFocusEffect(
+    useCallback(() => {
+      void loadLocal();
+      const timer = setInterval(() => void loadLocal(), LOCAL_POLL_INTERVAL_MS);
+      return () => clearInterval(timer);
+    }, [loadLocal]),
+  );
 
   if (query.isLoading) {
     return (
@@ -372,6 +373,80 @@ export default function RouterDetailScreen() {
   }
 
   const r = query.data;
+
+  // Un routeur hors ligne ne doit jamais afficher de données qui viennent de
+  // lui (sessions, moniteur, tickets poussés...) — ce serait potentiellement
+  // faux/obsolète. `lanState` vient d'un vrai probe (LAN ou tunnel), donc
+  // c'est le signal le plus fiable, plus fiable que `r.health` (DB, jusqu'à
+  // ~1 min de retard côté REMOTE, jamais mis à jour côté LOCAL).
+  const isOffline = lanState === 'error' || lanState === 'no-creds';
+
+  if (isOffline) {
+    return (
+      <View style={{ flex: 1, backgroundColor: theme.bg }}>
+        <AppHeader title="Maison" />
+        <Screen>
+          <View
+            style={{
+              flex: 1,
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: space.md,
+              paddingHorizontal: space.lg,
+            }}
+          >
+            <IconChip name="cloud-offline-outline" size="xl" outlined />
+            <Text
+              style={{
+                color: theme.text,
+                fontSize: type.title,
+                fontWeight: '800',
+                textAlign: 'center',
+              }}
+            >
+              {r.alias || r.identity}
+            </Text>
+            <Row style={{ gap: space.xs + 2, justifyContent: 'center' }}>
+              <RouterStatusDot health="OFFLINE" />
+              <Badge label="Hors ligne" tone="warning" />
+            </Row>
+            <Text
+              style={{
+                color: theme.textMuted,
+                fontSize: type.body,
+                textAlign: 'center',
+              }}
+            >
+              {lanState === 'no-creds'
+                ? "Aucun identifiant local enregistré et aucun accès à distance actif — impossible de vérifier ce routeur."
+                : (lanError ??
+                  'Ce routeur ne répond pas. Les données seraient incorrectes tant qu’il est injoignable.')}
+            </Text>
+            <Button title="Réessayer" onPress={() => void loadLocal()} />
+            <Pressable
+              onPress={() =>
+                router.push({
+                  pathname: '/router-settings',
+                  params: { routerId: id },
+                })
+              }
+            >
+              <Text
+                style={{
+                  color: theme.textMuted,
+                  fontSize: type.caption,
+                  textDecorationLine: 'underline',
+                }}
+              >
+                Modifier les paramètres du routeur
+              </Text>
+            </Pressable>
+          </View>
+        </Screen>
+        <BottomNav active="index" />
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -399,9 +474,12 @@ export default function RouterDetailScreen() {
                 >
                   {r.alias || r.identity}
                 </Text>
+                <RouterStatusDot
+                  health={lanState === 'ok' ? 'ONLINE' : r.health}
+                />
                 <Badge
-                  label={routerHealth(r.health).label}
-                  tone={routerHealth(r.health).tone}
+                  label={routerHealth(lanState === 'ok' ? 'ONLINE' : r.health).label}
+                  tone={routerHealth(lanState === 'ok' ? 'ONLINE' : r.health).tone}
                 />
               </Row>
               <Mono
@@ -466,10 +544,6 @@ export default function RouterDetailScreen() {
               />
             </Row>
           </Card>
-        ) : null}
-
-        {lanState === 'error' ? (
-          <Banner tone="warning">{lanError ?? 'Routeur injoignable'}</Banner>
         ) : null}
 
         {/* Accès à distance (réf: carte bleue après le moniteur) */}
