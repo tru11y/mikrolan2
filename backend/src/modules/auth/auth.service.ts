@@ -1,8 +1,10 @@
 import {
   ConflictException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   Prisma,
   SubscriptionPlan,
@@ -48,10 +50,13 @@ function slugify(name: string): string {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly tokens: TokenService,
     private readonly subscriptions: SubscriptionsService,
+    private readonly config: ConfigService,
   ) {}
 
   async signup(dto: SignupDto): Promise<TokenPair> {
@@ -221,6 +226,100 @@ export class AuthService {
       data: { notificationsEnabled: dto.enabled },
     });
     return { notificationsEnabled: dto.enabled };
+  }
+
+  async registerPushToken(
+    userId: string,
+    token: string,
+  ): Promise<{ registered: true }> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { pushToken: token },
+    });
+    return { registered: true };
+  }
+
+  async googleLogin(idToken: string): Promise<TokenPair> {
+    const clientId = this.config.get<string>('GOOGLE_CLIENT_ID');
+    if (!clientId) throw new UnauthorizedException('Google OAuth non configuré.');
+
+    const res = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`,
+    );
+    if (!res.ok) throw new UnauthorizedException('Token Google invalide.');
+    const payload = (await res.json()) as Record<string, string>;
+
+    if (payload.aud !== clientId) {
+      throw new UnauthorizedException('Token Google invalide (audience).');
+    }
+
+    const googleId = payload.sub;
+    const email = payload.email?.toLowerCase();
+    if (!email) throw new UnauthorizedException('E-mail Google requis.');
+
+    const existing = await this.prisma.user.findFirst({
+      where: {
+        OR: [{ googleId }, { email }],
+      },
+    });
+
+    if (existing) {
+      if (existing.status !== UserStatus.ACTIVE) {
+        throw new UnauthorizedException('Compte désactivé.');
+      }
+      if (!existing.googleId) {
+        await this.prisma.user.update({
+          where: { id: existing.id },
+          data: { googleId },
+        });
+      }
+      await this.prisma.user
+        .update({ where: { id: existing.id }, data: { lastLoginAt: new Date() } })
+        .catch(() => undefined);
+      return this.tokens.issueTokens({
+        id: existing.id,
+        tenantId: existing.tenantId,
+        role: existing.role,
+      });
+    }
+
+    const now = new Date();
+    const name = payload.name || email.split('@')[0];
+    const placeholderHash = await argon2.hash(randomBytes(32).toString('hex'), ARGON);
+
+    const user = await this.prisma.$transaction(async (tx) => {
+      const tenant = await tx.tenant.create({
+        data: {
+          name,
+          slug: slugify(name),
+          subscription: {
+            create: {
+              plan: SubscriptionPlan.FREE,
+              status: SubscriptionStatus.TRIALING,
+              currentPeriodStart: now,
+              currentPeriodEnd: new Date(now.getTime() + TRIAL_DAYS * 86_400_000),
+            },
+          },
+        },
+      });
+      return tx.user.create({
+        data: {
+          tenantId: tenant.id,
+          email,
+          name,
+          passwordHash: placeholderHash,
+          googleId,
+          role: UserRole.OWNER,
+          status: UserStatus.ACTIVE,
+        },
+      });
+    });
+
+    return this.tokens.issueTokens({
+      id: user.id,
+      tenantId: user.tenantId,
+      role: user.role,
+    });
   }
 
   async revokeAllSessions(userId: string): Promise<{ revoked: true }> {

@@ -9,8 +9,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Link, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api, extractErrorMessage, type RouterItem } from '@/src/lib/api';
+import { useAuth } from '@/src/providers/auth-provider';
 import {
   Badge,
   Banner,
@@ -38,10 +39,12 @@ export default function RouteursScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const navHeight = useBottomNavHeight();
+  const { isPro } = useAuth();
   const query = useQuery({
     queryKey: ['routers'],
     queryFn: api.routers.list,
     refetchInterval: 3_000,
+    placeholderData: keepPreviousData,
   });
 
   const list = query.data ?? [];
@@ -94,10 +97,12 @@ export default function RouteursScreen() {
                     label={routerHealth(item.health).label}
                     tone={routerHealth(item.health).tone}
                   />
-                  <Badge
-                    label={item.mode === 'REMOTE' ? 'À DISTANCE' : 'LOCAL'}
-                    tone={item.mode === 'REMOTE' ? 'gold' : 'secondary'}
-                  />
+                  {!isPro ? (
+                    <Badge
+                      label={item.mode === 'REMOTE' ? 'À DISTANCE' : 'LOCAL'}
+                      tone={item.mode === 'REMOTE' ? 'gold' : 'secondary'}
+                    />
+                  ) : null}
                 </View>
               </Row>
             </Card>

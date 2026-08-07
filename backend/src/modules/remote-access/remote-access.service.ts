@@ -14,7 +14,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
-import { WireGuardService } from '../../common/wireguard/wireguard.service';
+import { WireGuardService, SSH_PORT_OFFSET, WINBOX_PORT_OFFSET } from '../../common/wireguard/wireguard.service';
 import { generateWgKeyPair } from '../../common/wireguard/wg-keys';
 import { getTenantContext } from '../../common/context/tenant-context';
 import type { AppConfig } from '../../config/configuration';
@@ -81,6 +81,7 @@ export class RemoteAccessService {
 
     try {
       await this.wg.addPeer(keys.publicKey, wgIp);
+      await this.wg.addDnat(wgIp, allocatedPort);
     } catch {
       throw new ServiceUnavailableException(
         "Impossible d'activer la gestion à distance pour le moment. Réessayez plus tard.",
@@ -133,6 +134,7 @@ export class RemoteAccessService {
 
     try {
       await this.wg.removePeer(peer.wgPublicKey);
+      await this.wg.removeDnat(peer.wgIp, peer.allocatedPort);
     } catch {
       // proceed with DB revocation even if the peer removal call fails
     }
@@ -166,7 +168,27 @@ export class RemoteAccessService {
         revokedAt: true,
       },
     });
-    return peer ?? { status: 'NONE' as const };
+    if (!peer) return { status: 'NONE' as const };
+
+    const vpsIp = this.wg.vpsPublicIp;
+    const accessUrls =
+      peer.status === 'ACTIVE' && vpsIp
+        ? {
+            webfig: { url: `http://${vpsIp}:${peer.allocatedPort}`, port: peer.allocatedPort },
+            ssh: {
+              host: vpsIp,
+              port: peer.allocatedPort + SSH_PORT_OFFSET,
+              command: `ssh admin@${vpsIp} -p ${peer.allocatedPort + SSH_PORT_OFFSET}`,
+            },
+            winbox: {
+              host: vpsIp,
+              port: peer.allocatedPort + WINBOX_PORT_OFFSET,
+              address: `${vpsIp}:${peer.allocatedPort + WINBOX_PORT_OFFSET}`,
+            },
+          }
+        : null;
+
+    return { ...peer, accessUrls };
   }
 
   /**

@@ -10,7 +10,7 @@ EnvironmentFile=/opt/mikrolan/backend/.env
 ExecStart=/usr/bin/node dist/main.js
 Restart=on-failure
 RestartSec=5
-# Unprivileged user + CAP_NET_ADMIN only, for `wg set wg-mgmt ...`.
+# Unprivileged user + CAP_NET_ADMIN for `wg set` + `iptables` (DNAT port forwarding).
 # Prérequis one-shot sur le VPS avant premier démarrage avec cette unit :
 #   useradd --system --no-create-home --shell /usr/sbin/nologin mikrolan
 #   chown -R mikrolan:mikrolan /opt/mikrolan/backend

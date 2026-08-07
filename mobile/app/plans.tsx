@@ -2,13 +2,19 @@ import { useMemo, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   api,
   type Plan,
   type PlanCodeFormat,
   type PlanExpiration,
+  type UserProfile,
 } from '@/src/lib/api';
+import { getLocalCredentials } from '@/src/lib/router-credentials';
+import {
+  listUserProfilesLan,
+  type RouterProfile,
+} from '@/src/services/mikrotik-lan/hotspotLan';
 import { describeError, type FieldErrors } from '@/src/lib/errors';
 import {
   Badge,
@@ -112,11 +118,46 @@ export default function PlansScreen() {
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const qc = useQueryClient();
   const toast = useToast();
+
+  const routerQuery = useQuery({
+    queryKey: ['router', routerId],
+    queryFn: () => api.routers.get(routerId),
+    enabled: Boolean(routerId),
+    placeholderData: keepPreviousData,
+  });
+  const isLocal = routerQuery.data?.mode === 'LOCAL';
+
   const query = useQuery({
     queryKey: ['plans', routerId],
     queryFn: () => api.plans.list(routerId),
     enabled: Boolean(routerId),
+    placeholderData: keepPreviousData,
   });
+
+  const deviceProfilesQuery = useQuery({
+    queryKey: ['device-profiles', routerId, isLocal ? 'lan' : 'remote'],
+    queryFn: async (): Promise<RouterProfile[]> => {
+      if (isLocal) {
+        const creds = await getLocalCredentials(routerId);
+        if (!creds) return [];
+        return listUserProfilesLan(creds);
+      }
+      const profiles = await api.routers.listUserProfiles(routerId);
+      return profiles.map((p: UserProfile) => ({
+        id: p.id,
+        name: p.name,
+        sharedUsers: p.sharedUsers,
+        rateLimit: p.rateLimit,
+      }));
+    },
+    enabled: Boolean(routerId) && routerQuery.isSuccess,
+    placeholderData: keepPreviousData,
+  });
+
+  const managedSlugs = new Set(query.data?.map((p: Plan) => p.userProfile) ?? []);
+  const unmanagedProfiles = (deviceProfilesQuery.data ?? []).filter(
+    (p) => !managedSlugs.has(p.name),
+  );
 
   const [showForm, setShowForm] = useState(false);
   const [menuFor, setMenuFor] = useState<string | null>(null);
@@ -634,6 +675,49 @@ export default function PlansScreen() {
             ))}
           </View>
         )}
+        {unmanagedProfiles.length > 0 ? (
+          <View style={{ gap: 12 }}>
+            <Subtitle>Profils déjà sur le routeur</Subtitle>
+            {unmanagedProfiles.map((p) => (
+              <Card key={p.id} style={{ gap: 8 }}>
+                <Row style={{ alignItems: 'center' }}>
+                  <Row style={{ gap: 10, flex: 1, justifyContent: 'flex-start' }}>
+                    <View
+                      style={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: 12,
+                        backgroundColor: theme.secondary + '22',
+                        borderWidth: 1,
+                        borderColor: theme.secondary + '55',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Ionicons name="server-outline" size={18} color={theme.secondary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>
+                        {p.name}
+                      </Text>
+                      <Row style={{ justifyContent: 'flex-start', gap: 8, marginTop: 2 }}>
+                        <Text style={{ color: theme.textMuted, fontSize: 11 }}>
+                          {p.sharedUsers} user{p.sharedUsers > 1 ? 's' : ''}
+                        </Text>
+                        {p.rateLimit ? (
+                          <Text style={{ color: theme.textMuted, fontSize: 11 }}>
+                            {p.rateLimit}
+                          </Text>
+                        ) : null}
+                      </Row>
+                    </View>
+                  </Row>
+                  <Badge label="ROUTEUR" tone="secondary" />
+                </Row>
+              </Card>
+            ))}
+          </View>
+        ) : null}
       </ScrollView>
       <BottomNav active="plans" />
     </View>

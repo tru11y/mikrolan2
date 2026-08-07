@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   api,
   type AdminInvoice,
@@ -67,6 +67,7 @@ function OverviewTab() {
     queryKey: ['admin', 'metrics'],
     queryFn: api.admin.metrics,
     refetchInterval: 60_000,
+    placeholderData: keepPreviousData,
   });
 
   if (query.isLoading) {
@@ -226,6 +227,7 @@ function RequestsTab() {
     queryKey: ['admin', 'invoices', 'PENDING'],
     queryFn: () => api.admin.invoices({ status: 'PENDING', limit: 50 }),
     refetchInterval: 30_000,
+    placeholderData: keepPreviousData,
   });
 
   const activate = useMutation({
@@ -775,6 +777,7 @@ export default function AdminScreen() {
     queryFn: () => api.admin.invoices({ status: 'PENDING', limit: 50 }),
     enabled: me?.user.role === 'SUPER_ADMIN',
     refetchInterval: 30_000,
+    placeholderData: keepPreviousData,
   });
   const pendingCount = pending.data?.items.length ?? 0;
 

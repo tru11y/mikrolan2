@@ -1,6 +1,6 @@
 import { ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type AppNotification } from '@/src/lib/api';
 import { describeError } from '@/src/lib/errors';
 import { useLiveEvents } from '@/src/providers/live-events-provider';
@@ -65,6 +65,7 @@ export default function NotificationsScreen() {
     queryKey: ['notifications', 'list'],
     queryFn: () => api.notifications.list(false, 50),
     refetchInterval: 10_000,
+    placeholderData: keepPreviousData,
   });
 
   async function markRead(n: AppNotification) {

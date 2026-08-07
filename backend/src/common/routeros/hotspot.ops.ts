@@ -266,6 +266,31 @@ export async function setHotspotSettings(
   await c.command(['/ip/hotspot/profile/set', `=.id=${id}`, ...attrs(data)]);
 }
 
+export interface UserProfile {
+  id: string;
+  name: string;
+  sharedUsers: number;
+  rateLimit: string | null;
+}
+
+/** Lists hotspot user-profiles on the router (plans configured on the device). */
+export async function listUserProfiles(
+  c: RouterOsApiClient,
+): Promise<UserProfile[]> {
+  const rows = await c.command([
+    '/ip/hotspot/user/profile/print',
+    '=.proplist=.id,name,shared-users,rate-limit',
+  ]);
+  return rows
+    .filter((r) => r.name && r.name !== 'default')
+    .map((r) => ({
+      id: r['.id'] ?? '',
+      name: r.name ?? '',
+      sharedUsers: Number(r['shared-users']) || 1,
+      rateLimit: r['rate-limit'] || null,
+    }));
+}
+
 /** Lists the hotspot servers on the router (for the ticket « Serveur Hotspot »). */
 export async function listHotspotServers(
   c: RouterOsApiClient,

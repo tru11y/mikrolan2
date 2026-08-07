@@ -16,7 +16,7 @@
     },
     "android": {
       "package": "com.mikrolan.app",
-      "versionCode": 25,
+      "versionCode": 29,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/logo.png",
         "backgroundColor": "#0B0B12"
@@ -30,7 +30,22 @@
       "bundler": "metro",
       "output": "single"
     },
-    "plugins": ["expo-router", "expo-secure-store"],
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/logo.png",
+          "color": "#0B0B12"
+        }
+      ],
+      "expo-web-browser"
+    ],
+    "extra": {
+      "googleWebClientId": "117981881273-afojeenne76bdus8mlhhmj7m9laocb53.apps.googleusercontent.com",
+      "googleAndroidClientId": "117981881273-q17fhovklrn161u6g2lj647c02bjs2da.apps.googleusercontent.com"
+    },
     "experiments": {
       "typedRoutes": false
     }
