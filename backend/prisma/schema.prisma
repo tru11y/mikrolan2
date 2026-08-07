@@ -247,6 +247,14 @@ model RemotePeer {
   revokedAt       DateTime?
   createdAt       DateTime         @default(now())
 
+  // RouterOS service ports on THIS router. Operators frequently move the
+  // WebFig HTTP service off the default 80 (hardening), and SSH/Winbox can
+  // also be relocated. Captured at provision time so the DNAT rules on the
+  // VPS target the actual listening port for each router.
+  webfigPort      Int              @default(80)
+  sshPort         Int              @default(22)
+  winboxPort      Int              @default(8291)
+
   @@index([tenantId])
 }
 

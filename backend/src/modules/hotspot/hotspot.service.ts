@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RemoteRouterService } from '../remote-access/remote-router.service';
 import {
   addIpBinding,
+  updateIpBinding,
   configureHotspot,
   getHotspotSettings,
   isInternetSharingBlocked,
@@ -81,6 +82,14 @@ export class HotspotService {
       addIpBinding(client, dto),
     );
     return { id: mikrotikId, ...dto };
+  }
+
+  async updateIpBinding(routerId: string, bindingId: string, dto: Partial<CreateIpBindingDto>) {
+    await this.assertRemote(routerId);
+    await this.remote.run(routerId, (client) =>
+      updateIpBinding(client, bindingId, dto),
+    );
+    return { id: bindingId, ...dto };
   }
 
   async removeIpBinding(routerId: string, bindingId: string) {
