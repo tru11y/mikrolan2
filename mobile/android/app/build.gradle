@@ -98,7 +98,11 @@ android {
         applicationId 'com.mikrolan.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 25
+        // Source de vérité du numéro de version depuis que `android/` est
+        // versionné : `app.json` n'est lu que par `expo prebuild`, donc l'y
+        // incrémenter seul ne change rien au build — et `adb install` réussit
+        // en silence sans que la version bouge. Garder les deux d'accord.
+        versionCode 29
         versionName "0.1.0"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""

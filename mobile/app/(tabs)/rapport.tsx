@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, View, Text } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api, type MetricsPeriod } from '@/src/lib/api';
 import { exportMetricsCsv } from '@/src/lib/metricsCsv';
 import {
@@ -37,11 +37,13 @@ export default function RapportScreen() {
   const metrics = useQuery({
     queryKey: ['metrics', period, routerId],
     queryFn: () => api.metrics.summary(period, routerId),
+    placeholderData: keepPreviousData,
   });
   const clients = useQuery({
     queryKey: ['clients', routerId],
     queryFn: () => api.metrics.recentClients(30, routerId),
     refetchInterval: 3_000,
+    placeholderData: keepPreviousData,
   });
   const data = metrics.data;
   const maxRevenue = Math.max(1, ...(data?.byPlan.map((p) => p.revenueXof) ?? []));

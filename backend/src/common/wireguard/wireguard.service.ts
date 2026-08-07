@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -6,11 +6,34 @@ import type { AppConfig } from '../../config/configuration';
 
 const exec = promisify(execFile);
 
+const SSH_PORT_OFFSET = 1000;
+const WINBOX_PORT_OFFSET = 2000;
+
+function assertIp(ip: string): void {
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(ip)) {
+    throw new Error(`Invalid IP: ${ip}`);
+  }
+}
+function assertPort(port: number): void {
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`Invalid port: ${port}`);
+  }
+}
+
+export { SSH_PORT_OFFSET, WINBOX_PORT_OFFSET };
+
 @Injectable()
-export class WireGuardService {
+export class WireGuardService implements OnModuleInit {
   private readonly logger = new Logger(WireGuardService.name);
+  private dnatReady = false;
 
   constructor(private readonly config: ConfigService<AppConfig, true>) {}
+
+  async onModuleInit(): Promise<void> {
+    if (this.enabled) {
+      await this.ensureDnatInfrastructure();
+    }
+  }
 
   get enabled(): boolean {
     return this.config.get('WG_ENABLED', { infer: true });
@@ -102,5 +125,110 @@ export class WireGuardService {
       if (pk && ts) out[pk] = Number(ts);
     }
     return out;
+  }
+
+  // ── DNAT port forwarding (WebFig / SSH / Winbox) ────────────────────────
+
+  get vpsPublicIp(): string {
+    return this.config.get('VPS_PUBLIC_IP', { infer: true });
+  }
+
+  private async ipt(args: string[]): Promise<void> {
+    await exec('iptables', ['-w', '5', ...args]);
+  }
+
+  private async iptSafe(args: string[]): Promise<boolean> {
+    try {
+      await this.ipt(args);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async ensureDnatInfrastructure(): Promise<void> {
+    if (this.dnatReady) return;
+
+    await this.iptSafe(['-t', 'nat', '-N', 'MIKROLAN_DNAT']);
+    await this.iptSafe(['-N', 'MIKROLAN_FWD']);
+
+    const hasJumpNat = await this.iptSafe([
+      '-t', 'nat', '-C', 'PREROUTING', '-j', 'MIKROLAN_DNAT',
+    ]);
+    if (!hasJumpNat) {
+      await this.ipt(['-t', 'nat', '-A', 'PREROUTING', '-j', 'MIKROLAN_DNAT']);
+    }
+
+    const hasJumpFwd = await this.iptSafe(['-C', 'FORWARD', '-j', 'MIKROLAN_FWD']);
+    if (!hasJumpFwd) {
+      await this.ipt(['-A', 'FORWARD', '-j', 'MIKROLAN_FWD']);
+    }
+
+    const subnet = this.config.get('WG_SUBNET_BASE', { infer: true });
+    const hasMasq = await this.iptSafe([
+      '-t', 'nat', '-C', 'POSTROUTING', '-d', subnet, '-o', this.iface, '-j', 'MASQUERADE',
+    ]);
+    if (!hasMasq) {
+      await this.ipt([
+        '-t', 'nat', '-A', 'POSTROUTING', '-d', subnet, '-o', this.iface, '-j', 'MASQUERADE',
+      ]);
+    }
+
+    this.dnatReady = true;
+    this.logger.log('DNAT infrastructure ready (chains + MASQUERADE)');
+  }
+
+  async addDnat(wgIp: string, allocatedPort: number): Promise<void> {
+    if (!this.enabled) {
+      this.logger.warn(`[WG disabled] would add DNAT for ${wgIp}`);
+      return;
+    }
+    assertIp(wgIp);
+    assertPort(allocatedPort);
+
+    await this.ensureDnatInfrastructure();
+
+    await this.ipt(['-t', 'nat', '-A', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(allocatedPort), '-j', 'DNAT', '--to-destination', `${wgIp}:80`]);
+    await this.ipt(['-t', 'nat', '-A', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(allocatedPort + SSH_PORT_OFFSET), '-j', 'DNAT', '--to-destination', `${wgIp}:22`]);
+    await this.ipt(['-t', 'nat', '-A', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(allocatedPort + WINBOX_PORT_OFFSET), '-j', 'DNAT', '--to-destination', `${wgIp}:8291`]);
+    await this.ipt(['-A', 'MIKROLAN_FWD', '-d', wgIp, '-p', 'tcp', '-m', 'multiport', '--dports', '80,22,8291', '-j', 'ACCEPT']);
+
+    this.logger.log(`DNAT added: ${wgIp} (webfig:${allocatedPort} ssh:${allocatedPort + SSH_PORT_OFFSET} winbox:${allocatedPort + WINBOX_PORT_OFFSET})`);
+  }
+
+  async removeDnat(wgIp: string, allocatedPort: number): Promise<void> {
+    if (!this.enabled) return;
+    assertIp(wgIp);
+    assertPort(allocatedPort);
+
+    await this.iptSafe(['-t', 'nat', '-D', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(allocatedPort), '-j', 'DNAT', '--to-destination', `${wgIp}:80`]);
+    await this.iptSafe(['-t', 'nat', '-D', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(allocatedPort + SSH_PORT_OFFSET), '-j', 'DNAT', '--to-destination', `${wgIp}:22`]);
+    await this.iptSafe(['-t', 'nat', '-D', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(allocatedPort + WINBOX_PORT_OFFSET), '-j', 'DNAT', '--to-destination', `${wgIp}:8291`]);
+    await this.iptSafe(['-D', 'MIKROLAN_FWD', '-d', wgIp, '-p', 'tcp', '-m', 'multiport', '--dports', '80,22,8291', '-j', 'ACCEPT']);
+
+    this.logger.log(`DNAT removed: ${wgIp}`);
+  }
+
+  async syncDnat(peers: { wgIp: string; allocatedPort: number }[]): Promise<void> {
+    if (!this.enabled) {
+      this.logger.warn(`[WG disabled] would sync DNAT for ${peers.length} peer(s)`);
+      return;
+    }
+
+    await this.ensureDnatInfrastructure();
+
+    await this.iptSafe(['-t', 'nat', '-F', 'MIKROLAN_DNAT']);
+    await this.iptSafe(['-F', 'MIKROLAN_FWD']);
+
+    for (const p of peers) {
+      assertIp(p.wgIp);
+      assertPort(p.allocatedPort);
+      await this.ipt(['-t', 'nat', '-A', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(p.allocatedPort), '-j', 'DNAT', '--to-destination', `${p.wgIp}:80`]);
+      await this.ipt(['-t', 'nat', '-A', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(p.allocatedPort + SSH_PORT_OFFSET), '-j', 'DNAT', '--to-destination', `${p.wgIp}:22`]);
+      await this.ipt(['-t', 'nat', '-A', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(p.allocatedPort + WINBOX_PORT_OFFSET), '-j', 'DNAT', '--to-destination', `${p.wgIp}:8291`]);
+      await this.ipt(['-A', 'MIKROLAN_FWD', '-d', p.wgIp, '-p', 'tcp', '-m', 'multiport', '--dports', '80,22,8291', '-j', 'ACCEPT']);
+    }
+
+    this.logger.log(`DNAT synced: ${peers.length} peer(s)`);
   }
 }

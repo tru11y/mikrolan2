@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { ScrollView, View, Text, Pressable } from 'react-native';
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api, type RouterHealth, type RouterItem } from '@/src/lib/api';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
 import { useAuth } from '@/src/providers/auth-provider';
@@ -101,18 +101,17 @@ export default function MaisonScreen() {
   const { isReady, activeRouterId } = useActiveRouter();
   const navHeight = useBottomNavHeight();
   const { entitlement } = useAuth();
-  const me = useQuery({ queryKey: ['me'], queryFn: api.auth.me });
+  const me = useQuery({ queryKey: ['me'], queryFn: api.auth.me, placeholderData: keepPreviousData });
   const routers = useQuery({
     queryKey: ['routers'],
     queryFn: api.routers.list,
-    // Filet de sécurité si le SSE (live-events-provider) dégrade en repli :
-    // le voyant ne doit jamais rester figé longtemps sur un état obsolète.
-    // Le SSE reste le chemin temps réel ; ceci n'est que le repli.
     refetchInterval: 15_000,
+    placeholderData: keepPreviousData,
   });
   const metrics = useQuery({
     queryKey: ['metrics', 'today'],
     queryFn: () => api.metrics.summary('today'),
+    placeholderData: keepPreviousData,
   });
 
   const list: RouterItem[] = routers.data ?? [];

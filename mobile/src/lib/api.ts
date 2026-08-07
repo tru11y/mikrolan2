@@ -119,6 +119,7 @@ export type RouterItem = {
   health: RouterHealth;
   lastHeartbeat: string | null;
   ticketTemplate: TicketTemplate | null;
+  pushNotifications: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -135,6 +136,12 @@ export type ProvisionBundle = {
   routerPrivateKey: string;
 };
 
+export type RemoteAccessUrls = {
+  webfig: { url: string; port: number };
+  ssh: { host: string; port: number; command: string };
+  winbox: { host: string; port: number; address: string };
+};
+
 export type RemoteStatus = {
   status: 'ACTIVE' | 'REVOKED' | 'PENDING' | 'ERROR' | 'NONE';
   wgIp?: string;
@@ -142,6 +149,7 @@ export type RemoteStatus = {
   endpoint?: string;
   provisionedAt?: string | null;
   revokedAt?: string | null;
+  accessUrls?: RemoteAccessUrls | null;
 };
 
 export type PlanStatus = 'ACTIVE' | 'ARCHIVED';
@@ -246,6 +254,13 @@ export type VoucherItem = {
   createdAt: string;
 };
 
+export type UserProfile = {
+  id: string;
+  name: string;
+  sharedUsers: number;
+  rateLimit: string | null;
+};
+
 export type HotspotServer = { id: string; name: string; interface: string };
 export type HotspotSettings = {
   idleTimeoutMinutes: number | null;
@@ -328,6 +343,7 @@ export type UpdateRouterPayload = {
   localAddress?: string | null;
   mode?: ManagementMode;
   credentials?: RouterCredentials | null;
+  pushNotifications?: boolean;
 };
 
 const DEFAULT_API_BASE_URL =
@@ -506,6 +522,12 @@ export const api = {
       });
       return unwrap(res);
     },
+    async googleLogin(idToken: string): Promise<AuthTokens> {
+      const res = await apiClient.post<ApiEnvelope<AuthTokens>>('/auth/google', {
+        idToken,
+      });
+      return unwrap(res);
+    },
     async me(): Promise<Me> {
       const res = await apiClient.get<ApiEnvelope<Me>>('/auth/me');
       return unwrap(res);
@@ -541,6 +563,9 @@ export const api = {
     },
     async deleteAccount(password: string): Promise<void> {
       await apiClient.delete('/auth/me', { data: { password } });
+    },
+    async registerPushToken(token: string): Promise<void> {
+      await apiClient.post('/auth/push-token', { token });
     },
   },
 
@@ -620,6 +645,12 @@ export const api = {
       const res = await apiClient.post<
         ApiEnvelope<{ configured: boolean; gateway: string; network: string }>
       >(`/routers/${id}/hotspot/configure`, payload);
+      return unwrap(res);
+    },
+    async listUserProfiles(id: string): Promise<UserProfile[]> {
+      const res = await apiClient.get<ApiEnvelope<UserProfile[]>>(
+        `/routers/${id}/hotspot/user-profiles`,
+      );
       return unwrap(res);
     },
     async listHotspotServers(id: string): Promise<HotspotServer[]> {

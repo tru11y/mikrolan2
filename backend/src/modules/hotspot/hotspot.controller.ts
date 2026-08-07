@@ -41,6 +41,11 @@ export class HotspotController {
     return this.hotspot.configure(id, dto);
   }
 
+  @Get('user-profiles')
+  listUserProfiles(@Param('id', ParseUUIDPipe) id: string) {
+    return this.hotspot.listUserProfiles(id);
+  }
+
   @Get('servers')
   listServers(@Param('id', ParseUUIDPipe) id: string) {
     return this.hotspot.listServers(id);

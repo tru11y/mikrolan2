@@ -170,10 +170,12 @@ model User {
   email                String         @unique
   name                 String?
   country              String?
-  passwordHash         String // Argon2id
+  passwordHash         String // Argon2id (blank for OAuth-only accounts)
+  googleId             String?        @unique
   role                 UserRole       @default(MEMBER)
   status               UserStatus     @default(ACTIVE)
   notificationsEnabled Boolean        @default(true)
+  pushToken            String? // Expo push token pour les notifications OS
   lastLoginAt          DateTime? // dernière authentification réussie (vue admin)
   refreshTokens        RefreshToken[]
   createdAt            DateTime       @default(now())
@@ -213,8 +215,9 @@ model Router {
   mode           ManagementMode @default(LOCAL)
   health         RouterHealth   @default(UNKNOWN)
   lastHeartbeat  DateTime?
-  ticketTemplate Json? // options d'affichage du reçu ticket (voir ticket-template.schemas.ts)
-  remotePeer     RemotePeer?
+  ticketTemplate    Json? // options d'affichage du reçu ticket (voir ticket-template.schemas.ts)
+  pushNotifications Boolean        @default(true) // notifs push OS pour ce routeur
+  remotePeer        RemotePeer?
   plans          Plan[]
   voucherBatches VoucherBatch[]
   vouchers       Voucher[]

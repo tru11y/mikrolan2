@@ -88,6 +88,32 @@ export async function terminateActiveLan(
   await withApi(creds, (c) => c.remove('/ip/hotspot/active', mikrotikId));
 }
 
+export type RouterProfile = {
+  id: string;
+  name: string;
+  sharedUsers: number;
+  rateLimit: string | null;
+};
+
+/** Lists hotspot user-profiles on the router (plans already configured on the device). */
+export async function listUserProfilesLan(
+  creds: ApiConnectionParams,
+): Promise<RouterProfile[]> {
+  return withApi(creds, async (c) => {
+    const rows = await c.print('/ip/hotspot/user/profile', [
+      '=.proplist=.id,name,shared-users,rate-limit',
+    ]);
+    return rows
+      .filter((r) => r.name && r.name !== 'default')
+      .map((r) => ({
+        id: r['.id'] ?? '',
+        name: r.name ?? '',
+        sharedUsers: Number(r['shared-users']) || 1,
+        rateLimit: r['rate-limit'] || null,
+      }));
+  });
+}
+
 /** Lists hotspot servers over the LAN (free/offline mode), for the ticket « Serveur Hotspot » dropdown. */
 export async function listHotspotServersLan(
   creds: ApiConnectionParams,

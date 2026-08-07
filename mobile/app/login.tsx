@@ -10,7 +10,10 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
+import * as Google from 'expo-auth-session/providers/google';
+import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '@/src/providers/auth-provider';
+import { Ionicons } from '@expo/vector-icons';
 import {
   Banner,
   Button,
@@ -21,8 +24,13 @@ import {
   type,
 } from '@/src/components/ui';
 
+WebBrowser.maybeCompleteAuthSession();
+
+const GOOGLE_WEB_CLIENT_ID = Constants.expoConfig?.extra?.googleWebClientId as string | undefined;
+const GOOGLE_ANDROID_CLIENT_ID = Constants.expoConfig?.extra?.googleAndroidClientId as string | undefined;
+
 export default function LoginScreen() {
-  const { login, signup, isBusy, error, clearError, apiBaseUrl, updateApiBaseUrl } =
+  const { login, signup, googleLogin, isBusy, error, clearError, apiBaseUrl, updateApiBaseUrl } =
     useAuth();
   const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
@@ -32,6 +40,26 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [baseUrl, setBaseUrl] = useState(apiBaseUrl);
+
+  const [, googleResponse, promptGoogle] = Google.useIdTokenAuthRequest({
+    clientId: GOOGLE_WEB_CLIENT_ID,
+    androidClientId: GOOGLE_ANDROID_CLIENT_ID,
+  });
+
+  async function handleGoogle() {
+    clearError();
+    const result = await promptGoogle();
+    if (result?.type === 'success') {
+      const idToken = result.params.id_token;
+      if (idToken) {
+        try {
+          await googleLogin(idToken);
+        } catch {
+          // error surfaced via context
+        }
+      }
+    }
+  }
 
   async function submit() {
     clearError();
@@ -117,6 +145,43 @@ export default function LoginScreen() {
               loading={isBusy}
               disabled={!canSubmit}
             />
+
+            {GOOGLE_WEB_CLIENT_ID ? (
+              <>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: space.md,
+                  }}
+                >
+                  <View style={{ flex: 1, height: 1, backgroundColor: theme.border }} />
+                  <Text style={{ color: theme.textMuted, fontSize: type.micro }}>ou</Text>
+                  <View style={{ flex: 1, height: 1, backgroundColor: theme.border }} />
+                </View>
+                <Pressable
+                  onPress={handleGoogle}
+                  disabled={isBusy}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: space.sm,
+                    height: 48,
+                    borderRadius: radius.lg,
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    backgroundColor: theme.surface,
+                    opacity: isBusy ? 0.5 : 1,
+                  }}
+                >
+                  <Ionicons name="logo-google" size={20} color={theme.text} />
+                  <Text style={{ color: theme.text, fontWeight: '600', fontSize: type.body }}>
+                    Continuer avec Google
+                  </Text>
+                </Pressable>
+              </>
+            ) : null}
 
             <Pressable
               onPress={() => {
