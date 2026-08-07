@@ -19,6 +19,10 @@ import {
   type CreateRouterDto,
   type UpdateRouterDto,
 } from './dto/router.schemas';
+import {
+  ticketTemplateSchema,
+  type TicketTemplateDto,
+} from './dto/ticket-template.schemas';
 
 @Controller('routers')
 export class RoutersController {
@@ -47,6 +51,15 @@ export class RoutersController {
     @Body(new ZodValidationPipe(updateRouterSchema)) dto: UpdateRouterDto,
   ) {
     return this.routers.update(id, dto);
+  }
+
+  @Patch(':id/ticket-template')
+  @Roles(UserRole.ADMIN)
+  updateTicketTemplate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(ticketTemplateSchema)) dto: TicketTemplateDto,
+  ) {
+    return this.routers.updateTicketTemplate(id, dto);
   }
 
   @Delete(':id')

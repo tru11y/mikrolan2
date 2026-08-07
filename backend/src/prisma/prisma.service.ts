@@ -15,6 +15,11 @@ const TENANT_MODELS = new Set<Prisma.ModelName>([
   'Subscription',
   'Invoice',
   'AuditLog',
+  'Plan',
+  'VoucherBatch',
+  'Voucher',
+  'Session',
+  'Notification',
 ]);
 
 @Injectable()
@@ -79,6 +84,7 @@ export class PrismaService
       case 'findMany':
       case 'count':
       case 'aggregate':
+      case 'groupBy':
       case 'updateMany':
       case 'deleteMany':
         params.args = params.args ?? {};
