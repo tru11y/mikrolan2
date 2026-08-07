@@ -22,6 +22,22 @@ function assertPort(port: number): void {
 
 export { SSH_PORT_OFFSET, WINBOX_PORT_OFFSET };
 
+// Ports the router-side services listen on. The DNAT target defaults to the
+// RouterOS out-of-the-box values, but each RemotePeer can override them (an
+// operator moving `www` off port 80 is common). Callers pass the per-peer
+// ports explicitly so the router-side change never silently drifts.
+export type ServicePorts = {
+  webfigPort: number;
+  sshPort: number;
+  winboxPort: number;
+};
+
+const DEFAULT_SERVICE_PORTS: ServicePorts = {
+  webfigPort: 80,
+  sshPort: 22,
+  winboxPort: 8291,
+};
+
 @Injectable()
 export class WireGuardService implements OnModuleInit {
   private readonly logger = new Logger(WireGuardService.name);
@@ -178,38 +194,62 @@ export class WireGuardService implements OnModuleInit {
     this.logger.log('DNAT infrastructure ready (chains + MASQUERADE)');
   }
 
-  async addDnat(wgIp: string, allocatedPort: number): Promise<void> {
+  async addDnat(
+    wgIp: string,
+    allocatedPort: number,
+    ports: ServicePorts = DEFAULT_SERVICE_PORTS,
+  ): Promise<void> {
     if (!this.enabled) {
       this.logger.warn(`[WG disabled] would add DNAT for ${wgIp}`);
       return;
     }
     assertIp(wgIp);
     assertPort(allocatedPort);
+    assertPort(ports.webfigPort);
+    assertPort(ports.sshPort);
+    assertPort(ports.winboxPort);
 
     await this.ensureDnatInfrastructure();
 
-    await this.ipt(['-t', 'nat', '-A', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(allocatedPort), '-j', 'DNAT', '--to-destination', `${wgIp}:80`]);
-    await this.ipt(['-t', 'nat', '-A', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(allocatedPort + SSH_PORT_OFFSET), '-j', 'DNAT', '--to-destination', `${wgIp}:22`]);
-    await this.ipt(['-t', 'nat', '-A', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(allocatedPort + WINBOX_PORT_OFFSET), '-j', 'DNAT', '--to-destination', `${wgIp}:8291`]);
-    await this.ipt(['-A', 'MIKROLAN_FWD', '-d', wgIp, '-p', 'tcp', '-m', 'multiport', '--dports', '80,22,8291', '-j', 'ACCEPT']);
+    await this.ipt(['-t', 'nat', '-A', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(allocatedPort), '-j', 'DNAT', '--to-destination', `${wgIp}:${ports.webfigPort}`]);
+    await this.ipt(['-t', 'nat', '-A', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(allocatedPort + SSH_PORT_OFFSET), '-j', 'DNAT', '--to-destination', `${wgIp}:${ports.sshPort}`]);
+    await this.ipt(['-t', 'nat', '-A', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(allocatedPort + WINBOX_PORT_OFFSET), '-j', 'DNAT', '--to-destination', `${wgIp}:${ports.winboxPort}`]);
+    await this.ipt(['-A', 'MIKROLAN_FWD', '-d', wgIp, '-p', 'tcp', '-m', 'multiport', '--dports', `${ports.webfigPort},${ports.sshPort},${ports.winboxPort}`, '-j', 'ACCEPT']);
 
-    this.logger.log(`DNAT added: ${wgIp} (webfig:${allocatedPort} ssh:${allocatedPort + SSH_PORT_OFFSET} winbox:${allocatedPort + WINBOX_PORT_OFFSET})`);
+    this.logger.log(
+      `DNAT added: ${wgIp} (webfig:${allocatedPort}→${ports.webfigPort} ssh:${allocatedPort + SSH_PORT_OFFSET}→${ports.sshPort} winbox:${allocatedPort + WINBOX_PORT_OFFSET}→${ports.winboxPort})`,
+    );
   }
 
-  async removeDnat(wgIp: string, allocatedPort: number): Promise<void> {
+  async removeDnat(
+    wgIp: string,
+    allocatedPort: number,
+    ports: ServicePorts = DEFAULT_SERVICE_PORTS,
+  ): Promise<void> {
     if (!this.enabled) return;
     assertIp(wgIp);
     assertPort(allocatedPort);
+    assertPort(ports.webfigPort);
+    assertPort(ports.sshPort);
+    assertPort(ports.winboxPort);
 
-    await this.iptSafe(['-t', 'nat', '-D', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(allocatedPort), '-j', 'DNAT', '--to-destination', `${wgIp}:80`]);
-    await this.iptSafe(['-t', 'nat', '-D', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(allocatedPort + SSH_PORT_OFFSET), '-j', 'DNAT', '--to-destination', `${wgIp}:22`]);
-    await this.iptSafe(['-t', 'nat', '-D', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(allocatedPort + WINBOX_PORT_OFFSET), '-j', 'DNAT', '--to-destination', `${wgIp}:8291`]);
-    await this.iptSafe(['-D', 'MIKROLAN_FWD', '-d', wgIp, '-p', 'tcp', '-m', 'multiport', '--dports', '80,22,8291', '-j', 'ACCEPT']);
+    await this.iptSafe(['-t', 'nat', '-D', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(allocatedPort), '-j', 'DNAT', '--to-destination', `${wgIp}:${ports.webfigPort}`]);
+    await this.iptSafe(['-t', 'nat', '-D', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(allocatedPort + SSH_PORT_OFFSET), '-j', 'DNAT', '--to-destination', `${wgIp}:${ports.sshPort}`]);
+    await this.iptSafe(['-t', 'nat', '-D', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(allocatedPort + WINBOX_PORT_OFFSET), '-j', 'DNAT', '--to-destination', `${wgIp}:${ports.winboxPort}`]);
+    await this.iptSafe(['-D', 'MIKROLAN_FWD', '-d', wgIp, '-p', 'tcp', '-m', 'multiport', '--dports', `${ports.webfigPort},${ports.sshPort},${ports.winboxPort}`, '-j', 'ACCEPT']);
 
     this.logger.log(`DNAT removed: ${wgIp}`);
   }
 
-  async syncDnat(peers: { wgIp: string; allocatedPort: number }[]): Promise<void> {
+  async syncDnat(
+    peers: {
+      wgIp: string;
+      allocatedPort: number;
+      webfigPort?: number;
+      sshPort?: number;
+      winboxPort?: number;
+    }[],
+  ): Promise<void> {
     if (!this.enabled) {
       this.logger.warn(`[WG disabled] would sync DNAT for ${peers.length} peer(s)`);
       return;
@@ -223,10 +263,16 @@ export class WireGuardService implements OnModuleInit {
     for (const p of peers) {
       assertIp(p.wgIp);
       assertPort(p.allocatedPort);
-      await this.ipt(['-t', 'nat', '-A', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(p.allocatedPort), '-j', 'DNAT', '--to-destination', `${p.wgIp}:80`]);
-      await this.ipt(['-t', 'nat', '-A', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(p.allocatedPort + SSH_PORT_OFFSET), '-j', 'DNAT', '--to-destination', `${p.wgIp}:22`]);
-      await this.ipt(['-t', 'nat', '-A', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(p.allocatedPort + WINBOX_PORT_OFFSET), '-j', 'DNAT', '--to-destination', `${p.wgIp}:8291`]);
-      await this.ipt(['-A', 'MIKROLAN_FWD', '-d', p.wgIp, '-p', 'tcp', '-m', 'multiport', '--dports', '80,22,8291', '-j', 'ACCEPT']);
+      const webfigPort = p.webfigPort ?? DEFAULT_SERVICE_PORTS.webfigPort;
+      const sshPort = p.sshPort ?? DEFAULT_SERVICE_PORTS.sshPort;
+      const winboxPort = p.winboxPort ?? DEFAULT_SERVICE_PORTS.winboxPort;
+      assertPort(webfigPort);
+      assertPort(sshPort);
+      assertPort(winboxPort);
+      await this.ipt(['-t', 'nat', '-A', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(p.allocatedPort), '-j', 'DNAT', '--to-destination', `${p.wgIp}:${webfigPort}`]);
+      await this.ipt(['-t', 'nat', '-A', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(p.allocatedPort + SSH_PORT_OFFSET), '-j', 'DNAT', '--to-destination', `${p.wgIp}:${sshPort}`]);
+      await this.ipt(['-t', 'nat', '-A', 'MIKROLAN_DNAT', '-p', 'tcp', '--dport', String(p.allocatedPort + WINBOX_PORT_OFFSET), '-j', 'DNAT', '--to-destination', `${p.wgIp}:${winboxPort}`]);
+      await this.ipt(['-A', 'MIKROLAN_FWD', '-d', p.wgIp, '-p', 'tcp', '-m', 'multiport', '--dports', `${webfigPort},${sshPort},${winboxPort}`, '-j', 'ACCEPT']);
     }
 
     this.logger.log(`DNAT synced: ${peers.length} peer(s)`);

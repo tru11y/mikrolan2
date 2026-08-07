@@ -234,7 +234,7 @@ export class MikroTikApiClient {
         // anglais — pas une phrase pour un opérateur. Gardé en console pour le
         // diagnostic dev, jamais affiché tel quel côté client.
         if (row.message) console.warn('[RouterOS]', row.message);
-        p.reject(new LanApiError('Le routeur a refusé cette action.'));
+        p.reject(new LanApiError(row.message || 'Le routeur a refusé cette action.'));
       }
     }
   }
@@ -319,6 +319,14 @@ export class MikroTikApiClient {
 
   remove(path: string, id: string): Promise<void> {
     return this.talk([`${path}/remove`, `=.id=${id}`]).then(() => undefined);
+  }
+
+  move(path: string, id: string, destination: string): Promise<void> {
+    return this.talk([
+      `${path}/move`,
+      `=.id=${id}`,
+      `=destination=${destination}`,
+    ]).then(() => undefined);
   }
 
   destroy(): void {

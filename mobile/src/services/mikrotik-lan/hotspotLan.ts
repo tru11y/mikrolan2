@@ -166,6 +166,22 @@ export async function addIpBindingLan(
   });
 }
 
+/** Updates an existing IP binding over the LAN. */
+export async function updateIpBindingLan(
+  creds: ApiConnectionParams,
+  mikrotikId: string,
+  binding: Partial<CreateIpBindingPayload>,
+): Promise<void> {
+  await withApi(creds, async (c) => {
+    const data: Record<string, string> = {};
+    if (binding.macAddress) data['mac-address'] = binding.macAddress;
+    if (binding.type) data.type = binding.type;
+    if (binding.ipAddress !== undefined) data.address = binding.ipAddress ?? '';
+    if (binding.comment !== undefined) data.comment = binding.comment ?? '';
+    await c.set('/ip/hotspot/ip-binding', mikrotikId, data);
+  });
+}
+
 /** Removes an IP binding over the LAN. */
 export async function removeIpBindingLan(
   creds: ApiConnectionParams,

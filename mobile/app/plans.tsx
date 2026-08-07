@@ -119,14 +119,6 @@ export default function PlansScreen() {
   const qc = useQueryClient();
   const toast = useToast();
 
-  const routerQuery = useQuery({
-    queryKey: ['router', routerId],
-    queryFn: () => api.routers.get(routerId),
-    enabled: Boolean(routerId),
-    placeholderData: keepPreviousData,
-  });
-  const isLocal = routerQuery.data?.mode === 'LOCAL';
-
   const query = useQuery({
     queryKey: ['plans', routerId],
     queryFn: () => api.plans.list(routerId),
@@ -135,13 +127,10 @@ export default function PlansScreen() {
   });
 
   const deviceProfilesQuery = useQuery({
-    queryKey: ['device-profiles', routerId, isLocal ? 'lan' : 'remote'],
+    queryKey: ['device-profiles', routerId],
     queryFn: async (): Promise<RouterProfile[]> => {
-      if (isLocal) {
-        const creds = await getLocalCredentials(routerId);
-        if (!creds) return [];
-        return listUserProfilesLan(creds);
-      }
+      const creds = await getLocalCredentials(routerId);
+      if (creds) return listUserProfilesLan(creds);
       const profiles = await api.routers.listUserProfiles(routerId);
       return profiles.map((p: UserProfile) => ({
         id: p.id,
@@ -150,7 +139,7 @@ export default function PlansScreen() {
         rateLimit: p.rateLimit,
       }));
     },
-    enabled: Boolean(routerId) && routerQuery.isSuccess,
+    enabled: Boolean(routerId),
     placeholderData: keepPreviousData,
   });
 

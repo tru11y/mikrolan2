@@ -66,6 +66,16 @@ export class HotspotController {
     return this.hotspot.addIpBinding(id, dto);
   }
 
+  @Patch('ip-bindings/:bindingId')
+  @Roles(UserRole.ADMIN)
+  updateIpBinding(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('bindingId') bindingId: string,
+    @Body(new ZodValidationPipe(createIpBindingSchema.partial())) dto: Partial<CreateIpBindingDto>,
+  ) {
+    return this.hotspot.updateIpBinding(id, bindingId, dto);
+  }
+
   @Delete('ip-bindings/:bindingId')
   @Roles(UserRole.ADMIN)
   @HttpCode(200)

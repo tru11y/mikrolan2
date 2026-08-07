@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+﻿import { useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -105,44 +105,30 @@ export default function SessionsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
 
-  const routerQuery = useQuery({
-    queryKey: ['router', routerId],
-    queryFn: () => api.routers.get(routerId),
-    enabled: Boolean(routerId),
-    placeholderData: keepPreviousData,
-  });
-  const isRemote = routerQuery.data?.mode === 'REMOTE';
-
   const query = useQuery({
-    queryKey: ['sessions', routerId, isRemote],
-    enabled: Boolean(routerId) && routerQuery.isSuccess,
+    queryKey: ['sessions', routerId],
+    enabled: Boolean(routerId),
     refetchInterval: 3_000,
     placeholderData: keepPreviousData,
     queryFn: async (): Promise<LiveSession[]> => {
-      if (isRemote) return api.routers.listSessions(routerId);
       const creds = await getLocalCredentials(routerId);
-      if (!creds) {
-        throw new Error(
-          'Identifiants locaux requis : testez d’abord la connexion LAN.',
-        );
+      if (creds) {
+        const active = await listActiveLan(creds);
+        void reportLanSessions(routerId, active);
+        return active;
       }
-      const active = await listActiveLan(creds);
-      // The server can't see this LAN — tell it what we saw so used tickets
-      // count as revenue and closed sessions stop counting as active.
-      void reportLanSessions(routerId, active);
-      return active;
+      return api.routers.listSessions(routerId);
     },
   });
 
   async function terminate(mikrotikId: string) {
     setError(null);
     try {
-      if (isRemote) {
-        await api.routers.terminateSession(routerId, mikrotikId);
-      } else {
-        const creds = await getLocalCredentials(routerId);
-        if (!creds) throw new Error('Identifiants locaux requis.');
+      const creds = await getLocalCredentials(routerId);
+      if (creds) {
         await terminateActiveLan(creds, mikrotikId);
+      } else {
+        await api.routers.terminateSession(routerId, mikrotikId);
       }
       await qc.invalidateQueries({ queryKey: ['sessions', routerId] });
     } catch (e) {

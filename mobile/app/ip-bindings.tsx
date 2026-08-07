@@ -13,6 +13,7 @@ import {
 import {
   listIpBindingsLan,
   addIpBindingLan,
+  updateIpBindingLan,
   removeIpBindingLan,
   listActiveLan,
 } from '@/src/services/mikrotik-lan/hotspotLan';
@@ -62,29 +63,19 @@ export default function IpBindingsScreen() {
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const qc = useQueryClient();
 
-  const routerQuery = useQuery({
-    queryKey: ['router', routerId],
-    queryFn: () => api.routers.get(routerId),
-    enabled: Boolean(routerId),
-    placeholderData: keepPreviousData,
-  });
-  const isLocal = routerQuery.data?.mode === 'LOCAL';
-
   const bindingsQuery = useQuery({
-    queryKey: ['ip-bindings', routerId, isLocal ? 'lan' : 'remote'],
+    queryKey: ['ip-bindings', routerId],
     queryFn: async (): Promise<IpBinding[]> => {
-      if (isLocal) {
-        const creds = await getLocalCredentials(routerId);
-        if (!creds) return [];
-        return listIpBindingsLan(creds);
-      }
+      const creds = await getLocalCredentials(routerId);
+      if (creds) return listIpBindingsLan(creds);
       return api.routers.listIpBindings(routerId);
     },
-    enabled: Boolean(routerId) && routerQuery.isSuccess,
+    enabled: Boolean(routerId),
     placeholderData: keepPreviousData,
   });
 
   const [formOpen, setFormOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [type, setType] = useState<IpBindingType>('bypassed');
   const [mac, setMac] = useState('');
   const [ip, setIp] = useState('');
@@ -94,24 +85,32 @@ export default function IpBindingsScreen() {
 
   const [scanOpen, setScanOpen] = useState(false);
   const sessionsQuery = useQuery({
-    queryKey: ['sessions', routerId, isLocal ? 'lan' : 'remote'],
+    queryKey: ['sessions', routerId],
     queryFn: async (): Promise<LiveSession[]> => {
-      if (isLocal) {
-        const creds = await getLocalCredentials(routerId);
-        if (!creds) return [];
-        return listActiveLan(creds);
-      }
+      const creds = await getLocalCredentials(routerId);
+      if (creds) return listActiveLan(creds);
       return api.routers.listSessions(routerId);
     },
-    enabled: Boolean(routerId) && routerQuery.isSuccess && scanOpen,
+    enabled: Boolean(routerId) && scanOpen,
   });
 
   function resetForm() {
+    setEditingId(null);
     setType('bypassed');
     setMac('');
     setIp('');
     setComment('');
     setError(null);
+  }
+
+  function openEdit(b: IpBinding) {
+    setEditingId(b.id);
+    setType(b.type);
+    setMac(b.macAddress);
+    setIp(b.ipAddress ?? '');
+    setComment(b.comment ?? '');
+    setError(null);
+    setFormOpen(true);
   }
 
   function pickSession(s: LiveSession) {
@@ -139,9 +138,14 @@ export default function IpBindingsScreen() {
         type,
         comment: comment.trim() || undefined,
       };
-      if (isLocal) {
-        const creds = await getLocalCredentials(routerId);
-        if (!creds) throw new Error('Identifiants LAN introuvables.');
+      const creds = await getLocalCredentials(routerId);
+      if (editingId) {
+        if (creds) {
+          await updateIpBindingLan(creds, editingId, payload);
+        } else {
+          await api.routers.updateIpBinding(routerId, editingId, payload);
+        }
+      } else if (creds) {
         await addIpBindingLan(creds, payload);
       } else {
         await api.routers.addIpBinding(routerId, payload);
@@ -158,9 +162,8 @@ export default function IpBindingsScreen() {
 
   async function remove(bindingId: string) {
     try {
-      if (isLocal) {
-        const creds = await getLocalCredentials(routerId);
-        if (!creds) throw new Error('Identifiants LAN introuvables.');
+      const creds = await getLocalCredentials(routerId);
+      if (creds) {
         await removeIpBindingLan(creds, bindingId);
       } else {
         await api.routers.removeIpBinding(routerId, bindingId);
@@ -204,7 +207,7 @@ export default function IpBindingsScreen() {
 
         {error ? <Banner tone="danger">{error}</Banner> : null}
 
-        {bindingsQuery.isLoading || routerQuery.isLoading ? (
+        {bindingsQuery.isLoading ? (
           <View style={{ gap: 12 }}>
             <SkeletonCard />
             <SkeletonCard />
@@ -272,7 +275,19 @@ export default function IpBindingsScreen() {
                   ) : null}
                 </View>
 
-                <Row style={{ justifyContent: 'flex-end' }}>
+                <Row style={{ justifyContent: 'flex-end', gap: 8 }}>
+                  <Pressable
+                    accessibilityLabel="Modifier"
+                    onPress={() => openEdit(b)}
+                    hitSlop={8}
+                    style={{
+                      padding: 6,
+                      borderRadius: 8,
+                      backgroundColor: theme.primary + '18',
+                    }}
+                  >
+                    <Ionicons name="create-outline" size={16} color={theme.primary} />
+                  </Pressable>
                   <Pressable
                     accessibilityLabel="Supprimer"
                     onPress={() => remove(b.id)}
@@ -318,7 +333,7 @@ export default function IpBindingsScreen() {
           >
             <Row>
               <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>
-                Nouveau IP Binding RouterOS
+                {editingId ? 'Modifier IP Binding' : 'Nouveau IP Binding'}
               </Text>
               <Pressable onPress={() => setFormOpen(false)} hitSlop={8}>
                 <Ionicons name="close" size={20} color={theme.textMuted} />
@@ -415,7 +430,7 @@ export default function IpBindingsScreen() {
                 />
               </View>
               <View style={{ flex: 1 }}>
-                <Button title="Sauvegarder" onPress={save} loading={busy} />
+                <Button title={editingId ? 'Modifier' : 'Sauvegarder'} onPress={save} loading={busy} />
               </View>
             </Row>
           </View>

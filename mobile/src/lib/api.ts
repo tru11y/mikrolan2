@@ -126,6 +126,12 @@ export type RouterItem = {
 
 export type RouterCredentials = { username: string; password: string };
 
+export type ServicePorts = {
+  webfigPort: number;
+  sshPort: number;
+  winboxPort: number;
+};
+
 export type ProvisionBundle = {
   routerId: string;
   wgIp: string;
@@ -134,6 +140,9 @@ export type ProvisionBundle = {
   endpoint: string;
   peerPublicKey: string;
   routerPrivateKey: string;
+  webfigPort: number;
+  sshPort: number;
+  winboxPort: number;
 };
 
 export type RemoteAccessUrls = {
@@ -348,7 +357,7 @@ export type UpdateRouterPayload = {
 
 const DEFAULT_API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL?.trim() ||
-  (__DEV__ ? 'http://10.0.2.2:3001/api' : 'https://api.mikrolan.net:9443/api');
+  (__DEV__ ? 'http://10.0.2.2:3001/api' : 'https://api.mikrolan.net/api');
 
 let apiBaseUrl = normalizeApiBaseUrl(DEFAULT_API_BASE_URL);
 let accessToken: string | null = null;
@@ -400,7 +409,20 @@ export async function bootstrapApiState(): Promise<void> {
     getStoredValue(ACCESS_TOKEN_KEY),
     getStoredValue(REFRESH_TOKEN_KEY),
   ]);
-  if (storedBaseUrl) apiBaseUrl = normalizeApiBaseUrl(storedBaseUrl);
+  if (storedBaseUrl) {
+    const normalized = normalizeApiBaseUrl(storedBaseUrl);
+    // A stored URL surviving an overwrite install (SecureStore isn't cleared
+    // unless the app is fully uninstalled) can point at a retired VPS/port
+    // from a previous migration. In production there is only one valid host,
+    // so anything else is stale by definition — no need to enumerate every
+    // past bad value. __DEV__ keeps its stored value untouched since the
+    // debug URL field intentionally targets emulator/LAN hosts.
+    const stale =
+      !__DEV__ &&
+      new URL(normalized).host !== new URL(normalizeApiBaseUrl(DEFAULT_API_BASE_URL)).host;
+    apiBaseUrl = stale ? normalizeApiBaseUrl(DEFAULT_API_BASE_URL) : normalized;
+    if (stale) await deleteStoredValue(API_BASE_URL_KEY);
+  }
   accessToken = storedAccess;
   refreshToken = storedRefresh;
 }
@@ -620,9 +642,13 @@ export const api = {
       );
       return unwrap(res);
     },
-    async provisionRemote(id: string): Promise<ProvisionBundle> {
+    async provisionRemote(
+      id: string,
+      servicePorts?: Partial<ServicePorts>,
+    ): Promise<ProvisionBundle> {
       const res = await apiClient.post<ApiEnvelope<ProvisionBundle>>(
         `/routers/${id}/remote/provision`,
+        servicePorts ?? {},
       );
       return unwrap(res);
     },
@@ -671,6 +697,17 @@ export const api = {
     ): Promise<IpBinding> {
       const res = await apiClient.post<ApiEnvelope<IpBinding>>(
         `/routers/${id}/hotspot/ip-bindings`,
+        payload,
+      );
+      return unwrap(res);
+    },
+    async updateIpBinding(
+      id: string,
+      bindingId: string,
+      payload: Partial<CreateIpBindingPayload>,
+    ): Promise<IpBinding> {
+      const res = await apiClient.patch<ApiEnvelope<IpBinding>>(
+        `/routers/${id}/hotspot/ip-bindings/${bindingId}`,
         payload,
       );
       return unwrap(res);
