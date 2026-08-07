@@ -1,6 +1,13 @@
 import TcpSocket from 'react-native-tcp-socket';
 import { Buffer } from 'buffer';
 
+// RouterOS API binary protocol (8728) is unencrypted by design — no TLS
+// variant available to a plain TCP socket without a custom cert on every
+// router (RouterOS also exposes 8729/API-SSL, but that requires per-router
+// cert provisioning we don't do today). Traffic stays LAN-local between the
+// phone and the router it's managing, never crosses the internet, so the
+// exposure is limited to someone already on that WiFi network. Accepted
+// risk — revisit only if API-SSL provisioning becomes part of onboarding.
 export interface ApiConnectionParams {
   host: string;
   port: number; // RouterOS API, default 8728 (plaintext)
@@ -223,7 +230,11 @@ export class MikroTikApiClient {
       } else if (reply === '!trap' || reply === '!fatal') {
         const row = parseRow(words.slice(1));
         this.pending = null;
-        p.reject(new LanApiError(row.message ?? 'Erreur RouterOS'));
+        // Le texte protocole RouterOS (row.message) est technique et parfois en
+        // anglais — pas une phrase pour un opérateur. Gardé en console pour le
+        // diagnostic dev, jamais affiché tel quel côté client.
+        if (row.message) console.warn('[RouterOS]', row.message);
+        p.reject(new LanApiError(row.message || 'Le routeur a refusé cette action.'));
       }
     }
   }
@@ -286,8 +297,12 @@ export class MikroTikApiClient {
     );
   }
 
-  print(path: string): Promise<ApiRow[]> {
-    return this.talk([`${path}/print`]);
+  reboot(): Promise<void> {
+    return this.talk(['/system/reboot']).then(() => undefined);
+  }
+
+  print(path: string, extra: string[] = []): Promise<ApiRow[]> {
+    return this.talk([`${path}/print`, ...extra]);
   }
 
   add(path: string, data: Record<string, string>): Promise<string> {
@@ -304,6 +319,14 @@ export class MikroTikApiClient {
 
   remove(path: string, id: string): Promise<void> {
     return this.talk([`${path}/remove`, `=.id=${id}`]).then(() => undefined);
+  }
+
+  move(path: string, id: string, destination: string): Promise<void> {
+    return this.talk([
+      `${path}/move`,
+      `=.id=${id}`,
+      `=destination=${destination}`,
+    ]).then(() => undefined);
   }
 
   destroy(): void {

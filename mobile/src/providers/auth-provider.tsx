@@ -17,8 +17,21 @@ import {
   setApiBaseUrl,
   setApiEventHandlers,
   setAuthTokens,
+  type Entitlement,
   type Me,
 } from '@/src/lib/api';
+import { deleteLocalCredentials } from '@/src/lib/router-credentials';
+
+async function clearAllLocalRouterCredentials(): Promise<void> {
+  try {
+    const routers = await api.routers.list();
+    await Promise.all(
+      routers.map((router) => deleteLocalCredentials(router.id)),
+    );
+  } catch {
+    // best-effort — logout must not be blocked by this cleanup
+  }
+}
 
 type AuthContextValue = {
   isReady: boolean;
@@ -26,6 +39,10 @@ type AuthContextValue = {
   isBusy: boolean;
   me: Me | null;
   isPro: boolean;
+  /** Décidé par le serveur ; l'app ne fait que le refléter. */
+  entitlement: Entitlement;
+  /** L'essai est terminé et aucun forfait n'est actif. */
+  isLocked: boolean;
   apiBaseUrl: string;
   error: string | null;
   clearError: () => void;
@@ -35,6 +52,7 @@ type AuthContextValue = {
     password: string,
   ) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
+  googleLogin: (idToken: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   updateApiBaseUrl: (value: string) => Promise<void>;
@@ -120,9 +138,24 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
   }
 
+  async function googleLogin(idToken: string): Promise<void> {
+    setIsBusy(true);
+    setError(null);
+    try {
+      await setAuthTokens(await api.auth.googleLogin(idToken));
+      await afterAuth();
+    } catch (e) {
+      setError(extractErrorMessage(e));
+      throw e;
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   async function logout(): Promise<void> {
     setIsBusy(true);
     try {
+      await clearAllLocalRouterCredentials();
       await api.auth.logout();
     } catch {
       // best-effort
@@ -142,25 +175,38 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setApiBaseUrlState(await setApiBaseUrl(value));
   }
 
+  // Tant que /auth/me n'a pas répondu on ne verrouille rien : un faux cadenas
+  // au démarrage serait pire qu'un écran vide.
+  const entitlement: Entitlement = me?.entitlement ?? {
+    tier: 'TRIAL',
+    localAllowed: true,
+    remoteAllowed: false,
+    endsAt: null,
+    daysLeft: 0,
+    tierKey: null,
+    routerLimit: null,
+  };
+
   const contextValue = useMemo<AuthContextValue>(
     () => ({
       isReady,
       isAuthenticated: Boolean(me),
       isBusy,
       me,
-      isPro:
-        me?.subscription?.plan === 'PRO' &&
-        me?.subscription?.status === 'ACTIVE',
+      isPro: entitlement.tier === 'PRO',
+      entitlement,
+      isLocked: entitlement.tier === 'LOCKED',
       apiBaseUrl,
       error,
       clearError: () => setError(null),
       signup,
       login,
+      googleLogin,
       logout,
       refreshProfile,
       updateApiBaseUrl,
     }),
-    [apiBaseUrl, error, isBusy, isReady, me],
+    [apiBaseUrl, entitlement, error, isBusy, isReady, me],
   );
 
   return (
