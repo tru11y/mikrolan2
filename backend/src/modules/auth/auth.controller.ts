@@ -17,15 +17,19 @@ import { AuthService } from './auth.service';
 import {
   changePasswordSchema,
   deleteAccountSchema,
+  googleOAuthSchema,
   loginSchema,
   refreshSchema,
+  registerPushTokenSchema,
   signupSchema,
   updateNotificationsSchema,
   updateProfileSchema,
   type ChangePasswordDto,
   type DeleteAccountDto,
+  type GoogleOAuthDto,
   type LoginDto,
   type RefreshDto,
+  type RegisterPushTokenDto,
   type SignupDto,
   type UpdateNotificationsDto,
   type UpdateProfileDto,
@@ -83,6 +87,14 @@ export class AuthController {
   }
 
   @Public()
+  @Post('google')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  googleLogin(@Body(new ZodValidationPipe(googleOAuthSchema)) dto: GoogleOAuthDto) {
+    return this.auth.googleLogin(dto.idToken);
+  }
+
+  @Public()
   @Post('logout')
   @HttpCode(200)
   logout(@Body(new ZodValidationPipe(refreshSchema)) dto: RefreshDto) {
@@ -96,6 +108,16 @@ export class AuthController {
     dto: UpdateNotificationsDto,
   ) {
     return this.auth.updateNotifications(user.userId, dto);
+  }
+
+  @Post('push-token')
+  @HttpCode(200)
+  registerPushToken(
+    @CurrentUser() user: TenantContext,
+    @Body(new ZodValidationPipe(registerPushTokenSchema))
+    dto: RegisterPushTokenDto,
+  ) {
+    return this.auth.registerPushToken(user.userId, dto.token);
   }
 
   @Post('logout-all')

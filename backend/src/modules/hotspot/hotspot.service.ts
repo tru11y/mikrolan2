@@ -9,12 +9,14 @@ import {
   isInternetSharingBlocked,
   listHotspotServers,
   listIpBindings,
+  listUserProfiles,
   removeIpBinding,
   setHotspotSettings,
   setInternetSharingBlocked,
   type HotspotServer,
   type HotspotSettings,
   type IpBinding,
+  type UserProfile,
 } from '../../common/routeros/hotspot.ops';
 import type {
   ConfigureHotspotDto,
@@ -54,6 +56,11 @@ export class HotspotService {
     );
 
     return { configured: true, gateway, network };
+  }
+
+  async listUserProfiles(routerId: string): Promise<UserProfile[]> {
+    await this.assertRemote(routerId);
+    return this.remote.run(routerId, (client) => listUserProfiles(client));
   }
 
   /** Lists hotspot servers for the ticket « Serveur Hotspot » dropdown (REMOTE only; LOCAL routers are queried by the app over the LAN). */

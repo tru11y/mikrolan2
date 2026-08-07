@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   api,
   extractErrorMessage,
@@ -10,6 +10,13 @@ import {
   type IpBindingType,
   type LiveSession,
 } from '@/src/lib/api';
+import {
+  listIpBindingsLan,
+  addIpBindingLan,
+  removeIpBindingLan,
+  listActiveLan,
+} from '@/src/services/mikrotik-lan/hotspotLan';
+import { getLocalCredentials } from '@/src/lib/router-credentials';
 import {
   Banner,
   Button,
@@ -19,6 +26,7 @@ import {
   Label,
   Mono,
   Row,
+  SkeletonCard,
   space,
   Subtitle,
   theme,
@@ -54,10 +62,26 @@ export default function IpBindingsScreen() {
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const qc = useQueryClient();
 
-  const bindingsQuery = useQuery({
-    queryKey: ['ip-bindings', routerId],
-    queryFn: () => api.routers.listIpBindings(routerId),
+  const routerQuery = useQuery({
+    queryKey: ['router', routerId],
+    queryFn: () => api.routers.get(routerId),
     enabled: Boolean(routerId),
+    placeholderData: keepPreviousData,
+  });
+  const isLocal = routerQuery.data?.mode === 'LOCAL';
+
+  const bindingsQuery = useQuery({
+    queryKey: ['ip-bindings', routerId, isLocal ? 'lan' : 'remote'],
+    queryFn: async (): Promise<IpBinding[]> => {
+      if (isLocal) {
+        const creds = await getLocalCredentials(routerId);
+        if (!creds) return [];
+        return listIpBindingsLan(creds);
+      }
+      return api.routers.listIpBindings(routerId);
+    },
+    enabled: Boolean(routerId) && routerQuery.isSuccess,
+    placeholderData: keepPreviousData,
   });
 
   const [formOpen, setFormOpen] = useState(false);
@@ -68,13 +92,18 @@ export default function IpBindingsScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // "Scanner le réseau" — pick from the router's REAL live hotspot sessions
-  // (not a client-side LAN scan, which can't see hotspot-side devices).
   const [scanOpen, setScanOpen] = useState(false);
   const sessionsQuery = useQuery({
-    queryKey: ['sessions', routerId],
-    queryFn: () => api.routers.listSessions(routerId),
-    enabled: Boolean(routerId) && scanOpen,
+    queryKey: ['sessions', routerId, isLocal ? 'lan' : 'remote'],
+    queryFn: async (): Promise<LiveSession[]> => {
+      if (isLocal) {
+        const creds = await getLocalCredentials(routerId);
+        if (!creds) return [];
+        return listActiveLan(creds);
+      }
+      return api.routers.listSessions(routerId);
+    },
+    enabled: Boolean(routerId) && routerQuery.isSuccess && scanOpen,
   });
 
   function resetForm() {
@@ -104,12 +133,19 @@ export default function IpBindingsScreen() {
     }
     setBusy(true);
     try {
-      await api.routers.addIpBinding(routerId, {
+      const payload = {
         macAddress: mac.trim(),
         ipAddress: ip.trim() || undefined,
         type,
         comment: comment.trim() || undefined,
-      });
+      };
+      if (isLocal) {
+        const creds = await getLocalCredentials(routerId);
+        if (!creds) throw new Error('Identifiants LAN introuvables.');
+        await addIpBindingLan(creds, payload);
+      } else {
+        await api.routers.addIpBinding(routerId, payload);
+      }
       resetForm();
       setFormOpen(false);
       await qc.invalidateQueries({ queryKey: ['ip-bindings', routerId] });
@@ -120,9 +156,15 @@ export default function IpBindingsScreen() {
     }
   }
 
-  async function remove(id: string) {
+  async function remove(bindingId: string) {
     try {
-      await api.routers.removeIpBinding(routerId, id);
+      if (isLocal) {
+        const creds = await getLocalCredentials(routerId);
+        if (!creds) throw new Error('Identifiants LAN introuvables.');
+        await removeIpBindingLan(creds, bindingId);
+      } else {
+        await api.routers.removeIpBinding(routerId, bindingId);
+      }
       await qc.invalidateQueries({ queryKey: ['ip-bindings', routerId] });
     } catch (e) {
       setError(extractErrorMessage(e));
@@ -162,8 +204,11 @@ export default function IpBindingsScreen() {
 
         {error ? <Banner tone="danger">{error}</Banner> : null}
 
-        {bindingsQuery.isLoading ? (
-          <Subtitle>Chargement…</Subtitle>
+        {bindingsQuery.isLoading || routerQuery.isLoading ? (
+          <View style={{ gap: 12 }}>
+            <SkeletonCard />
+            <SkeletonCard />
+          </View>
         ) : !bindingsQuery.data?.length ? (
           <Empty text="Aucun IP binding pour ce routeur." />
         ) : (

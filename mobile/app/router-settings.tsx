@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -69,16 +70,29 @@ export default function RouterSettingsScreen() {
   });
 
   const [alias, setAlias] = useState('');
-  // États séparés : un seul `busy` partagé faisait tourner le spinner des deux
-  // boutons à la fois.
+  const [pushEnabled, setPushEnabled] = useState(true);
   const [aliasBusy, setAliasBusy] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
   const [removeBusy, setRemoveBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (routerQuery.data) setAlias(routerQuery.data.alias ?? '');
+    if (routerQuery.data) {
+      setAlias(routerQuery.data.alias ?? '');
+      setPushEnabled(routerQuery.data.pushNotifications);
+    }
   }, [routerQuery.data]);
+
+  async function togglePush(value: boolean) {
+    if (!routerId) return;
+    setPushEnabled(value);
+    try {
+      await api.routers.update(routerId, { pushNotifications: value });
+      await qc.invalidateQueries({ queryKey: ['router', routerId] });
+    } catch {
+      setPushEnabled(!value);
+    }
+  }
 
   async function saveAlias() {
     if (!routerId) return;
@@ -207,6 +221,87 @@ export default function RouterSettingsScreen() {
       color: theme.gold,
       onPress: () => go('/ticket-settings'),
     },
+    ...(isPro
+      ? [
+          {
+            id: 'webfig',
+            title: 'WebFig',
+            subtitle: "Interface web d'administration RouterOS",
+            icon: 'globe-outline' as IoniconName,
+            color: theme.primary,
+            onPress: () => {
+              const urls = remoteQuery.data?.accessUrls;
+              if (urls?.webfig) {
+                Linking.openURL(urls.webfig.url);
+              } else {
+                const host = routerQuery.data?.localAddress?.split(':')[0];
+                if (host) {
+                  Linking.openURL(`http://${host}/webfig/`);
+                } else {
+                  Alert.alert('WebFig', 'Accès à distance non configuré.');
+                }
+              }
+            },
+          },
+          {
+            id: 'ssh',
+            title: 'Accès SSH',
+            subtitle: 'Terminal en ligne de commande',
+            icon: 'terminal-outline' as IoniconName,
+            color: theme.secondary,
+            onPress: () => {
+              const urls = remoteQuery.data?.accessUrls;
+              if (urls?.ssh) {
+                const { command, host, port } = urls.ssh;
+                Alert.alert('SSH', command, [
+                  { text: 'Copier', onPress: () => Clipboard.setStringAsync(command) },
+                  {
+                    text: 'Ouvrir',
+                    onPress: () => Linking.openURL(`ssh://admin@${host}:${port}`).catch(() => {
+                      Alert.alert('SSH', 'Aucun client SSH détecté.');
+                    }),
+                  },
+                  { text: 'Fermer', style: 'cancel' },
+                ]);
+              } else {
+                const host = routerQuery.data?.localAddress?.split(':')[0];
+                if (host) {
+                  Linking.openURL(`ssh://admin@${host}`).catch(() => {
+                    Alert.alert('SSH', `ssh admin@${host}\nAucun client SSH détecté.`);
+                  });
+                } else {
+                  Alert.alert('SSH', 'Accès à distance non configuré.');
+                }
+              }
+            },
+          },
+          {
+            id: 'winbox',
+            title: 'Winbox',
+            subtitle: 'Application de gestion MikroTik',
+            icon: 'cube-outline' as IoniconName,
+            color: theme.gold,
+            onPress: () => {
+              const urls = remoteQuery.data?.accessUrls;
+              if (urls?.winbox) {
+                const { address, host, port } = urls.winbox;
+                Alert.alert('Winbox', address, [
+                  { text: 'Copier', onPress: () => Clipboard.setStringAsync(address) },
+                  {
+                    text: 'Ouvrir MikroTik App',
+                    onPress: () => Linking.openURL(`mikrotik://connect?address=${host}&port=${port}`).catch(() => {
+                      Alert.alert('Winbox', 'Application MikroTik non installée.');
+                    }),
+                  },
+                  { text: 'Fermer', style: 'cancel' },
+                ]);
+              } else {
+                Alert.alert('Winbox', 'Accès à distance non configuré.');
+              }
+            },
+          },
+        ]
+      : []),
     {
       id: 'reboot',
       title: 'Redémarrer le routeur',
@@ -292,7 +387,51 @@ export default function RouterSettingsScreen() {
           ))}
         </View>
 
-        {/* Gestion locale (hors réf) : renommer / supprimer ce routeur */}
+        {/* Notifications push pour ce routeur */}
+        <View
+          style={{
+            backgroundColor: theme.surface,
+            borderWidth: 1,
+            borderColor: theme.border,
+            borderRadius: 16,
+            padding: 16,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 }}>
+            <View
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                backgroundColor: theme.surfaceAlt,
+                borderWidth: 1,
+                borderColor: theme.border,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name="notifications-outline" size={20} color={theme.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
+                Notifications push
+              </Text>
+              <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 1 }}>
+                Recevoir les alertes de ce routeur
+              </Text>
+            </View>
+          </View>
+          <Switch
+            value={pushEnabled}
+            onValueChange={togglePush}
+            trackColor={{ false: theme.border, true: theme.primary }}
+            thumbColor="#fff"
+          />
+        </View>
+
         {error ? <Banner tone="danger">{error}</Banner> : null}
         <View
           style={{
