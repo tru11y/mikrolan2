@@ -3,31 +3,56 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryProvider } from '@/src/providers/query-provider';
 import { AuthProvider } from '@/src/providers/auth-provider';
-import { theme } from '@/src/components/ui';
+import { AppLockProvider } from '@/src/providers/app-lock-provider';
+import { ActiveRouterProvider } from '@/src/providers/active-router-provider';
+import { LiveEventsProvider } from '@/src/providers/live-events-provider';
+import { PushNotificationsProvider } from '@/src/providers/push-notifications-provider';
+import { PaywallLock } from '@/src/components/PaywallLock';
+import { theme, ToastProvider } from '@/src/components/ui';
 
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <QueryProvider>
-        <AuthProvider>
-          <StatusBar style="light" />
-          <Stack
-            screenOptions={{
-              headerStyle: { backgroundColor: theme.surface },
-              headerTintColor: theme.text,
-              contentStyle: { backgroundColor: theme.bg },
-            }}
-          >
-            <Stack.Screen name="index" options={{ headerShown: false }} />
-            <Stack.Screen name="login" options={{ headerShown: false }} />
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen
-              name="add-router"
-              options={{ title: 'Ajouter un routeur', presentation: 'modal' }}
-            />
-            <Stack.Screen name="router/[id]" options={{ title: 'Routeur' }} />
-          </Stack>
-        </AuthProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <PushNotificationsProvider>
+              <AppLockProvider>
+                <ActiveRouterProvider>
+                  <LiveEventsProvider>
+                    <StatusBar style="light" />
+                    <Stack
+                      screenOptions={{
+                        headerShown: false,
+                        contentStyle: { backgroundColor: theme.bg },
+                        animation: 'slide_from_right',
+                        animationDuration: 220,
+                        gestureEnabled: true,
+                      }}
+                    >
+                      <Stack.Screen
+                        name="add-router"
+                        options={{
+                          presentation: 'modal',
+                          animation: 'slide_from_bottom',
+                        }}
+                      />
+                      <Stack.Screen
+                        name="pro"
+                        options={{ animation: 'slide_from_bottom' }}
+                      />
+                      <Stack.Screen
+                        name="notifications"
+                        options={{ animation: 'slide_from_bottom' }}
+                      />
+                    </Stack>
+                    <PaywallLock />
+                  </LiveEventsProvider>
+                </ActiveRouterProvider>
+              </AppLockProvider>
+            </PushNotificationsProvider>
+          </AuthProvider>
+        </ToastProvider>
       </QueryProvider>
     </SafeAreaProvider>
   );

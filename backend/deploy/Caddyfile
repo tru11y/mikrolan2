@@ -1,0 +1,17 @@
+# Remplacer par une adresse admin réelle (notifications d'expiration Let's Encrypt).
+# auto_https disable_redirects : sans ça Caddy tente aussi de binder le port 80
+# pour la redirection HTTP->HTTPS, qui est déjà pris par le nginx v1 (interdit).
+{
+	email admin@mikrolan.net
+	auto_https disable_redirects
+}
+
+# Port 9443, pas 443 : le nginx v1 (interdit d'y toucher) occupe déjà 80 et 443
+# sur ce VPS. DNS-01 évite le port 80 pour le défi ACME, mais Caddy a quand
+# même besoin d'un port libre pour SERVIR le trafic HTTPS — d'où 9443.
+api.mikrolan.net:9443 {
+	tls {
+		dns route53
+	}
+	reverse_proxy 127.0.0.1:3002
+}

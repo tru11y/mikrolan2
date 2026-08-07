@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
@@ -14,6 +15,7 @@ import {
   RouterOsApiError,
   RouterOsAuthError,
   type ApiRow,
+  type RouterOsApiClient,
   withRouterOsApi,
 } from '../../common/routeros/routeros-api.client';
 
@@ -21,38 +23,30 @@ import {
 const ROUTEROS_API_PORT = 8728;
 const REQUEST_TIMEOUT_MS = 8000;
 
-type RestMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-
-// Maps the REST-style proxy verb onto a RouterOS API action verb.
-const METHOD_ACTION: Record<RestMethod, string> = {
-  GET: 'print',
-  POST: 'add',
-  PUT: 'set',
-  PATCH: 'set',
-  DELETE: 'remove',
-};
-
 /**
  * Drives a router from the backend over the WireGuard tunnel using the RouterOS
  * binary API (8728), the same protocol the mobile app speaks on the LAN. Uses
  * the router credentials stored encrypted at rest (pushed on PRO activation).
+ *
+ * `run()` is the shared entry point every remote router operation composes on
+ * (hotspot config, voucher push, session polling): it enforces the PRO gate,
+ * decrypts the credentials, opens an authenticated 8728 session over the tunnel,
+ * and always closes it. No arbitrary command passthrough is exposed over HTTP.
  */
 @Injectable()
 export class RemoteRouterService {
+  private readonly logger = new Logger(RemoteRouterService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
     private readonly subscriptions: SubscriptionsService,
   ) {}
 
-  // Private on purpose: no arbitrary command passthrough is exposed over HTTP.
-  // Each remotely-driven operation gets its own typed, allowlisted method below.
-  private async request(
+  async run<T>(
     routerId: string,
-    method: RestMethod,
-    path: string,
-    body?: Record<string, unknown>,
-  ): Promise<ApiRow[]> {
+    fn: (client: RouterOsApiClient) => Promise<T>,
+  ): Promise<T> {
     const tenantId = getTenantContext()?.tenantId;
     if (!tenantId || !(await this.subscriptions.isRemoteAllowed(tenantId))) {
       throw new ForbiddenException('Abonnement PRO actif requis');
@@ -62,7 +56,7 @@ export class RemoteRouterService {
       where: { id: routerId, deletedAt: null },
       select: { id: true, credEncrypted: true },
     });
-    if (!router) throw new NotFoundException('Router not found');
+    if (!router) throw new NotFoundException('Routeur introuvable — il a peut-être été supprimé.');
     if (!router.credEncrypted) {
       throw new BadRequestException(
         'Identifiants RouterOS non configurés pour ce routeur',
@@ -80,8 +74,6 @@ export class RemoteRouterService {
       password: string;
     };
 
-    const words = this.buildSentence(method, path, body);
-
     try {
       return await withRouterOsApi(
         {
@@ -91,50 +83,28 @@ export class RemoteRouterService {
           password: creds.password,
           timeoutMs: REQUEST_TIMEOUT_MS,
         },
-        (c) => c.command(words),
+        fn,
       );
     } catch (e) {
       if (e instanceof RouterOsAuthError) {
         throw new BadRequestException('Identifiants RouterOS incorrects');
       }
       if (e instanceof RouterOsApiError) {
-        throw new ServiceUnavailableException(`RouterOS: ${e.message}`);
+        this.logger.warn(`RouterOS refused command on ${routerId}: ${e.message}`);
+        throw new ServiceUnavailableException('Le routeur a refusé la commande.');
       }
       throw new ServiceUnavailableException('Routeur injoignable via le tunnel');
     }
   }
 
-  /** REST-style verb + menu path → RouterOS API command word list. */
-  private buildSentence(
-    method: RestMethod,
-    path: string,
-    body?: Record<string, unknown>,
-  ): string[] {
-    const menu = path.startsWith('/') ? path : `/${path}`;
-    const action = METHOD_ACTION[method];
-    const words = [`${menu}/${action}`];
-
-    if (action === 'set' || action === 'remove') {
-      const id = body?.['.id'];
-      if (typeof id !== 'string' || !id) {
-        throw new BadRequestException('`.id` requis pour cette opération');
-      }
-      words.push(`=.id=${id}`);
-    }
-
-    if (body) {
-      // GET: attributes are query filters (`?k=v`); writes: attributes (`=k=v`).
-      const prefix = action === 'print' ? '?' : '=';
-      for (const [k, v] of Object.entries(body)) {
-        if (k === '.id') continue;
-        words.push(`${prefix}${k}=${String(v)}`);
-      }
-    }
-    return words;
+  async systemResource(routerId: string): Promise<ApiRow> {
+    const rows = await this.run(routerId, (c) =>
+      c.command(['/system/resource/print']),
+    );
+    return rows[0] ?? {};
   }
 
-  async systemResource(routerId: string): Promise<ApiRow> {
-    const rows = await this.request(routerId, 'GET', '/system/resource');
-    return rows[0] ?? {};
+  async reboot(routerId: string): Promise<void> {
+    await this.run(routerId, (c) => c.command(['/system/reboot']));
   }
 }

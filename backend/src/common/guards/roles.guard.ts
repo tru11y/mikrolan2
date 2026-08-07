@@ -32,11 +32,11 @@ export class RolesGuard implements CanActivate {
       .switchToHttp()
       .getRequest<{ user?: TenantContext }>();
     const user = req.user;
-    if (!user) throw new ForbiddenException('No authenticated user');
+    if (!user) throw new ForbiddenException('Session invalide, reconnectez-vous.');
 
     const min = Math.min(...required.map((r) => RANK[r]));
     if (RANK[user.role] < min) {
-      throw new ForbiddenException('Insufficient role');
+      throw new ForbiddenException("Vous n'avez pas les droits pour cette action.");
     }
     return true;
   }

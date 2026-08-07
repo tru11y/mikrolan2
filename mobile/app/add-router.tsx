@@ -8,6 +8,7 @@ import {
   View,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useQueryClient } from '@tanstack/react-query';
 import { api, extractErrorMessage } from '@/src/lib/api';
 import {
@@ -22,11 +23,11 @@ import {
   Button,
   Card,
   Field,
+  NumberField,
   Screen,
-  Subtitle,
   theme,
-  Title,
 } from '@/src/components/ui';
+import { AppHeader } from '@/src/components/AppHeader';
 
 type TestState =
   | { kind: 'idle' }
@@ -99,8 +100,8 @@ export default function AddRouterScreen() {
         e instanceof LanAuthFailedError
           ? 'Identifiants RouterOS incorrects'
           : e instanceof LanUnreachableError
-            ? e.message
-            : `Échec: ${extractErrorMessage(e)}`;
+            ? "Routeur injoignable — vérifiez l'adresse et que le routeur est allumé."
+            : extractErrorMessage(e);
       setTest({ kind: 'error', message });
     }
   }
@@ -135,17 +136,41 @@ export default function AddRouterScreen() {
   const canSave = identity.trim().length >= 2;
 
   return (
-    <Screen>
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <AppHeader title="Ajouter un routeur" back />
+      <Screen>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={{ flex: 1 }}
       >
         <ScrollView contentContainerStyle={{ gap: 16 }} keyboardShouldPersistTaps="handled">
-          <Title>Ajouter un routeur</Title>
-          <Subtitle>
-            Adresse locale du routeur ou recherche automatique sur votre réseau.
-            Les identifiants restent sur votre téléphone.
-          </Subtitle>
+          <Card>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <View
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 14,
+                  backgroundColor: theme.secondary + '22',
+                  borderWidth: 1,
+                  borderColor: theme.secondary + '55',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Ionicons name="hardware-chip-outline" size={24} color={theme.secondary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>
+                  Connexion API MikroTik
+                </Text>
+                <Text style={{ color: theme.textMuted, fontSize: 12 }}>
+                  Port API RouterOS (défaut 8728). Les identifiants restent sur
+                  votre téléphone.
+                </Text>
+              </View>
+            </View>
+          </Card>
 
           {error ? <Banner tone="danger">{error}</Banner> : null}
 
@@ -161,13 +186,14 @@ export default function AddRouterScreen() {
                   keyboardType="numbers-and-punctuation"
                 />
               </View>
-              <View style={{ width: 84 }}>
-                <Field
+              <View style={{ width: 90 }}>
+                <NumberField
                   label="Port"
                   placeholder="8728"
                   value={port}
-                  onChangeText={(v) => setPort(v.replace(/[^0-9]/g, ''))}
-                  keyboardType="number-pad"
+                  onChangeValue={setPort}
+                  min={1}
+                  max={65535}
                 />
               </View>
             </View>
@@ -178,8 +204,8 @@ export default function AddRouterScreen() {
               accessibilityRole="button"
               style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 }}
             >
-              <Text style={{ color: theme.primary, fontSize: 15 }}>⌕</Text>
-              <Text style={{ color: theme.primary, fontSize: 13.5, fontWeight: '600' }}>
+              <Ionicons name="search" size={15} color={theme.secondary} />
+              <Text style={{ color: theme.secondary, fontSize: 13.5, fontWeight: '600' }}>
                 {scan.kind === 'scanning'
                   ? `Recherche… ${scan.done}/${scan.total}`
                   : 'Rechercher les routeurs sur mon réseau'}
@@ -226,6 +252,19 @@ export default function AddRouterScreen() {
           </Card>
 
           <Card>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Ionicons name="key-outline" size={15} color={theme.primary} />
+              <Text
+                style={{
+                  color: theme.text,
+                  fontSize: 12,
+                  fontWeight: '700',
+                  letterSpacing: 0.5,
+                }}
+              >
+                IDENTIFIANTS ADMINISTRATEUR
+              </Text>
+            </View>
             <Field
               label="Utilisateur RouterOS"
               value={username}
@@ -246,7 +285,8 @@ export default function AddRouterScreen() {
             />
             {test.kind === 'ok' ? (
               <Banner tone="success">
-                Connecté ✓ — identité : {test.identity}
+                <Ionicons name="checkmark-circle" size={14} color={theme.success} />{' '}
+                Connecté — identité : {test.identity}
               </Banner>
             ) : null}
             {test.kind === 'error' ? (
@@ -277,6 +317,7 @@ export default function AddRouterScreen() {
           </Card>
         </ScrollView>
       </KeyboardAvoidingView>
-    </Screen>
+      </Screen>
+    </View>
   );
 }

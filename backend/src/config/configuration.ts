@@ -12,7 +12,6 @@ const envSchema = z.object({
   REDIS_PORT: z.coerce.number().int().positive().default(6380),
 
   JWT_ACCESS_SECRET: z.string().min(32),
-  JWT_REFRESH_SECRET: z.string().min(32),
   JWT_ACCESS_TTL: z.coerce.number().int().positive().default(900),
   JWT_REFRESH_TTL: z.coerce.number().int().positive().default(2592000),
 
@@ -45,6 +44,12 @@ const envSchema = z.object({
     .default('10.20.0.0/24'),
   WG_PORT_MIN: z.coerce.number().int().min(1024).max(65535).default(41000),
   WG_PORT_MAX: z.coerce.number().int().min(1024).max(65535).default(41999),
+
+  // ─── Port forwarding (DNAT via iptables for WebFig/SSH/Winbox) ──
+  VPS_PUBLIC_IP: z.string().default(''),
+
+  // ─── OAuth (optional — disabled if blank) ──
+  GOOGLE_CLIENT_ID: z.string().default(''),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;
