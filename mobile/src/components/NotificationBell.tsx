@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Animated, Text } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api } from '@/src/lib/api';
 import { useLiveEvents } from '@/src/providers/live-events-provider';
 import { Press, theme, useReduceMotion } from './ui';
@@ -21,6 +21,7 @@ export function NotificationBell() {
     queryKey: ['notifications', 'unread-count'],
     queryFn: api.notifications.unreadCount,
     refetchInterval: 15_000,
+    placeholderData: keepPreviousData,
   });
   const count = unread.data ?? 0;
 

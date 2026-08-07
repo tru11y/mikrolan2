@@ -115,6 +115,25 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
     [qc, refreshProfile, toast],
   );
 
+  /**
+   * Le traitement des évènements est lu à travers une référence, jamais placé
+   * dans les dépendances de l'effet ci-dessous.
+   *
+   * `handleEvent` change d'identité dès que le contexte d'authentification est
+   * recalculé (il capture `refreshProfile`). Le mettre en dépendance faisait
+   * fermer puis rouvrir la connexion à chaque re-rendu : sur le téléphone,
+   * OkHttp annulait la requête ~2 ms après l'avoir ouverte
+   * (« reading: context canceled » côté Caddy), le flux ne tenait jamais et
+   * l'application basculait sur le sondage de secours sans le dire.
+   *
+   * Une connexion réseau longue ne doit dépendre que de ce qui la rend
+   * réellement caduque : l'identité de l'utilisateur.
+   */
+  const handleEventRef = useRef(handleEvent);
+  useEffect(() => {
+    handleEventRef.current = handleEvent;
+  }, [handleEvent]);
+
   // ── Flux serveur ────────────────────────────────────────
   useEffect(() => {
     if (!isAuthenticated) {
@@ -149,7 +168,7 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
               if (typeof event.id === 'number' && event.id >= 0) {
                 lastEventId.current = String(event.id);
               }
-              handleEvent(event);
+              handleEventRef.current(event);
             } catch {
               // Charge utile illisible : on ignore plutôt que de faire tomber
               // le flux entier pour un message malformé.
@@ -171,7 +190,7 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
             headers: authHeaders,
             onMessage: (message) => {
               try {
-                handleEvent(JSON.parse(message.data) as LiveEvent);
+                handleEventRef.current(JSON.parse(message.data) as LiveEvent);
               } catch {
                 // idem
               }
@@ -202,7 +221,7 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
       sub.remove();
       closeAll();
     };
-  }, [handleEvent, isAuthenticated, isSuperAdmin]);
+  }, [isAuthenticated, isSuperAdmin]);
 
   // ── Filet de sécurité ───────────────────────────────────
   // N'entre en jeu que si le flux ne tient pas : réseau qui coupe les

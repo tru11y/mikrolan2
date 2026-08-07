@@ -9,6 +9,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { RemoteRouterService } from '../remote-access/remote-router.service';
 import { listActive, removeActive } from '../../common/routeros/hotspot.ops';
 import type { ApiRow } from '../../common/routeros/routeros-api.client';
@@ -44,6 +45,7 @@ export class SessionsService {
     private readonly prisma: PrismaService,
     private readonly remote: RemoteRouterService,
     private readonly events: EventsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -162,6 +164,7 @@ export class SessionsService {
           body,
           data: { voucherId: voucher.id, routerId, code: voucher.code },
         });
+        this.notifications.sendPushToTenant(tenantId, title, body, routerId);
       }
     }
   }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, extractErrorMessage } from '@/src/lib/api';
 import { useAuth } from '@/src/providers/auth-provider';
 import {
@@ -170,6 +170,7 @@ export default function RouterDetailScreen() {
     queryFn: () => api.routers.get(id),
     enabled: Boolean(id),
     refetchInterval: LOCAL_POLL_INTERVAL_MS,
+    placeholderData: keepPreviousData,
   });
 
   const remoteQuery = useQuery({
@@ -177,12 +178,14 @@ export default function RouterDetailScreen() {
     queryFn: () => api.routers.remoteStatus(id),
     enabled: Boolean(id) && isPro,
     refetchInterval: LOCAL_POLL_INTERVAL_MS,
+    placeholderData: keepPreviousData,
   });
 
   const salesQuery = useQuery({
     queryKey: ['router-metrics', id],
     queryFn: () => api.metrics.summary('30d', id),
     enabled: Boolean(id),
+    placeholderData: keepPreviousData,
   });
 
   // "Actifs" doit être un compte live, pas le compteur DB `activeSessions` :
@@ -195,6 +198,7 @@ export default function RouterDetailScreen() {
     queryKey: ['router-active-sessions', id, query.data?.mode],
     enabled: Boolean(id) && query.isSuccess,
     refetchInterval: LOCAL_POLL_INTERVAL_MS,
+    placeholderData: keepPreviousData,
     queryFn: async (): Promise<number | null> => {
       if (query.data!.mode === 'REMOTE') {
         const list = await api.routers.listSessions(id);
@@ -219,6 +223,7 @@ export default function RouterDetailScreen() {
     queryKey: ['plans', id],
     queryFn: () => api.plans.list(id),
     enabled: Boolean(id),
+    placeholderData: keepPreviousData,
   });
 
   const [remoteBusy, setRemoteBusy] = useState(false);
@@ -265,7 +270,7 @@ export default function RouterDetailScreen() {
       if (!creds) {
         setRemoteMsg({
           tone: 'danger',
-          text: 'Identifiants locaux requis : testez d’abord la connexion LAN.',
+          text: "Identifiants locaux requis : testez d'abord la connexion LAN.",
         });
         return;
       }
@@ -423,7 +428,7 @@ export default function RouterDetailScreen() {
               {lanState === 'no-creds'
                 ? "Aucun identifiant local enregistré et aucun accès à distance actif — impossible de vérifier ce routeur."
                 : (lanError ??
-                  'Ce routeur ne répond pas. Les données seraient incorrectes tant qu’il est injoignable.')}
+                  "Ce routeur ne répond pas. Les données seraient incorrectes tant qu'il est injoignable.")}
             </Text>
             <Button title="Réessayer" onPress={() => void loadLocal()} />
             <Pressable
@@ -494,12 +499,14 @@ export default function RouterDetailScreen() {
               >
                 {r.identity}
               </Mono>
-              <Row style={{ justifyContent: 'flex-start', marginTop: space.xs + 2 }}>
-                <Badge
-                  label={r.mode === 'REMOTE' ? 'À DISTANCE' : 'LOCAL'}
-                  tone={r.mode === 'REMOTE' ? 'gold' : 'secondary'}
-                />
-              </Row>
+              {!isPro ? (
+                <Row style={{ justifyContent: 'flex-start', marginTop: space.xs + 2 }}>
+                  <Badge
+                    label={r.mode === 'REMOTE' ? 'À DISTANCE' : 'LOCAL'}
+                    tone={r.mode === 'REMOTE' ? 'gold' : 'secondary'}
+                  />
+                </Row>
+              ) : null}
             </View>
             <Pressable
               accessibilityLabel="Paramètres du routeur"
@@ -549,87 +556,94 @@ export default function RouterDetailScreen() {
           </Card>
         ) : null}
 
-        {/* Accès à distance (réf: carte bleue après le moniteur) */}
-        <Card style={{ borderColor: theme.gold + '55' }}>
-          <Row>
-            <Row style={{ gap: space.xs + 2, justifyContent: 'flex-start' }}>
-              <Ionicons name="globe-outline" size={icon.sm} color={theme.gold} />
-              <Label>Gestion à distance</Label>
+        {/* Accès à distance — masqué pour PRO (automatique) */}
+        {!isPro ? (
+          <Card style={{ borderColor: theme.gold + '55' }}>
+            <Row>
+              <Row style={{ gap: space.xs + 2, justifyContent: 'flex-start' }}>
+                <Ionicons name="globe-outline" size={icon.sm} color={theme.gold} />
+                <Label>Gestion à distance</Label>
+              </Row>
+              <Badge label="PRO" tone="gold" />
             </Row>
-            <Badge label="PRO" tone="gold" />
-          </Row>
-          {!isPro ? (
-            <>
-              <Subtitle>
-                Piloter ce routeur en dehors de son Wi-Fi nécessite un forfait
-                PRO. Inclus pendant l’essai : la gestion sur place.
-              </Subtitle>
-              <Button
-                title="Découvrir PRO"
-                variant="ghost"
-                onPress={() => router.push('/(tabs)/account')}
-              />
-            </>
-          ) : (
-            <>
-              <Subtitle>
-                {remoteQuery.data?.status === 'ACTIVE'
-                  ? 'Gestion à distance active — ce routeur est joignable partout.'
-                  : 'Activez un tunnel WireGuard sécurisé pour piloter ce routeur à distance.'}
-              </Subtitle>
-              {remoteMsg ? (
-                <Banner tone={remoteMsg.tone}>{remoteMsg.text}</Banner>
-              ) : null}
-              {remoteQuery.data?.status === 'ACTIVE' ? null : (
-                <Button
-                  title="Activer l’accès à distance"
-                  onPress={enableRemote}
-                  loading={remoteBusy}
-                />
-              )}
+            <Subtitle>
+              Piloter ce routeur en dehors de son Wi-Fi nécessite un forfait
+              PRO. Inclus pendant l'essai : la gestion sur place.
+            </Subtitle>
+            <Button
+              title="Découvrir PRO"
+              variant="ghost"
+              onPress={() => router.push('/(tabs)/account')}
+            />
+          </Card>
+        ) : remoteQuery.data?.status !== 'ACTIVE' ? (
+          <Card style={{ borderColor: theme.gold + '55' }}>
+            <Row>
+              <Row style={{ gap: space.xs + 2, justifyContent: 'flex-start' }}>
+                <Ionicons name="globe-outline" size={icon.sm} color={theme.gold} />
+                <Label>Gestion à distance</Label>
+              </Row>
+              <Badge label="PRO" tone="gold" />
+            </Row>
+            <Subtitle>
+              Activez un tunnel WireGuard sécurisé pour piloter ce routeur à distance.
+            </Subtitle>
+            {remoteMsg ? (
+              <Banner tone={remoteMsg.tone}>{remoteMsg.text}</Banner>
+            ) : null}
+            <Button
+              title="Activer l'accès à distance"
+              onPress={enableRemote}
+              loading={remoteBusy}
+            />
+          </Card>
+        ) : null}
 
-              {remoteQuery.data?.status === 'ACTIVE' ? (
-                <>
-                  <Button
-                    title={
-                      showCreds
-                        ? 'Masquer les identifiants'
-                        : 'Modifier les identifiants du routeur'
-                    }
-                    variant="ghost"
-                    onPress={() => setShowCreds((v) => !v)}
-                  />
-                  {showCreds ? (
-                    <>
-                      <Subtitle>
-                        Le tunnel est déjà en place : renseignez les identifiants
-                        du routeur pour restaurer le pilotage à distance, sans
-                        être sur son Wi-Fi.
-                      </Subtitle>
-                      <Field
-                        label="Utilisateur RouterOS"
-                        value={credUser}
-                        onChangeText={setCredUser}
-                        autoCapitalize="none"
-                      />
-                      <Field
-                        label="Mot de passe RouterOS"
-                        value={credPass}
-                        onChangeText={setCredPass}
-                        secureTextEntry
-                      />
-                      <Button
-                        title="Enregistrer les identifiants"
-                        onPress={saveCredentials}
-                        loading={credBusy}
-                      />
-                    </>
-                  ) : null}
-                </>
-              ) : null}
-            </>
-          )}
-        </Card>
+        {/* Identifiants routeur (PRO avec tunnel actif) */}
+        {isPro && remoteQuery.data?.status === 'ACTIVE' ? (
+          <>
+            {remoteMsg ? (
+              <Banner tone={remoteMsg.tone}>{remoteMsg.text}</Banner>
+            ) : null}
+            {showCreds ? (
+              <Card>
+                <Label>Identifiants routeur</Label>
+                <Subtitle>
+                  Renseignez les identifiants du routeur pour restaurer le
+                  pilotage à distance, sans être sur son Wi-Fi.
+                </Subtitle>
+                <Field
+                  label="Utilisateur RouterOS"
+                  value={credUser}
+                  onChangeText={setCredUser}
+                  autoCapitalize="none"
+                />
+                <Field
+                  label="Mot de passe RouterOS"
+                  value={credPass}
+                  onChangeText={setCredPass}
+                  secureTextEntry
+                />
+                <Row style={{ gap: space.sm }}>
+                  <View style={{ flex: 1 }}>
+                    <Button
+                      title="Annuler"
+                      variant="ghost"
+                      onPress={() => setShowCreds(false)}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Button
+                      title="Enregistrer"
+                      onPress={saveCredentials}
+                      loading={credBusy}
+                    />
+                  </View>
+                </Row>
+              </Card>
+            ) : null}
+          </>
+        ) : null}
 
         {/* Rangée de 4 tuiles carrées (réf) */}
         <Row

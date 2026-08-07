@@ -24,6 +24,7 @@ const ROUTER_PUBLIC = {
   health: true,
   lastHeartbeat: true,
   ticketTemplate: true,
+  pushNotifications: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.RouterSelect;
@@ -138,6 +139,7 @@ export class RoutersService {
         ? this.crypto.encrypt(JSON.stringify(dto.credentials))
         : null;
     }
+    if (dto.pushNotifications !== undefined) data.pushNotifications = dto.pushNotifications;
 
     // Middleware rewrites update→updateMany (tenant-scoped); no select here.
     await this.prisma.router.update({ where: { id }, data });

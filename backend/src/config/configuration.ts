@@ -44,6 +44,12 @@ const envSchema = z.object({
     .default('10.20.0.0/24'),
   WG_PORT_MIN: z.coerce.number().int().min(1024).max(65535).default(41000),
   WG_PORT_MAX: z.coerce.number().int().min(1024).max(65535).default(41999),
+
+  // ─── Port forwarding (DNAT via iptables for WebFig/SSH/Winbox) ──
+  VPS_PUBLIC_IP: z.string().default(''),
+
+  // ─── OAuth (optional — disabled if blank) ──
+  GOOGLE_CLIENT_ID: z.string().default(''),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;

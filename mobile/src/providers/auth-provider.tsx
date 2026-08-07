@@ -52,6 +52,7 @@ type AuthContextValue = {
     password: string,
   ) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
+  googleLogin: (idToken: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   updateApiBaseUrl: (value: string) => Promise<void>;
@@ -137,6 +138,20 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
   }
 
+  async function googleLogin(idToken: string): Promise<void> {
+    setIsBusy(true);
+    setError(null);
+    try {
+      await setAuthTokens(await api.auth.googleLogin(idToken));
+      await afterAuth();
+    } catch (e) {
+      setError(extractErrorMessage(e));
+      throw e;
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   async function logout(): Promise<void> {
     setIsBusy(true);
     try {
@@ -186,6 +201,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       clearError: () => setError(null),
       signup,
       login,
+      googleLogin,
       logout,
       refreshProfile,
       updateApiBaseUrl,

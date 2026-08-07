@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, extractErrorMessage, type LiveSession } from '@/src/lib/api';
 import { getLocalCredentials } from '@/src/lib/router-credentials';
 import { reportLanSessions } from '@/src/lib/sessionSync';
@@ -109,14 +109,15 @@ export default function SessionsScreen() {
     queryKey: ['router', routerId],
     queryFn: () => api.routers.get(routerId),
     enabled: Boolean(routerId),
+    placeholderData: keepPreviousData,
   });
   const isRemote = routerQuery.data?.mode === 'REMOTE';
 
-  // REMOTE → read over the tunnel (backend). LOCAL → read over the LAN directly.
   const query = useQuery({
     queryKey: ['sessions', routerId, isRemote],
     enabled: Boolean(routerId) && routerQuery.isSuccess,
     refetchInterval: 3_000,
+    placeholderData: keepPreviousData,
     queryFn: async (): Promise<LiveSession[]> => {
       if (isRemote) return api.routers.listSessions(routerId);
       const creds = await getLocalCredentials(routerId);

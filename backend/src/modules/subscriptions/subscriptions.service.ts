@@ -13,6 +13,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PERIOD_DAYS, TiersService, periodAmount } from './tiers.service';
 
 /** Free trial granted at signup. Local management only — remote is PRO. */
@@ -47,6 +48,7 @@ export class SubscriptionsService {
     private readonly prisma: PrismaService,
     private readonly tiers: TiersService,
     private readonly events: EventsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   getForTenant(tenantId: string) {
@@ -302,6 +304,7 @@ export class SubscriptionsService {
       body: 'Votre paiement a été validé. La gestion à distance est débloquée.',
       data: { endsAt: end.toISOString(), tierKey: invoice?.tier?.key ?? null },
     });
+    this.notifications.sendPushToTenant(tenantId, 'Abonnement activé', 'Votre paiement a été validé. La gestion à distance est débloquée.');
 
     return this.getForTenant(tenantId);
   }

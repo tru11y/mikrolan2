@@ -41,9 +41,23 @@ export const updateNotificationsSchema = z
   .strict();
 export type UpdateNotificationsDto = z.infer<typeof updateNotificationsSchema>;
 
+export const registerPushTokenSchema = z
+  .object({
+    token: z.string().min(10).max(200),
+  })
+  .strict();
+export type RegisterPushTokenDto = z.infer<typeof registerPushTokenSchema>;
+
 export const deleteAccountSchema = z
   .object({
     password: z.string().min(1).max(128),
   })
   .strict();
 export type DeleteAccountDto = z.infer<typeof deleteAccountSchema>;
+
+export const googleOAuthSchema = z
+  .object({
+    idToken: z.string().min(20).max(4000),
+  })
+  .strict();
+export type GoogleOAuthDto = z.infer<typeof googleOAuthSchema>;

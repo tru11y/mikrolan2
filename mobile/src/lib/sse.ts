@@ -98,7 +98,13 @@ export function openSse(options: SseOptions): SseConnection {
       request.setRequestHeader(key, value);
     }
 
-    request.onreadystatechange = () => {
+    // `addEventListener`, surtout pas `request.onreadystatechange = …` :
+    // React Native n'active la livraison incrémentale (`_incrementalEvents`)
+    // que dans `addEventListener('readystatechange'|'progress')`. L'affectation
+    // directe passe par l'attribut d'évènement du shim et laisse le drapeau à
+    // faux — le natif attend alors le corps complet, qui n'arrive jamais sur un
+    // flux SSE, et la requête finit annulée sans qu'un seul octet remonte.
+    request.addEventListener('readystatechange', () => {
       if (closed) return;
 
       if (request.readyState === 2 /* HEADERS_RECEIVED */) {
@@ -130,11 +136,11 @@ export function openSse(options: SseOptions): SseConnection {
         // Le serveur a fermé (redémarrage, proxy, perte réseau) : on relance.
         scheduleReconnect();
       }
-    };
+    });
 
-    request.onerror = () => {
+    request.addEventListener('error', () => {
       if (!closed) scheduleReconnect();
-    };
+    });
 
     request.send();
   }
