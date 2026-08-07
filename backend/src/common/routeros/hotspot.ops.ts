@@ -364,6 +364,24 @@ export async function listIpBindings(
   }));
 }
 
+/** Updates an existing IP binding by RouterOS `.id`. */
+export async function updateIpBinding(
+  c: RouterOsApiClient,
+  mikrotikId: string,
+  b: Partial<IpBindingSpec>,
+): Promise<void> {
+  const data: Record<string, string> = {};
+  if (b.macAddress) data['mac-address'] = b.macAddress;
+  if (b.type) data.type = b.type;
+  if (b.ipAddress !== undefined) data.address = b.ipAddress ?? '';
+  if (b.comment !== undefined) data.comment = b.comment ?? '';
+  await c.command([
+    '/ip/hotspot/ip-binding/set',
+    `=.id=${mikrotikId}`,
+    ...attrs(data),
+  ]);
+}
+
 /** Adds an IP binding. Returns the RouterOS `.id`. */
 export async function addIpBinding(
   c: RouterOsApiClient,

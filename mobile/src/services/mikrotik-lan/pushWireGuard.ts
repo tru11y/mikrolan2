@@ -6,7 +6,12 @@ import type { ProvisionBundle } from '@/src/lib/api';
 
 const WG_IFACE = 'mikrolan';
 const ROUTER_LISTEN_PORT = '13231';
-const FW_COMMENT = 'mikrolan-mgmt';
+// Firewall rule comments (one per protected service, so each is idempotent and
+// re-positionable independently, matching what mikroserver v1 does).
+const FW_COMMENT_API = 'mikrolan-mgmt-api';
+const FW_COMMENT_WEBFIG = 'mikrolan-mgmt-webfig';
+const FW_COMMENT_ADMIN = 'mikrolan-mgmt-admin';
+const ROUTE_COMMENT = 'mikrolan-mgmt-route';
 // Tunnel subnet prefix — MUST match the backend WG_SUBNET_BASE (10.20.0.0/24).
 // The address is set with this prefix (not /32) so RouterOS installs a connected
 // route for the whole tunnel subnet; unlike wg-quick, RouterOS does NOT derive a
@@ -19,6 +24,12 @@ function tunnelSubnet(wgIp: string): string {
   const parts = wgIp.split('.');
   parts[3] = '0';
   return `${parts.join('.')}/${TUNNEL_PREFIX}`;
+}
+
+function vpsTunnelIp(wgIp: string): string {
+  const parts = wgIp.split('.');
+  parts[3] = '1';
+  return parts.join('.');
 }
 
 /**
@@ -79,21 +90,104 @@ export async function pushWireGuardConfig(
       await c.add('/interface/wireguard/peers', peerData);
     }
 
-    // 4) Firewall: allow VPS management traffic arriving on the tunnel. RouterOS
-    // drops the input chain for non-LAN interfaces by default, so without this
-    // the tunnel handshakes but the router stays unreachable. Idempotent by
-    // comment; placed before the first rule so it precedes any input drop.
+    // 4) Explicit static route toward the tunnel subnet via the WG interface.
+    // The /24 address on the interface installs a connected route, but that
+    // route can be shadowed by hotspot / DHCP-Client reconfigurations. An
+    // explicit route via the WG interface is what mikroserver v1 does and is
+    // what guarantees the reply path is symmetric — without it, RouterOS sends
+    // a RST because the incoming SYN has no valid return route through the
+    // tunnel. Idempotent by comment.
+    const routes = await c.print('/ip/route');
+    const wantRouteDst = tunnelSubnet(bundle.wgIp);
+    const existingRoute = routes.find((r) => r.comment === ROUTE_COMMENT);
+    if (!existingRoute?.['.id']) {
+      await c.add('/ip/route', {
+        'dst-address': wantRouteDst,
+        gateway: WG_IFACE,
+        distance: '1',
+        comment: ROUTE_COMMENT,
+      });
+    } else if (
+      existingRoute['dst-address'] !== wantRouteDst ||
+      existingRoute.gateway !== WG_IFACE
+    ) {
+      await c.set('/ip/route', existingRoute['.id'], {
+        'dst-address': wantRouteDst,
+        gateway: WG_IFACE,
+      });
+    }
+
+    // 5) Firewall: allow VPS management traffic arriving on the tunnel. Three
+    // scoped rules (matching mikroserver v1's proven pattern) instead of one
+    // broad accept — RouterOS treats scoped accepts more predictably against
+    // subsequent hotspot/anti-tethering drops, and it makes each service's
+    // rule independently idempotent/repositionable.
+    //   - API (8728) : restricted to VPS source, so the backend can drive
+    //   - WebFig (80) + SSH (22) + Winbox (8291) : dst-port only
+    // Each rule is re-positioned to the top on every provision (place-before=0
+    // literal — the sequence-index that RouterOS interprets as "very top"),
+    // because later-added rules can silently displace it downward.
+    const vpsIp = vpsTunnelIp(bundle.wgIp);
+    type FwRule = {
+      comment: string;
+      spec: Record<string, string>;
+    };
+    const wantedRules: FwRule[] = [
+      {
+        comment: FW_COMMENT_API,
+        spec: {
+          chain: 'input',
+          action: 'accept',
+          protocol: 'tcp',
+          'dst-port': '8728',
+          'src-address': vpsIp,
+          'in-interface': WG_IFACE,
+          comment: FW_COMMENT_API,
+        },
+      },
+      {
+        comment: FW_COMMENT_WEBFIG,
+        spec: {
+          chain: 'input',
+          action: 'accept',
+          protocol: 'tcp',
+          'dst-port': '80',
+          'in-interface': WG_IFACE,
+          comment: FW_COMMENT_WEBFIG,
+        },
+      },
+      {
+        comment: FW_COMMENT_ADMIN,
+        spec: {
+          chain: 'input',
+          action: 'accept',
+          protocol: 'tcp',
+          'dst-port': '22,8291',
+          'in-interface': WG_IFACE,
+          comment: FW_COMMENT_ADMIN,
+        },
+      },
+    ];
+
     const filters = await c.print('/ip/firewall/filter');
-    if (!filters.some((f) => f.comment === FW_COMMENT)) {
-      const rule: Record<string, string> = {
-        chain: 'input',
-        'in-interface': WG_IFACE,
-        action: 'accept',
-        comment: FW_COMMENT,
-      };
-      const firstId = filters[0]?.['.id'];
-      if (firstId) rule['place-before'] = firstId;
-      await c.add('/ip/firewall/filter', rule);
+    // Add missing rules first (in reverse — see below for order rationale).
+    for (const wanted of wantedRules) {
+      const existing = filters.find((f) => f.comment === wanted.comment);
+      if (!existing?.['.id']) {
+        await c.add('/ip/firewall/filter', { ...wanted.spec, 'place-before': '0' });
+      }
+    }
+    // Then reposition ALL managed rules to the top so they take precedence
+    // over any drop rule inserted after them. Move in REVERSE wantedRules
+    // order: after each move(dest=0) the moved rule sits at position 0, so
+    // moving them last-to-first leaves the final order matching wantedRules.
+    const filtersAfterAdd = await c.print('/ip/firewall/filter');
+    for (let i = wantedRules.length - 1; i >= 0; i--) {
+      const wanted = wantedRules[i];
+      const rule = filtersAfterAdd.find((f) => f.comment === wanted.comment);
+      if (rule?.['.id']) {
+        await c.move('/ip/firewall/filter', rule['.id'], '0');
+      }
     }
   });
 }

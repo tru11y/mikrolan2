@@ -10,6 +10,7 @@ import {
   type SystemResource,
 } from '@/src/services/mikrotik-lan/MikroTikApiClient';
 import { pushWireGuardConfig } from '@/src/services/mikrotik-lan/pushWireGuard';
+import { detectServicePorts } from '@/src/services/mikrotik-lan/detectServicePorts';
 import {
   getLocalCredentials,
 } from '@/src/lib/router-credentials';
@@ -274,7 +275,12 @@ export default function RouterDetailScreen() {
         });
         return;
       }
-      const bundle = await api.routers.provisionRemote(id);
+      // Probe the router's /ip service ports BEFORE provisioning so the VPS
+      // DNAT target matches what RouterOS actually listens on. Operators
+      // routinely move `www` off 80; without this the tunnel handshakes but
+      // WebFig connects to a dead socket and the browser reports RST.
+      const servicePorts = await detectServicePorts(creds);
+      const bundle = await api.routers.provisionRemote(id, servicePorts);
       await pushWireGuardConfig(creds, bundle);
       // Hand the RouterOS credentials to the backend (encrypted at rest) so the
       // server can drive the router over the tunnel via the binary API (8728).

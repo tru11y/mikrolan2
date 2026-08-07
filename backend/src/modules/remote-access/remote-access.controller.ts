@@ -1,17 +1,34 @@
 import {
+  Body,
   Controller,
   Get,
   HttpCode,
+  Optional,
   Param,
   ParseUUIDPipe,
   Post,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
+import { z } from 'zod';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { TenantContext } from '../../common/context/tenant-context';
+import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { RemoteAccessService } from './remote-access.service';
 import { RemoteRouterService } from './remote-router.service';
+
+// Operators sometimes move RouterOS management services off their default
+// ports (most commonly `www` from 80 → 87 for hardening). The mobile app
+// probes the router's `/ip service` right before provisioning and hands the
+// observed ports to the backend so the VPS DNAT targets a listening port.
+const provisionSchema = z
+  .object({
+    webfigPort: z.coerce.number().int().min(1).max(65535).optional(),
+    sshPort: z.coerce.number().int().min(1).max(65535).optional(),
+    winboxPort: z.coerce.number().int().min(1).max(65535).optional(),
+  })
+  .default({});
+type ProvisionDto = z.infer<typeof provisionSchema>;
 
 @Controller('routers/:id/remote')
 export class RemoteAccessController {
@@ -36,8 +53,11 @@ export class RemoteAccessController {
   provision(
     @CurrentUser() user: TenantContext,
     @Param('id', ParseUUIDPipe) id: string,
+    @Optional()
+    @Body(new ZodValidationPipe(provisionSchema))
+    dto: ProvisionDto = {},
   ) {
-    return this.remote.provision(id, user.userId);
+    return this.remote.provision(id, user.userId, dto);
   }
 
   @Post('revoke')

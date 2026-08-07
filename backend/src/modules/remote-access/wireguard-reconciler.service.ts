@@ -50,7 +50,15 @@ export class WireGuardReconciler implements OnModuleInit, OnModuleDestroy {
     try {
       const peers = await this.prisma.remotePeer.findMany({
         where: { status: RemotePeerStatus.ACTIVE },
-        select: { wgPublicKey: true, wgIp: true, allocatedPort: true, routerId: true },
+        select: {
+          wgPublicKey: true,
+          wgIp: true,
+          allocatedPort: true,
+          routerId: true,
+          webfigPort: true,
+          sshPort: true,
+          winboxPort: true,
+        },
       });
       await this.wg.syncPeers(peers);
       await this.wg.syncDnat(peers);

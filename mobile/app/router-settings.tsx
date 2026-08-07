@@ -10,7 +10,7 @@ import {
   getLocalCredentials,
 } from '@/src/lib/router-credentials';
 import { withApi } from '@/src/services/mikrotik-lan/MikroTikApiClient';
-import { getWifiInfo } from '@/src/lib/lanBinder';
+import { getWifiInfo, sameSubnet24 } from '@/src/lib/lanBinder';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
 import { useAuth } from '@/src/providers/auth-provider';
 import {
@@ -39,9 +39,16 @@ type Item = {
 };
 
 // Only attempt LAN when the router's host is on the current Wi-Fi subnet —
-// otherwise the pinned TCP socket hard-crashes the app (see router/[id].tsx).
-function sameSubnet24(a: string, b: string): boolean {
-  return a.split('.').slice(0, 3).join('.') === b.split('.').slice(0, 3).join('.');
+// otherwise the pinned TCP socket hard-crashes the app (see router/[id].tsx),
+// and WebFig/SSH/Winbox would silently target an unreachable LAN IP.
+async function resolveAccessMode(routerId: string) {
+  const creds = await getLocalCredentials(routerId);
+  if (!creds) return { onLan: false, creds: null };
+  const wifi = await getWifiInfo();
+  const onLan =
+    !!wifi &&
+    (creds.host === wifi.gateway || sameSubnet24(creds.host, wifi.ipAddress));
+  return { onLan, creds };
 }
 
 export default function RouterSettingsScreen() {
@@ -135,13 +142,8 @@ export default function RouterSettingsScreen() {
     setRebootResult(null);
 
     // 1) LAN first: works offline on the router's Wi-Fi, only when on-subnet.
-    const creds = await getLocalCredentials(routerId);
-    const wifi = await getWifiInfo();
-    const onRouterLan =
-      !!creds &&
-      !!wifi &&
-      (creds.host === wifi.gateway || sameSubnet24(creds.host, wifi.ipAddress));
-    if (creds && onRouterLan) {
+    const { onLan, creds } = await resolveAccessMode(routerId);
+    if (creds && onLan) {
       try {
         await withApi(creds, (c) => c.reboot());
         setRebootResult({
@@ -223,6 +225,11 @@ export default function RouterSettingsScreen() {
     },
     ...(isPro
       ? [
+          // WebFig / SSH / Winbox : ALWAYS go through the VPS DNAT URL, never
+          // LAN. Matches mikroserver v1 behaviour: the dashboard button just
+          // opens `http://<vps>:<port>/`, regardless of network. LAN detection
+          // was tried but fails predictably on the router's own hotspot Wi-Fi
+          // (captive portal), and it obscures the real infra when it kicks in.
           {
             id: 'webfig',
             title: 'WebFig',
@@ -234,12 +241,10 @@ export default function RouterSettingsScreen() {
               if (urls?.webfig) {
                 Linking.openURL(urls.webfig.url);
               } else {
-                const host = routerQuery.data?.localAddress?.split(':')[0];
-                if (host) {
-                  Linking.openURL(`http://${host}/webfig/`);
-                } else {
-                  Alert.alert('WebFig', 'Accès à distance non configuré.');
-                }
+                Alert.alert(
+                  'WebFig',
+                  "Gestion à distance non activée pour ce routeur.",
+                );
               }
             },
           },
@@ -251,28 +256,22 @@ export default function RouterSettingsScreen() {
             color: theme.secondary,
             onPress: () => {
               const urls = remoteQuery.data?.accessUrls;
-              if (urls?.ssh) {
-                const { command, host, port } = urls.ssh;
-                Alert.alert('SSH', command, [
-                  { text: 'Copier', onPress: () => Clipboard.setStringAsync(command) },
-                  {
-                    text: 'Ouvrir',
-                    onPress: () => Linking.openURL(`ssh://admin@${host}:${port}`).catch(() => {
+              if (!urls?.ssh) {
+                Alert.alert('SSH', 'Gestion à distance non activée.');
+                return;
+              }
+              const { command, host, port } = urls.ssh;
+              Alert.alert('SSH', command, [
+                { text: 'Copier', onPress: () => Clipboard.setStringAsync(command) },
+                {
+                  text: 'Ouvrir',
+                  onPress: () =>
+                    Linking.openURL(`ssh://admin@${host}:${port}`).catch(() => {
                       Alert.alert('SSH', 'Aucun client SSH détecté.');
                     }),
-                  },
-                  { text: 'Fermer', style: 'cancel' },
-                ]);
-              } else {
-                const host = routerQuery.data?.localAddress?.split(':')[0];
-                if (host) {
-                  Linking.openURL(`ssh://admin@${host}`).catch(() => {
-                    Alert.alert('SSH', `ssh admin@${host}\nAucun client SSH détecté.`);
-                  });
-                } else {
-                  Alert.alert('SSH', 'Accès à distance non configuré.');
-                }
-              }
+                },
+                { text: 'Fermer', style: 'cancel' },
+              ]);
             },
           },
           {
@@ -283,21 +282,24 @@ export default function RouterSettingsScreen() {
             color: theme.gold,
             onPress: () => {
               const urls = remoteQuery.data?.accessUrls;
-              if (urls?.winbox) {
-                const { address, host, port } = urls.winbox;
-                Alert.alert('Winbox', address, [
-                  { text: 'Copier', onPress: () => Clipboard.setStringAsync(address) },
-                  {
-                    text: 'Ouvrir MikroTik App',
-                    onPress: () => Linking.openURL(`mikrotik://connect?address=${host}&port=${port}`).catch(() => {
-                      Alert.alert('Winbox', 'Application MikroTik non installée.');
-                    }),
-                  },
-                  { text: 'Fermer', style: 'cancel' },
-                ]);
-              } else {
-                Alert.alert('Winbox', 'Accès à distance non configuré.');
+              if (!urls?.winbox) {
+                Alert.alert('Winbox', 'Gestion à distance non activée.');
+                return;
               }
+              const { address, host, port } = urls.winbox;
+              Alert.alert('Winbox', address, [
+                { text: 'Copier', onPress: () => Clipboard.setStringAsync(address) },
+                {
+                  text: 'Ouvrir MikroTik App',
+                  onPress: () =>
+                    Linking.openURL(`mikrotik://connect?address=${host}&port=${port}`).catch(
+                      () => {
+                        Alert.alert('Winbox', 'Application MikroTik non installée.');
+                      },
+                    ),
+                },
+                { text: 'Fermer', style: 'cancel' },
+              ]);
             },
           },
         ]
