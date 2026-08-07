@@ -37,6 +37,11 @@ export interface ProvisionBundle {
   peerPublicKey: string;
   // Returned exactly once — the router's private key is never stored server-side.
   routerPrivateKey: string;
+  // Echo back the service ports the DNAT actually targets, so the mobile app
+  // can display them and detect drift on the next provision.
+  webfigPort: number;
+  sshPort: number;
+  winboxPort: number;
 }
 
 @Injectable()
@@ -48,7 +53,15 @@ export class RemoteAccessService {
     private readonly config: ConfigService<AppConfig, true>,
   ) {}
 
-  async provision(routerId: string, actorId: string): Promise<ProvisionBundle> {
+  async provision(
+    routerId: string,
+    actorId: string,
+    servicePorts: {
+      webfigPort?: number;
+      sshPort?: number;
+      winboxPort?: number;
+    } = {},
+  ): Promise<ProvisionBundle> {
     const tenantId = getTenantContext()?.tenantId;
     if (!tenantId || !(await this.subscriptions.isRemoteAllowed(tenantId))) {
       throw new ForbiddenException(
@@ -79,9 +92,20 @@ export class RemoteAccessService {
     const serverPublicKey = this.wg.serverPublicKey;
     const endpoint = this.wg.endpoint;
 
+    // Fall back to RouterOS out-of-the-box values when the client hasn't
+    // probed them (older mobile builds, or the router API was unreachable).
+    // The reconciler + DB defaults keep these consistent.
+    const webfigPort = servicePorts.webfigPort ?? 80;
+    const sshPort = servicePorts.sshPort ?? 22;
+    const winboxPort = servicePorts.winboxPort ?? 8291;
+
     try {
       await this.wg.addPeer(keys.publicKey, wgIp);
-      await this.wg.addDnat(wgIp, allocatedPort);
+      await this.wg.addDnat(wgIp, allocatedPort, {
+        webfigPort,
+        sshPort,
+        winboxPort,
+      });
     } catch {
       throw new ServiceUnavailableException(
         "Impossible d'activer la gestion à distance pour le moment. Réessayez plus tard.",
@@ -97,6 +121,9 @@ export class RemoteAccessService {
       status: RemotePeerStatus.ACTIVE,
       provisionedAt: new Date(),
       revokedAt: null,
+      webfigPort,
+      sshPort,
+      winboxPort,
     };
 
     await this.prisma.$transaction(async (tx) => {
@@ -124,6 +151,9 @@ export class RemoteAccessService {
       endpoint,
       peerPublicKey: keys.publicKey,
       routerPrivateKey: keys.privateKey,
+      webfigPort,
+      sshPort,
+      winboxPort,
     };
   }
 
@@ -134,7 +164,11 @@ export class RemoteAccessService {
 
     try {
       await this.wg.removePeer(peer.wgPublicKey);
-      await this.wg.removeDnat(peer.wgIp, peer.allocatedPort);
+      await this.wg.removeDnat(peer.wgIp, peer.allocatedPort, {
+        webfigPort: peer.webfigPort,
+        sshPort: peer.sshPort,
+        winboxPort: peer.winboxPort,
+      });
     } catch {
       // proceed with DB revocation even if the peer removal call fails
     }
@@ -166,6 +200,9 @@ export class RemoteAccessService {
         endpoint: true,
         provisionedAt: true,
         revokedAt: true,
+        webfigPort: true,
+        sshPort: true,
+        winboxPort: true,
       },
     });
     if (!peer) return { status: 'NONE' as const };
