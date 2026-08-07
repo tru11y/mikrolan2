@@ -9,7 +9,9 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CryptoService } from '../../common/crypto/crypto.service';
 import { getTenantContext } from '../../common/context/tenant-context';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { WireGuardService } from '../../common/wireguard/wireguard.service';
 import { CreateRouterDto, UpdateRouterDto } from './dto/router.schemas';
+import { TicketTemplateDto } from './dto/ticket-template.schemas';
 
 // Never expose credEncrypted to the API.
 const ROUTER_PUBLIC = {
@@ -21,6 +23,8 @@ const ROUTER_PUBLIC = {
   mode: true,
   health: true,
   lastHeartbeat: true,
+  ticketTemplate: true,
+  pushNotifications: true,
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.RouterSelect;
@@ -31,6 +35,7 @@ export class RoutersService {
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
     private readonly subscriptions: SubscriptionsService,
+    private readonly wg: WireGuardService,
   ) {}
 
   // Remote (cloud + WireGuard) management is a PRO-only feature.
@@ -97,7 +102,7 @@ export class RoutersService {
         e instanceof Prisma.PrismaClientKnownRequestError &&
         e.code === 'P2002'
       ) {
-        throw new ConflictException('Router identity already exists');
+        throw new ConflictException('Un routeur avec cette identité existe déjà.');
       }
       throw e;
     }
@@ -116,7 +121,7 @@ export class RoutersService {
       where: { id, deletedAt: null },
       select: ROUTER_PUBLIC,
     });
-    if (!router) throw new NotFoundException('Router not found');
+    if (!router) throw new NotFoundException('Routeur introuvable — il a peut-être été supprimé.');
     return router;
   }
 
@@ -134,18 +139,50 @@ export class RoutersService {
         ? this.crypto.encrypt(JSON.stringify(dto.credentials))
         : null;
     }
+    if (dto.pushNotifications !== undefined) data.pushNotifications = dto.pushNotifications;
 
     // Middleware rewrites update→updateMany (tenant-scoped); no select here.
     await this.prisma.router.update({ where: { id }, data });
     return this.findOne(id);
   }
 
-  async remove(id: string) {
-    await this.findOne(id);
+  async updateTicketTemplate(id: string, dto: TicketTemplateDto) {
+    await this.findOne(id); // ownership + existence (404 if cross-tenant)
     await this.prisma.router.update({
       where: { id },
-      data: { deletedAt: new Date() },
+      data: { ticketTemplate: dto as Prisma.InputJsonValue },
     });
+    return this.findOne(id);
+  }
+
+  /**
+   * Permanent, cascading delete — not a soft delete. A deleted router (and, if
+   * PRO, its WireGuard tunnel) must behave as if it had never been added.
+   * Order follows the real FK dependencies in schema.prisma: Session →
+   * Voucher → VoucherBatch → Plan (router-scoped) → RemotePeer → Router.
+   * AuditLog/Notification keep their (FK-less) references — history survives.
+   */
+  async remove(id: string) {
+    await this.findOne(id);
+
+    const peer = await this.prisma.remotePeer.findFirst({ where: { routerId: id } });
+    if (peer) {
+      try {
+        await this.wg.removePeer(peer.wgPublicKey);
+      } catch {
+        // best-effort, same as remote-access.service.ts revoke() — proceed regardless
+      }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.session.deleteMany({ where: { routerId: id } });
+      await tx.voucher.deleteMany({ where: { routerId: id } });
+      await tx.voucherBatch.deleteMany({ where: { routerId: id } });
+      await tx.plan.deleteMany({ where: { routerId: id } });
+      if (peer) await tx.remotePeer.delete({ where: { id: peer.id } });
+      await tx.router.delete({ where: { id } });
+    });
+
     await this.audit(AuditAction.DELETE, id, {});
     return { deleted: true };
   }

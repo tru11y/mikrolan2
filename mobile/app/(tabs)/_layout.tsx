@@ -1,43 +1,23 @@
 import { Redirect, Tabs } from 'expo-router';
-import { Text } from 'react-native';
 import { useAuth } from '@/src/providers/auth-provider';
-import { theme } from '@/src/components/ui';
 
-function TabIcon({ label, color }: { label: string; color: string }) {
-  return <Text style={{ color, fontSize: 18 }}>{label}</Text>;
-}
-
+// No native chrome at all: the tab bar is hidden (each screen renders its own
+// <BottomNav>, which adapts to whether a router is selected) and the header is
+// hidden too (each screen renders <AppHeader>). Mixing the native header with
+// in-page titles is what made the same screen name appear twice.
 export default function TabsLayout() {
   const { isReady, isAuthenticated } = useAuth();
   if (isReady && !isAuthenticated) return <Redirect href="/login" />;
 
   return (
     <Tabs
-      screenOptions={{
-        headerStyle: { backgroundColor: theme.surface },
-        headerTintColor: theme.text,
-        tabBarStyle: {
-          backgroundColor: theme.surface,
-          borderTopColor: theme.border,
-        },
-        tabBarActiveTintColor: theme.primary,
-        tabBarInactiveTintColor: theme.textMuted,
-      }}
+      screenOptions={{ headerShown: false, tabBarStyle: { display: 'none' } }}
     >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: 'Routeurs',
-          tabBarIcon: ({ color }) => <TabIcon label="📡" color={color} />,
-        }}
-      />
-      <Tabs.Screen
-        name="account"
-        options={{
-          title: 'Compte',
-          tabBarIcon: ({ color }) => <TabIcon label="👤" color={color} />,
-        }}
-      />
+      <Tabs.Screen name="index" options={{ title: 'Maison' }} />
+      <Tabs.Screen name="routeurs" options={{ title: 'Routeurs' }} />
+      <Tabs.Screen name="tickets" options={{ title: 'Tickets', href: null }} />
+      <Tabs.Screen name="rapport" options={{ title: 'Rapport', href: null }} />
+      <Tabs.Screen name="account" options={{ title: 'Paramètres' }} />
     </Tabs>
   );
 }

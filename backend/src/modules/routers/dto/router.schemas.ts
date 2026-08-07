@@ -36,6 +36,7 @@ export const updateRouterSchema = z
     localAddress: addressSchema.nullable().optional(),
     mode: z.nativeEnum(ManagementMode).optional(),
     credentials: credentialsSchema.nullable().optional(),
+    pushNotifications: z.boolean().optional(),
   })
   .strict();
 export type UpdateRouterDto = z.infer<typeof updateRouterSchema>;
