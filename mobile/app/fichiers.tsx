@@ -12,7 +12,7 @@ import {
 import { printTickets, printTicketsDirect } from '@/src/lib/ticketsPdf';
 import { TicketCard } from '@/src/components/TicketCard';
 import { Badge, Banner, Button, ConfirmDialog, Empty, Subtitle, Title, theme } from '@/src/components/ui';
-import { BottomNav } from '@/src/components/BottomNav';
+import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
 // U+0300-U+036F = plage des diacritiques combinants (issus de normalize('NFD'))
@@ -55,6 +55,7 @@ type BatchAction = { batchId: string; kind: 'download' | 'print' } | null;
 export default function FichiersScreen() {
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const qc = useQueryClient();
+  const navHeight = useBottomNavHeight();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<BatchAction>(null);
   const [confirmVoucher, setConfirmVoucher] = useState<VoucherItem | null>(null);
@@ -163,7 +164,7 @@ export default function FichiersScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <AppHeader title="Fichiers" back />
-      <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: 100 }}>
+      <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: navHeight }}>
         <View>
           <Title>Fichiers &amp; Impression</Title>
           <Subtitle>

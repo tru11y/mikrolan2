@@ -1175,6 +1175,87 @@ export function ConfirmDialog({
   );
 }
 
+export type ActionSheetAction = {
+  label: string;
+  onPress: () => void;
+  tone?: 'default' | 'primary' | 'danger';
+  variant?: 'default' | 'cancel';
+};
+
+/**
+ * Thémé, choix multiples — remplace `Alert.alert` natif (fond blanc, police
+ * système) qui rompait le thème en plein parcours PRO (WebFig/SSH/Winbox).
+ */
+export function ActionSheet({
+  visible,
+  icon: iconName,
+  title,
+  message,
+  mono,
+  actions,
+  onClose,
+}: {
+  visible: boolean;
+  icon: IoniconName;
+  title: string;
+  message?: string;
+  mono?: boolean;
+  actions: ActionSheetAction[];
+  onClose: () => void;
+}) {
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={styles.dialogBackdrop}>
+        <View style={[styles.dialog, { borderColor: theme.border }]}>
+          <IconChip name={iconName} color={theme.primary} size="lg" outlined />
+          <View style={{ alignItems: 'center', gap: space.xs }}>
+            <Text style={styles.dialogTitle}>{title}</Text>
+            {message ? (
+              <Text
+                style={[
+                  styles.dialogMessage,
+                  mono ? { fontFamily: theme.mono, fontSize: type.caption } : null,
+                ]}
+              >
+                {message}
+              </Text>
+            ) : null}
+          </View>
+          <View style={{ gap: space.sm, width: '100%' }}>
+            {actions.map((a, i) => {
+              const isCancel = a.variant === 'cancel';
+              const accent =
+                a.tone === 'danger'
+                  ? theme.danger
+                  : a.tone === 'primary'
+                    ? theme.primary
+                    : theme.text;
+              return (
+                <Pressable key={i} onPress={a.onPress} style={styles.actionSheetItem}>
+                  <Text
+                    style={{
+                      color: isCancel ? theme.textMuted : accent,
+                      fontWeight: '700',
+                      fontSize: type.body,
+                    }}
+                  >
+                    {a.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 // Aurora gradient surface (violet -> cyan) for hero / revenue cards.
 export function AuroraCard({
   children,
@@ -1463,6 +1544,15 @@ const styles = StyleSheet.create({
     paddingVertical: space.md,
     borderRadius: radius.md,
     backgroundColor: theme.surfaceAlt,
+    alignItems: 'center',
+  },
+  actionSheetItem: {
+    width: '100%',
+    paddingVertical: space.md,
+    borderRadius: radius.md,
+    backgroundColor: theme.surfaceAlt,
+    borderWidth: 1,
+    borderColor: theme.border,
     alignItems: 'center',
   },
   dialogCancelText: {

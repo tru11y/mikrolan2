@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ScrollView, Switch, Text, View } from 'react-native';
+import { WebView } from 'react-native-webview';
 import { useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -9,10 +10,13 @@ import {
   DEFAULT_TICKET_TEMPLATE,
   type TicketTemplate,
 } from '@/src/lib/api';
+import { buildTicketsHtml } from '@/src/lib/ticketsPdf';
 import {
   Banner,
   Button,
+  Card,
   Field,
+  Label,
   space,
   Subtitle,
   theme,
@@ -46,7 +50,7 @@ function Toggle({
         value={value}
         onValueChange={onValueChange}
         trackColor={{ false: theme.border, true: theme.primary }}
-        thumbColor="#fff"
+        thumbColor={theme.onStrong}
       />
     </View>
   );
@@ -72,10 +76,32 @@ export default function TicketSettingsScreen() {
   const [msg, setMsg] = useState<{ tone: 'success' | 'danger'; text: string } | null>(
     null,
   );
+  const [previewHtml, setPreviewHtml] = useState('');
 
   useEffect(() => {
     if (routerQuery.data?.ticketTemplate) setTpl(routerQuery.data.ticketTemplate);
   }, [routerQuery.data]);
+
+  // Aperçu en direct : le rendu exact que produira l'impression (même
+  // constructeur HTML que ticketsPdf.ts), pas une maquette approximative —
+  // sinon l'opérateur configure toujours à l'aveugle, juste avec un dessin
+  // en plus qui ne reflète pas les réglages.
+  useEffect(() => {
+    let cancelled = false;
+    void buildTicketsHtml({
+      routerName: routerQuery.data?.alias || routerQuery.data?.identity || 'Mon routeur',
+      planName: 'Forfait 1 jour',
+      durationMinutes: 1440,
+      priceXof: 500,
+      tickets: [{ code: 'DEMO1234' }],
+      template: tpl,
+    }).then((html) => {
+      if (!cancelled) setPreviewHtml(html);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [tpl, routerQuery.data]);
 
   function set<K extends keyof TicketTemplate>(key: K, value: TicketTemplate[K]) {
     setTpl((t) => ({ ...t, [key]: value }));
@@ -119,6 +145,22 @@ export default function TicketSettingsScreen() {
         <View style={{ height: 12 }} />
 
         {msg ? <Banner tone={msg.tone}>{msg.text}</Banner> : null}
+
+        <Card style={{ padding: 0, overflow: 'hidden' }}>
+          <View style={{ padding: space.md, paddingBottom: 0 }}>
+            <Label>Aperçu</Label>
+          </View>
+          <View style={{ height: 300 }}>
+            {previewHtml ? (
+              <WebView
+                source={{ html: previewHtml }}
+                scrollEnabled={false}
+                style={{ backgroundColor: 'transparent' }}
+              />
+            ) : null}
+          </View>
+        </Card>
+        <View style={{ height: 12 }} />
 
         <Toggle
           label="Afficher le nom de l'entreprise (PRO)"
