@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, Share, Text, View } from 'react-native';
+import { ScrollView, Share, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -11,7 +11,7 @@ import {
 } from '@/src/lib/api';
 import { printTickets, printTicketsDirect } from '@/src/lib/ticketsPdf';
 import { TicketCard } from '@/src/components/TicketCard';
-import { Badge, Banner, Button, ConfirmDialog, Empty, Subtitle, Title, theme } from '@/src/components/ui';
+import { Badge, Banner, Button, ConfirmDialog, Empty, Press, Subtitle, Title, theme } from '@/src/components/ui';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
@@ -219,7 +219,7 @@ export default function FichiersScreen() {
                       {b.generated} tickets · {new Date(b.createdAt).toLocaleDateString('fr-FR')}
                     </Text>
                   </View>
-                  <Pressable
+                  <Press
                     accessibilityLabel="Télécharger le lot"
                     onPress={() => batchAction(b, 'download')}
                     disabled={busy !== null}
@@ -236,8 +236,8 @@ export default function FichiersScreen() {
                     }}
                   >
                     <Ionicons name="download-outline" size={17} color={theme.secondary} />
-                  </Pressable>
-                  <Pressable
+                  </Press>
+                  <Press
                     accessibilityLabel="Imprimer le lot"
                     onPress={() => batchAction(b, 'print')}
                     disabled={busy !== null}
@@ -254,8 +254,8 @@ export default function FichiersScreen() {
                     }}
                   >
                     <Ionicons name="print-outline" size={17} color={theme.primary} />
-                  </Pressable>
-                  <Pressable
+                  </Press>
+                  <Press
                     accessibilityLabel="Supprimer le lot"
                     onPress={() => setConfirmBatch(b)}
                     disabled={busy !== null}
@@ -271,7 +271,7 @@ export default function FichiersScreen() {
                     }}
                   >
                     <Ionicons name="trash-outline" size={17} color={theme.danger} />
-                  </Pressable>
+                  </Press>
                 </View>
               );
             })

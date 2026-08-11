@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -26,6 +26,7 @@ import {
   Field,
   Label,
   Mono,
+  Press,
   Row,
   SkeletonCard,
   space,
@@ -186,7 +187,7 @@ export default function IpBindingsScreen() {
               Autoriser ou bloquer des appareils spécifiques sur RouterOS
             </Subtitle>
           </View>
-          <Pressable
+          <Press
             accessibilityLabel="Autoriser un appareil"
             onPress={() => {
               resetForm();
@@ -202,7 +203,7 @@ export default function IpBindingsScreen() {
             }}
           >
             <Ionicons name="add" size={22} color={theme.primaryText} />
-          </Pressable>
+          </Press>
         </Row>
 
         {error ? <Banner tone="danger">{error}</Banner> : null}
@@ -276,7 +277,7 @@ export default function IpBindingsScreen() {
                 </View>
 
                 <Row style={{ justifyContent: 'flex-end', gap: 8 }}>
-                  <Pressable
+                  <Press
                     accessibilityLabel="Modifier"
                     onPress={() => openEdit(b)}
                     hitSlop={8}
@@ -287,8 +288,8 @@ export default function IpBindingsScreen() {
                     }}
                   >
                     <Ionicons name="create-outline" size={16} color={theme.primary} />
-                  </Pressable>
-                  <Pressable
+                  </Press>
+                  <Press
                     accessibilityLabel="Supprimer"
                     onPress={() => remove(b.id)}
                     hitSlop={8}
@@ -299,7 +300,7 @@ export default function IpBindingsScreen() {
                     }}
                   >
                     <Ionicons name="trash-outline" size={16} color={theme.danger} />
-                  </Pressable>
+                  </Press>
                 </Row>
               </Card>
             ))}
@@ -335,9 +336,9 @@ export default function IpBindingsScreen() {
               <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>
                 {editingId ? 'Modifier IP Binding' : 'Nouveau IP Binding'}
               </Text>
-              <Pressable onPress={() => setFormOpen(false)} hitSlop={8}>
+              <Press onPress={() => setFormOpen(false)} hitSlop={8}>
                 <Ionicons name="close" size={20} color={theme.textMuted} />
-              </Pressable>
+              </Press>
             </Row>
 
             <View>
@@ -346,7 +347,7 @@ export default function IpBindingsScreen() {
                 {(['bypassed', 'blocked', 'regular'] as IpBindingType[]).map((t) => {
                   const active = t === type;
                   return (
-                    <Pressable
+                    <Press
                       key={t}
                       onPress={() => setType(t)}
                       style={{
@@ -370,7 +371,7 @@ export default function IpBindingsScreen() {
                       >
                         {TYPE_META[t].label}
                       </Text>
-                    </Pressable>
+                    </Press>
                   );
                 })}
               </Row>
@@ -389,7 +390,7 @@ export default function IpBindingsScreen() {
                     autoCapitalize="characters"
                   />
                 </View>
-                <Pressable
+                <Press
                   accessibilityLabel="Choisir un appareil connecté"
                   onPress={() => setScanOpen(true)}
                   style={{
@@ -402,7 +403,7 @@ export default function IpBindingsScreen() {
                   }}
                 >
                   <Ionicons name="search" size={18} color={theme.primaryText} />
-                </Pressable>
+                </Press>
               </Row>
             </View>
 
@@ -475,9 +476,9 @@ export default function IpBindingsScreen() {
                   Appareils connectés au hotspot
                 </Text>
               </Row>
-              <Pressable onPress={() => setScanOpen(false)} hitSlop={8}>
+              <Press onPress={() => setScanOpen(false)} hitSlop={8}>
                 <Text style={{ color: theme.textMuted, fontSize: 12 }}>Fermer</Text>
-              </Pressable>
+              </Press>
             </Row>
 
             {sessionsQuery.isLoading ? (
@@ -488,7 +489,7 @@ export default function IpBindingsScreen() {
               <ScrollView style={{ maxHeight: 320 }}>
                 <View style={{ gap: 8 }}>
                   {sessionsQuery.data.map((s) => (
-                    <Pressable key={s.id} onPress={() => pickSession(s)}>
+                    <Press key={s.id} onPress={() => pickSession(s)}>
                       <Card>
                         <Row>
                           <View style={{ flex: 1 }}>
@@ -508,7 +509,7 @@ export default function IpBindingsScreen() {
                           </Text>
                         </Row>
                       </Card>
-                    </Pressable>
+                    </Press>
                   ))}
                 </View>
               </ScrollView>

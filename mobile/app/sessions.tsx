@@ -1,5 +1,5 @@
 ﻿import { useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Animated, ScrollView, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -13,6 +13,7 @@ import {
 import {
   Banner,
   Empty,
+  Press,
   Row,
   space,
   Subtitle,
@@ -159,7 +160,7 @@ export default function SessionsScreen() {
               {sessions.length} session{sessions.length > 1 ? 's' : ''} en cours
             </Subtitle>
           </View>
-          <Pressable
+          <Press
             accessibilityLabel="Rafraîchir"
             onPress={() =>
               qc.invalidateQueries({ queryKey: ['sessions', routerId] })
@@ -176,7 +177,7 @@ export default function SessionsScreen() {
             }}
           >
             <Ionicons name="refresh" size={20} color={theme.text} />
-          </Pressable>
+          </Press>
         </Row>
 
         {/* Search */}
@@ -261,9 +262,10 @@ export default function SessionsScreen() {
                       </Text>
                     </View>
                   </Row>
-                  <Pressable
+                  <Press
                     accessibilityLabel="Déconnecter"
                     onPress={() => terminate(s.id)}
+                    hitSlop={3}
                     style={{
                       width: 38,
                       height: 38,
@@ -276,7 +278,7 @@ export default function SessionsScreen() {
                     }}
                   >
                     <Ionicons name="power" size={17} color={theme.danger} />
-                  </Pressable>
+                  </Press>
                 </Row>
 
                 {/* Metrics */}

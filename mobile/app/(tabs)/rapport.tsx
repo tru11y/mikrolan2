@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, View, Text } from 'react-native';
+import { ScrollView, View, Text } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
@@ -11,6 +11,7 @@ import {
   Empty,
   icon,
   Mono,
+  Press,
   Row,
   SectionTitle,
   space,
@@ -63,7 +64,7 @@ export default function RapportScreen() {
         <View style={{ flex: 1 }}>
           <Subtitle>Statistiques de vente de tickets WiFi</Subtitle>
         </View>
-        <Pressable
+        <Press
           onPress={() => {
             if (!data) return;
             const periodLabel = PERIODS.find((p) => p.value === period)!.label;
@@ -85,7 +86,7 @@ export default function RapportScreen() {
           <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '700' }}>
             Exporter CSV
           </Text>
-        </Pressable>
+        </Press>
       </Row>
 
       {/* Filtre de période */}
@@ -102,7 +103,7 @@ export default function RapportScreen() {
         {PERIODS.map((p) => {
           const active = p.value === period;
           return (
-            <Pressable
+            <Press
               key={p.value}
               onPress={() => setPeriod(p.value)}
               style={{
@@ -122,7 +123,7 @@ export default function RapportScreen() {
               >
                 {p.label}
               </Text>
-            </Pressable>
+            </Press>
           );
         })}
       </Row>

@@ -3,7 +3,6 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   Text,
   View,
@@ -19,6 +18,7 @@ import {
   Banner,
   Button,
   OutlinedField,
+  Press,
   radius,
   space,
   theme,
@@ -169,7 +169,7 @@ export default function LoginScreen() {
                   <Text style={{ color: theme.textMuted, fontSize: type.micro }}>ou</Text>
                   <View style={{ flex: 1, height: 1, backgroundColor: theme.border }} />
                 </View>
-                <Pressable
+                <Press
                   onPress={handleGoogle}
                   disabled={isBusy}
                   style={{
@@ -189,11 +189,11 @@ export default function LoginScreen() {
                   <Text style={{ color: theme.text, fontWeight: '600', fontSize: type.body }}>
                     Continuer avec Google
                   </Text>
-                </Pressable>
+                </Press>
               </>
             ) : null}
 
-            <Pressable
+            <Press
               onPress={() => {
                 clearError();
                 setMode(mode === 'login' ? 'signup' : 'login');
@@ -211,7 +211,7 @@ export default function LoginScreen() {
                   ? 'Pas de compte ? Créer un compte'
                   : "J'ai déjà un compte"}
               </Text>
-            </Pressable>
+            </Press>
           </View>
 
           <View style={{ flex: 1, minHeight: space.md }} />
@@ -219,11 +219,11 @@ export default function LoginScreen() {
           <View style={{ gap: space.md }}>
             {__DEV__ ? (
               <>
-                <Pressable onPress={() => setShowConfig((v) => !v)} style={{ alignItems: 'center' }}>
+                <Press onPress={() => setShowConfig((v) => !v)} style={{ alignItems: 'center' }}>
                   <Text style={{ color: theme.textMuted, fontSize: type.micro }}>
                     {showConfig ? 'Masquer la configuration' : 'Configurer le serveur'}
                   </Text>
-                </Pressable>
+                </Press>
                 {showConfig ? (
                   <View
                     style={{

@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   Text,
   View,
@@ -24,6 +23,7 @@ import {
   Card,
   Field,
   NumberField,
+  Press,
   Screen,
   theme,
 } from '@/src/components/ui';
@@ -198,7 +198,7 @@ export default function AddRouterScreen() {
               </View>
             </View>
 
-            <Pressable
+            <Press
               onPress={runScan}
               disabled={scan.kind === 'scanning'}
               accessibilityRole="button"
@@ -210,7 +210,7 @@ export default function AddRouterScreen() {
                   ? `Recherche… ${scan.done}/${scan.total}`
                   : 'Rechercher les routeurs sur mon réseau'}
               </Text>
-            </Pressable>
+            </Press>
 
             {scan.kind === 'done' ? (
               <Text style={{ color: theme.textMuted, fontSize: 11.5, fontFamily: theme.mono }}>
@@ -222,7 +222,7 @@ export default function AddRouterScreen() {
             {scan.kind === 'done' && scan.hosts.length > 0 ? (
               <View style={{ gap: 6 }}>
                 {scan.hosts.map((h) => (
-                  <Pressable
+                  <Press
                     key={h}
                     onPress={() => {
                       setAddress(h);
@@ -239,7 +239,7 @@ export default function AddRouterScreen() {
                     <Text style={{ color: theme.text, fontFamily: theme.mono }}>
                       {h}:{portNum}
                     </Text>
-                  </Pressable>
+                  </Press>
                 ))}
               </View>
             ) : null}
