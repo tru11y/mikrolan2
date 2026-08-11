@@ -214,7 +214,7 @@ export default function IpBindingsScreen() {
             <SkeletonCard />
           </View>
         ) : !bindingsQuery.data?.length ? (
-          <Empty text="Aucun IP binding pour ce routeur." />
+          <Empty icon="shield-outline" text="Aucun IP binding pour ce routeur." />
         ) : (
           <View style={{ gap: 12 }}>
             {bindingsQuery.data.map((b) => (
@@ -484,7 +484,7 @@ export default function IpBindingsScreen() {
             {sessionsQuery.isLoading ? (
               <Subtitle>Analyse des sessions actives…</Subtitle>
             ) : !sessionsQuery.data?.length ? (
-              <Empty text="Aucun appareil connecté actuellement." />
+              <Empty icon="wifi-outline" text="Aucun appareil connecté actuellement." />
             ) : (
               <ScrollView style={{ maxHeight: 320 }}>
                 <View style={{ gap: 8 }}>
