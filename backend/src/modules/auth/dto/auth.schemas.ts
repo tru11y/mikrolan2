@@ -69,6 +69,7 @@ export type SetPasswordDto = z.infer<typeof setPasswordSchema>;
 export const googleOAuthSchema = z
   .object({
     idToken: z.string().min(20).max(4000),
+    nonce: z.string().min(1).max(200).optional(),
   })
   .strict();
 export type GoogleOAuthDto = z.infer<typeof googleOAuthSchema>;

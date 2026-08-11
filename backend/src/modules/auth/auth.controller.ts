@@ -103,7 +103,7 @@ export class AuthController {
   @HttpCode(200)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   googleLogin(@Body(new ZodValidationPipe(googleOAuthSchema)) dto: GoogleOAuthDto) {
-    return this.auth.googleLogin(dto.idToken);
+    return this.auth.googleLogin(dto.idToken, dto.nonce);
   }
 
   @Public()
