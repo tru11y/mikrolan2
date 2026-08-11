@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Linking, Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import { Linking, ScrollView, Switch, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +21,7 @@ import {
   ConfirmDialog,
   Field,
   Label,
+  Press,
   space,
   Subtitle,
   theme,
@@ -394,7 +395,7 @@ export default function RouterSettingsScreen() {
           }}
         >
           {items.map((item, i) => (
-            <Pressable
+            <Press
               key={item.id}
               onPress={item.onPress}
               style={{
@@ -447,7 +448,7 @@ export default function RouterSettingsScreen() {
                 </View>
               </View>
               <Ionicons name="chevron-forward" size={20} color={theme.textMuted} />
-            </Pressable>
+            </Press>
           ))}
         </View>
 

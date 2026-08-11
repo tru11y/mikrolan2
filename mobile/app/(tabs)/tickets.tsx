@@ -1,4 +1,4 @@
-import { ScrollView, View, Text, Pressable } from 'react-native';
+import { ScrollView, View, Text } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
@@ -9,6 +9,7 @@ import {
   Card,
   ErrorState,
   Mono,
+  Press,
   radius,
   routerHealth,
   Row,
@@ -64,7 +65,7 @@ export default function TicketsScreen() {
       ) : (
         <View style={{ gap: 12 }}>
           {list.map((r) => (
-            <Pressable
+            <Press
               key={r.id}
               onPress={() =>
                 router.push({
@@ -107,7 +108,7 @@ export default function TicketsScreen() {
                   />
                 </Row>
               </Card>
-            </Pressable>
+            </Press>
           ))}
         </View>
       )}

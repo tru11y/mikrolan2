@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
@@ -8,6 +8,7 @@ import {
   Banner,
   Button,
   Card,
+  Press,
   space,
   Subtitle,
   theme,
@@ -36,7 +37,7 @@ function OptionCard({
   onPress: () => void;
 }) {
   return (
-    <Pressable onPress={onPress}>
+    <Press onPress={onPress}>
       <View
         style={{
           padding: 16,
@@ -86,7 +87,7 @@ function OptionCard({
           ) : null}
         </View>
       </View>
-    </Pressable>
+    </Press>
   );
 }
 
@@ -289,7 +290,7 @@ export default function InternetSharingScreen() {
             overflow: 'hidden',
           }}
         >
-          <Pressable
+          <Press
             onPress={() => setAccordionOpen((v) => !v)}
             style={{
               padding: 16,
@@ -309,7 +310,7 @@ export default function InternetSharingScreen() {
               size={18}
               color={theme.textMuted}
             />
-          </Pressable>
+          </Press>
           {accordionOpen ? (
             <View
               style={{
