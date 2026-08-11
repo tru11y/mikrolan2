@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Image,
   KeyboardAvoidingView,
@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
+import * as Crypto from 'expo-crypto';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import { useAuth } from '@/src/providers/auth-provider';
@@ -41,16 +42,26 @@ export default function LoginScreen() {
   const [showConfig, setShowConfig] = useState(false);
   const [baseUrl, setBaseUrl] = useState(apiBaseUrl);
 
+  const nonce = useMemo(() => Crypto.randomUUID(), []);
+  const [nonceHash, setNonceHash] = useState<string | null>(null);
+
+  useEffect(() => {
+    Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, nonce).then(
+      setNonceHash,
+    );
+  }, [nonce]);
+
   const [, googleResponse, promptGoogle] = Google.useIdTokenAuthRequest({
     clientId: GOOGLE_WEB_CLIENT_ID,
     androidClientId: GOOGLE_ANDROID_CLIENT_ID,
+    extraParams: nonceHash ? { nonce: nonceHash } : undefined,
   });
 
   useEffect(() => {
     if (googleResponse?.type === 'success') {
       const idToken = googleResponse.params.id_token;
       if (idToken) {
-        googleLogin(idToken).catch(() => {});
+        googleLogin(idToken, nonce).catch(() => {});
       }
     }
   }, [googleResponse]);

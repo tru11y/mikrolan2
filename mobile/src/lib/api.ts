@@ -546,9 +546,10 @@ export const api = {
       });
       return unwrap(res);
     },
-    async googleLogin(idToken: string): Promise<AuthTokens> {
+    async googleLogin(idToken: string, nonce?: string): Promise<AuthTokens> {
       const res = await apiClient.post<ApiEnvelope<AuthTokens>>('/auth/google', {
         idToken,
+        ...(nonce ? { nonce } : {}),
       });
       return unwrap(res);
     },
