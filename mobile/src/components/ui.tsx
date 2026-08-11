@@ -1281,8 +1281,14 @@ export function ToastProvider({ children }: PropsWithChildren) {
   const api = useMemo<ToastApi>(() => {
     const show = (text: string, tone: ToastTone = 'info') => {
       const id = nextId.current++;
-      // Deux toasts empilés suffisent ; au-delà on masque l'écran.
-      setToasts((list) => [...list.slice(-1), { id, tone, text }]);
+      // Un évènement qui se répète (ex. connexion routeur qui flappe) ne doit
+      // pas empiler le même message : on remplace le doublon au lieu de
+      // l'ajouter, sinon l'utilisateur voit le même texte s'enchaîner.
+      setToasts((list) => {
+        const last = list[list.length - 1];
+        const dedup = last && last.tone === tone && last.text === text ? list.slice(0, -1) : list.slice(-1);
+        return [...dedup, { id, tone, text }];
+      });
       if (tone === 'danger') Vibration.vibrate(30);
     };
     return {
