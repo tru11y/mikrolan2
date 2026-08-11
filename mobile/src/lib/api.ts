@@ -43,6 +43,8 @@ export type Me = {
     role: UserRole;
     status: string;
     notificationsEnabled: boolean;
+    hasPassword: boolean;
+    googleId: string | null;
   };
   tenant: { id: string; name: string; slug: string; status: string };
   subscription: {
@@ -583,8 +585,11 @@ export const api = {
     async logoutAllSessions(): Promise<void> {
       await apiClient.post('/auth/logout-all');
     },
-    async deleteAccount(password: string): Promise<void> {
-      await apiClient.delete('/auth/me', { data: { password } });
+    async setPassword(password: string): Promise<void> {
+      await apiClient.post('/auth/set-password', { password });
+    },
+    async deleteAccount(opts: { password?: string; googleIdToken?: string }): Promise<void> {
+      await apiClient.delete('/auth/me', { data: opts });
     },
     async registerPushToken(token: string): Promise<void> {
       await apiClient.post('/auth/push-token', { token });
