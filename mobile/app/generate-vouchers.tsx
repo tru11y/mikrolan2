@@ -19,7 +19,7 @@ import {
   theme,
   useToast,
 } from '@/src/components/ui';
-import { BottomNav } from '@/src/components/BottomNav';
+import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
 /** Plafond serveur d'un lot de tickets. */
@@ -53,6 +53,7 @@ export default function GenerateVouchersScreen() {
   const router = useRouter();
   const qc = useQueryClient();
   const toast = useToast();
+  const navHeight = useBottomNavHeight();
 
   const plansQuery = useQuery({
     queryKey: ['plans', routerId],
@@ -150,7 +151,7 @@ export default function GenerateVouchersScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <AppHeader title="Tickets" back />
-      <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: 100 }}>
+      <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: navHeight }}>
         <View
           style={{
             flexDirection: 'row',

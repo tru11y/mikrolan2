@@ -2,14 +2,17 @@ import { ScrollView, View, Text, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '@/src/lib/api';
+import { api, extractErrorMessage } from '@/src/lib/api';
 import {
   Badge,
   Button,
   Card,
+  ErrorState,
   Mono,
+  radius,
   routerHealth,
   Row,
+  Skeleton,
   space,
   Subtitle,
   theme,
@@ -37,7 +40,18 @@ export default function TicketsScreen() {
       >
       <Subtitle>Choisissez un routeur pour générer des codes WiFi</Subtitle>
 
-      {list.length === 0 ? (
+      {routers.isLoading ? (
+        <View style={{ gap: space.sm }}>
+          <Skeleton height={64} radius={radius.md} />
+          <Skeleton height={64} radius={radius.md} />
+        </View>
+      ) : routers.isError && !routers.data ? (
+        <ErrorState
+          message={extractErrorMessage(routers.error)}
+          onRetry={() => routers.refetch()}
+          retrying={routers.isRefetching}
+        />
+      ) : list.length === 0 ? (
         <Card>
           <Text style={{ color: theme.textMuted }}>
             Ajoutez d'abord un routeur pour générer des tickets.

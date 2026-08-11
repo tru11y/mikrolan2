@@ -261,7 +261,7 @@ export default function InternetSharingScreen() {
         <View style={{ gap: 12 }}>
           <OptionCard
             active={selected === 'block'}
-            activeColor={theme.success}
+            activeColor={theme.primary}
             icon="ban"
             iconColor={theme.success}
             title="Bloquer le partage internet"
@@ -272,7 +272,7 @@ export default function InternetSharingScreen() {
             active={selected === 'allow'}
             activeColor={theme.primary}
             icon="flash"
-            iconColor={theme.warning}
+            iconColor={theme.textMuted}
             title="Autoriser le partage internet"
             subtitle="Le partage de connexion reste autorisé"
             onPress={() => setSelected('allow')}
