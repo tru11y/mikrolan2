@@ -1,183 +1,170 @@
 import { useCallback } from 'react';
-import {
-  FlatList,
-  Pressable,
-  RefreshControl,
-  Text,
-  View,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FlatList, RefreshControl, Text, View } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api, extractErrorMessage, type RouterItem } from '@/src/lib/api';
 import { useAuth } from '@/src/providers/auth-provider';
 import {
-  Badge,
   Banner,
   Card,
+  elevation,
   Empty,
+  ErrorState,
+  icon,
+  IconChip,
   Mono,
+  Press,
   routerHealth,
   Row,
+  SkeletonCard,
   space,
   theme,
-  Title,
+  type,
+  weight,
 } from '@/src/components/ui';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
-
-function Dot({ color }: { color: string }) {
-  return (
-    <View
-      style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: color }}
-    />
-  );
-}
+import { RouterStatusDot } from '@/src/components/RouterStatusDot';
 
 export default function RouteursScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const navHeight = useBottomNavHeight();
   const { isPro } = useAuth();
   const query = useQuery({
     queryKey: ['routers'],
     queryFn: api.routers.list,
-    refetchInterval: 3_000,
+    refetchInterval: 15_000,
     placeholderData: keepPreviousData,
   });
 
   const list = query.data ?? [];
-  const online = list.filter((r) => r.health === 'ONLINE').length;
-  // Compté explicitement : `total - online` rangeait les routeurs au statut
-  // encore inconnu parmi les hors-ligne.
-  const offline = list.filter((r) => r.health === 'OFFLINE').length;
+  const hasData = list.length > 0;
 
   const renderItem = useCallback(
     ({ item }: { item: RouterItem }) => {
       const isOffline = item.health !== 'ONLINE';
+      const health = routerHealth(item.health);
+      const modeLabel = item.mode === 'REMOTE' ? 'À distance' : 'Local';
+      const a11yLabel = `${item.alias || item.identity}, ${health.label}, ${modeLabel}`;
       return (
         <Link href={`/router/${item.id}`} asChild>
-          <Pressable>
-            <Card style={{ marginBottom: 12, opacity: isOffline ? 0.65 : 1 }}>
-              <Row style={{ gap: 12, alignItems: 'flex-start' }}>
-                <View
-                  style={{
-                    width: 42,
-                    height: 42,
-                    borderRadius: 12,
-                    backgroundColor: theme.primary + '22',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <Ionicons
-                    name="hardware-chip-outline"
-                    size={20}
-                    color={theme.primary}
-                  />
-                </View>
+          <Press
+            accessibilityLabel={a11yLabel}
+            accessibilityHint="Ouvre le tableau de bord de ce routeur"
+            style={{ marginBottom: space.md }}
+          >
+            <Card style={{ opacity: isOffline ? 0.65 : 1 }}>
+              <Row style={{ gap: space.md, alignItems: 'flex-start' }}>
+                <IconChip name="hardware-chip-outline" color={theme.primary} size="md" />
                 <View style={{ flex: 1, gap: 3 }}>
                   <Text
-                    style={{ color: theme.text, fontSize: 16, fontWeight: '700' }}
+                    style={{
+                      color: theme.text,
+                      fontSize: type.bodyLg,
+                      fontWeight: weight.bold,
+                    }}
                   >
                     {item.alias || item.identity}
                   </Text>
-                  <Mono style={{ color: theme.textMuted, fontSize: 12 }}>
+                  <Mono style={{ color: theme.textMuted, fontSize: type.caption }}>
                     {item.identity}
                   </Mono>
                   {item.model ? (
-                    <Text style={{ color: theme.textMuted, fontSize: 12 }}>
+                    <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
                       {item.model}
                     </Text>
                   ) : null}
                 </View>
-                <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                  <Badge
-                    label={routerHealth(item.health).label}
-                    tone={routerHealth(item.health).tone}
-                  />
-                  {!isPro ? (
-                    <Badge
-                      label={item.mode === 'REMOTE' ? 'À DISTANCE' : 'LOCAL'}
-                      tone={item.mode === 'REMOTE' ? 'gold' : 'secondary'}
-                    />
-                  ) : null}
-                </View>
+                <RouterStatusDot health={item.health} />
               </Row>
             </Card>
-          </Pressable>
+          </Press>
         </Link>
       );
     },
-    [],
+    [isPro],
   );
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <AppHeader title="Routeurs" />
-      <FlatList
-        contentContainerStyle={{ padding: space.lg, paddingBottom: navHeight }}
-        data={list}
-        keyExtractor={(r) => r.id}
-        renderItem={renderItem}
-        ListHeaderComponent={
-          <View style={{ marginBottom: space.lg, gap: space.sm }}>
-            <Row style={{ justifyContent: 'flex-start', gap: 16 }}>
-              <Row style={{ gap: 6, justifyContent: 'flex-start' }}>
-                <Dot color={theme.secondary} />
-                <Text style={{ color: theme.textMuted, fontSize: 13 }}>
-                  {online} en ligne
-                </Text>
-              </Row>
-              <Row style={{ gap: 6, justifyContent: 'flex-start' }}>
-                <Dot color={theme.danger} />
-                <Text style={{ color: theme.textMuted, fontSize: 13 }}>
-                  {offline} hors ligne
-                </Text>
-              </Row>
-            </Row>
-            {query.isError ? (
-              <Banner tone="danger">{extractErrorMessage(query.error)}</Banner>
-            ) : null}
-          </View>
-        }
-        refreshControl={
-          <RefreshControl
-            refreshing={query.isRefetching}
-            onRefresh={query.refetch}
-            tintColor={theme.primary}
-          />
-        }
-        ListEmptyComponent={
-          query.isLoading ? null : (
-            <Empty text="Aucun routeur pour l’instant. Ajoutez-en un pour commencer." />
-          )
-        }
-      />
 
-      <Pressable
+      {query.isLoading ? (
+        <View style={{ padding: space.lg, paddingBottom: navHeight, gap: space.md }}>
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </View>
+      ) : query.isError && !hasData ? (
+        <ErrorState
+          message={extractErrorMessage(query.error)}
+          onRetry={() => query.refetch()}
+          retrying={query.isRefetching}
+        />
+      ) : (
+        <FlatList
+          contentContainerStyle={{ padding: space.lg, paddingBottom: navHeight }}
+          data={list}
+          keyExtractor={(r) => r.id}
+          renderItem={renderItem}
+          ListHeaderComponent={
+            query.isError && hasData ? (
+              <View style={{ marginBottom: space.lg }}>
+                <Banner tone="danger">{extractErrorMessage(query.error)}</Banner>
+              </View>
+            ) : null
+          }
+          refreshControl={
+            <RefreshControl
+              refreshing={query.isRefetching}
+              onRefresh={query.refetch}
+              tintColor={theme.primary}
+            />
+          }
+          ListEmptyComponent={
+            <Empty
+              text="Aucun routeur pour l’instant. Ajoutez-en un pour commencer."
+              icon="hardware-chip-outline"
+              action={{
+                label: 'Ajouter un routeur',
+                onPress: () => router.push('/add-router'),
+              }}
+            />
+          }
+        />
+      )}
+
+      <Press
         accessibilityLabel="Ajouter un routeur"
+        accessibilityHint="Ouvre le formulaire de connexion à un nouveau routeur"
         onPress={() => router.push('/add-router')}
-        style={{
-          position: 'absolute',
-          right: 20,
-          bottom: 76 + insets.bottom,
-          width: 56,
-          height: 56,
-          borderRadius: 28,
-          backgroundColor: theme.primary,
-          alignItems: 'center',
-          justifyContent: 'center',
-          shadowColor: theme.primary,
-          shadowOpacity: 0.5,
-          shadowRadius: 12,
-          shadowOffset: { width: 0, height: 4 },
-          elevation: 6,
-        }}
+        style={[
+          {
+            position: 'absolute',
+            right: space.xl,
+            bottom: navHeight,
+            // 56px : taille standard d'un FAB, aucun token dédié dans le
+            // design system pour cette dimension précise.
+            width: 56,
+            height: 56,
+            borderRadius: 28,
+            backgroundColor: theme.primary,
+            alignItems: 'center',
+            justifyContent: 'center',
+            // `elevation` (Android) ne pilote que l'ombre, pas la priorité de
+            // hit-test tactile entre siblings absolus : sans zIndex explicite,
+            // BottomNav (déclaré après, donc prioritaire au toucher malgré son
+            // absence de chevauchement visuel) rendait ce FAB totalement
+            // inerte — vérifié sur device réel (absent de l'arbre
+            // d'accessibilité, aucun tap ne passait).
+            zIndex: 10,
+          },
+          elevation.floating,
+        ]}
       >
-        <Ionicons name="add" size={28} color={theme.primaryText} />
-      </Pressable>
+        <Ionicons name="add" size={icon.xl} color={theme.primaryText} />
+      </Press>
       <BottomNav active="routeurs" />
     </View>
   );

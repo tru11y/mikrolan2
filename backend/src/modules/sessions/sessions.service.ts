@@ -229,13 +229,34 @@ export class SessionsService {
    */
   async live(routerId: string): Promise<LiveSession[]> {
     const router = await this.getRouter(routerId);
-    if (router.mode !== ManagementMode.REMOTE) {
-      throw new BadRequestException(
-        'Routeur local : les sessions se lisent via le LAN',
-      );
+    if (router.mode === ManagementMode.REMOTE) {
+      const active = await this.remote.run(routerId, (c) => listActive(c));
+      return active.map(mapActive);
     }
-    const active = await this.remote.run(routerId, (c) => listActive(c));
-    return active.map(mapActive);
+    // LOCAL : le serveur ne peut pas interroger le routeur directement.
+    // On renvoie les sessions ACTIVE synchronisées par le mobile via /sync.
+    const rows = await this.prisma.session.findMany({
+      where: { routerId, status: SessionStatus.ACTIVE },
+      select: {
+        mikrotikId: true,
+        ipAddress: true,
+        macAddress: true,
+        bytesIn: true,
+        bytesOut: true,
+        startedAt: true,
+      },
+    });
+    return rows.map((r) => ({
+      id: r.mikrotikId ?? '',
+      user: '',
+      ipAddress: r.ipAddress,
+      macAddress: r.macAddress,
+      bytesIn: String(r.bytesIn ?? 0),
+      bytesOut: String(r.bytesOut ?? 0),
+      uptime: r.startedAt
+        ? `${Math.round((Date.now() - r.startedAt.getTime()) / 1000)}s`
+        : null,
+    }));
   }
 
   async terminate(routerId: string, mikrotikId: string) {

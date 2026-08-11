@@ -42,7 +42,7 @@ export default function RapportScreen() {
   const clients = useQuery({
     queryKey: ['clients', routerId],
     queryFn: () => api.metrics.recentClients(30, routerId),
-    refetchInterval: 3_000,
+    refetchInterval: 15_000,
     placeholderData: keepPreviousData,
   });
   const data = metrics.data;

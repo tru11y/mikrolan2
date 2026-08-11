@@ -55,35 +55,17 @@ export class RoutersService {
       ? this.crypto.encrypt(JSON.stringify(dto.credentials))
       : null;
 
-    // A previously soft-deleted router with the same identity still occupies the
-    // (tenantId, identity) unique index, so re-adding it must restore that record
-    // instead of 409ing. Soft delete is never a cascade — we reuse the row.
+    // If a soft-deleted router with the same identity exists, hard-delete it
+    // and all its data so the new one goes through the full onboarding process.
     const soft = await this.prisma.router.findFirst({
       where: { identity: dto.identity, deletedAt: { not: null } },
       select: { id: true },
     });
     if (soft) {
-      // Middleware rewrites update→updateMany (tenant-scoped); no select here.
-      await this.prisma.router.update({
-        where: { id: soft.id },
-        data: {
-          deletedAt: null,
-          alias: dto.alias ?? null,
-          model: dto.model ?? null,
-          localAddress: dto.localAddress ?? null,
-          mode: dto.mode,
-          credEncrypted,
-        },
-      });
-      await this.audit(AuditAction.CREATE, soft.id, {
-        identity: dto.identity,
-        restored: true,
-      });
-      return this.findOne(soft.id);
+      await this.hardCleanup(soft.id);
     }
 
     try {
-      // tenantId injected by the Prisma tenant middleware.
       const created = await this.prisma.router.create({
         data: {
           identity: dto.identity,
@@ -155,36 +137,43 @@ export class RoutersService {
     return this.findOne(id);
   }
 
-  /**
-   * Permanent, cascading delete — not a soft delete. A deleted router (and, if
-   * PRO, its WireGuard tunnel) must behave as if it had never been added.
-   * Order follows the real FK dependencies in schema.prisma: Session →
-   * Voucher → VoucherBatch → Plan (router-scoped) → RemotePeer → Router.
-   * AuditLog/Notification keep their (FK-less) references — history survives.
-   */
   async remove(id: string) {
     await this.findOne(id);
+    await this.hardCleanup(id);
+    await this.audit(AuditAction.DELETE, id, {});
+    return { deleted: true };
+  }
 
-    const peer = await this.prisma.remotePeer.findFirst({ where: { routerId: id } });
+  /**
+   * Full hard delete: WG peer + DNAT iptables + every DB row tied to this
+   * router. Shared by remove() and create() (stale soft-deleted cleanup).
+   */
+  private async hardCleanup(routerId: string): Promise<void> {
+    const peer = await this.prisma.remotePeer.findFirst({
+      where: { routerId },
+    });
     if (peer) {
       try {
         await this.wg.removePeer(peer.wgPublicKey);
+        await this.wg.removeDnat(peer.wgIp, peer.allocatedPort, {
+          webfigPort: peer.webfigPort,
+          sshPort: peer.sshPort,
+          winboxPort: peer.winboxPort,
+        });
       } catch {
-        // best-effort, same as remote-access.service.ts revoke() — proceed regardless
+        // best-effort — proceed with DB cleanup regardless
       }
     }
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.session.deleteMany({ where: { routerId: id } });
-      await tx.voucher.deleteMany({ where: { routerId: id } });
-      await tx.voucherBatch.deleteMany({ where: { routerId: id } });
-      await tx.plan.deleteMany({ where: { routerId: id } });
+      await tx.session.deleteMany({ where: { routerId } });
+      await tx.voucher.deleteMany({ where: { routerId } });
+      await tx.voucherBatch.deleteMany({ where: { routerId } });
+      await tx.plan.deleteMany({ where: { routerId } });
+      await tx.notification.deleteMany({ where: { routerId } });
       if (peer) await tx.remotePeer.delete({ where: { id: peer.id } });
-      await tx.router.delete({ where: { id } });
+      await tx.router.delete({ where: { id: routerId } });
     });
-
-    await this.audit(AuditAction.DELETE, id, {});
-    return { deleted: true };
   }
 
   private async audit(
