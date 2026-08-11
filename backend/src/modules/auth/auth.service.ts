@@ -13,7 +13,7 @@ import {
   UserStatus,
 } from '@prisma/client';
 import * as argon2 from 'argon2';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { OAuth2Client } from 'google-auth-library';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TokenService, TokenPair } from './token.service';
@@ -271,7 +271,7 @@ export class AuthService {
     return { registered: true };
   }
 
-  async googleLogin(idToken: string): Promise<TokenPair> {
+  async googleLogin(idToken: string, nonce?: string): Promise<TokenPair> {
     if (!this.googleClient) {
       throw new UnauthorizedException('Google OAuth non configuré.');
     }
@@ -289,6 +289,13 @@ export class AuthService {
 
     const payload = ticket.getPayload();
     if (!payload) throw new UnauthorizedException('Token Google invalide.');
+
+    if (nonce) {
+      const expectedHash = createHash('sha256').update(nonce).digest('hex');
+      if (payload.nonce !== expectedHash) {
+        throw new UnauthorizedException('Nonce OAuth invalide (replay potentiel).');
+      }
+    }
 
     if (payload.email_verified !== true) {
       throw new UnauthorizedException('Adresse e-mail Google non vérifiée.');
