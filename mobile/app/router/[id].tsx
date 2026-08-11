@@ -36,6 +36,7 @@ import {
   Subtitle,
   theme,
   type,
+  useToast,
   type IoniconName,
 } from '@/src/components/ui';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
@@ -160,6 +161,7 @@ export default function RouterDetailScreen() {
   const { isPro } = useAuth();
   const { selectRouter } = useActiveRouter();
   const navHeight = useBottomNavHeight();
+  const toast = useToast();
 
   // Opening a router always activates it: the bottom nav + Maison switch to
   // router-connected mode (mirrors the reference's handleSelectRouter).
@@ -573,7 +575,23 @@ export default function RouterDetailScreen() {
                   </View>
                 </Row>
               </Card>
-            ) : null}
+            ) : (
+              <Pressable
+                accessibilityLabel="Modifier les identifiants du routeur"
+                onPress={() => setShowCreds(true)}
+                style={{ alignSelf: 'flex-start' }}
+              >
+                <Text
+                  style={{
+                    color: theme.textMuted,
+                    fontSize: type.caption,
+                    textDecorationLine: 'underline',
+                  }}
+                >
+                  Identifiants routeur
+                </Text>
+              </Pressable>
+            )}
           </>
         ) : null}
 
@@ -594,9 +612,15 @@ export default function RouterDetailScreen() {
                 : `${activeSessionsQuery.data}`
             }
             label="Actifs"
-            onPress={() =>
-              router.push({ pathname: '/sessions', params: { routerId: id } })
-            }
+            onPress={() => {
+              if (activeSessionsQuery.isError) {
+                const message = extractErrorMessage(activeSessionsQuery.error);
+                toast.error(message);
+                if (message.includes('Identifiants RouterOS')) setShowCreds(true);
+                return;
+              }
+              router.push({ pathname: '/sessions', params: { routerId: id } });
+            }}
           />
           <StatSquare
             icon="ticket"
