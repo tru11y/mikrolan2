@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import { Linking, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,6 +14,8 @@ import { getWifiInfo, sameSubnet24 } from '@/src/lib/lanBinder';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
 import { useAuth } from '@/src/providers/auth-provider';
 import {
+  ActionSheet,
+  type ActionSheetAction,
   Banner,
   Button,
   ConfirmDialog,
@@ -59,6 +61,14 @@ export default function RouterSettingsScreen() {
   const { clearActiveRouter } = useActiveRouter();
   const { isPro } = useAuth();
   const [rebootOpen, setRebootOpen] = useState(false);
+  const [sheet, setSheet] = useState<{
+    icon: IoniconName;
+    title: string;
+    message?: string;
+    mono?: boolean;
+    actions: ActionSheetAction[];
+  } | null>(null);
+  const closeSheet = () => setSheet(null);
   const [rebootBusy, setRebootBusy] = useState(false);
   const [rebootResult, setRebootResult] = useState<
     { tone: 'success' | 'danger'; text: string } | null
@@ -241,10 +251,12 @@ export default function RouterSettingsScreen() {
               if (urls?.webfig) {
                 Linking.openURL(urls.webfig.url);
               } else {
-                Alert.alert(
-                  'WebFig',
-                  "Gestion à distance non activée pour ce routeur.",
-                );
+                setSheet({
+                  icon: 'globe-outline',
+                  title: 'WebFig',
+                  message: "Gestion à distance non activée pour ce routeur.",
+                  actions: [{ label: 'Fermer', variant: 'cancel', onPress: closeSheet }],
+                });
               }
             },
           },
@@ -257,21 +269,46 @@ export default function RouterSettingsScreen() {
             onPress: () => {
               const urls = remoteQuery.data?.accessUrls;
               if (!urls?.ssh) {
-                Alert.alert('SSH', 'Gestion à distance non activée.');
+                setSheet({
+                  icon: 'terminal-outline',
+                  title: 'SSH',
+                  message: 'Gestion à distance non activée.',
+                  actions: [{ label: 'Fermer', variant: 'cancel', onPress: closeSheet }],
+                });
                 return;
               }
               const { command, host, port } = urls.ssh;
-              Alert.alert('SSH', command, [
-                { text: 'Copier', onPress: () => Clipboard.setStringAsync(command) },
-                {
-                  text: 'Ouvrir',
-                  onPress: () =>
-                    Linking.openURL(`ssh://admin@${host}:${port}`).catch(() => {
-                      Alert.alert('SSH', 'Aucun client SSH détecté.');
-                    }),
-                },
-                { text: 'Fermer', style: 'cancel' },
-              ]);
+              setSheet({
+                icon: 'terminal-outline',
+                title: 'Accès SSH',
+                message: command,
+                mono: true,
+                actions: [
+                  {
+                    label: 'Copier',
+                    onPress: () => {
+                      void Clipboard.setStringAsync(command);
+                      closeSheet();
+                    },
+                  },
+                  {
+                    label: 'Ouvrir',
+                    tone: 'primary',
+                    onPress: () => {
+                      closeSheet();
+                      Linking.openURL(`ssh://admin@${host}:${port}`).catch(() => {
+                        setSheet({
+                          icon: 'terminal-outline',
+                          title: 'SSH',
+                          message: 'Aucun client SSH détecté.',
+                          actions: [{ label: 'Fermer', variant: 'cancel', onPress: closeSheet }],
+                        });
+                      });
+                    },
+                  },
+                  { label: 'Fermer', variant: 'cancel', onPress: closeSheet },
+                ],
+              });
             },
           },
           {
@@ -283,23 +320,48 @@ export default function RouterSettingsScreen() {
             onPress: () => {
               const urls = remoteQuery.data?.accessUrls;
               if (!urls?.winbox) {
-                Alert.alert('Winbox', 'Gestion à distance non activée.');
+                setSheet({
+                  icon: 'cube-outline',
+                  title: 'Winbox',
+                  message: 'Gestion à distance non activée.',
+                  actions: [{ label: 'Fermer', variant: 'cancel', onPress: closeSheet }],
+                });
                 return;
               }
               const { address, host, port } = urls.winbox;
-              Alert.alert('Winbox', address, [
-                { text: 'Copier', onPress: () => Clipboard.setStringAsync(address) },
-                {
-                  text: 'Ouvrir MikroTik App',
-                  onPress: () =>
-                    Linking.openURL(`mikrotik://connect?address=${host}&port=${port}`).catch(
-                      () => {
-                        Alert.alert('Winbox', 'Application MikroTik non installée.');
-                      },
-                    ),
-                },
-                { text: 'Fermer', style: 'cancel' },
-              ]);
+              setSheet({
+                icon: 'cube-outline',
+                title: 'Winbox',
+                message: address,
+                mono: true,
+                actions: [
+                  {
+                    label: 'Copier',
+                    onPress: () => {
+                      void Clipboard.setStringAsync(address);
+                      closeSheet();
+                    },
+                  },
+                  {
+                    label: 'Ouvrir MikroTik App',
+                    tone: 'primary',
+                    onPress: () => {
+                      closeSheet();
+                      Linking.openURL(`mikrotik://connect?address=${host}&port=${port}`).catch(
+                        () => {
+                          setSheet({
+                            icon: 'cube-outline',
+                            title: 'Winbox',
+                            message: 'Application MikroTik non installée.',
+                            actions: [{ label: 'Fermer', variant: 'cancel', onPress: closeSheet }],
+                          });
+                        },
+                      );
+                    },
+                  },
+                  { label: 'Fermer', variant: 'cancel', onPress: closeSheet },
+                ],
+              });
             },
           },
         ]
@@ -430,7 +492,7 @@ export default function RouterSettingsScreen() {
             value={pushEnabled}
             onValueChange={togglePush}
             trackColor={{ false: theme.border, true: theme.primary }}
-            thumbColor="#fff"
+            thumbColor={theme.onStrong}
           />
         </View>
 
@@ -483,6 +545,16 @@ export default function RouterSettingsScreen() {
         busy={removeBusy}
         onConfirm={removeRouter}
         onCancel={() => setRemoveOpen(false)}
+      />
+
+      <ActionSheet
+        visible={sheet != null}
+        icon={sheet?.icon ?? 'information-circle-outline'}
+        title={sheet?.title ?? ''}
+        message={sheet?.message}
+        mono={sheet?.mono}
+        actions={sheet?.actions ?? []}
+        onClose={closeSheet}
       />
 
       <BottomNav active="index" />

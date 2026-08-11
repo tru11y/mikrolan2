@@ -271,7 +271,7 @@ export default function AccountScreen() {
             onValueChange={toggleNotifications}
             disabled={notifBusy}
             trackColor={{ false: theme.border, true: theme.primary }}
-            thumbColor="#fff"
+            thumbColor={theme.onStrong}
           />
         </View>
         <Divider />
@@ -299,7 +299,7 @@ export default function AccountScreen() {
                 onValueChange={toggleAppLock}
                 disabled={appLockBusy}
                 trackColor={{ false: theme.border, true: theme.primary }}
-                thumbColor="#fff"
+                thumbColor={theme.onStrong}
               />
             </View>
             <Divider />

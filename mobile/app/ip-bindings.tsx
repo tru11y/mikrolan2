@@ -42,7 +42,7 @@ const IP_RE = /^(\d{1,3}\.){3}\d{1,3}$/;
 const TYPE_META: Record<IpBindingType, { color: string; label: string }> = {
   bypassed: { color: theme.success, label: 'BYPASSED' },
   blocked: { color: theme.danger, label: 'BLOCKED' },
-  regular: { color: theme.warning, label: 'REGULAR' },
+  regular: { color: theme.textMuted, label: 'REGULAR' },
 };
 
 function TypeDot({ type }: { type: IpBindingType }) {

@@ -31,7 +31,7 @@ export type TicketsPdfOpts = {
   template?: TicketTemplate | null;
 };
 
-async function buildTicketsHtml(opts: TicketsPdfOpts): Promise<string> {
+export async function buildTicketsHtml(opts: TicketsPdfOpts): Promise<string> {
   const {
     routerName,
     planName,
