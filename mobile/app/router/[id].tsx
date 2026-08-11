@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -28,6 +28,7 @@ import {
   IconChip,
   Label,
   Mono,
+  Press,
   radius,
   routerHealth,
   Row,
@@ -126,7 +127,7 @@ function StatSquare({
   // Row en space-between laissaient un reliquat réparti dans les gouttières,
   // qui devenaient inégales.
   return (
-    <Pressable
+    <Press
       onPress={onPress}
       style={{
         flex: 1,
@@ -150,7 +151,7 @@ function StatSquare({
       >
         {label}
       </Text>
-    </Pressable>
+    </Press>
   );
 }
 
@@ -444,7 +445,7 @@ export default function RouterDetailScreen() {
                 </Row>
               ) : null}
             </View>
-            <Pressable
+            <Press
               accessibilityLabel="Paramètres du routeur"
               onPress={() =>
                 router.push({
@@ -464,7 +465,7 @@ export default function RouterDetailScreen() {
               }}
             >
               <Ionicons name="settings-outline" size={icon.md} color={theme.text} />
-            </Pressable>
+            </Press>
           </Row>
         </Card>
 
@@ -576,7 +577,7 @@ export default function RouterDetailScreen() {
                 </Row>
               </Card>
             ) : (
-              <Pressable
+              <Press
                 accessibilityLabel="Modifier les identifiants du routeur"
                 onPress={() => setShowCreds(true)}
                 style={{ alignSelf: 'flex-start' }}
@@ -590,7 +591,7 @@ export default function RouterDetailScreen() {
                 >
                   Identifiants routeur
                 </Text>
-              </Pressable>
+              </Press>
             )}
           </>
         ) : null}
@@ -672,7 +673,7 @@ export default function RouterDetailScreen() {
                 </Text>
               </View>
             </Row>
-            <Pressable
+            <Press
               onPress={() =>
                 router.push({ pathname: '/hotspot-setup', params: { routerId: id } })
               }
@@ -686,7 +687,7 @@ export default function RouterDetailScreen() {
               >
                 Modifier
               </Text>
-            </Pressable>
+            </Press>
           </Row>
         </Card>
 
@@ -694,7 +695,7 @@ export default function RouterDetailScreen() {
             le Pressable : sinon `alignItems: stretch` n'étire que le parent et
             les deux cartes finissent à des hauteurs différentes. */}
         <Row style={{ gap: space.md, alignItems: 'stretch' }}>
-          <Pressable
+          <Press
             style={{ flex: 1 }}
             onPress={() =>
               router.push({ pathname: '/internet-sharing', params: { routerId: id } })
@@ -727,8 +728,8 @@ export default function RouterDetailScreen() {
                 Configurer →
               </Text>
             </Card>
-          </Pressable>
-          <Pressable
+          </Press>
+          <Press
             style={{ flex: 1 }}
             onPress={() =>
               router.push({ pathname: '/(tabs)/rapport', params: { routerId: id } })
@@ -765,7 +766,7 @@ export default function RouterDetailScreen() {
                 Voir le rapport →
               </Text>
             </Card>
-          </Pressable>
+          </Press>
         </Row>
 
         <Button
