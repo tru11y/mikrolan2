@@ -1,5 +1,6 @@
 import {
   withApi,
+  LanApiError,
   type ApiConnectionParams,
 } from './MikroTikApiClient';
 import type { ProvisionBundle } from '@/src/lib/api';
@@ -185,8 +186,16 @@ export async function pushWireGuardConfig(
     for (let i = wantedRules.length - 1; i >= 0; i--) {
       const wanted = wantedRules[i];
       const rule = filtersAfterAdd.find((f) => f.comment === wanted.comment);
-      if (rule?.['.id']) {
+      if (!rule?.['.id']) continue;
+      try {
         await c.move('/ip/firewall/filter', rule['.id'], '0');
+      } catch (e) {
+        // RouterOS refuses to move a rule that is already at the top
+        // ("can not move object before itself") — a no-op re-provision on
+        // an unchanged router hits this on every rule, it's not a failure.
+        if (!(e instanceof LanApiError && e.message.includes('before itself'))) {
+          throw e;
+        }
       }
     }
   });
