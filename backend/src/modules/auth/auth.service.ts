@@ -14,6 +14,7 @@ import {
 } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { randomBytes } from 'node:crypto';
+import { OAuth2Client } from 'google-auth-library';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TokenService, TokenPair } from './token.service';
 import {
@@ -24,6 +25,7 @@ import {
   ChangePasswordDto,
   DeleteAccountDto,
   LoginDto,
+  SetPasswordDto,
   SignupDto,
   UpdateNotificationsDto,
   UpdateProfileDto,
@@ -51,13 +53,19 @@ function slugify(name: string): string {
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
+  private googleClient: OAuth2Client | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly tokens: TokenService,
     private readonly subscriptions: SubscriptionsService,
     private readonly config: ConfigService,
-  ) {}
+  ) {
+    const clientId = this.config.get<string>('GOOGLE_CLIENT_ID');
+    if (clientId) {
+      this.googleClient = new OAuth2Client(clientId);
+    }
+  }
 
   async signup(dto: SignupDto): Promise<TokenPair> {
     const passwordHash = await argon2.hash(dto.password, ARGON);
@@ -89,6 +97,7 @@ export class AuthService {
             tenantId: tenant.id,
             email: dto.email.toLowerCase(),
             passwordHash,
+            hasPassword: true,
             role: UserRole.OWNER,
             status: UserStatus.ACTIVE,
           },
@@ -153,6 +162,8 @@ export class AuthService {
           role: true,
           status: true,
           notificationsEnabled: true,
+          hasPassword: true,
+          googleId: true,
         },
       }),
       this.prisma.tenant.findUnique({
@@ -186,6 +197,8 @@ export class AuthService {
         role: true,
         status: true,
         notificationsEnabled: true,
+        hasPassword: true,
+        googleId: true,
       },
     });
     return user;
@@ -194,6 +207,11 @@ export class AuthService {
   async changePassword(userId: string, dto: ChangePasswordDto): Promise<void> {
     const user = await this.prisma.user.findFirst({ where: { id: userId } });
     if (!user) throw new UnauthorizedException('Compte introuvable. Reconnectez-vous.');
+    if (!user.hasPassword) {
+      throw new UnauthorizedException(
+        'Compte OAuth — utilisez « Définir un mot de passe » à la place.',
+      );
+    }
 
     const ok = await argon2.verify(user.passwordHash, dto.currentPassword);
     if (!ok) throw new UnauthorizedException('Mot de passe actuel incorrect');
@@ -203,11 +221,25 @@ export class AuthService {
       where: { id: userId },
       data: { passwordHash },
     });
-    // Password change is a security boundary: revoke all sessions so any
-    // stolen refresh token stops working immediately.
     await this.prisma.refreshToken.updateMany({
       where: { userId, revoked: false },
       data: { revoked: true },
+    });
+  }
+
+  async setPassword(userId: string, dto: SetPasswordDto): Promise<void> {
+    const user = await this.prisma.user.findFirst({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('Compte introuvable. Reconnectez-vous.');
+    if (user.hasPassword) {
+      throw new ConflictException(
+        'Un mot de passe existe déjà — utilisez « Changer le mot de passe ».',
+      );
+    }
+
+    const passwordHash = await argon2.hash(dto.password, ARGON);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash, hasPassword: true },
     });
   }
 
@@ -240,28 +272,35 @@ export class AuthService {
   }
 
   async googleLogin(idToken: string): Promise<TokenPair> {
+    if (!this.googleClient) {
+      throw new UnauthorizedException('Google OAuth non configuré.');
+    }
+
     const clientId = this.config.get<string>('GOOGLE_CLIENT_ID');
-    if (!clientId) throw new UnauthorizedException('Google OAuth non configuré.');
+    let ticket;
+    try {
+      ticket = await this.googleClient.verifyIdToken({
+        idToken,
+        audience: clientId,
+      });
+    } catch {
+      throw new UnauthorizedException('Token Google invalide.');
+    }
 
-    const res = await fetch(
-      `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`,
-    );
-    if (!res.ok) throw new UnauthorizedException('Token Google invalide.');
-    const payload = (await res.json()) as Record<string, string>;
+    const payload = ticket.getPayload();
+    if (!payload) throw new UnauthorizedException('Token Google invalide.');
 
-    if (payload.aud !== clientId) {
-      throw new UnauthorizedException('Token Google invalide (audience).');
+    if (payload.email_verified !== true) {
+      throw new UnauthorizedException('Adresse e-mail Google non vérifiée.');
     }
 
     const googleId = payload.sub;
     const email = payload.email?.toLowerCase();
     if (!email) throw new UnauthorizedException('E-mail Google requis.');
 
-    const existing = await this.prisma.user.findFirst({
-      where: {
-        OR: [{ googleId }, { email }],
-      },
-    });
+    // Lookup by googleId first (returning user), then by email (account linking).
+    const byGoogleId = await this.prisma.user.findUnique({ where: { googleId } });
+    const existing = byGoogleId ?? await this.prisma.user.findUnique({ where: { email } });
 
     if (existing) {
       if (existing.status !== UserStatus.ACTIVE) {
@@ -308,6 +347,7 @@ export class AuthService {
           email,
           name,
           passwordHash: placeholderHash,
+          hasPassword: false,
           googleId,
           role: UserRole.OWNER,
           status: UserStatus.ACTIVE,
@@ -334,10 +374,32 @@ export class AuthService {
     const user = await this.prisma.user.findFirst({ where: { id: userId } });
     if (!user) throw new UnauthorizedException('Compte introuvable. Reconnectez-vous.');
 
-    const ok = await argon2.verify(user.passwordHash, dto.password);
-    if (!ok) throw new UnauthorizedException('Mot de passe incorrect');
+    if (user.hasPassword) {
+      if (!dto.password) throw new UnauthorizedException('Mot de passe requis.');
+      const ok = await argon2.verify(user.passwordHash, dto.password);
+      if (!ok) throw new UnauthorizedException('Mot de passe incorrect');
+    } else if (dto.googleIdToken) {
+      if (!this.googleClient) throw new UnauthorizedException('Google OAuth non configuré.');
+      const clientId = this.config.get<string>('GOOGLE_CLIENT_ID');
+      try {
+        const ticket = await this.googleClient.verifyIdToken({
+          idToken: dto.googleIdToken,
+          audience: clientId,
+        });
+        const payload = ticket.getPayload();
+        if (payload?.sub !== user.googleId) {
+          throw new UnauthorizedException('Compte Google incorrect.');
+        }
+      } catch (e) {
+        if (e instanceof UnauthorizedException) throw e;
+        throw new UnauthorizedException('Token Google invalide.');
+      }
+    } else {
+      throw new UnauthorizedException(
+        'Vérification requise pour supprimer le compte.',
+      );
+    }
 
-    // Soft delete — no cascade. Login already rejects non-ACTIVE users.
     await this.prisma.user.update({
       where: { id: userId },
       data: { status: UserStatus.DELETED },

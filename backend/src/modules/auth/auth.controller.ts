@@ -21,6 +21,7 @@ import {
   loginSchema,
   refreshSchema,
   registerPushTokenSchema,
+  setPasswordSchema,
   signupSchema,
   updateNotificationsSchema,
   updateProfileSchema,
@@ -30,6 +31,7 @@ import {
   type LoginDto,
   type RefreshDto,
   type RegisterPushTokenDto,
+  type SetPasswordDto,
   type SignupDto,
   type UpdateNotificationsDto,
   type UpdateProfileDto,
@@ -84,6 +86,16 @@ export class AuthController {
     @Body(new ZodValidationPipe(changePasswordSchema)) dto: ChangePasswordDto,
   ) {
     return this.auth.changePassword(user.userId, dto);
+  }
+
+  @Post('set-password')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  setPassword(
+    @CurrentUser() user: TenantContext,
+    @Body(new ZodValidationPipe(setPasswordSchema)) dto: SetPasswordDto,
+  ) {
+    return this.auth.setPassword(user.userId, dto);
   }
 
   @Public()
