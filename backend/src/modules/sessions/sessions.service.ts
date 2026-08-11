@@ -244,11 +244,12 @@ export class SessionsService {
         bytesIn: true,
         bytesOut: true,
         startedAt: true,
+        voucher: { select: { code: true } },
       },
     });
     return rows.map((r) => ({
       id: r.mikrotikId ?? '',
-      user: '',
+      user: r.voucher.code,
       ipAddress: r.ipAddress,
       macAddress: r.macAddress,
       bytesIn: String(r.bytesIn ?? 0),

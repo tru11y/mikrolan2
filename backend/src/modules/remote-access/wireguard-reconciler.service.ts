@@ -14,8 +14,12 @@ import { EventsService } from '../events/events.service';
 import { WireGuardService } from '../../common/wireguard/wireguard.service';
 
 const RECONCILE_INTERVAL_MS = 20_000;
-// A router is ONLINE when its tunnel handshaked within this window.
-const HANDSHAKE_FRESH_S = 75;
+// A router is ONLINE when its tunnel handshaked within this window. WireGuard
+// only re-handshakes every ~120s under normal keepalive-driven traffic (see
+// pushWireGuard.ts persistent-keepalive=25), so a threshold below that made a
+// perfectly healthy tunnel flip OFFLINE for ~45s every cycle — spamming a
+// "routeur injoignable" toast on the mobile app on each false transition.
+const HANDSHAKE_FRESH_S = 150;
 
 /**
  * Keeps the wg-mgmt interface in sync with the DB (source of truth). Runtime

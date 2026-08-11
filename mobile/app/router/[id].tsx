@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -42,7 +42,8 @@ import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 import { RouterStatusDot } from '@/src/components/RouterStatusDot';
 
-const LOCAL_POLL_INTERVAL_MS = 15_000;
+const POLL_ONLINE_MS = 15_000;
+const POLL_OFFLINE_MS = 60_000;
 
 function memPercent(res: SystemResource): number {
   const rec = res as unknown as Record<string, string>;
@@ -170,7 +171,7 @@ export default function RouterDetailScreen() {
     queryKey: ['router', id],
     queryFn: () => api.routers.get(id),
     enabled: Boolean(id),
-    refetchInterval: LOCAL_POLL_INTERVAL_MS,
+    refetchInterval: POLL_ONLINE_MS,
     placeholderData: keepPreviousData,
   });
 
@@ -178,7 +179,7 @@ export default function RouterDetailScreen() {
     queryKey: ['router-remote', id],
     queryFn: () => api.routers.remoteStatus(id),
     enabled: Boolean(id) && isPro,
-    refetchInterval: LOCAL_POLL_INTERVAL_MS,
+    refetchInterval: POLL_ONLINE_MS,
     placeholderData: keepPreviousData,
   });
 
@@ -198,7 +199,7 @@ export default function RouterDetailScreen() {
   const activeSessionsQuery = useQuery({
     queryKey: ['router-active-sessions', id, query.data?.mode],
     enabled: Boolean(id) && query.isSuccess,
-    refetchInterval: LOCAL_POLL_INTERVAL_MS,
+    refetchInterval: POLL_ONLINE_MS,
     placeholderData: keepPreviousData,
     queryFn: async (): Promise<number | null> => {
       const mode = query.data?.mode;
@@ -312,23 +313,22 @@ export default function RouterDetailScreen() {
 
   const [resource, setResource] = useState<SystemResource | null>(null);
   const [resourceVia, setResourceVia] = useState<'lan' | 'remote' | null>(null);
-  const [lanState, setLanState] = useState<
-    'idle' | 'loading' | 'ok' | 'no-creds' | 'error'
-  >('idle');
-  const [lanError, setLanError] = useState<string | null>(null);
+  type LanState = 'idle' | 'loading' | 'ok' | 'no-creds' | 'error';
+  const [lanState, setLanState] = useState<LanState>('idle');
+  const lanStateRef = useRef<LanState>('idle');
 
   const remoteActive = remoteQuery.data?.status === 'ACTIVE';
 
+  const setLanStateSafe = useCallback((next: LanState) => {
+    if (lanStateRef.current === next) return;
+    lanStateRef.current = next;
+    setLanState(next);
+  }, []);
+
   const loadLocal = useCallback(async () => {
     if (!id) return;
-    // Only show loading skeleton on the very first probe — subsequent polls
-    // keep the previous data visible to avoid the "page reload" flash.
-    if (lanState === 'idle') setLanState('loading');
-    setLanError(null);
+    if (lanStateRef.current === 'idle') setLanStateSafe('loading');
 
-    // 1) LAN first: works offline on the router's Wi-Fi (free/local mode). Only
-    // when the router is actually on the current Wi-Fi subnet — otherwise the
-    // pinned socket crashes the app (see sameSubnet24 above).
     const creds = await getLocalCredentials(id);
     const wifi = await getWifiInfo();
     const onRouterLan =
@@ -339,38 +339,34 @@ export default function RouterDetailScreen() {
       try {
         setResource(await withApi(creds, (c) => c.systemResource()));
         setResourceVia('lan');
-        setLanState('ok');
+        setLanStateSafe('ok');
         return;
-      } catch (e) {
-        setLanError(extractErrorMessage(e));
+      } catch {
+        // fall through to remote
       }
     }
 
-    // 2) Remote fallback (PRO): the backend drives the router over the tunnel,
-    // so resources are reachable from anywhere the phone has internet.
     if (remoteActive) {
       try {
         setResource(
           (await api.routers.remoteSystemResource(id)) as SystemResource,
         );
         setResourceVia('remote');
-        setLanState('ok');
+        setLanStateSafe('ok');
         return;
-      } catch (e) {
-        setLanError(extractErrorMessage(e));
+      } catch {
+        // fall through to offline
       }
     }
 
-    setLanState(creds || remoteActive ? 'error' : 'no-creds');
-  }, [id, remoteActive]);
+    setLanStateSafe(creds || remoteActive ? 'error' : 'no-creds');
+  }, [id, remoteActive, setLanStateSafe]);
 
-  // Sondage périodique tant que l'écran a le focus (pause en arrière-plan/
-  // navigation ailleurs) : c'est ce qui fait "sentir" le temps réel et
-  // permet de détecter un retour en ligne sans quitter/rouvrir l'écran.
   useFocusEffect(
     useCallback(() => {
       void loadLocal();
-      const timer = setInterval(() => void loadLocal(), LOCAL_POLL_INTERVAL_MS);
+      const interval = lanStateRef.current === 'ok' ? POLL_ONLINE_MS : POLL_OFFLINE_MS;
+      const timer = setInterval(() => void loadLocal(), interval);
       return () => clearInterval(timer);
     }, [loadLocal]),
   );
@@ -397,80 +393,8 @@ export default function RouterDetailScreen() {
   }
 
   const r = query.data;
-
-  // Un routeur hors ligne ne doit jamais afficher de données qui viennent de
-  // lui (sessions, moniteur, tickets poussés...) — ce serait potentiellement
-  // faux/obsolète. `lanState` vient d'un vrai probe (LAN ou tunnel), donc
-  // c'est le signal le plus fiable, plus fiable que `r.health` (DB, jusqu'à
-  // ~1 min de retard côté REMOTE, jamais mis à jour côté LOCAL).
   const isOffline = lanState === 'error' || lanState === 'no-creds';
-
-  if (isOffline) {
-    return (
-      <View style={{ flex: 1, backgroundColor: theme.bg }}>
-        <AppHeader title="Maison" />
-        <Screen>
-          <View
-            style={{
-              flex: 1,
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: space.md,
-              paddingHorizontal: space.lg,
-            }}
-          >
-            <IconChip name="cloud-offline-outline" size="xl" outlined />
-            <Text
-              style={{
-                color: theme.text,
-                fontSize: type.title,
-                fontWeight: '800',
-                textAlign: 'center',
-              }}
-            >
-              {r.alias || r.identity}
-            </Text>
-            <Row style={{ gap: space.xs + 2, justifyContent: 'center' }}>
-              <RouterStatusDot health="OFFLINE" />
-              <Badge label="Hors ligne" tone="warning" />
-            </Row>
-            <Text
-              style={{
-                color: theme.textMuted,
-                fontSize: type.body,
-                textAlign: 'center',
-              }}
-            >
-              {lanState === 'no-creds'
-                ? "Aucun identifiant local enregistré et aucun accès à distance actif — impossible de vérifier ce routeur."
-                : (lanError ??
-                  "Ce routeur ne répond pas. Les données seraient incorrectes tant qu'il est injoignable.")}
-            </Text>
-            <Button title="Réessayer" onPress={() => void loadLocal()} />
-            <Pressable
-              onPress={() =>
-                router.push({
-                  pathname: '/router-settings',
-                  params: { routerId: id },
-                })
-              }
-            >
-              <Text
-                style={{
-                  color: theme.textMuted,
-                  fontSize: type.caption,
-                  textDecorationLine: 'underline',
-                }}
-              >
-                Modifier les paramètres du routeur
-              </Text>
-            </Pressable>
-          </View>
-        </Screen>
-        <BottomNav active="index" />
-      </View>
-    );
-  }
+  const probeHealth = lanState === 'ok' ? 'ONLINE' : lanState === 'idle' || lanState === 'loading' ? r.health : 'OFFLINE';
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -498,9 +422,7 @@ export default function RouterDetailScreen() {
                 >
                   {r.alias || r.identity}
                 </Text>
-                <RouterStatusDot
-                  health={lanState === 'ok' ? 'ONLINE' : r.health}
-                />
+                <RouterStatusDot health={probeHealth} />
               </Row>
               <Mono
                 style={{
@@ -544,7 +466,7 @@ export default function RouterDetailScreen() {
           </Row>
         </Card>
 
-        {lanState === 'ok' && resource ? (
+        {!isOffline && resource ? (
           <Card>
             <Row style={{ gap: space.xs + 2, justifyContent: 'flex-start' }}>
               <Ionicons name="pulse-outline" size={icon.sm} color={theme.secondary} />
