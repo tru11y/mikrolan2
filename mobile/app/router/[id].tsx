@@ -201,20 +201,28 @@ export default function RouterDetailScreen() {
     refetchInterval: LOCAL_POLL_INTERVAL_MS,
     placeholderData: keepPreviousData,
     queryFn: async (): Promise<number | null> => {
-      if (query.data!.mode === 'REMOTE') {
+      const mode = query.data?.mode;
+      if (!mode) return null;
+      if (mode === 'REMOTE') {
         const list = await api.routers.listSessions(id);
         return list.length;
       }
       const creds = await getLocalCredentials(id);
-      if (!creds) return null;
+      if (!creds) {
+        // Pas de credentials locaux : lire le dernier compte synchronisé en DB.
+        const synced = await api.routers.listSessions(id);
+        return synced.length || null;
+      }
       const wifi = await getWifiInfo();
       const onRouterLan =
         !!wifi &&
         (creds.host === wifi.gateway || sameSubnet24(creds.host, wifi.ipAddress));
-      if (!onRouterLan) return null;
+      if (!onRouterLan) {
+        // Hors du Wi-Fi du routeur : dernier compte synchronisé en DB.
+        const synced = await api.routers.listSessions(id);
+        return synced.length || null;
+      }
       const list = await listActiveLan(creds);
-      // Le serveur ne voit pas ce LAN : on lui remonte ce qu'on observe, sans
-      // quoi les tickets utilisés ne deviennent jamais du chiffre d'affaires.
       void reportLanSessions(id, list);
       return list.length;
     },
@@ -313,7 +321,9 @@ export default function RouterDetailScreen() {
 
   const loadLocal = useCallback(async () => {
     if (!id) return;
-    setLanState('loading');
+    // Only show loading skeleton on the very first probe — subsequent polls
+    // keep the previous data visible to avoid the "page reload" flash.
+    if (lanState === 'idle') setLanState('loading');
     setLanError(null);
 
     // 1) LAN first: works offline on the router's Wi-Fi (free/local mode). Only
@@ -491,10 +501,6 @@ export default function RouterDetailScreen() {
                 <RouterStatusDot
                   health={lanState === 'ok' ? 'ONLINE' : r.health}
                 />
-                <Badge
-                  label={routerHealth(lanState === 'ok' ? 'ONLINE' : r.health).label}
-                  tone={routerHealth(lanState === 'ok' ? 'ONLINE' : r.health).tone}
-                />
               </Row>
               <Mono
                 style={{
@@ -540,12 +546,10 @@ export default function RouterDetailScreen() {
 
         {lanState === 'ok' && resource ? (
           <Card>
-            <Row>
-              <Row style={{ gap: space.xs + 2, justifyContent: 'flex-start' }}>
-                <Ionicons name="pulse-outline" size={icon.sm} color={theme.secondary} />
-                <Label>Moniteur performance</Label>
-              </Row>
-              <Badge label="EN DIRECT" tone="success" />
+            <Row style={{ gap: space.xs + 2, justifyContent: 'flex-start' }}>
+              <Ionicons name="pulse-outline" size={icon.sm} color={theme.secondary} />
+              <Label>Moniteur performance</Label>
+              <RouterStatusDot health="ONLINE" size={7} />
             </Row>
             <Row style={{ gap: space.sm + 2, alignItems: 'stretch' }}>
               <Gauge
