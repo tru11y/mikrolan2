@@ -2,6 +2,7 @@ import { useEffect, useRef, PropsWithChildren } from 'react';
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+import Constants from 'expo-constants';
 import { api } from '@/src/lib/api';
 import { useAuth } from './auth-provider';
 
@@ -34,9 +35,10 @@ async function registerForPushNotifications(): Promise<string | null> {
   }
   if (finalStatus !== 'granted') return null;
 
-  const { data } = await Notifications.getExpoPushTokenAsync({
-    projectId: undefined as unknown as string,
-  });
+  const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+  if (!projectId) return null;
+
+  const { data } = await Notifications.getExpoPushTokenAsync({ projectId });
   return data;
 }
 
