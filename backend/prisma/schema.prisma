@@ -170,7 +170,8 @@ model User {
   email                String         @unique
   name                 String?
   country              String?
-  passwordHash         String // Argon2id (blank for OAuth-only accounts)
+  passwordHash         String
+  hasPassword          Boolean        @default(true)
   googleId             String?        @unique
   role                 UserRole       @default(MEMBER)
   status               UserStatus     @default(ACTIVE)
