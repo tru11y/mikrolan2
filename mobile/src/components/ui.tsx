@@ -69,7 +69,38 @@ export const theme = {
    *  plutôt que d'en aligner deux presque identiques côte à côte. */
   warning: '#F5B84A',
   mono: Platform.select({ ios: 'Menlo', default: 'monospace' }) as string,
+  /** Blanc pur — réservé au contenu posé sur une couleur forte (ex. thumb de
+   *  `Switch`, badge de compteur), jamais utilisé comme couleur de texte
+   *  courante. `primaryText`/`goldText` restent l'encre sombre habituelle. */
+  onStrong: '#FFFFFF',
 } as const;
+
+/**
+ * Applique une opacité à une couleur hexadécimale (`#RGB` ou `#RRGGBB`) en
+ * lui ajoutant un canal alpha, plutôt que de concaténer "22"/"44"/"66" à la
+ * main à chaque site d'appel (motif répété ~40 fois dans l'app — fragile dès
+ * que la couleur source n'est plus un hex à 6 chiffres).
+ *
+ * `opacity` est normalisée entre 0 et 1 et bornée. Une couleur qui n'est pas
+ * un hex valide (`rgba(...)`, nom CSS…) est renvoyée telle quelle : le
+ * helper ne sait pas lui ajouter d'alpha, mais ne casse rien non plus.
+ */
+export function withAlpha(hex: string, opacity: number): string {
+  const match = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(hex);
+  if (!match) return hex;
+  const clamped = Math.max(0, Math.min(1, opacity));
+  const normalized =
+    match[1].length === 3
+      ? match[1]
+          .split('')
+          .map((c) => c + c)
+          .join('')
+      : match[1];
+  const alphaHex = Math.round(clamped * 255)
+    .toString(16)
+    .padStart(2, '0');
+  return `#${normalized}${alphaHex}`;
+}
 
 // ─── Mouvement ───────────────────────────────────────────────────────────────
 // Durées et courbes uniques : sans elles chaque écran inventait son timing et
@@ -115,7 +146,50 @@ export const type = {
   hero: 40,
 } as const;
 
+/** Graisses de police. Les poids étaient choisis à la main à chaque usage —
+ *  avec une convergence de fait (700-800 titres/valeurs, 600 labels, 400
+ *  corps) mais rien qui l'impose. Ces tokens rendent la convention explicite. */
+export const weight = {
+  regular: '400',
+  medium: '500',
+  semibold: '600',
+  bold: '700',
+  heavy: '800',
+} as const;
+
+// Convention iconographique : variante *outline* = état neutre/inactif,
+// variante pleine = état actif/sélectionné (voir BottomNav, NotificationBell).
 export const icon = { sm: 16, md: 20, lg: 24, xl: 28 } as const;
+
+// ─── Élévation ───────────────────────────────────────────────────────────────
+// Échelle volontairement courte : `none` pour les cartes standards (une
+// bordure suffit à les détacher du fond — ne pas ajouter d'ombre dessus),
+// `subtle` pour un contenu qui doit sembler légèrement au-dessus (ex. barre
+// flottante), `floating` pour le FAB uniquement (glow teinté marque). Chaque
+// palier fonctionne identiquement iOS (shadow*) et Android (elevation).
+export const elevation = {
+  none: {} as ViewStyle,
+  subtle: Platform.select<ViewStyle>({
+    ios: {
+      shadowColor: '#000000',
+      shadowOpacity: 0.16,
+      shadowRadius: 6,
+      shadowOffset: { width: 0, height: 2 },
+    },
+    android: { elevation: 3 },
+    default: {},
+  }) as ViewStyle,
+  floating: Platform.select<ViewStyle>({
+    ios: {
+      shadowColor: theme.primary,
+      shadowOpacity: 0.5,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 4 },
+    },
+    android: { elevation: 6 },
+    default: {},
+  }) as ViewStyle,
+} as const;
 
 // ─── Accessibilité du mouvement ──────────────────────────────────────────────
 // « Réduire les animations » du système doit couper les nôtres, sinon on rend
@@ -220,6 +294,7 @@ export function Press({
   scaleTo = 0.97,
   style,
   accessibilityLabel,
+  accessibilityHint,
   accessibilityRole = 'button',
   hitSlop,
 }: PropsWithChildren<{
@@ -229,6 +304,7 @@ export function Press({
   scaleTo?: number;
   style?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
+  accessibilityHint?: string;
   accessibilityRole?: 'button' | 'link' | 'radio' | 'tab';
   hitSlop?: number;
 }>) {
@@ -252,6 +328,7 @@ export function Press({
     <Pressable
       accessibilityRole={accessibilityRole}
       accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled: Boolean(disabled) }}
       onPress={onPress}
       onLongPress={onLongPress}
@@ -399,6 +476,10 @@ export function Screen({ children }: PropsWithChildren) {
   return <View style={styles.screen}>{children}</View>;
 }
 
+// Surface élevée standard (fond + bordure + rayon + padding cohérents). À
+// utiliser pour tout bloc de contenu autonome (carte de liste, section) ; une
+// `View` nue reste légitime pour un conteneur de layout pur (ligne, groupe)
+// qui ne représente aucune donnée en lui-même.
 export function Card({
   children,
   style,

@@ -64,10 +64,8 @@ const LiveEventsContext = createContext<LiveEventsValue>({
 
 /** Les évènements qui méritent d'interrompre l'utilisateur. */
 const ANNOUNCED: Partial<Record<LiveEventType, 'success' | 'danger' | 'info'>> = {
-  VOUCHER_ACTIVATED: 'success',
   SUBSCRIPTION_ACTIVATED: 'success',
   ROUTER_OFFLINE: 'danger',
-  ROUTER_ONLINE: 'success',
   UPGRADE_REQUESTED: 'info',
 };
 
