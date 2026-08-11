@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Image,
   KeyboardAvoidingView,
@@ -46,19 +46,18 @@ export default function LoginScreen() {
     androidClientId: GOOGLE_ANDROID_CLIENT_ID,
   });
 
-  async function handleGoogle() {
-    clearError();
-    const result = await promptGoogle();
-    if (result?.type === 'success') {
-      const idToken = result.params.id_token;
+  useEffect(() => {
+    if (googleResponse?.type === 'success') {
+      const idToken = googleResponse.params.id_token;
       if (idToken) {
-        try {
-          await googleLogin(idToken);
-        } catch {
-          // error surfaced via context
-        }
+        googleLogin(idToken).catch(() => {});
       }
     }
+  }, [googleResponse]);
+
+  function handleGoogle() {
+    clearError();
+    promptGoogle();
   }
 
   async function submit() {

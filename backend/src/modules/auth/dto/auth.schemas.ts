@@ -50,10 +50,21 @@ export type RegisterPushTokenDto = z.infer<typeof registerPushTokenSchema>;
 
 export const deleteAccountSchema = z
   .object({
-    password: z.string().min(1).max(128),
+    password: z.string().min(1).max(128).optional(),
+    googleIdToken: z.string().min(20).max(4000).optional(),
+  })
+  .strict()
+  .refine((d) => d.password || d.googleIdToken, {
+    message: 'Mot de passe ou token Google requis.',
+  });
+export type DeleteAccountDto = z.infer<typeof deleteAccountSchema>;
+
+export const setPasswordSchema = z
+  .object({
+    password: z.string().min(10).max(128),
   })
   .strict();
-export type DeleteAccountDto = z.infer<typeof deleteAccountSchema>;
+export type SetPasswordDto = z.infer<typeof setPasswordSchema>;
 
 export const googleOAuthSchema = z
   .object({
