@@ -159,6 +159,7 @@ export function AppHeader({ title, back }: { title: string; back?: boolean }) {
           <Pressable
             accessibilityLabel="Compte"
             onPress={() => router.push('/(tabs)/account')}
+            hitSlop={5}
             style={{
               width: 34,
               height: 34,

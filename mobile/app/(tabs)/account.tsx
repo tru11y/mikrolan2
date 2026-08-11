@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { Pressable, ScrollView, Switch, Text, View } from 'react-native';
+import { ScrollView, Switch, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { useAuth } from '@/src/providers/auth-provider';
 import { useAppLock } from '@/src/providers/app-lock-provider';
 import { api, extractErrorMessage } from '@/src/lib/api';
-import { Banner, Button, Field, space, theme, type } from '@/src/components/ui';
+import { Banner, Button, Field, Press, space, theme, type } from '@/src/components/ui';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
@@ -37,7 +37,7 @@ function ActionRow({
   open?: boolean;
 }) {
   return (
-    <Pressable
+    <Press
       onPress={onPress}
       style={{
         flexDirection: 'row',
@@ -67,7 +67,7 @@ function ActionRow({
         size={18}
         color={theme.textMuted}
       />
-    </Pressable>
+    </Press>
   );
 }
 
