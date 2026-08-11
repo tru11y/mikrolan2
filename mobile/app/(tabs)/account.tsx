@@ -153,7 +153,7 @@ export default function AccountScreen() {
     setDeleteBusy(true);
     setDeleteMsg(null);
     try {
-      await api.auth.deleteAccount(deletePassword);
+      await api.auth.deleteAccount({ password: deletePassword });
       await logout();
     } catch (e) {
       setDeleteMsg({ tone: 'danger', text: extractErrorMessage(e) });
@@ -181,9 +181,25 @@ export default function AccountScreen() {
         tone: 'success',
         text: 'Mot de passe changé. Reconnexion requise…',
       });
-      // Password change revokes every session server-side — force a clean
-      // re-login rather than leave a stale token.
       setTimeout(() => void logout(), 1200);
+    } catch (e) {
+      setPasswordMsg({ tone: 'danger', text: extractErrorMessage(e) });
+    } finally {
+      setPasswordBusy(false);
+    }
+  }
+
+  async function setNewPasswordForOAuth() {
+    setPasswordBusy(true);
+    setPasswordMsg(null);
+    try {
+      await api.auth.setPassword(newPassword);
+      setNewPassword('');
+      setPasswordMsg({
+        tone: 'success',
+        text: 'Mot de passe défini. Vous pouvez maintenant vous connecter par e-mail.',
+      });
+      await refreshProfile();
     } catch (e) {
       setPasswordMsg({ tone: 'danger', text: extractErrorMessage(e) });
     } finally {
@@ -291,32 +307,39 @@ export default function AccountScreen() {
         ) : null}
 
         <ActionRow
-          title="Changer le mot de passe"
+          title={me?.user.hasPassword ? 'Changer le mot de passe' : 'Définir un mot de passe'}
+          subtitle={!me?.user.hasPassword ? 'Compte connecté via Google' : undefined}
           open={editingPassword}
           onPress={() => setEditingPassword((v) => !v)}
         />
         {editingPassword ? (
           <View style={{ gap: 12, paddingBottom: 16 }}>
             {passwordMsg ? <Banner tone={passwordMsg.tone}>{passwordMsg.text}</Banner> : null}
+            {me?.user.hasPassword ? (
+              <Field
+                label="Mot de passe actuel"
+                value={currentPassword}
+                onChangeText={setCurrentPassword}
+                secureTextEntry
+              />
+            ) : null}
             <Field
-              label="Mot de passe actuel"
-              value={currentPassword}
-              onChangeText={setCurrentPassword}
-              secureTextEntry
-            />
-            <Field
-              label="Nouveau mot de passe"
+              label={me?.user.hasPassword ? 'Nouveau mot de passe' : 'Mot de passe'}
               value={newPassword}
               onChangeText={setNewPassword}
               placeholder="10 caractères minimum"
               secureTextEntry
             />
             <Button
-              title="Changer le mot de passe"
+              title={me?.user.hasPassword ? 'Changer le mot de passe' : 'Définir le mot de passe'}
               variant="ghost"
-              onPress={savePassword}
+              onPress={me?.user.hasPassword ? savePassword : setNewPasswordForOAuth}
               loading={passwordBusy}
-              disabled={currentPassword.length < 1 || newPassword.length < 10}
+              disabled={
+                me?.user.hasPassword
+                  ? currentPassword.length < 1 || newPassword.length < 10
+                  : newPassword.length < 10
+              }
             />
           </View>
         ) : null}
@@ -363,19 +386,27 @@ export default function AccountScreen() {
         {editingDelete ? (
           <View style={{ gap: 12, paddingBottom: 16 }}>
             {deleteMsg ? <Banner tone={deleteMsg.tone}>{deleteMsg.text}</Banner> : null}
-            <Field
-              label="Confirmez avec votre mot de passe"
-              value={deletePassword}
-              onChangeText={setDeletePassword}
-              secureTextEntry
-            />
-            <Button
-              title="Supprimer définitivement mon compte"
-              variant="danger"
-              onPress={confirmDeleteAccount}
-              loading={deleteBusy}
-              disabled={deletePassword.length < 1}
-            />
+            {me?.user.hasPassword ? (
+              <>
+                <Field
+                  label="Confirmez avec votre mot de passe"
+                  value={deletePassword}
+                  onChangeText={setDeletePassword}
+                  secureTextEntry
+                />
+                <Button
+                  title="Supprimer définitivement mon compte"
+                  variant="danger"
+                  onPress={confirmDeleteAccount}
+                  loading={deleteBusy}
+                  disabled={deletePassword.length < 1}
+                />
+              </>
+            ) : (
+              <Banner tone="danger">
+                Définissez d'abord un mot de passe ci-dessus pour confirmer la suppression.
+              </Banner>
+            )}
           </View>
         ) : null}
 
