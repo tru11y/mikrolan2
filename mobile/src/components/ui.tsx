@@ -281,6 +281,30 @@ export function FadeIn({
   );
 }
 
+const LAYOUT_STYLE_KEYS = [
+  'flex',
+  'flexGrow',
+  'flexShrink',
+  'flexBasis',
+  'alignSelf',
+  'width',
+  'height',
+  'minWidth',
+  'maxWidth',
+  'minHeight',
+  'maxHeight',
+] as const;
+
+function pickLayoutStyle(style: StyleProp<ViewStyle> | undefined): ViewStyle {
+  const flat = StyleSheet.flatten(style) ?? {};
+  const out: ViewStyle = {};
+  for (const key of LAYOUT_STYLE_KEYS) {
+    const value = (flat as Record<string, unknown>)[key];
+    if (value !== undefined) (out as Record<string, unknown>)[key] = value;
+  }
+  return out;
+}
+
 /**
  * Zone tactile avec retour physique (enfoncement + assombrissement). C'est ce
  * qui manquait le plus : rien dans l'app ne réagissait au doigt avant le
@@ -324,6 +348,14 @@ export function Press({
     [reduced, scale],
   );
 
+  // Un `flex: 1` (ou `width`/`height`) dans une Row doit être porté par ce
+  // Pressable, le vrai enfant flex de la Row — sinon la Row ne peut pas lui
+  // distribuer d'espace et son contenu déborde de l'écran. Mais SEULES les
+  // propriétés de mise en page passent ici : dupliquer tout `style` sur les
+  // deux couches (background, border, padding...) les fait rendre deux fois
+  // et casse le rendu visuel (bordure imbriquée, texte tronqué).
+  const layoutStyle = pickLayoutStyle(style);
+
   return (
     <Pressable
       accessibilityRole={accessibilityRole}
@@ -336,6 +368,7 @@ export function Press({
       onPressOut={() => animate(1)}
       disabled={disabled}
       hitSlop={hitSlop}
+      style={layoutStyle}
     >
       {({ pressed }) => (
         <Animated.View

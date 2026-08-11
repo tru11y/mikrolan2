@@ -211,7 +211,7 @@ export default function SessionsScreen() {
         {query.isLoading ? (
           <Subtitle>Lecture du routeur…</Subtitle>
         ) : !filtered.length ? (
-          <Empty text="Aucune session active." />
+          <Empty icon="people-outline" text="Aucune session active." />
         ) : (
           <View style={{ gap: 12 }}>
             {filtered.map((s: LiveSession) => (

@@ -176,7 +176,7 @@ export default function FichiersScreen() {
 
         <View style={{ gap: 10 }}>
           {!batchesQuery.data?.length ? (
-            <Empty text="Aucun lot généré pour ce routeur." />
+            <Empty icon="folder-open-outline" text="Aucun lot généré pour ce routeur." />
           ) : (
             batchesQuery.data.map((b) => {
               const isDownloading =
@@ -284,7 +284,7 @@ export default function FichiersScreen() {
         {vouchersQuery.isLoading ? (
           <Text style={{ color: theme.textMuted, fontSize: 13 }}>Chargement…</Text>
         ) : !vouchersQuery.data?.length ? (
-          <Empty text="Aucun code pour ce routeur." />
+          <Empty icon="key-outline" text="Aucun code pour ce routeur." />
         ) : (
           <View style={{ gap: 12 }}>
             {vouchersQuery.data.map((v) => {

@@ -177,7 +177,7 @@ export default function RapportScreen() {
         </Row>
 
         {!data?.byPlan.length ? (
-          <Empty text="Aucune vente sur cette période." />
+          <Empty icon="pie-chart-outline" text="Aucune vente sur cette période." />
         ) : (
           <View style={{ gap: 10 }}>
             {data.byPlan.map((p) => (
@@ -217,7 +217,7 @@ export default function RapportScreen() {
       <View>
         <SectionTitle>Clients récents</SectionTitle>
         {!clients.data?.length ? (
-          <Empty text="Aucun ticket utilisé pour le moment." />
+          <Empty icon="people-outline" text="Aucun ticket utilisé pour le moment." />
         ) : (
           <View style={{ gap: 12 }}>
             {clients.data.map((c) => (
