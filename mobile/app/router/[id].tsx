@@ -44,8 +44,11 @@ import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 import { RouterStatusDot } from '@/src/components/RouterStatusDot';
 
-const POLL_ONLINE_MS = 15_000;
-const POLL_OFFLINE_MS = 60_000;
+// Perfs du routeur et sessions actives : 15 s (temps réel ressenti).
+const POLL_MS = 15_000;
+// Aucun signe de vie pendant ce délai avant de déclarer le routeur hors
+// ligne — évite qu'un échec passager bascule l'écran entier.
+const OFFLINE_GRACE_MS = 180_000;
 
 function memPercent(res: SystemResource): number {
   const rec = res as unknown as Record<string, string>;
@@ -174,7 +177,7 @@ export default function RouterDetailScreen() {
     queryKey: ['router', id],
     queryFn: () => api.routers.get(id),
     enabled: Boolean(id),
-    refetchInterval: POLL_ONLINE_MS,
+    refetchInterval: POLL_MS,
     placeholderData: keepPreviousData,
   });
 
@@ -182,7 +185,7 @@ export default function RouterDetailScreen() {
     queryKey: ['router-remote', id],
     queryFn: () => api.routers.remoteStatus(id),
     enabled: Boolean(id) && isPro,
-    refetchInterval: POLL_ONLINE_MS,
+    refetchInterval: POLL_MS,
     placeholderData: keepPreviousData,
   });
 
@@ -202,7 +205,7 @@ export default function RouterDetailScreen() {
   const activeSessionsQuery = useQuery({
     queryKey: ['router-active-sessions', id, query.data?.mode],
     enabled: Boolean(id) && query.isSuccess,
-    refetchInterval: POLL_ONLINE_MS,
+    refetchInterval: POLL_MS,
     placeholderData: keepPreviousData,
     queryFn: async (): Promise<number | null> => {
       const mode = query.data?.mode;
@@ -319,6 +322,11 @@ export default function RouterDetailScreen() {
   type LanState = 'idle' | 'loading' | 'ok' | 'no-creds' | 'error';
   const [lanState, setLanState] = useState<LanState>('idle');
   const lanStateRef = useRef<LanState>('idle');
+  // Horodatage du dernier contact réussi : un routeur n'est déclaré hors
+  // ligne qu'après OFFLINE_GRACE_MS sans le moindre signe de vie. Un échec
+  // isolé (Wi-Fi qui bascule, paquet perdu, routeur occupé) ne doit pas
+  // faire clignoter tout l'écran en « hors ligne » puis revenir.
+  const lastSeenRef = useRef<number | null>(null);
 
   const remoteActive = remoteQuery.data?.status === 'ACTIVE';
 
@@ -332,6 +340,13 @@ export default function RouterDetailScreen() {
     if (!id) return;
     if (lanStateRef.current === 'idle') setLanStateSafe('loading');
 
+    const markReachable = (via: 'lan' | 'remote', res: SystemResource) => {
+      setResource(res);
+      setResourceVia(via);
+      lastSeenRef.current = Date.now();
+      setLanStateSafe('ok');
+    };
+
     const creds = await getLocalCredentials(id);
     const wifi = await getWifiInfo();
     const onRouterLan =
@@ -340,9 +355,7 @@ export default function RouterDetailScreen() {
       (creds.host === wifi.gateway || sameSubnet24(creds.host, wifi.ipAddress));
     if (creds && onRouterLan) {
       try {
-        setResource(await withApi(creds, (c) => c.systemResource()));
-        setResourceVia('lan');
-        setLanStateSafe('ok');
+        markReachable('lan', await withApi(creds, (c) => c.systemResource()));
         return;
       } catch {
         // fall through to remote
@@ -351,25 +364,32 @@ export default function RouterDetailScreen() {
 
     if (remoteActive) {
       try {
-        setResource(
+        markReachable(
+          'remote',
           (await api.routers.remoteSystemResource(id)) as SystemResource,
         );
-        setResourceVia('remote');
-        setLanStateSafe('ok');
         return;
       } catch {
         // fall through to offline
       }
     }
 
-    setLanStateSafe(creds || remoteActive ? 'error' : 'no-creds');
+    if (!creds && !remoteActive) {
+      setLanStateSafe('no-creds');
+      return;
+    }
+
+    // Période de grâce : on garde le dernier état connu tant qu'on n'a pas
+    // dépassé le délai sans contact.
+    const lastSeen = lastSeenRef.current;
+    if (lastSeen != null && Date.now() - lastSeen < OFFLINE_GRACE_MS) return;
+    setLanStateSafe('error');
   }, [id, remoteActive, setLanStateSafe]);
 
   useFocusEffect(
     useCallback(() => {
       void loadLocal();
-      const interval = lanStateRef.current === 'ok' ? POLL_ONLINE_MS : POLL_OFFLINE_MS;
-      const timer = setInterval(() => void loadLocal(), interval);
+      const timer = setInterval(() => void loadLocal(), POLL_MS);
       return () => clearInterval(timer);
     }, [loadLocal]),
   );
@@ -474,7 +494,6 @@ export default function RouterDetailScreen() {
             <Row style={{ gap: space.xs + 2, justifyContent: 'flex-start' }}>
               <Ionicons name="pulse-outline" size={icon.sm} color={theme.secondary} />
               <Label>Moniteur performance</Label>
-              <RouterStatusDot health="ONLINE" size={7} />
             </Row>
             <Row style={{ gap: space.sm + 2, alignItems: 'stretch' }}>
               <Gauge
