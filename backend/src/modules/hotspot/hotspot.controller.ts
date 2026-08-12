@@ -20,11 +20,13 @@ import {
   hotspotSettingsQuerySchema,
   setInternetSharingSchema,
   updateHotspotSettingsSchema,
+  updateUserProfileSchema,
   type ConfigureHotspotDto,
   type CreateIpBindingDto,
   type HotspotSettingsQueryDto,
   type SetInternetSharingDto,
   type UpdateHotspotSettingsDto,
+  type UpdateUserProfileDto,
 } from './dto/hotspot.schemas';
 
 @Controller('routers/:id/hotspot')
@@ -44,6 +46,27 @@ export class HotspotController {
   @Get('user-profiles')
   listUserProfiles(@Param('id', ParseUUIDPipe) id: string) {
     return this.hotspot.listUserProfiles(id);
+  }
+
+  @Patch('user-profiles/:profileId')
+  @Roles(UserRole.ADMIN)
+  updateUserProfile(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('profileId') profileId: string,
+    @Body(new ZodValidationPipe(updateUserProfileSchema))
+    dto: UpdateUserProfileDto,
+  ) {
+    return this.hotspot.updateUserProfile(id, profileId, dto);
+  }
+
+  @Delete('user-profiles/:profileId')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  removeUserProfile(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('profileId') profileId: string,
+  ) {
+    return this.hotspot.removeUserProfile(id, profileId);
   }
 
   @Get('servers')

@@ -11,8 +11,11 @@ import {
   type UserProfile,
 } from '@/src/lib/api';
 import { getLocalCredentials } from '@/src/lib/router-credentials';
+import { getWifiInfo, sameSubnet24 } from '@/src/lib/lanBinder';
 import {
   listUserProfilesLan,
+  removeUserProfileLan,
+  updateUserProfileLan,
   type RouterProfile,
 } from '@/src/services/mikrotik-lan/hotspotLan';
 import { describeError, type FieldErrors } from '@/src/lib/errors';
@@ -20,6 +23,7 @@ import {
   Badge,
   Button,
   Card,
+  ConfirmDialog,
   Empty,
   ErrorState,
   FadeIn,
@@ -166,6 +170,13 @@ export default function PlansScreen() {
   const [busy, setBusy] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
+  // Profils qui vivent sur le routeur mais que l'app ne gère pas (créés avant
+  // elle, ou depuis WebFig) : éditables/supprimables directement ici.
+  const [deviceEditing, setDeviceEditing] = useState<RouterProfile | null>(null);
+  const [deviceRemoving, setDeviceRemoving] = useState<RouterProfile | null>(null);
+  const [deviceUsers, setDeviceUsers] = useState('1');
+  const [deviceRate, setDeviceRate] = useState('');
+  const [deviceBusy, setDeviceBusy] = useState(false);
 
   const durationMinutes =
     (Number.parseInt(days, 10) || 0) * 1440 +
@@ -286,6 +297,79 @@ export default function PlansScreen() {
       await qc.invalidateQueries({ queryKey: ['plans', routerId] });
     } catch (e) {
       toast.error(describeError(e).message);
+    }
+  }
+
+  /**
+   * Credentials LAN, seulement si le routeur est sur le Wi-Fi courant. Hors
+   * de son réseau on passe par le serveur (tunnel PRO) : ouvrir le socket
+   * épinglé ailleurs échoue, et peut faire tomber l'app.
+   */
+  async function lanCredentials() {
+    const creds = await getLocalCredentials(routerId);
+    if (!creds) return null;
+    const wifi = await getWifiInfo();
+    const onRouterLan =
+      !!wifi &&
+      (creds.host === wifi.gateway || sameSubnet24(creds.host, wifi.ipAddress));
+    return onRouterLan ? creds : null;
+  }
+
+  function startEditDevice(p: RouterProfile) {
+    setDeviceEditing(p);
+    setDeviceUsers(String(p.sharedUsers));
+    setDeviceRate(p.rateLimit ?? '');
+    setDeviceBusy(false);
+  }
+
+  async function saveDeviceProfile() {
+    if (!deviceEditing) return;
+    const users = Number.parseInt(deviceUsers, 10);
+    if (Number.isNaN(users) || users < 1) {
+      toast.error('Au moins 1 utilisateur.');
+      return;
+    }
+    const rate = deviceRate.trim();
+    if (rate && !/^\d+[kMG]?\/\d+[kMG]?$/.test(rate)) {
+      toast.error('Débit au format « 5M/10M » (envoi/réception).');
+      return;
+    }
+    setDeviceBusy(true);
+    try {
+      const patch = { sharedUsers: users, rateLimit: rate || null };
+      const creds = await lanCredentials();
+      if (creds) {
+        await updateUserProfileLan(creds, deviceEditing.id, patch);
+      } else {
+        await api.routers.updateUserProfile(routerId, deviceEditing.id, patch);
+      }
+      toast.success('Profil du routeur mis à jour.');
+      setDeviceEditing(null);
+      await qc.invalidateQueries({ queryKey: ['device-profiles', routerId] });
+    } catch (e) {
+      toast.error(describeError(e).message);
+    } finally {
+      setDeviceBusy(false);
+    }
+  }
+
+  async function removeDeviceProfile() {
+    if (!deviceRemoving) return;
+    setDeviceBusy(true);
+    try {
+      const creds = await lanCredentials();
+      if (creds) {
+        await removeUserProfileLan(creds, deviceRemoving.id);
+      } else {
+        await api.routers.deleteUserProfile(routerId, deviceRemoving.id);
+      }
+      toast.success('Profil supprimé du routeur.');
+      setDeviceRemoving(null);
+      await qc.invalidateQueries({ queryKey: ['device-profiles', routerId] });
+    } catch (e) {
+      toast.error(describeError(e).message);
+    } finally {
+      setDeviceBusy(false);
     }
   }
 
@@ -703,11 +787,106 @@ export default function PlansScreen() {
                   </Row>
                   <Badge label="ROUTEUR" tone="secondary" />
                 </Row>
+
+                {deviceEditing?.id === p.id ? (
+                  <FadeIn from={-6} style={{ gap: 10 }}>
+                    <Row style={{ gap: 12, alignItems: 'flex-start' }}>
+                      <View style={{ flex: 1 }}>
+                        <NumberField
+                          label="Users max"
+                          value={deviceUsers}
+                          onChangeValue={setDeviceUsers}
+                          min={1}
+                          max={1000}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Field
+                          label="Débit (envoi/réception)"
+                          value={deviceRate}
+                          onChangeText={setDeviceRate}
+                          placeholder="Ex. 5M/10M"
+                          autoCapitalize="none"
+                        />
+                      </View>
+                    </Row>
+                    <Row style={{ gap: 8 }}>
+                      <View style={{ flex: 1 }}>
+                        <Button
+                          title="Annuler"
+                          variant="ghost"
+                          onPress={() => setDeviceEditing(null)}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Button
+                          title="Enregistrer"
+                          onPress={saveDeviceProfile}
+                          loading={deviceBusy}
+                        />
+                      </View>
+                    </Row>
+                  </FadeIn>
+                ) : (
+                  <Row style={{ gap: 8, justifyContent: 'flex-end' }}>
+                    <Press
+                      accessibilityLabel={`Modifier le profil ${p.name}`}
+                      onPress={() => startEditDevice(p)}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        paddingVertical: 8,
+                        paddingHorizontal: 12,
+                        borderRadius: 10,
+                        backgroundColor: theme.primary + '18',
+                        borderWidth: 1,
+                        borderColor: theme.primary + '40',
+                      }}
+                    >
+                      <Ionicons name="create-outline" size={15} color={theme.primary} />
+                      <Text style={{ color: theme.primary, fontWeight: '600', fontSize: 12 }}>
+                        Modifier
+                      </Text>
+                    </Press>
+                    <Press
+                      accessibilityLabel={`Supprimer le profil ${p.name}`}
+                      onPress={() => setDeviceRemoving(p)}
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 6,
+                        paddingVertical: 8,
+                        paddingHorizontal: 12,
+                        borderRadius: 10,
+                        backgroundColor: theme.danger + '18',
+                        borderWidth: 1,
+                        borderColor: theme.danger + '40',
+                      }}
+                    >
+                      <Ionicons name="trash-outline" size={15} color={theme.danger} />
+                      <Text style={{ color: theme.danger, fontWeight: '600', fontSize: 12 }}>
+                        Supprimer
+                      </Text>
+                    </Press>
+                  </Row>
+                )}
               </Card>
             ))}
           </View>
         ) : null}
       </ScrollView>
+
+      <ConfirmDialog
+        visible={deviceRemoving != null}
+        icon="trash-outline"
+        title="Supprimer ce profil ?"
+        message={`« ${deviceRemoving?.name ?? ''} » sera retiré du routeur. Les clients actuellement connectés avec ce forfait peuvent être déconnectés, et les tickets qui s'y rattachent perdent leur profil. Action irréversible.`}
+        confirmLabel="Supprimer"
+        busy={deviceBusy}
+        onConfirm={removeDeviceProfile}
+        onCancel={() => setDeviceRemoving(null)}
+      />
       <BottomNav active="plans" />
     </View>
   );

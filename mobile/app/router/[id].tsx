@@ -797,6 +797,13 @@ export default function RouterDetailScreen() {
             })
           }
         />
+        <Button
+          title="Vérifier un ticket"
+          variant="ghost"
+          onPress={() =>
+            router.push({ pathname: '/verify-ticket', params: { routerId: id } })
+          }
+        />
       </ScrollView>
       <BottomNav active="index" />
     </View>
