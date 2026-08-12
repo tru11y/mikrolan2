@@ -6,6 +6,7 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import { api, extractErrorMessage, type LiveSession } from '@/src/lib/api';
 import { getLocalCredentials } from '@/src/lib/router-credentials';
 import { reportLanSessions } from '@/src/lib/sessionSync';
+import { getWifiInfo, sameSubnet24 } from '@/src/lib/lanBinder';
 import {
   listActiveLan,
   terminateActiveLan,
@@ -90,6 +91,26 @@ function PulseDot({ color }: { color: string }) {
   );
 }
 
+const POLL_MS = 15_000;
+
+/**
+ * Credentials LAN, mais seulement si le routeur est joignable depuis le Wi-Fi
+ * courant. Sans cette garde, l'écran ouvrait le socket LAN dès que des
+ * credentials existaient sur le téléphone — donc aussi en 4G ou sur un autre
+ * Wi-Fi, où le routeur est injoignable : la liste restait vide alors que le
+ * serveur, lui, sait la lire via le tunnel (mode PRO). Même garde que
+ * router/[id].tsx, qui protège aussi d'un crash natif du socket épinglé.
+ */
+async function lanCredentials(routerId: string) {
+  const creds = await getLocalCredentials(routerId);
+  if (!creds) return null;
+  const wifi = await getWifiInfo();
+  const onRouterLan =
+    !!wifi &&
+    (creds.host === wifi.gateway || sameSubnet24(creds.host, wifi.ipAddress));
+  return onRouterLan ? creds : null;
+}
+
 function fmtBytes(v: string): string {
   const n = Number(v);
   if (!Number.isFinite(n)) return v;
@@ -109,10 +130,10 @@ export default function SessionsScreen() {
   const query = useQuery({
     queryKey: ['sessions', routerId],
     enabled: Boolean(routerId),
-    refetchInterval: 3_000,
+    refetchInterval: POLL_MS,
     placeholderData: keepPreviousData,
     queryFn: async (): Promise<LiveSession[]> => {
-      const creds = await getLocalCredentials(routerId);
+      const creds = await lanCredentials(routerId);
       if (creds) {
         const active = await listActiveLan(creds);
         void reportLanSessions(routerId, active);
@@ -125,7 +146,7 @@ export default function SessionsScreen() {
   async function terminate(mikrotikId: string) {
     setError(null);
     try {
-      const creds = await getLocalCredentials(routerId);
+      const creds = await lanCredentials(routerId);
       if (creds) {
         await terminateActiveLan(creds, mikrotikId);
       } else {
