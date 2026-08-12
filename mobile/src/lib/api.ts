@@ -685,6 +685,26 @@ export const api = {
       );
       return unwrap(res);
     },
+    async updateUserProfile(
+      id: string,
+      profileId: string,
+      patch: { name?: string; sharedUsers?: number; rateLimit?: string | null },
+    ): Promise<{ updated: boolean }> {
+      const res = await apiClient.patch<ApiEnvelope<{ updated: boolean }>>(
+        `/routers/${id}/hotspot/user-profiles/${encodeURIComponent(profileId)}`,
+        patch,
+      );
+      return unwrap(res);
+    },
+    async deleteUserProfile(
+      id: string,
+      profileId: string,
+    ): Promise<{ deleted: boolean }> {
+      const res = await apiClient.delete<ApiEnvelope<{ deleted: boolean }>>(
+        `/routers/${id}/hotspot/user-profiles/${encodeURIComponent(profileId)}`,
+      );
+      return unwrap(res);
+    },
     async listHotspotServers(id: string): Promise<HotspotServer[]> {
       const res = await apiClient.get<ApiEnvelope<HotspotServer[]>>(
         `/routers/${id}/hotspot/servers`,

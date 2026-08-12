@@ -12,8 +12,10 @@ import {
   listIpBindings,
   listUserProfiles,
   removeIpBinding,
+  removeUserProfile,
   setHotspotSettings,
   setInternetSharingBlocked,
+  updateUserProfile,
   type HotspotServer,
   type HotspotSettings,
   type IpBinding,
@@ -23,6 +25,7 @@ import type {
   ConfigureHotspotDto,
   CreateIpBindingDto,
   UpdateHotspotSettingsDto,
+  UpdateUserProfileDto,
 } from './dto/hotspot.schemas';
 
 @Injectable()
@@ -62,6 +65,36 @@ export class HotspotService {
   async listUserProfiles(routerId: string): Promise<UserProfile[]> {
     await this.assertRemote(routerId);
     return this.remote.run(routerId, (client) => listUserProfiles(client));
+  }
+
+  /**
+   * Met à jour un profil hotspot déjà présent sur le routeur (débit, users
+   * max, nom). Ces profils préexistent souvent à l'app : sans ça l'opérateur
+   * devait passer par WebFig pour toucher ses anciens forfaits.
+   */
+  async updateUserProfile(
+    routerId: string,
+    mikrotikId: string,
+    dto: UpdateUserProfileDto,
+  ) {
+    await this.assertRemote(routerId);
+    await this.remote.run(routerId, (client) =>
+      updateUserProfile(client, mikrotikId, dto),
+    );
+    return { updated: true };
+  }
+
+  /**
+   * Supprime un profil hotspot du routeur. Irréversible côté RouterOS : les
+   * tickets qui s'y rattachent perdent leur profil, d'où la confirmation
+   * explicite exigée côté application avant d'arriver ici.
+   */
+  async removeUserProfile(routerId: string, mikrotikId: string) {
+    await this.assertRemote(routerId);
+    await this.remote.run(routerId, (client) =>
+      removeUserProfile(client, mikrotikId),
+    );
+    return { deleted: true };
   }
 
   /** Lists hotspot servers for the ticket « Serveur Hotspot » dropdown (REMOTE only; LOCAL routers are queried by the app over the LAN). */

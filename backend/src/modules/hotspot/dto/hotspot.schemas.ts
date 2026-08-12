@@ -47,6 +47,30 @@ export const setInternetSharingSchema = z
   .strict();
 export type SetInternetSharingDto = z.infer<typeof setInternetSharingSchema>;
 
+// « 5M/10M », « 512k/1M »… le format RouterOS `upload/download`.
+const rateLimit = z
+  .string()
+  .trim()
+  .regex(/^\d+[kMG]?\/\d+[kMG]?$/, { message: 'Invalid rate limit' });
+
+export const updateUserProfileSchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(1)
+      .max(64)
+      .regex(/^[a-zA-Z0-9._\- ]+$/, { message: 'Invalid profile name' })
+      .optional(),
+    sharedUsers: z.number().int().min(1).max(1000).optional(),
+    rateLimit: rateLimit.nullable().optional(),
+  })
+  .strict()
+  .refine((v) => Object.keys(v).length > 0, {
+    message: 'Aucune modification fournie',
+  });
+export type UpdateUserProfileDto = z.infer<typeof updateUserProfileSchema>;
+
 const dnsHostname = z
   .string()
   .trim()

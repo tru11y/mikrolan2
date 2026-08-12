@@ -114,6 +114,39 @@ export async function listUserProfilesLan(
   });
 }
 
+export type RouterProfilePatch = {
+  name?: string;
+  sharedUsers?: number;
+  /** `null` efface la limite de débit (illimité). */
+  rateLimit?: string | null;
+};
+
+/** Met à jour un user-profile hotspot existant, sur le LAN. */
+export async function updateUserProfileLan(
+  creds: ApiConnectionParams,
+  mikrotikId: string,
+  patch: RouterProfilePatch,
+): Promise<void> {
+  await withApi(creds, async (c) => {
+    const data: Record<string, string> = {};
+    if (patch.name !== undefined) data.name = patch.name;
+    if (patch.sharedUsers !== undefined) {
+      data['shared-users'] = String(patch.sharedUsers);
+    }
+    // Chaîne vide = RouterOS retire la limite, ce qui est bien « illimité ».
+    if (patch.rateLimit !== undefined) data['rate-limit'] = patch.rateLimit ?? '';
+    await c.set('/ip/hotspot/user/profile', mikrotikId, data);
+  });
+}
+
+/** Supprime un user-profile hotspot, sur le LAN. */
+export async function removeUserProfileLan(
+  creds: ApiConnectionParams,
+  mikrotikId: string,
+): Promise<void> {
+  await withApi(creds, (c) => c.remove('/ip/hotspot/user/profile', mikrotikId));
+}
+
 /** Lists hotspot servers over the LAN (free/offline mode), for the ticket « Serveur Hotspot » dropdown. */
 export async function listHotspotServersLan(
   creds: ApiConnectionParams,
