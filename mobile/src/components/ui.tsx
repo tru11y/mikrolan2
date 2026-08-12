@@ -293,6 +293,16 @@ const LAYOUT_STYLE_KEYS = [
   'maxWidth',
   'minHeight',
   'maxHeight',
+  // Un FAB en `position: absolute` porté seulement par l'Animated.View
+  // interne perd sa position : le vrai enfant du parent (ce Pressable, sans
+  // ces clés) retombe dans le flux normal du document. Vérifié sur device
+  // réel — bouton "Ajouter un routeur" tombé en bas-gauche, hors du FAB.
+  'position',
+  'top',
+  'right',
+  'bottom',
+  'left',
+  'zIndex',
 ] as const;
 
 function pickLayoutStyle(style: StyleProp<ViewStyle> | undefined): ViewStyle {
