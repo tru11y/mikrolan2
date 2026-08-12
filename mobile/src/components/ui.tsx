@@ -305,14 +305,28 @@ const LAYOUT_STYLE_KEYS = [
   'zIndex',
 ] as const;
 
-function pickLayoutStyle(style: StyleProp<ViewStyle> | undefined): ViewStyle {
-  const flat = StyleSheet.flatten(style) ?? {};
-  const out: ViewStyle = {};
-  for (const key of LAYOUT_STYLE_KEYS) {
-    const value = (flat as Record<string, unknown>)[key];
-    if (value !== undefined) (out as Record<string, unknown>)[key] = value;
+/**
+ * Répartit le style entre les deux couches de `Press` : la mise en page va
+ * au Pressable (le vrai enfant du parent), l'apparence à l'Animated.View.
+ *
+ * Les deux doivent être disjoints. Laisser `flex: 1` sur la couche interne
+ * en plus de l'externe la fait retomber à une hauteur nulle (flex dans un
+ * parent de hauteur automatique), ce qui rendait le texte invisible — vu
+ * sur les puces « Type de liaison » d'ip-bindings, boutons vides à l'écran.
+ */
+function splitPressStyle(style: StyleProp<ViewStyle> | undefined): {
+  layout: ViewStyle;
+  visual: ViewStyle;
+} {
+  const flat = (StyleSheet.flatten(style) ?? {}) as Record<string, unknown>;
+  const layout: Record<string, unknown> = {};
+  const visual: Record<string, unknown> = {};
+  const layoutKeys = new Set<string>(LAYOUT_STYLE_KEYS);
+  for (const [key, value] of Object.entries(flat)) {
+    if (value === undefined) continue;
+    (layoutKeys.has(key) ? layout : visual)[key] = value;
   }
-  return out;
+  return { layout: layout as ViewStyle, visual: visual as ViewStyle };
 }
 
 /**
@@ -358,13 +372,14 @@ export function Press({
     [reduced, scale],
   );
 
-  // Un `flex: 1` (ou `width`/`height`) dans une Row doit être porté par ce
-  // Pressable, le vrai enfant flex de la Row — sinon la Row ne peut pas lui
-  // distribuer d'espace et son contenu déborde de l'écran. Mais SEULES les
-  // propriétés de mise en page passent ici : dupliquer tout `style` sur les
-  // deux couches (background, border, padding...) les fait rendre deux fois
-  // et casse le rendu visuel (bordure imbriquée, texte tronqué).
-  const layoutStyle = pickLayoutStyle(style);
+  // Un `flex: 1` (ou `width`/`height`/`position: absolute`...) dans une Row
+  // doit être porté par ce Pressable, le vrai enfant flex/absolu du parent —
+  // sinon celui-ci ne peut pas lui distribuer d'espace ou le positionner.
+  // Le reste (fond, bordure, padding) reste sur l'Animated.View interne :
+  // dupliquer `flex` sur les deux couches fait retomber la couche interne à
+  // hauteur nulle dans un parent de hauteur automatique (texte invisible),
+  // et dupliquer le fond/la bordure les fait rendre deux fois (imbriqué).
+  const { layout, visual } = splitPressStyle(style);
 
   return (
     <Pressable
@@ -378,12 +393,12 @@ export function Press({
       onPressOut={() => animate(1)}
       disabled={disabled}
       hitSlop={hitSlop}
-      style={layoutStyle}
+      style={layout}
     >
       {({ pressed }) => (
         <Animated.View
           style={[
-            style,
+            visual,
             {
               transform: [{ scale }],
               opacity: disabled ? 0.45 : pressed ? 0.9 : 1,
