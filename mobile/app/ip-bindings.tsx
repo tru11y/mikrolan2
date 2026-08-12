@@ -41,9 +41,9 @@ const MAC_RE = /^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/;
 const IP_RE = /^(\d{1,3}\.){3}\d{1,3}$/;
 
 const TYPE_META: Record<IpBindingType, { color: string; label: string }> = {
-  bypassed: { color: theme.success, label: 'BYPASSED' },
-  blocked: { color: theme.danger, label: 'BLOCKED' },
-  regular: { color: theme.textMuted, label: 'REGULAR' },
+  bypassed: { color: theme.success, label: 'AUTORISÉ' },
+  blocked: { color: theme.danger, label: 'BLOQUÉ' },
+  regular: { color: theme.textMuted, label: 'STANDARD' },
 };
 
 function TypeDot({ type }: { type: IpBindingType }) {
