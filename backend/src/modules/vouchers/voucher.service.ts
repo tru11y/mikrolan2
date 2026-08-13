@@ -235,6 +235,25 @@ export class VoucherService {
     });
   }
 
+  // Point lookup for the counter-side "vérifier un ticket" flow — must not
+  // depend on the `list()` `take: 500` cap, or old (but still valid) tickets
+  // get falsely reported as unknown/fake.
+  async lookupByCode(routerId: string, code: string) {
+    const voucher = await this.prisma.voucher.findFirst({
+      where: { routerId, code: { equals: code, mode: 'insensitive' } },
+      select: {
+        ...VOUCHER_PUBLIC,
+        plan: {
+          select: { id: true, name: true, priceXof: true, durationMinutes: true },
+        },
+      },
+    });
+    if (!voucher) {
+      throw new NotFoundException('Ce code n’a pas été émis pour ce routeur.');
+    }
+    return voucher;
+  }
+
   listBatches(routerId?: string) {
     return this.prisma.voucherBatch.findMany({
       where: routerId ? { routerId } : {},

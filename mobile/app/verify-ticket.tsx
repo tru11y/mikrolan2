@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { ScrollView, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useQueryClient } from '@tanstack/react-query';
-import { api, type Plan, type VoucherItem, type VoucherStatus } from '@/src/lib/api';
+import { api, type VoucherItem, type VoucherLookupResult } from '@/src/lib/api';
 import { describeError } from '@/src/lib/errors';
 import {
   Button,
@@ -39,7 +38,7 @@ type Verdict = {
   title: string;
   detail: string;
   voucher?: VoucherItem;
-  plan?: Plan;
+  plan?: NonNullable<VoucherLookupResult['plan']>;
 };
 
 const TONE_COLOR: Record<Verdict['tone'], string> = {
@@ -59,7 +58,10 @@ function fmtDate(iso: string): string {
 }
 
 /** Un code encore vendable : jamais utilisé, ni révoqué, ni expiré. */
-function verdictFor(v: VoucherItem, plan?: Plan): Verdict {
+function verdictFor(
+  v: VoucherItem,
+  plan?: NonNullable<VoucherLookupResult['plan']>,
+): Verdict {
   const expired =
     v.status === 'EXPIRED' ||
     (v.expiresAt != null && new Date(v.expiresAt).getTime() < Date.now());
@@ -122,7 +124,6 @@ function verdictFor(v: VoucherItem, plan?: Plan): Verdict {
 
 export default function VerifyTicketScreen() {
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
-  const qc = useQueryClient();
   const navHeight = useBottomNavHeight();
 
   const [code, setCode] = useState('');
@@ -132,28 +133,18 @@ export default function VerifyTicketScreen() {
 
   async function verify() {
     const wanted = code.trim();
-    if (!wanted) return;
+    if (!wanted || !routerId) return;
     setBusy(true);
     setError(null);
     setVerdict(null);
     try {
-      // La liste est déjà filtrée par routeur côté serveur : un code d'un
-      // autre routeur ne doit pas être accepté ici.
-      const [vouchers, plans] = await Promise.all([
-        qc.fetchQuery({
-          queryKey: ['vouchers', routerId],
-          queryFn: () => api.routers.listVouchers(routerId),
-          staleTime: 0,
-        }),
-        qc.fetchQuery({
-          queryKey: ['plans', routerId],
-          queryFn: () => api.plans.list(routerId),
-        }),
-      ]);
-      const found = (vouchers as VoucherItem[]).find(
-        (v) => v.code.toLowerCase() === wanted.toLowerCase(),
-      );
-      if (!found) {
+      // Recherche unitaire côté serveur — contrairement à l'ancienne recherche
+      // sur la liste des 500 derniers tickets, un ticket ancien reste trouvable.
+      const found = await api.routers.lookupVoucher(routerId, wanted);
+      setVerdict(verdictFor(found, found.plan ?? undefined));
+    } catch (e) {
+      const described = describeError(e);
+      if (described.status === 404) {
         setVerdict({
           tone: 'invalid',
           icon: 'close-circle-outline',
@@ -161,12 +152,9 @@ export default function VerifyTicketScreen() {
           detail:
             'Ce code n’a pas été émis pour ce routeur. Il peut être faux ou provenir d’un autre point de vente.',
         });
-        return;
+      } else {
+        setError(described.message);
       }
-      const plan = (plans as Plan[]).find((p) => p.id === found.planId);
-      setVerdict(verdictFor(found, plan));
-    } catch (e) {
-      setError(describeError(e).message);
     } finally {
       setBusy(false);
     }
@@ -233,7 +221,7 @@ export default function VerifyTicketScreen() {
             title="Vérifier"
             onPress={verify}
             loading={busy}
-            disabled={!code.trim()}
+            disabled={!code.trim() || !routerId}
           />
         </Card>
 

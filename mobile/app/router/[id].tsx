@@ -202,6 +202,19 @@ export default function RouterDetailScreen() {
   // REMOTE), avec la même garde de sous-réseau que loadLocal ci-dessous.
   // `null` = valeur indisponible (hors du Wi-Fi du routeur) — surtout pas 0,
   // qui affirmerait à tort que personne n'est connecté.
+  // Détecte l'absence d'identifiants LAN pour ce routeur LOCAL : sans eux,
+  // appareils autorisés et sessions restent muets sans qu'aucun message
+  // n'explique pourquoi (voir ip-bindings.tsx / sessions.tsx).
+  const localCredsQuery = useQuery({
+    queryKey: ['router-local-creds', id],
+    queryFn: () => getLocalCredentials(id),
+    enabled: Boolean(id) && query.data?.mode === 'LOCAL',
+  });
+  const missingLocalCreds =
+    query.data?.mode === 'LOCAL' &&
+    localCredsQuery.isSuccess &&
+    !localCredsQuery.data;
+
   const activeSessionsQuery = useQuery({
     queryKey: ['router-active-sessions', id, query.data?.mode],
     enabled: Boolean(id) && query.isSuccess,
@@ -429,6 +442,26 @@ export default function RouterDetailScreen() {
           paddingBottom: navHeight,
         }}
       >
+        {missingLocalCreds ? (
+          <Banner tone="warning">
+            <View style={{ gap: space.sm }}>
+              <Text style={{ color: theme.text, fontSize: type.body }}>
+                Ce routeur n'a pas d'identifiants sur ce téléphone — les
+                appareils autorisés et les sessions ne peuvent pas s'afficher.
+              </Text>
+              <Button
+                title="Ajouter les identifiants"
+                variant="ghost"
+                onPress={() =>
+                  router.push({
+                    pathname: '/router-credentials',
+                    params: { routerId: id },
+                  })
+                }
+              />
+            </View>
+          </Banner>
+        ) : null}
         <Card>
           <Row style={{ gap: space.md, alignItems: 'flex-start' }}>
             <IconChip name="hardware-chip" size="xl" outlined />

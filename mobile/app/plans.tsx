@@ -256,7 +256,7 @@ export default function PlansScreen() {
   async function submit() {
     setSubmitted(true);
     setServerErrors({});
-    if (!valid) return;
+    if (!valid || !routerId) return;
 
     setBusy(true);
     try {
@@ -291,6 +291,7 @@ export default function PlansScreen() {
   }
 
   async function remove(id: string) {
+    if (!routerId) return;
     try {
       await api.plans.remove(routerId, id);
       toast.success('Forfait supprimé.');

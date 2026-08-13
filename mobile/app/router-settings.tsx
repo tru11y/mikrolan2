@@ -195,6 +195,14 @@ export default function RouterSettingsScreen() {
 
   const items: Item[] = [
     {
+      id: 'lan_credentials',
+      title: 'Identifiants du routeur',
+      subtitle: 'Nécessaires pour les appareils autorisés et les sessions',
+      icon: 'key-outline',
+      color: theme.secondary,
+      onPress: () => go('/router-credentials'),
+    },
+    {
       id: 'anti_tethering',
       title: 'Bloquer le partage de connexion',
       subtitle: 'Empêcher un client de partager son accès',
