@@ -49,16 +49,37 @@ export class RoutersService {
     }
   }
 
+  // `routerLimit` was computed in the entitlement (subscriptions.service.ts)
+  // and exposed to the app, but never enforced server-side — a tenant could
+  // create unlimited routers regardless of their tier. `null` = unlimited.
+  private async assertRouterLimit(tenantId: string): Promise<void> {
+    const entitlement = await this.subscriptions.getEntitlement(tenantId);
+    if (entitlement.routerLimit === null) return;
+    const count = await this.prisma.router.count({
+      where: { tenantId, deletedAt: null },
+    });
+    if (count >= entitlement.routerLimit) {
+      throw new ForbiddenException(
+        `Votre formule autorise ${entitlement.routerLimit} routeur${entitlement.routerLimit > 1 ? 's' : ''}. Passez à une formule supérieure pour en ajouter.`,
+      );
+    }
+  }
+
   async create(dto: CreateRouterDto) {
     await this.assertRemoteAllowed(dto.mode);
+    const tenantId = getTenantContext()?.tenantId;
+    if (tenantId) await this.assertRouterLimit(tenantId);
     const credEncrypted = dto.credentials
       ? this.crypto.encrypt(JSON.stringify(dto.credentials))
       : null;
 
     // If a soft-deleted router with the same identity exists, hard-delete it
     // and all its data so the new one goes through the full onboarding process.
+    // Filtered explicitly by tenantId rather than relying solely on the Prisma
+    // middleware, which is skipped for SUPER_ADMIN — without this a platform
+    // admin creating a router could hard-delete another tenant's data.
     const soft = await this.prisma.router.findFirst({
-      where: { identity: dto.identity, deletedAt: { not: null } },
+      where: { identity: dto.identity, tenantId, deletedAt: { not: null } },
       select: { id: true },
     });
     if (soft) {

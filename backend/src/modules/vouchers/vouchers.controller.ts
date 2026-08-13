@@ -59,6 +59,17 @@ export class VouchersController {
     return this.vouchers.listBatches(id);
   }
 
+  // Point lookup by code — used at the counter to verify a ticket without
+  // depending on the recent-only `list()` cap. Must stay above `:voucherId`
+  // routes so "lookup" isn't parsed as a voucher id.
+  @Get('lookup')
+  lookup(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query('code') code: string,
+  ) {
+    return this.vouchers.lookupByCode(id, (code ?? '').trim());
+  }
+
   @Delete('batches/:batchId')
   @Roles(UserRole.ADMIN)
   removeBatch(@Param('batchId', ParseUUIDPipe) batchId: string) {
