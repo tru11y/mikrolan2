@@ -265,6 +265,15 @@ export type VoucherItem = {
   createdAt: string;
 };
 
+export type VoucherLookupResult = VoucherItem & {
+  plan: {
+    id: string;
+    name: string;
+    priceXof: number;
+    durationMinutes: number;
+  } | null;
+};
+
 export type UserProfile = {
   id: string;
   name: string;
@@ -817,6 +826,16 @@ export const api = {
       const res = await apiClient.get<ApiEnvelope<VoucherItem[]>>(
         `/routers/${id}/vouchers`,
         { params },
+      );
+      return unwrap(res);
+    },
+    // Recherche unitaire par code — n'est pas soumise au plafond des 500
+    // derniers tickets de `listVouchers`, donc reste correcte pour un ticket
+    // ancien présenté au comptoir.
+    async lookupVoucher(id: string, code: string): Promise<VoucherLookupResult> {
+      const res = await apiClient.get<ApiEnvelope<VoucherLookupResult>>(
+        `/routers/${id}/vouchers/lookup`,
+        { params: { code } },
       );
       return unwrap(res);
     },

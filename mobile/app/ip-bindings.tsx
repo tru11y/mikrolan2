@@ -23,6 +23,7 @@ import {
   Button,
   Card,
   Empty,
+  ErrorState,
   Field,
   Label,
   Mono,
@@ -213,6 +214,12 @@ export default function IpBindingsScreen() {
             <SkeletonCard />
             <SkeletonCard />
           </View>
+        ) : bindingsQuery.isError ? (
+          <ErrorState
+            message={extractErrorMessage(bindingsQuery.error)}
+            onRetry={() => bindingsQuery.refetch()}
+            retrying={bindingsQuery.isRefetching}
+          />
         ) : !bindingsQuery.data?.length ? (
           <Empty icon="shield-outline" text="Aucun IP binding pour ce routeur." />
         ) : (

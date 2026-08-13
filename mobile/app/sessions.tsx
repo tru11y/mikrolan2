@@ -143,6 +143,16 @@ export default function SessionsScreen() {
     },
   });
 
+  // Sans identifiants locaux (ou hors Wi-Fi du routeur), la lecture bascule
+  // sur la DB — qui ne reflète que la dernière synchro LAN. Une liste vide
+  // dans ce cas n'est pas fiable : on le dit explicitement plutôt que de
+  // laisser croire qu'aucun client n'est connecté.
+  const localCredsPresentQuery = useQuery({
+    queryKey: ['router-local-creds', routerId],
+    queryFn: () => getLocalCredentials(routerId),
+    enabled: Boolean(routerId),
+  });
+
   async function terminate(mikrotikId: string) {
     setError(null);
     try {
@@ -168,6 +178,10 @@ export default function SessionsScreen() {
           (s.ipAddress ?? '').toLowerCase().includes(q),
       )
     : sessions;
+  const unreliableEmpty =
+    !filtered.length &&
+    localCredsPresentQuery.isSuccess &&
+    !localCredsPresentQuery.data;
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -227,6 +241,14 @@ export default function SessionsScreen() {
         {error ? <Banner tone="danger">{error}</Banner> : null}
         {query.isError ? (
           <Banner tone="warning">{extractErrorMessage(query.error)}</Banner>
+        ) : null}
+
+        {unreliableEmpty ? (
+          <Banner tone="warning">
+            Ce routeur n'a pas d'identifiants sur ce téléphone — cette liste
+            peut être obsolète. Ajoutez-les dans Paramètres routeur →
+            Identifiants du routeur.
+          </Banner>
         ) : null}
 
         {query.isLoading ? (

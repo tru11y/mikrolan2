@@ -68,9 +68,9 @@ export function describeError(error: unknown): DescribedError {
   if (axios.isAxiosError(error)) {
     const status = error.response?.status ?? null;
     const body = error.response?.data as
-      | { message?: string; error?: unknown }
+      | { message?: string; error?: unknown; issues?: unknown }
       | undefined;
-    const fieldErrors = readIssues(body?.error);
+    const fieldErrors = readIssues(body?.issues ?? body?.error);
 
     if (error.code === 'ECONNABORTED') {
       return {

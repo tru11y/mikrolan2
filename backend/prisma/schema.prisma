@@ -356,8 +356,8 @@ model Plan {
   id              String         @id @default(uuid())
   tenantId        String
   tenant          Tenant         @relation(fields: [tenantId], references: [id])
-  routerId        String?
-  router          Router?        @relation(fields: [routerId], references: [id])
+  routerId        String
+  router          Router         @relation(fields: [routerId], references: [id], onDelete: Cascade)
   name            String
   slug            String
   description     String?

@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { useAuth } from '@/src/providers/auth-provider';
 import { useAppLock } from '@/src/providers/app-lock-provider';
+import { usePushStatus } from '@/src/providers/push-notifications-provider';
 import { api, extractErrorMessage } from '@/src/lib/api';
 import { Banner, Button, Field, Press, space, theme, type } from '@/src/components/ui';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
@@ -75,6 +76,7 @@ export default function AccountScreen() {
   const navHeight = useBottomNavHeight();
   const router = useRouter();
   const { me, isPro, logout, refreshProfile } = useAuth();
+  const pushStatus = usePushStatus();
   const {
     supported: appLockSupported,
     enabled: appLockEnabled,
@@ -274,6 +276,18 @@ export default function AccountScreen() {
             thumbColor={theme.onStrong}
           />
         </View>
+        {pushStatus === 'permission_denied' ? (
+          <Banner tone="warning">
+            Les notifications sont bloquées dans les réglages du téléphone —
+            ce réglage n'aura aucun effet tant qu'elles n'y sont pas
+            autorisées.
+          </Banner>
+        ) : pushStatus === 'missing_config' || pushStatus === 'failed' ? (
+          <Banner tone="warning">
+            Les notifications ne peuvent pas être activées sur cette
+            installation de l'app. Contactez le support.
+          </Banner>
+        ) : null}
         <Divider />
 
         {appLockSupported ? (

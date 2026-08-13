@@ -8,7 +8,8 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useQueryClient } from '@tanstack/react-query';
+import axios from 'axios';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, extractErrorMessage } from '@/src/lib/api';
 import {
   withApi,
@@ -45,9 +46,26 @@ type ScanState =
       hosts: string[];
     };
 
+/** Rend un nom de routeur unique en le suffixant s'il est déjà pris — le
+ *  nom d'usine RouterOS ("MikroTik") est identique sur tous les appareils
+ *  non renommés, donc un simple auto-remplissage collisionne dès le 2e. */
+function dedupeIdentity(base: string, taken: Set<string>): string {
+  if (!taken.has(base)) return base;
+  let i = 2;
+  while (taken.has(`${base}-${i}`)) i += 1;
+  return `${base}-${i}`;
+}
+
 export default function AddRouterScreen() {
   const router = useRouter();
   const qc = useQueryClient();
+  const existingRouters = useQuery({
+    queryKey: ['routers'],
+    queryFn: api.routers.list,
+  });
+  const takenIdentities = new Set(
+    (existingRouters.data ?? []).map((r) => r.identity),
+  );
   const [address, setAddress] = useState('');
   const [port, setPort] = useState('8728');
   const [identity, setIdentity] = useState('');
@@ -58,6 +76,7 @@ export default function AddRouterScreen() {
   const [scan, setScan] = useState<ScanState>({ kind: 'idle' });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [identityNote, setIdentityNote] = useState<string | null>(null);
 
   const portNum = Number.parseInt(port, 10) || 8728;
 
@@ -94,7 +113,15 @@ export default function AddRouterScreen() {
         (c) => c.systemIdentity(),
       );
       setTest({ kind: 'ok', identity: res.name });
-      if (!identity) setIdentity(res.name);
+      if (!identity) {
+        const suggested = dedupeIdentity(res.name, takenIdentities);
+        setIdentity(suggested);
+        if (suggested !== res.name) {
+          setIdentityNote(
+            `Le nom « ${res.name} » est déjà utilisé par un autre de vos routeurs, nous l’avons adapté.`,
+          );
+        }
+      }
     } catch (e) {
       const message =
         e instanceof LanAuthFailedError
@@ -127,7 +154,12 @@ export default function AddRouterScreen() {
       await qc.invalidateQueries({ queryKey: ['routers'] });
       router.back();
     } catch (e) {
-      setError(extractErrorMessage(e));
+      const status = axios.isAxiosError(e) ? e.response?.status : null;
+      setError(
+        status === 409
+          ? `Vous avez déjà un routeur nommé « ${identity.trim()} ». Choisissez un autre nom.`
+          : extractErrorMessage(e),
+      );
     } finally {
       setSaving(false);
     }
@@ -296,12 +328,18 @@ export default function AddRouterScreen() {
 
           <Card>
             <Field
-              label="Identifiant (unique)"
-              placeholder="AGENCE-01"
+              label="Nom du routeur (unique sur votre compte)"
+              placeholder="BOUTIQUE-PLATEAU"
               value={identity}
-              onChangeText={setIdentity}
+              onChangeText={(v) => {
+                setIdentity(v);
+                setIdentityNote(null);
+              }}
               autoCapitalize="characters"
             />
+            {identityNote ? (
+              <Banner tone="warning">{identityNote}</Banner>
+            ) : null}
             <Field
               label="Alias (optionnel)"
               placeholder="Routeur du plateau"
