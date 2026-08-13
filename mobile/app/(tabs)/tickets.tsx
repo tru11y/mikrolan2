@@ -102,10 +102,38 @@ export default function TicketsScreen() {
                       </Mono>
                     </View>
                   </Row>
-                  <Badge
-                    label={routerHealth(r.health).label}
-                    tone={routerHealth(r.health).tone}
-                  />
+                  <Row style={{ gap: 8, justifyContent: 'flex-end' }}>
+                    <Badge
+                      label={routerHealth(r.health).label}
+                      tone={routerHealth(r.health).tone}
+                    />
+                    <Press
+                      onPress={() =>
+                        router.push({
+                          pathname: '/verify-ticket',
+                          params: { routerId: r.id },
+                        })
+                      }
+                      accessibilityRole="button"
+                      accessibilityLabel={`Vérifier un ticket pour ${r.alias || r.identity}`}
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: radius.sm,
+                        backgroundColor: theme.surfaceAlt,
+                        borderWidth: 1,
+                        borderColor: theme.border,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Ionicons
+                        name="shield-checkmark-outline"
+                        size={16}
+                        color={theme.text}
+                      />
+                    </Press>
+                  </Row>
                 </Row>
               </Card>
             </Press>
