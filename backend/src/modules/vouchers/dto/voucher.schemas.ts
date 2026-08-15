@@ -24,3 +24,12 @@ export const confirmVouchersSchema = z
   })
   .strict();
 export type ConfirmVouchersDto = z.infer<typeof confirmVouchersSchema>;
+
+export const verifyVoucherSchema = z
+  .object({
+    ticket: z.string().min(1).max(64).trim(),
+    password: z.string().max(64).optional(),
+    routerId: z.string().uuid().optional(),
+  })
+  .strict();
+export type VerifyVoucherDto = z.infer<typeof verifyVoucherSchema>;
