@@ -48,6 +48,16 @@ const envSchema = z.object({
   // ─── Port forwarding (DNAT via iptables for WebFig/SSH/Winbox) ──
   VPS_PUBLIC_IP: z.string().default(''),
 
+  // ─── Observability (optional — disabled if blank) ──
+  SENTRY_DSN: z.string().default(''),
+
+  // ─── Email (Brevo SMTP — disabled if blank) ──
+  SMTP_HOST: z.string().default(''),
+  SMTP_PORT: z.coerce.number().int().default(587),
+  SMTP_USER: z.string().default(''),
+  SMTP_PASS: z.string().default(''),
+  SMTP_FROM: z.string().default('MikroLan <noreply@mikrolan.net>'),
+
   // ─── OAuth (optional — disabled if blank) ──
   GOOGLE_CLIENT_ID: z.string().default(''),
 });
