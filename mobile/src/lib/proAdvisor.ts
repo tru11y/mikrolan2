@@ -215,8 +215,8 @@ export class ScriptedAdvisor implements AdvisorEngine {
         ];
       case 'payment':
         return [
-          'Le règlement se fait par Wave ou Orange Money : vous envoyez le montant, un administrateur vérifie et active votre compte.',
-          'Vous n’avez pas à saisir de numéro de carte dans l’application. Vous recevez une notification dans l’app dès que l’activation est faite.',
+          "Le paiement est manuel : vous faites votre demande de passage Pro dans l’application, un administrateur vérifie et active votre compte.",
+          "Aucun paiement en ligne n’est requis. Vous recevez une notification dans l’app dès que l’activation est faite.",
         ];
       case 'human':
         return [
