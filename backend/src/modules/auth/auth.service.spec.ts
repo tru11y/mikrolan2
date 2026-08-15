@@ -53,12 +53,20 @@ const mockConfig = {
   }),
 };
 
+const mockMail = {
+  sendWelcome: jest.fn().mockResolvedValue(undefined),
+  sendPasswordReset: jest.fn().mockResolvedValue(undefined),
+  sendRouterOffline: jest.fn().mockResolvedValue(undefined),
+  sendInvoice: jest.fn().mockResolvedValue(undefined),
+};
+
 function buildService() {
   return new AuthService(
     mockPrisma as any,
     mockTokens as any,
     mockSubscriptions as any,
     mockConfig as any,
+    mockMail as any,
   );
 }
 
