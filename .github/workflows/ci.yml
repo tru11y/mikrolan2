@@ -1,4 +1,4 @@
-name: CI
+name: CI/CD
 
 on:
   push:
@@ -56,3 +56,29 @@ jobs:
 
       - name: Type-check
         run: npx tsc --noEmit
+
+  deploy:
+    name: Deploy to VPS
+    needs: [backend, mobile]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            REPO=/opt/mikrolan2
+            cd $REPO
+            sudo git fetch origin main
+            sudo git reset --hard origin/main
+            cd backend
+            sudo npm ci --legacy-peer-deps
+            sudo npx prisma generate
+            sudo npx prisma migrate deploy || true
+            sudo npm run build
+            sudo chown -R mikrolan:mikrolan $REPO
+            sudo systemctl restart mikrolan-api
