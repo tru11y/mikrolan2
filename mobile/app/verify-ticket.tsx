@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ScrollView, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { api, type VoucherItem, type VoucherLookupResult } from '@/src/lib/api';
+import { api, type VoucherVerificationResult } from '@/src/lib/api';
 import { describeError } from '@/src/lib/errors';
 import {
   Button,
@@ -23,22 +23,12 @@ import {
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
-/**
- * Vérification d'un code présenté par un client.
- *
- * Le gérant tape le code que le client lui montre et voit immédiatement s'il
- * est authentique et encore valable. Sans ça, un client peut présenter un code
- * inventé, déjà consommé ou révoqué : le gérant n'a aucun moyen de trancher
- * autrement qu'en le laissant essayer de se connecter.
- */
-
 type Verdict = {
   tone: 'valid' | 'used' | 'invalid';
   icon: IoniconName;
   title: string;
   detail: string;
-  voucher?: VoucherItem;
-  plan?: NonNullable<VoucherLookupResult['plan']>;
+  result: VoucherVerificationResult;
 };
 
 const TONE_COLOR: Record<Verdict['tone'], string> = {
@@ -57,23 +47,26 @@ function fmtDate(iso: string): string {
   return new Date(iso).toLocaleString('fr-FR');
 }
 
-/** Un code encore vendable : jamais utilisé, ni révoqué, ni expiré. */
-function verdictFor(
-  v: VoucherItem,
-  plan?: NonNullable<VoucherLookupResult['plan']>,
-): Verdict {
-  const expired =
-    v.status === 'EXPIRED' ||
-    (v.expiresAt != null && new Date(v.expiresAt).getTime() < Date.now());
+function fmtBytes(raw: string): string {
+  const n = Number(raw);
+  if (n < 1024) return `${n} o`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} Ko`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} Mo`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} Go`;
+}
 
-  if (v.status === 'REVOKED') {
+function verdictFor(r: VoucherVerificationResult): Verdict {
+  const expired =
+    r.status === 'EXPIRED' ||
+    (r.expiresAt != null && new Date(r.expiresAt).getTime() < Date.now());
+
+  if (r.status === 'REVOKED') {
     return {
       tone: 'invalid',
       icon: 'ban-outline',
       title: 'Ticket annulé',
       detail: 'Ce ticket a été révoqué. Ne pas accepter.',
-      voucher: v,
-      plan,
+      result: r,
     };
   }
   if (expired) {
@@ -81,45 +74,58 @@ function verdictFor(
       tone: 'invalid',
       icon: 'time-outline',
       title: 'Ticket expiré',
-      detail: v.expiresAt
-        ? `Il a expiré le ${fmtDate(v.expiresAt)}.`
+      detail: r.expiresAt
+        ? `Il a expiré le ${fmtDate(r.expiresAt)}.`
         : 'Sa durée de validité est dépassée.',
-      voucher: v,
-      plan,
+      result: r,
     };
   }
-  if (v.status === 'USED') {
+  if (r.status === 'USED') {
     return {
       tone: 'used',
       icon: 'checkmark-done-outline',
       title: 'Ticket déjà consommé',
-      detail: v.usedAt
-        ? `Il a été utilisé le ${fmtDate(v.usedAt)}.`
+      detail: r.activatedAt
+        ? `Il a été utilisé le ${fmtDate(r.activatedAt)}.`
         : 'Ce ticket a déjà servi.',
-      voucher: v,
-      plan,
+      result: r,
     };
   }
-  if (v.status === 'ACTIVE') {
+  if (r.status === 'ACTIVE') {
     return {
       tone: 'used',
       icon: 'wifi-outline',
       title: 'Ticket en cours d’utilisation',
-      detail: v.usedAt
-        ? `Connexion démarrée le ${fmtDate(v.usedAt)}.`
+      detail: r.activatedAt
+        ? `Connexion démarrée le ${fmtDate(r.activatedAt)}.`
         : 'Une connexion est déjà ouverte avec ce code.',
-      voucher: v,
-      plan,
+      result: r,
     };
   }
   return {
     tone: 'valid',
     icon: 'shield-checkmark-outline',
     title: 'Ticket valide',
-    detail: 'Ce ticket est authentique et n’a jamais été utilisé.',
-    voucher: v,
-    plan,
+    detail: r.message || 'Ce ticket est authentique et n’a jamais été utilisé.',
+    result: r,
   };
+}
+
+function InfoRow({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <Row>
+      <Text style={{ color: theme.textMuted, fontSize: type.caption }}>{label}</Text>
+      <Text
+        style={{
+          color: color ?? theme.text,
+          fontSize: type.caption,
+          fontWeight: color ? weight.bold : weight.regular,
+        }}
+      >
+        {value}
+      </Text>
+    </Row>
+  );
 }
 
 export default function VerifyTicketScreen() {
@@ -133,24 +139,23 @@ export default function VerifyTicketScreen() {
 
   async function verify() {
     const wanted = code.trim();
-    if (!wanted || !routerId) return;
+    if (!wanted) return;
     setBusy(true);
     setError(null);
     setVerdict(null);
     try {
-      // Recherche unitaire côté serveur — contrairement à l'ancienne recherche
-      // sur la liste des 500 derniers tickets, un ticket ancien reste trouvable.
-      const found = await api.routers.lookupVoucher(routerId, wanted);
-      setVerdict(verdictFor(found, found.plan ?? undefined));
+      const result = await api.vouchers.verify(wanted, undefined, routerId);
+      setVerdict(verdictFor(result));
     } catch (e) {
       const described = describeError(e);
-      if (described.status === 404) {
+      if (described.status === 401 || described.status === 404) {
         setVerdict({
           tone: 'invalid',
           icon: 'close-circle-outline',
           title: 'Ticket inconnu',
           detail:
-            'Ce code n’a pas été émis pour ce routeur. Il peut être faux ou provenir d’un autre point de vente.',
+            'Ce code n’a pas été trouvé. Il peut être faux ou provenir d’un autre point de vente.',
+          result: null as never,
         });
       } else {
         setError(described.message);
@@ -161,6 +166,8 @@ export default function VerifyTicketScreen() {
   }
 
   const accent = verdict ? TONE_COLOR[verdict.tone] : theme.primary;
+  const r = verdict?.result;
+  const s = r?.session;
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -221,7 +228,7 @@ export default function VerifyTicketScreen() {
             title="Vérifier"
             onPress={verify}
             loading={busy}
-            disabled={!code.trim() || !routerId}
+            disabled={!code.trim()}
           />
         </Card>
 
@@ -275,7 +282,7 @@ export default function VerifyTicketScreen() {
               </View>
             </Row>
 
-            {verdict.voucher ? (
+            {r ? (
               <View
                 style={{
                   gap: space.sm,
@@ -284,57 +291,87 @@ export default function VerifyTicketScreen() {
                   borderTopColor: theme.border,
                 }}
               >
-                <Row>
-                  <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
-                    Code
-                  </Text>
-                  <Mono style={{ color: theme.text, fontSize: type.caption }}>
-                    {verdict.voucher.code}
-                  </Mono>
-                </Row>
-                {verdict.plan ? (
-                  <>
-                    <Row>
-                      <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
-                        Forfait
-                      </Text>
-                      <Text style={{ color: theme.text, fontSize: type.caption }}>
-                        {verdict.plan.name}
-                      </Text>
-                    </Row>
-                    <Row>
-                      <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
-                        Durée
-                      </Text>
-                      <Text style={{ color: theme.text, fontSize: type.caption }}>
-                        {fmtDuration(verdict.plan.durationMinutes)}
-                      </Text>
-                    </Row>
-                    <Row>
-                      <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
-                        Prix
-                      </Text>
-                      <Text
-                        style={{
-                          color: theme.success,
-                          fontSize: type.caption,
-                          fontWeight: weight.bold,
-                        }}
-                      >
-                        {verdict.plan.priceXof.toLocaleString('fr-FR')} FCFA
-                      </Text>
-                    </Row>
-                  </>
+                <InfoRow label="Code" value={r.code} />
+                <InfoRow label="Forfait" value={r.planName} />
+                <InfoRow label="Durée" value={fmtDuration(r.durationMinutes)} />
+                <InfoRow
+                  label="Prix"
+                  value={`${r.priceXof.toLocaleString('fr-FR')} FCFA`}
+                  color={theme.success}
+                />
+                {r.routerName ? <InfoRow label="Routeur" value={r.routerName} /> : null}
+                {r.source === 'LEGACY' ? (
+                  <InfoRow label="Source" value="Legacy (routeur)" color={theme.warning} />
                 ) : null}
-                <Row>
-                  <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
-                    Émis le
-                  </Text>
-                  <Text style={{ color: theme.text, fontSize: type.caption }}>
-                    {fmtDate(verdict.voucher.createdAt)}
-                  </Text>
-                </Row>
+                {r.deliveredAt ? (
+                  <InfoRow label="Livré le" value={fmtDate(r.deliveredAt)} />
+                ) : null}
+                {r.activatedAt ? (
+                  <InfoRow label="1re connexion" value={fmtDate(r.activatedAt)} />
+                ) : null}
+                {r.expiresAt ? (
+                  <InfoRow label="Expire le" value={fmtDate(r.expiresAt)} />
+                ) : null}
               </View>
+            ) : null}
+
+            {s ? (
+              <View
+                style={{
+                  gap: space.sm,
+                  paddingTop: space.md,
+                  borderTopWidth: 1,
+                  borderTopColor: theme.border,
+                }}
+              >
+                <Text
+                  style={{
+                    color: theme.text,
+                    fontSize: type.caption,
+                    fontWeight: weight.bold,
+                    marginBottom: 2,
+                  }}
+                >
+                  Session
+                </Text>
+                <InfoRow
+                  label="État"
+                  value={
+                    s.status === 'ACTIVE'
+                      ? 'En cours'
+                      : s.status === 'TERMINATED'
+                        ? 'Terminée'
+                        : 'Expirée'
+                  }
+                  color={s.status === 'ACTIVE' ? theme.success : theme.textMuted}
+                />
+                <InfoRow label="Début" value={fmtDate(s.startedAt)} />
+                {s.terminatedAt ? (
+                  <InfoRow label="Fin" value={fmtDate(s.terminatedAt)} />
+                ) : null}
+                {s.lastSeenAt ? (
+                  <InfoRow label="Dernière activité" value={fmtDate(s.lastSeenAt)} />
+                ) : null}
+                <InfoRow label="Téléchargé" value={fmtBytes(s.bytesIn)} />
+                <InfoRow label="Envoyé" value={fmtBytes(s.bytesOut)} />
+                {s.macAddress ? <InfoRow label="MAC" value={s.macAddress} /> : null}
+                {s.ipAddress ? <InfoRow label="IP" value={s.ipAddress} /> : null}
+              </View>
+            ) : null}
+
+            {r?.advice ? (
+              <Text
+                style={{
+                  color: theme.textMuted,
+                  fontSize: type.caption,
+                  fontStyle: 'italic',
+                  paddingTop: space.sm,
+                  borderTopWidth: 1,
+                  borderTopColor: theme.border,
+                }}
+              >
+                {r.advice}
+              </Text>
             ) : null}
           </Card>
         ) : null}

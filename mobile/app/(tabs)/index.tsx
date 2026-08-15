@@ -203,7 +203,7 @@ export default function MaisonScreen() {
   }
 
   const online = list.filter((r) => healthOf(r) === 'ONLINE').length;
-  const tenantName = me.data?.tenant.name ?? 'MikroLan2';
+  const tenantName = me.data?.tenant?.name ?? 'MikroLan2';
   const firstName = tenantName.split(/\s+/)[0];
   const isPro = entitlement.tier === 'PRO';
   const trial = entitlement.tier === 'TRIAL' ? entitlement.daysLeft : null;
@@ -515,6 +515,32 @@ export default function MaisonScreen() {
           onPress={() => router.push('/(tabs)/rapport')}
         />
       </Row>
+
+      <Press
+        accessibilityLabel="Comptabilité"
+        onPress={() => router.push('/accounting')}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: space.md,
+          backgroundColor: theme.surface,
+          borderRadius: radius.md,
+          borderWidth: 1,
+          borderColor: theme.border,
+          padding: space.md,
+        }}
+      >
+        <Ionicons name="calculator-outline" size={22} color={theme.primary} />
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: theme.text, fontSize: type.body, fontWeight: weight.bold }}>
+            Comptabilité
+          </Text>
+          <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
+            CA, factures et détail par routeur
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
+      </Press>
 
       {/* Abonnement / essai — en dernier : utile, jamais prioritaire sur les
           opérations du jour. */}

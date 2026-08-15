@@ -274,6 +274,64 @@ export type VoucherLookupResult = VoucherItem & {
   } | null;
 };
 
+export type RevenueByPeriodItem = {
+  month: string;
+  year: number;
+  monthNum: number;
+  totalXof: number;
+  transactionCount: number;
+};
+
+export type RevenueByRouterItem = {
+  routerId: string;
+  routerName: string;
+  totalXof: number;
+  transactionCount: number;
+};
+
+export type InvoiceItem = {
+  id: string;
+  number: string;
+  status: 'DRAFT' | 'SENT' | 'PAID' | 'OVERDUE';
+  subtotalXof: number;
+  taxXof: number;
+  totalXof: number;
+  periodStart: string;
+  periodEnd: string;
+  dueDate: string | null;
+  createdAt: string;
+};
+
+export type VoucherSessionInfo = {
+  status: 'ACTIVE' | 'TERMINATED' | 'EXPIRED';
+  startedAt: string;
+  lastSeenAt: string | null;
+  terminatedAt: string | null;
+  bytesIn: string;
+  bytesOut: string;
+  macAddress: string | null;
+  ipAddress: string | null;
+};
+
+export type VoucherVerificationResult = {
+  source: 'SAAS' | 'LEGACY';
+  voucherId: string | null;
+  routerId: string | null;
+  code: string;
+  status: VoucherStatus;
+  canLogin: boolean;
+  planName: string;
+  durationMinutes: number;
+  priceXof: number;
+  routerName: string | null;
+  deliveredAt: string | null;
+  activatedAt: string | null;
+  expiresAt: string | null;
+  session: VoucherSessionInfo | null;
+  message: string;
+  advice: string;
+};
+
 export type UserProfile = {
   id: string;
   name: string;
@@ -603,6 +661,20 @@ export const api = {
     },
     async registerPushToken(token: string): Promise<void> {
       await apiClient.post('/auth/push-token', { token });
+    },
+    async requestPasswordReset(email: string): Promise<void> {
+      await apiClient.post('/auth/password-reset/request', { email });
+    },
+    async confirmPasswordReset(
+      email: string,
+      code: string,
+      newPassword: string,
+    ): Promise<void> {
+      await apiClient.post('/auth/password-reset/confirm', {
+        email,
+        code,
+        newPassword,
+      });
     },
   },
 
@@ -1097,6 +1169,51 @@ export const api = {
       const res = await apiClient.get<ApiEnvelope<Page<AuditEntry>>>('/admin/audit', {
         params,
       });
+      return unwrap(res);
+    },
+  },
+  accounting: {
+    async revenueByPeriod(months = 12): Promise<RevenueByPeriodItem[]> {
+      const res = await apiClient.get<ApiEnvelope<RevenueByPeriodItem[]>>(
+        '/accounting/revenue/by-period',
+        { params: { months } },
+      );
+      return unwrap(res);
+    },
+    async revenueByRouter(from?: string, to?: string): Promise<RevenueByRouterItem[]> {
+      const res = await apiClient.get<ApiEnvelope<RevenueByRouterItem[]>>(
+        '/accounting/revenue/by-router',
+        { params: { from, to } },
+      );
+      return unwrap(res);
+    },
+    async invoices(
+      page = 1,
+      limit = 20,
+    ): Promise<{ items: InvoiceItem[]; total: number; page: number; limit: number }> {
+      const res = await apiClient.get<
+        ApiEnvelope<{ items: InvoiceItem[]; total: number; page: number; limit: number }>
+      >('/accounting/invoices', { params: { page, limit } });
+      return unwrap(res);
+    },
+    async generateInvoice(periodStart: string, periodEnd: string): Promise<InvoiceItem> {
+      const res = await apiClient.post<ApiEnvelope<InvoiceItem>>(
+        '/accounting/invoices/generate',
+        { periodStart, periodEnd },
+      );
+      return unwrap(res);
+    },
+  },
+  vouchers: {
+    async verify(
+      ticket: string,
+      password?: string,
+      routerId?: string,
+    ): Promise<VoucherVerificationResult> {
+      const res = await apiClient.post<ApiEnvelope<VoucherVerificationResult>>(
+        '/vouchers/verify',
+        { ticket, password, routerId },
+      );
       return unwrap(res);
     },
   },
