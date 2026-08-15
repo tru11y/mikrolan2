@@ -23,7 +23,9 @@ import { getTenantContext } from '../../common/context/tenant-context';
 import type {
   ConfirmVouchersDto,
   GenerateVouchersDto,
+  VerifyVoucherDto,
 } from './dto/voucher.schemas';
+import { UnauthorizedException } from '@nestjs/common';
 
 // No ambiguous glyphs (0/O, 1/I) — codes get read aloud and typed by hand.
 const ALPHANUMERIC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -252,6 +254,81 @@ export class VoucherService {
       throw new NotFoundException('Ce code n’a pas été émis pour ce routeur.');
     }
     return voucher;
+  }
+
+  async verifyVoucherForOperator(dto: VerifyVoucherDto) {
+    const where: Prisma.VoucherWhereInput = {
+      code: { equals: dto.ticket, mode: 'insensitive' },
+      ...(dto.routerId ? { routerId: dto.routerId } : {}),
+    };
+
+    const ctx = getTenantContext();
+    if (ctx?.tenantId) {
+      where.router = { tenantId: ctx.tenantId };
+    }
+
+    const voucher = await this.prisma.voucher.findFirst({
+      where,
+      select: {
+        ...VOUCHER_PUBLIC,
+        plan: {
+          select: { id: true, name: true, priceXof: true, durationMinutes: true },
+        },
+        router: { select: { id: true, identity: true, alias: true } },
+        session: {
+          select: {
+            status: true,
+            startedAt: true,
+            lastSeenAt: true,
+            terminatedAt: true,
+            bytesIn: true,
+            bytesOut: true,
+            macAddress: true,
+            ipAddress: true,
+          },
+        },
+      },
+    });
+
+    if (!voucher) {
+      throw new UnauthorizedException('Code inconnu ou non attribué à ce routeur.');
+    }
+
+    const canLogin =
+      voucher.status === VoucherStatus.GENERATED ||
+      voucher.status === VoucherStatus.ACTIVE;
+
+    const session = voucher.session
+      ? {
+          status: voucher.session.status,
+          startedAt: voucher.session.startedAt.toISOString(),
+          lastSeenAt: voucher.session.lastSeenAt?.toISOString() ?? null,
+          terminatedAt: voucher.session.terminatedAt?.toISOString() ?? null,
+          bytesIn: voucher.session.bytesIn.toString(),
+          bytesOut: voucher.session.bytesOut.toString(),
+          macAddress: voucher.session.macAddress,
+          ipAddress: voucher.session.ipAddress,
+        }
+      : null;
+
+    return {
+      source: 'SAAS' as const,
+      code: voucher.code,
+      status: voucher.status,
+      canLogin,
+      planName: voucher.plan.name,
+      durationMinutes: voucher.plan.durationMinutes,
+      priceXof: voucher.plan.priceXof,
+      routerName: voucher.router?.alias ?? voucher.router?.identity ?? null,
+      routerId: voucher.router?.id ?? null,
+      createdAt: voucher.createdAt.toISOString(),
+      usedAt: voucher.usedAt?.toISOString() ?? null,
+      expiresAt: voucher.expiresAt?.toISOString() ?? null,
+      session,
+      message: canLogin
+        ? 'Ticket valide — connexion autorisée.'
+        : `Ticket ${voucher.status.toLowerCase()} — connexion refusée.`,
+    };
   }
 
   listBatches(routerId?: string) {

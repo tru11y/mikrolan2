@@ -441,7 +441,7 @@ export default function ProScreen() {
             textAlign: 'center',
           }}
         >
-          Paiement Wave ou Orange Money, validé par un administrateur sous 24 h. Sans
+          Paiement manuel, validé par un administrateur sous 24 h. Sans
           engagement de durée.
         </Text>
       </ScrollView>
