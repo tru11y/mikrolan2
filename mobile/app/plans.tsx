@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -119,7 +119,11 @@ function Chip({
 }
 
 export default function PlansScreen() {
-  const { routerId } = useLocalSearchParams<{ routerId: string }>();
+  const { routerId, onboarding } = useLocalSearchParams<{
+    routerId: string;
+    onboarding?: string;
+  }>();
+  const router = useRouter();
   const qc = useQueryClient();
   const toast = useToast();
 
@@ -272,6 +276,7 @@ export default function PlansScreen() {
         codeLength: Number.parseInt(codeLength, 10),
         codeFormat,
       };
+      const wasFirstPlan = !editingId && (query.data ?? []).length === 0;
       if (editingId) {
         await api.plans.update(routerId, editingId, payload);
       } else {
@@ -281,6 +286,13 @@ export default function PlansScreen() {
       resetForm();
       setShowForm(false);
       await qc.invalidateQueries({ queryKey: ['plans', routerId] });
+      if (wasFirstPlan && onboarding === '1') {
+        router.replace({
+          pathname: '/generate-vouchers',
+          params: { routerId, onboarding: '1' },
+        });
+        return;
+      }
     } catch (e) {
       const described = describeError(e);
       setServerErrors(described.fieldErrors);

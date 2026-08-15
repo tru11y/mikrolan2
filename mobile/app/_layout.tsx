@@ -1,5 +1,6 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { Sentry } from '@/src/lib/sentry';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryProvider } from '@/src/providers/query-provider';
 import { AuthProvider } from '@/src/providers/auth-provider';
@@ -11,7 +12,7 @@ import { PaywallLock } from '@/src/components/PaywallLock';
 import { ErrorBoundary } from '@/src/components/ErrorBoundary';
 import { theme, ToastProvider } from '@/src/components/ui';
 
-export default function RootLayout() {
+function RootLayout() {
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
@@ -32,6 +33,10 @@ export default function RootLayout() {
                           gestureEnabled: true,
                         }}
                       >
+                        <Stack.Screen
+                          name="login"
+                          options={{ gestureEnabled: false, animation: 'none' }}
+                        />
                         <Stack.Screen
                           name="add-router"
                           options={{
@@ -60,3 +65,5 @@ export default function RootLayout() {
     </SafeAreaProvider>
   );
 }
+
+export default Sentry.wrap(RootLayout);

@@ -137,6 +137,7 @@ export default function AddRouterScreen() {
     setError(null);
     setSaving(true);
     try {
+      const isFirstRouter = (existingRouters.data ?? []).length === 0;
       const created = await api.routers.create({
         identity: identity.trim(),
         alias: alias.trim() || undefined,
@@ -152,7 +153,14 @@ export default function AddRouterScreen() {
         });
       }
       await qc.invalidateQueries({ queryKey: ['routers'] });
-      router.back();
+      if (isFirstRouter) {
+        router.replace({
+          pathname: '/hotspot-setup',
+          params: { routerId: created.id, onboarding: '1' },
+        });
+      } else {
+        router.back();
+      }
     } catch (e) {
       const status = axios.isAxiosError(e) ? e.response?.status : null;
       setError(
