@@ -79,7 +79,7 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
   const [degraded, setDegraded] = useState(false);
 
   const lastEventId = useRef<string | null>(null);
-  const previousTier = useRef(entitlement.tier);
+  const previousTier = useRef<typeof entitlement.tier | null>(null);
   const isSuperAdmin = me?.user.role === 'SUPER_ADMIN';
 
   const handleEvent = useCallback(
@@ -263,11 +263,14 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
 
   // Le basculement de l'abonnement est le seul évènement de paiement
   // observable côté client : c'est lui qui confirme que le versement est passé.
+  // Ne PAS déclencher au premier render : previousTier est null tant que
+  // l'entitlement n'a pas été chargé une première fois, sinon un simple
+  // rechargement de session (async: FREE → PRO) affiche "Paiement validé".
   useEffect(() => {
     const before = previousTier.current;
     const now = entitlement.tier;
     previousTier.current = now;
-    if (before === now) return;
+    if (before === null || before === now) return;
 
     if (now === 'PRO') {
       Vibration.vibrate([0, 60, 80, 60]);
