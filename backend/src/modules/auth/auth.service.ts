@@ -177,7 +177,10 @@ export class AuthService {
     ]);
     if (!user || !tenant) throw new UnauthorizedException('Compte introuvable. Reconnectez-vous.');
     // L'app dessine ses cadenas à partir de ceci ; le serveur les applique.
-    const entitlement = await this.subscriptions.getEntitlement(tenantId);
+    const entitlement =
+      user.role === 'SUPER_ADMIN'
+        ? { tier: 'PRO' as const, localAllowed: true, remoteAllowed: true, endsAt: null, daysLeft: null, tierKey: null, routerLimit: null }
+        : await this.subscriptions.getEntitlement(tenantId);
     return { user, tenant, subscription, entitlement };
   }
 
