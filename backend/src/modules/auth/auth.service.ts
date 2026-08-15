@@ -21,6 +21,7 @@ import {
   SubscriptionsService,
   TRIAL_DAYS,
 } from '../subscriptions/subscriptions.service';
+import { MailService } from '../mail/mail.service';
 import {
   ChangePasswordDto,
   DeleteAccountDto,
@@ -60,6 +61,7 @@ export class AuthService {
     private readonly tokens: TokenService,
     private readonly subscriptions: SubscriptionsService,
     private readonly config: ConfigService,
+    private readonly mail: MailService,
   ) {
     const clientId = this.config.get<string>('GOOGLE_CLIENT_ID');
     if (clientId) {
@@ -112,6 +114,8 @@ export class AuthService {
       }
       throw e;
     }
+
+    this.mail.sendWelcome(dto.email, dto.tenantName).catch(() => {});
 
     return this.tokens.issueTokens({
       id: user.id,
