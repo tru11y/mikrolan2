@@ -12,6 +12,7 @@ import Constants from 'expo-constants';
 import * as Crypto from 'expo-crypto';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
+import { useRouter } from 'expo-router';
 import { useAuth } from '@/src/providers/auth-provider';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -33,6 +34,7 @@ const GOOGLE_ANDROID_CLIENT_ID = Constants.expoConfig?.extra?.googleAndroidClien
 export default function LoginScreen() {
   const { login, signup, googleLogin, isBusy, error, clearError, apiBaseUrl, updateApiBaseUrl } =
     useAuth();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [tenantName, setTenantName] = useState('');
@@ -144,6 +146,25 @@ export default function LoginScreen() {
               onToggleSecure={() => setShowPassword((v) => !v)}
               placeholder={mode === 'signup' ? '10 caractères minimum' : '••••••••'}
             />
+            {mode === 'login' ? (
+              <Press
+                onPress={() => {
+                  clearError();
+                  router.push('/forgot-password');
+                }}
+              >
+                <Text
+                  style={{
+                    color: theme.textMuted,
+                    fontWeight: '600',
+                    fontSize: type.micro,
+                    textAlign: 'right',
+                  }}
+                >
+                  Mot de passe oublié ?
+                </Text>
+              </Press>
+            ) : null}
           </View>
 
           <View style={{ gap: space.lg }}>

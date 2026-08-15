@@ -1,6 +1,7 @@
 import { Component, type PropsWithChildren, type ErrorInfo } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { theme } from './ui';
+import { Sentry } from '@/src/lib/sentry';
 
 type State = { error: Error | null };
 
@@ -13,6 +14,7 @@ export class ErrorBoundary extends Component<PropsWithChildren, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('[ErrorBoundary]', error, info.componentStack);
+    Sentry.captureException(error, { contexts: { react: { componentStack: info.componentStack } } });
   }
 
   private reset = () => this.setState({ error: null });

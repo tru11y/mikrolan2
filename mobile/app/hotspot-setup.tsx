@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { api, extractErrorMessage } from '@/src/lib/api';
 import {
   Banner,
@@ -18,7 +18,11 @@ import { AppHeader } from '@/src/components/AppHeader';
 
 export default function HotspotSetupScreen() {
   const navHeight = useBottomNavHeight();
-  const { routerId } = useLocalSearchParams<{ routerId: string }>();
+  const router = useRouter();
+  const { routerId, onboarding } = useLocalSearchParams<{
+    routerId: string;
+    onboarding?: string;
+  }>();
   const [iface, setIface] = useState('');
   const [network, setNetwork] = useState('');
   const [busy, setBusy] = useState(false);
@@ -79,6 +83,17 @@ export default function HotspotSetupScreen() {
             Par défaut 10.5.50.0/24 — passerelle .1, plage DHCP .10–.254.
           </Subtitle>
           <Button title="Configurer" onPress={configure} loading={busy} />
+          {done && onboarding === '1' ? (
+            <Button
+              title="Continuer — créer mon premier forfait"
+              onPress={() =>
+                router.replace({
+                  pathname: '/plans',
+                  params: { routerId, onboarding: '1' },
+                })
+              }
+            />
+          ) : null}
         </Card>
       </ScrollView>
       <BottomNav active="index" />

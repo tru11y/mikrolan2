@@ -174,7 +174,7 @@ export function AppHeader({ title, back }: { title: string; back?: boolean }) {
             <Text
               style={{ color: theme.text, fontWeight: '700', fontSize: type.body }}
             >
-              {(me.data?.tenant.name ?? 'M').trim().charAt(0).toUpperCase()}
+              {(me.data?.tenant?.name ?? 'M').trim().charAt(0).toUpperCase()}
             </Text>
           </Pressable>
         </View>
