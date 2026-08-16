@@ -1073,6 +1073,35 @@ export const api = {
       return unwrap(res);
     },
 
+    async paymentInfo(): Promise<PaymentInfo> {
+      const res = await apiClient.get<ApiEnvelope<PaymentInfo>>(
+        '/subscriptions/payment-info',
+      );
+      return unwrap(res);
+    },
+    async uploadProof(
+      invoiceId: string,
+      method: 'WAVE' | 'ORANGE_MONEY',
+      imageUri: string,
+      note?: string,
+    ): Promise<{ proof: { id: string }; message: string }> {
+      const form = new FormData();
+      form.append('invoiceId', invoiceId);
+      form.append('method', method);
+      if (note) form.append('note', note);
+      form.append('image', {
+        uri: imageUri,
+        type: 'image/jpeg',
+        name: 'proof.jpg',
+      } as unknown as Blob);
+      const res = await apiClient.post<
+        ApiEnvelope<{ proof: { id: string }; message: string }>
+      >('/subscriptions/upload-proof', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return unwrap(res);
+    },
+
     // ── Plateforme (SUPER_ADMIN) ────────────────────────────
     // Le serveur refuse ces deux routes à tout autre rôle ; l'app se contente
     // de ne pas les proposer, elle ne les autorise pas.
@@ -1163,6 +1192,75 @@ export const api = {
       const res = await apiClient.patch<ApiEnvelope<Tier>>(`/admin/tiers/${id}`, patch);
       return unwrap(res);
     },
+    async tenantRouters(
+      tenantId: string,
+      params: { cursor?: string; limit?: number } = {},
+    ): Promise<Page<AdminTenantRouter>> {
+      const res = await apiClient.get<ApiEnvelope<Page<AdminTenantRouter>>>(
+        `/admin/tenants/${tenantId}/routers`,
+        { params },
+      );
+      return unwrap(res);
+    },
+    async validateInvoice(
+      invoiceId: string,
+      periodDays?: number,
+    ): Promise<void> {
+      await apiClient.post(`/admin/invoices/${invoiceId}/validate`, {
+        ...(periodDays ? { periodDays } : {}),
+      });
+    },
+    async rejectInvoice(
+      invoiceId: string,
+      reason?: string,
+    ): Promise<void> {
+      await apiClient.post(`/admin/invoices/${invoiceId}/reject`, {
+        ...(reason ? { reason } : {}),
+      });
+    },
+    async invoiceProofs(invoiceId: string): Promise<PaymentProof[]> {
+      const res = await apiClient.get<ApiEnvelope<PaymentProof[]>>(
+        `/admin/invoices/${invoiceId}/proofs`,
+      );
+      return unwrap(res);
+    },
+    async listTickets(
+      params: { status?: string; cursor?: string; limit?: number } = {},
+    ): Promise<Page<AdminTicketSummary>> {
+      const res = await apiClient.get<ApiEnvelope<Page<AdminTicketSummary>>>(
+        '/admin/tickets',
+        { params },
+      );
+      return unwrap(res);
+    },
+    async getTicket(id: string): Promise<SupportTicketDetail> {
+      const res = await apiClient.get<ApiEnvelope<SupportTicketDetail>>(
+        `/admin/tickets/${id}`,
+      );
+      return unwrap(res);
+    },
+    async replyToTicket(ticketId: string, body: string): Promise<TicketMessage> {
+      const res = await apiClient.post<ApiEnvelope<TicketMessage>>(
+        `/admin/tickets/${ticketId}/messages`,
+        { body },
+      );
+      return unwrap(res);
+    },
+    async setTicketStatus(
+      ticketId: string,
+      status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED',
+    ): Promise<void> {
+      await apiClient.patch(`/admin/tickets/${ticketId}/status`, { status });
+    },
+    async getConfig(): Promise<Record<string, string>> {
+      const res = await apiClient.get<ApiEnvelope<Record<string, string>>>(
+        '/admin/config',
+      );
+      return unwrap(res);
+    },
+    async updateConfig(entries: Record<string, string>): Promise<void> {
+      await apiClient.patch('/admin/config', { entries });
+    },
     async audit(
       params: { tenantId?: string; cursor?: string; limit?: number } = {},
     ): Promise<Page<AuditEntry>> {
@@ -1172,6 +1270,36 @@ export const api = {
       return unwrap(res);
     },
   },
+  support: {
+    async createTicket(subject: string, body: string): Promise<SupportTicket> {
+      const res = await apiClient.post<ApiEnvelope<SupportTicket>>(
+        '/support/tickets',
+        { subject, body },
+      );
+      return unwrap(res);
+    },
+    async listTickets(cursor?: string, limit = 20): Promise<Page<SupportTicketSummary>> {
+      const res = await apiClient.get<ApiEnvelope<Page<SupportTicketSummary>>>(
+        '/support/tickets',
+        { params: { ...(cursor ? { cursor } : {}), limit } },
+      );
+      return unwrap(res);
+    },
+    async getTicket(id: string): Promise<SupportTicketDetail> {
+      const res = await apiClient.get<ApiEnvelope<SupportTicketDetail>>(
+        `/support/tickets/${id}`,
+      );
+      return unwrap(res);
+    },
+    async addMessage(ticketId: string, body: string): Promise<TicketMessage> {
+      const res = await apiClient.post<ApiEnvelope<TicketMessage>>(
+        `/support/tickets/${ticketId}/messages`,
+        { body },
+      );
+      return unwrap(res);
+    },
+  },
+
   accounting: {
     async revenueByPeriod(months = 12): Promise<RevenueByPeriodItem[]> {
       const res = await apiClient.get<ApiEnvelope<RevenueByPeriodItem[]>>(
@@ -1386,6 +1514,82 @@ export type AuditEntry = {
   metadata: unknown;
   ip: string | null;
   createdAt: string;
+};
+
+export type PaymentInfo = {
+  wave: string | null;
+  orangeMoney: string | null;
+  instructions: string | null;
+};
+
+export type PaymentProof = {
+  id: string;
+  invoiceId: string;
+  method: 'WAVE' | 'ORANGE_MONEY';
+  imageUrl: string;
+  note: string | null;
+  createdAt: string;
+};
+
+export type SupportTicketSummary = {
+  id: string;
+  subject: string;
+  status: string;
+  priority: string;
+  createdAt: string;
+  updatedAt: string;
+  _count: { messages: number };
+};
+
+export type SupportTicket = {
+  id: string;
+  subject: string;
+  status: string;
+  priority: string;
+  createdAt: string;
+  messages: TicketMessage[];
+};
+
+export type SupportTicketDetail = {
+  id: string;
+  subject: string;
+  status: string;
+  priority: string;
+  createdAt: string;
+  messages: TicketMessage[];
+};
+
+export type TicketMessage = {
+  id: string;
+  body: string;
+  imageUrl: string | null;
+  isAdmin: boolean;
+  createdAt: string;
+  user: { id: string; name: string | null };
+};
+
+export type AdminTenantRouter = {
+  id: string;
+  identity: string;
+  alias: string | null;
+  model: string | null;
+  localAddress: string | null;
+  mode: ManagementMode;
+  health: RouterHealth;
+  lastHeartbeat: string | null;
+  createdAt: string;
+};
+
+export type AdminTicketSummary = {
+  id: string;
+  subject: string;
+  status: string;
+  priority: string;
+  createdAt: string;
+  updatedAt: string;
+  tenantName: string;
+  userName: string | null;
+  _count: { messages: number };
 };
 
 export type TenantSubscription = {

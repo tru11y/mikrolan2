@@ -267,8 +267,9 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
   // l'entitlement n'a pas été chargé une première fois, sinon un simple
   // rechargement de session (async: FREE → PRO) affiche "Paiement validé".
   useEffect(() => {
+    const now = me?.entitlement?.tier;
+    if (!now) return;
     const before = previousTier.current;
-    const now = entitlement.tier;
     previousTier.current = now;
     if (before === null || before === now) return;
 
@@ -277,9 +278,9 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
       toast.success('Paiement validé — votre abonnement PRO est actif.');
       setLastEventAt(new Date());
     } else if (now === 'LOCKED') {
-      toast.show('Votre période d’essai est terminée.', 'danger');
+      toast.show('Votre période d\'essai est terminée.', 'danger');
     }
-  }, [entitlement.tier, toast]);
+  }, [me?.entitlement?.tier, toast]);
 
   return (
     <LiveEventsContext.Provider value={{ lastEventAt, live }}>

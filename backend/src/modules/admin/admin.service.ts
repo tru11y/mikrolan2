@@ -22,9 +22,15 @@ import type {
   ListAuditQueryDto,
   ListInvoicesQueryDto,
   ListTenantsQueryDto,
+  ListTenantRoutersQueryDto,
+  ListTicketsQueryDto,
   ListUsersQueryDto,
+  RejectInvoiceDto,
   SetTenantStatusDto,
+  SetTicketStatusDto,
   SetUserStatusDto,
+  UpdateConfigDto,
+  ValidateInvoiceDto,
 } from './dto/admin.schemas';
 
 /**
@@ -269,7 +275,7 @@ export class AdminService {
     // seule sortie serait alors un accès direct à la base.
     if (user.role === UserRole.SUPER_ADMIN) {
       throw new ForbiddenException(
-        'Le statut d’un administrateur plateforme ne se modifie pas ici.',
+        'Le statut d\'un administrateur plateforme ne se modifie pas ici.',
       );
     }
     if (user.status === UserStatus.DELETED) {
@@ -471,6 +477,263 @@ export class AdminService {
       ip: a.ip,
       createdAt: a.createdAt.toISOString(),
     }));
+  }
+
+  // ── Routeurs d'un tenant ────────────────────────────────
+
+  async listTenantRouters(tenantId: string, query: ListTenantRoutersQueryDto): Promise<Page<unknown>> {
+    const rows = await this.prisma.router.findMany({
+      where: { tenantId, deletedAt: null },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: query.limit + 1,
+      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+      select: {
+        id: true,
+        identity: true,
+        alias: true,
+        model: true,
+        localAddress: true,
+        mode: true,
+        health: true,
+        lastHeartbeat: true,
+        createdAt: true,
+      },
+    });
+    return this.paginate(rows, query.limit, (r) => r);
+  }
+
+  // ── Validation / rejet de facture ─────────────────────
+
+  async validateInvoice(
+    invoiceId: string,
+    actor: { userId: string; tenantId: string },
+    dto: ValidateInvoiceDto,
+  ) {
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      include: { tenant: true },
+    });
+    if (!invoice) throw new NotFoundException('Facture introuvable');
+    if (invoice.status !== 'PENDING') {
+      throw new BadRequestException('Cette facture n\'est pas en attente.');
+    }
+
+    const periodDays = dto.periodDays ?? invoice.periodDays;
+
+    const now = new Date();
+    await this.prisma.$transaction([
+      this.prisma.invoice.update({
+        where: { id: invoiceId },
+        data: {
+          status: 'PAID',
+          paidAt: now,
+          periodDays,
+        },
+      }),
+      this.prisma.subscription.update({
+        where: { tenantId: invoice.tenantId },
+        data: {
+          plan: SubscriptionPlan.PRO,
+          status: SubscriptionStatus.ACTIVE,
+          tierId: invoice.tierId,
+          billingPeriod: invoice.billingPeriod,
+          currentPeriodStart: now,
+          currentPeriodEnd: new Date(now.getTime() + periodDays * DAY_MS),
+        },
+      }),
+      this.prisma.tenant.update({
+        where: { id: invoice.tenantId },
+        data: { status: TenantStatus.ACTIVE },
+      }),
+      this.prisma.notification.create({
+        data: {
+          tenantId: invoice.tenantId,
+          type: 'SUBSCRIPTION_ACTIVATED',
+          title: 'Paiement validé',
+          body: 'Votre abonnement PRO est maintenant actif.',
+        },
+      }),
+    ]);
+
+    await this.audit(
+      invoice.tenantId,
+      actor.userId,
+      AuditAction.ACTIVATE,
+      'Invoice',
+      invoiceId,
+      { periodDays },
+    );
+
+    return { validated: true };
+  }
+
+  async rejectInvoice(
+    invoiceId: string,
+    actor: { userId: string; tenantId: string },
+    dto: RejectInvoiceDto,
+  ) {
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id: invoiceId },
+    });
+    if (!invoice) throw new NotFoundException('Facture introuvable');
+    if (invoice.status !== 'PENDING') {
+      throw new BadRequestException('Cette facture n\'est pas en attente.');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.invoice.update({
+        where: { id: invoiceId },
+        data: { status: 'FAILED' },
+      }),
+      this.prisma.notification.create({
+        data: {
+          tenantId: invoice.tenantId,
+          type: 'PAYMENT_REJECTED',
+          title: 'Paiement refusé',
+          body: dto.reason,
+        },
+      }),
+    ]);
+
+    await this.audit(
+      invoice.tenantId,
+      actor.userId,
+      AuditAction.REJECT,
+      'Invoice',
+      invoiceId,
+      { reason: dto.reason },
+    );
+
+    return { rejected: true };
+  }
+
+  async getInvoiceProofs(invoiceId: string) {
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      select: {
+        id: true,
+        amount: true,
+        status: true,
+        tenantId: true,
+        tenant: { select: { name: true } },
+        proofs: { orderBy: { createdAt: 'desc' } },
+      },
+    });
+    if (!invoice) throw new NotFoundException('Facture introuvable');
+    return invoice;
+  }
+
+  // ── Tickets SAV (vue admin) ───────────────────────────
+
+  async listTickets(query: ListTicketsQueryDto): Promise<Page<unknown>> {
+    const rows = await this.prisma.supportTicket.findMany({
+      where: {
+        ...(query.status ? { status: query.status } : {}),
+        ...(query.tenantId ? { tenantId: query.tenantId } : {}),
+      },
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      take: query.limit + 1,
+      ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
+      select: {
+        id: true,
+        subject: true,
+        status: true,
+        priority: true,
+        createdAt: true,
+        updatedAt: true,
+        tenant: { select: { id: true, name: true } },
+        user: { select: { id: true, email: true, name: true } },
+        _count: { select: { messages: true } },
+      },
+    });
+    return this.paginate(rows, query.limit, (t) => t);
+  }
+
+  async getTicket(id: string) {
+    const ticket = await this.prisma.supportTicket.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        subject: true,
+        status: true,
+        priority: true,
+        createdAt: true,
+        tenant: { select: { id: true, name: true } },
+        user: { select: { id: true, email: true, name: true } },
+        messages: {
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            body: true,
+            imageUrl: true,
+            isAdmin: true,
+            createdAt: true,
+            user: { select: { id: true, name: true, email: true } },
+          },
+        },
+      },
+    });
+    if (!ticket) throw new NotFoundException('Ticket introuvable');
+    return ticket;
+  }
+
+  async replyToTicket(ticketId: string, userId: string, body: string) {
+    const ticket = await this.prisma.supportTicket.findUnique({
+      where: { id: ticketId },
+    });
+    if (!ticket) throw new NotFoundException('Ticket introuvable');
+
+    const [message] = await this.prisma.$transaction([
+      this.prisma.ticketMessage.create({
+        data: { ticketId, userId, body, isAdmin: true },
+      }),
+      this.prisma.supportTicket.update({
+        where: { id: ticketId },
+        data: { status: 'IN_PROGRESS' },
+      }),
+      this.prisma.notification.create({
+        data: {
+          tenantId: ticket.tenantId,
+          type: 'TICKET_REPLY',
+          title: 'Réponse du support',
+          body: body.length > 100 ? `${body.slice(0, 99)}…` : body,
+        },
+      }),
+    ]);
+    return message;
+  }
+
+  async setTicketStatus(id: string, dto: SetTicketStatusDto) {
+    const ticket = await this.prisma.supportTicket.findUnique({ where: { id } });
+    if (!ticket) throw new NotFoundException('Ticket introuvable');
+    return this.prisma.supportTicket.update({
+      where: { id },
+      data: {
+        status: dto.status,
+        ...(dto.status === 'CLOSED' || dto.status === 'RESOLVED'
+          ? { closedAt: new Date() }
+          : {}),
+      },
+    });
+  }
+
+  // ── Config plateforme ─────────────────────────────────
+
+  async getConfig(): Promise<Record<string, string>> {
+    const rows = await this.prisma.platformConfig.findMany();
+    return Object.fromEntries(rows.map((r) => [r.key, r.value]));
+  }
+
+  async updateConfig(dto: UpdateConfigDto): Promise<Record<string, string>> {
+    const ops = Object.entries(dto).map(([key, value]) =>
+      this.prisma.platformConfig.upsert({
+        where: { key },
+        update: { value },
+        create: { key, value },
+      }),
+    );
+    await this.prisma.$transaction(ops);
+    return this.getConfig();
   }
 
   // ── Interne ────────────────────────────────────────────

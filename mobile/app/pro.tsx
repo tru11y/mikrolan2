@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ScrollView, View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { router as navRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/src/lib/api';
 import { describeError } from '@/src/lib/errors';
@@ -291,6 +292,7 @@ export default function ProScreen() {
       });
       setRequested(true);
       toast.success(res.instructions);
+      navRouter.push({ pathname: '/payment', params: { invoiceId: res.invoice.id } });
     } catch (e) {
       toast.error(describeError(e).message);
     } finally {

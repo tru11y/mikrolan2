@@ -7,6 +7,9 @@ import {
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import helmet from '@fastify/helmet';
+import multipart from '@fastify/multipart';
+import fastifyStatic from '@fastify/static';
+import { join } from 'node:path';
 import { AppModule } from './app.module';
 import type { AppConfig } from './config/configuration';
 
@@ -19,6 +22,12 @@ async function bootstrap(): Promise<void> {
   const config = app.get(ConfigService<AppConfig, true>);
 
   await app.register(helmet);
+  await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } });
+  await app.register(fastifyStatic, {
+    root: join(process.cwd(), 'uploads'),
+    prefix: '/uploads/',
+    decorateReply: false,
+  });
 
   app.setGlobalPrefix('api');
 
