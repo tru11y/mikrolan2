@@ -16,21 +16,25 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { AuthService } from './auth.service';
 import {
   changePasswordSchema,
+  confirmPasswordResetSchema,
   deleteAccountSchema,
   googleOAuthSchema,
   loginSchema,
   refreshSchema,
   registerPushTokenSchema,
+  requestPasswordResetSchema,
   setPasswordSchema,
   signupSchema,
   updateNotificationsSchema,
   updateProfileSchema,
   type ChangePasswordDto,
+  type ConfirmPasswordResetDto,
   type DeleteAccountDto,
   type GoogleOAuthDto,
   type LoginDto,
   type RefreshDto,
   type RegisterPushTokenDto,
+  type RequestPasswordResetDto,
   type SetPasswordDto,
   type SignupDto,
   type UpdateNotificationsDto,
@@ -96,6 +100,26 @@ export class AuthController {
     @Body(new ZodValidationPipe(setPasswordSchema)) dto: SetPasswordDto,
   ) {
     return this.auth.setPassword(user.userId, dto);
+  }
+
+  @Public()
+  @Post('password-reset/request')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  requestPasswordReset(
+    @Body(new ZodValidationPipe(requestPasswordResetSchema)) dto: RequestPasswordResetDto,
+  ) {
+    return this.auth.requestPasswordReset(dto);
+  }
+
+  @Public()
+  @Post('password-reset/confirm')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  confirmPasswordReset(
+    @Body(new ZodValidationPipe(confirmPasswordResetSchema)) dto: ConfirmPasswordResetDto,
+  ) {
+    return this.auth.confirmPasswordReset(dto);
   }
 
   @Public()
