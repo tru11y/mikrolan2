@@ -11,6 +11,7 @@ export interface TenantContext {
 // middleware has established the async scope for the request.
 interface Store {
   ctx?: TenantContext;
+  adminBypass?: boolean;
 }
 
 export const tenantStore = new AsyncLocalStorage<Store>();
@@ -22,4 +23,13 @@ export function getTenantContext(): TenantContext | undefined {
 export function setTenantContext(ctx: TenantContext): void {
   const store = tenantStore.getStore();
   if (store) store.ctx = ctx;
+}
+
+export function isAdminBypass(): boolean {
+  return tenantStore.getStore()?.adminBypass === true;
+}
+
+export function setAdminBypass(): void {
+  const store = tenantStore.getStore();
+  if (store) store.adminBypass = true;
 }

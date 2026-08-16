@@ -5,7 +5,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { Prisma, PrismaClient, UserRole } from '@prisma/client';
-import { getTenantContext } from '../common/context/tenant-context';
+import { getTenantContext, isAdminBypass } from '../common/context/tenant-context';
 
 // Models carrying a tenantId column — subject to row-level isolation.
 const TENANT_MODELS = new Set<Prisma.ModelName>([
@@ -57,7 +57,8 @@ export class PrismaService
     if (!model || !TENANT_MODELS.has(model)) return next(params);
 
     const ctx = getTenantContext();
-    if (!ctx || ctx.role === UserRole.SUPER_ADMIN) return next(params);
+    if (!ctx) return next(params);
+    if (ctx.role === UserRole.SUPER_ADMIN && isAdminBypass()) return next(params);
 
     const tenantId = ctx.tenantId;
 
