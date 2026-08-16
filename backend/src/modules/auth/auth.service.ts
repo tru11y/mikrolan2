@@ -13,7 +13,7 @@ import {
   UserStatus,
 } from '@prisma/client';
 import * as argon2 from 'argon2';
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { OAuth2Client } from 'google-auth-library';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TokenService, TokenPair } from './token.service';
@@ -24,13 +24,18 @@ import {
 import { MailService } from '../mail/mail.service';
 import {
   ChangePasswordDto,
+  ConfirmPasswordResetDto,
   DeleteAccountDto,
   LoginDto,
+  RequestPasswordResetDto,
   SetPasswordDto,
   SignupDto,
   UpdateNotificationsDto,
   UpdateProfileDto,
 } from './dto/auth.schemas';
+
+const RESET_CODE_EXPIRY_MINUTES = 10;
+const RESET_MAX_ATTEMPTS_PER_HOUR = 5;
 
 // Argon2id params (fintech-grade) — see global profile.
 const ARGON: argon2.Options = {
@@ -374,6 +379,70 @@ export class AuthService {
       tenantId: user.tenantId,
       role: user.role,
     });
+  }
+
+  async requestPasswordReset(dto: RequestPasswordResetDto): Promise<void> {
+    const email = dto.email.toLowerCase();
+
+    const oneHourAgo = new Date(Date.now() - 3_600_000);
+    const recentCount = await this.prisma.passwordResetCode.count({
+      where: { email, createdAt: { gte: oneHourAgo } },
+    });
+    if (recentCount >= RESET_MAX_ATTEMPTS_PER_HOUR) return;
+
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user || user.status !== 'ACTIVE') return;
+
+    const code = Array.from(randomBytes(3))
+      .map((b) => (b % 10).toString())
+      .join('');
+    const codeHash = createHash('sha256').update(code).digest('hex');
+
+    await this.prisma.passwordResetCode.create({
+      data: {
+        email,
+        codeHash,
+        expiresAt: new Date(Date.now() + RESET_CODE_EXPIRY_MINUTES * 60_000),
+      },
+    });
+
+    await this.mail
+      .sendPasswordReset(email, code, RESET_CODE_EXPIRY_MINUTES)
+      .catch(() => {});
+  }
+
+  async confirmPasswordReset(dto: ConfirmPasswordResetDto): Promise<void> {
+    const email = dto.email.toLowerCase();
+    const codeHash = createHash('sha256').update(dto.code).digest('hex');
+
+    const record = await this.prisma.passwordResetCode.findFirst({
+      where: { email, used: false, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const generic = new UnauthorizedException('Code invalide ou expiré.');
+    if (!record) throw generic;
+
+    const a = Buffer.from(record.codeHash, 'hex');
+    const b = Buffer.from(codeHash, 'hex');
+    if (a.length !== b.length || !timingSafeEqual(a, b)) throw generic;
+
+    const passwordHash = await argon2.hash(dto.newPassword, ARGON);
+
+    await this.prisma.$transaction([
+      this.prisma.passwordResetCode.update({
+        where: { id: record.id },
+        data: { used: true },
+      }),
+      this.prisma.user.update({
+        where: { email },
+        data: { passwordHash, hasPassword: true },
+      }),
+      this.prisma.refreshToken.updateMany({
+        where: { user: { email }, revoked: false },
+        data: { revoked: true },
+      }),
+    ]);
   }
 
   async revokeAllSessions(userId: string): Promise<{ revoked: true }> {
