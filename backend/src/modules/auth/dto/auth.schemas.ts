@@ -66,6 +66,22 @@ export const setPasswordSchema = z
   .strict();
 export type SetPasswordDto = z.infer<typeof setPasswordSchema>;
 
+export const requestPasswordResetSchema = z
+  .object({
+    email: z.string().email().max(160),
+  })
+  .strict();
+export type RequestPasswordResetDto = z.infer<typeof requestPasswordResetSchema>;
+
+export const confirmPasswordResetSchema = z
+  .object({
+    email: z.string().email().max(160),
+    code: z.string().length(6),
+    newPassword: z.string().min(10).max(128),
+  })
+  .strict();
+export type ConfirmPasswordResetDto = z.infer<typeof confirmPasswordResetSchema>;
+
 export const googleOAuthSchema = z
   .object({
     idToken: z.string().min(20).max(4000),
