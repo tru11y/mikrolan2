@@ -393,7 +393,7 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user || user.status !== 'ACTIVE') return;
 
-    const code = Array.from(randomBytes(3))
+    const code = Array.from(randomBytes(6))
       .map((b) => (b % 10).toString())
       .join('');
     const codeHash = createHash('sha256').update(code).digest('hex');
