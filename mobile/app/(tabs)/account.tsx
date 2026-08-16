@@ -370,6 +370,13 @@ export default function AccountScreen() {
           </>
         ) : null}
 
+        <ActionRow
+          title="Support / SAV"
+          subtitle="Créer un ticket ou suivre une demande"
+          onPress={() => router.push('/support')}
+        />
+        <Divider />
+
         {/* L'écran vérifie le rôle de son côté ; on ne l'affiche pas ici pour
             ne pas exposer l'existence de l'administration aux clients. */}
         {me?.user.role === 'SUPER_ADMIN' ? (

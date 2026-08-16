@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -6,8 +7,10 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Req,
 } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { PaymentMethod, UserRole } from '@prisma/client';
+import type { FastifyRequest } from 'fastify';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AlwaysAllowed } from '../../common/decorators/always-allowed.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -56,6 +59,50 @@ export class SubscriptionsController {
       dto.note,
       dto.tierKey,
       dto.billingPeriod,
+    );
+  }
+
+  @Get('payment-info')
+  paymentInfo() {
+    return this.subs.getPaymentInfo();
+  }
+
+  @Post('upload-proof')
+  @Roles(UserRole.OWNER)
+  @HttpCode(200)
+  async uploadProof(
+    @CurrentUser() user: TenantContext,
+    @Req() req: FastifyRequest,
+  ) {
+    const data = await req.file();
+    if (!data) throw new BadRequestException('Image requise.');
+    if (!['image/jpeg', 'image/png'].includes(data.mimetype)) {
+      throw new BadRequestException('Seuls JPEG et PNG sont acceptés.');
+    }
+
+    const fields = data.fields as Record<string, { value?: string }>;
+    const invoiceId = fields['invoiceId']?.value;
+    const method = fields['method']?.value;
+    const note = fields['note']?.value;
+
+    if (!invoiceId) throw new BadRequestException('invoiceId requis.');
+    if (!method || !['WAVE', 'ORANGE_MONEY'].includes(method)) {
+      throw new BadRequestException('method doit être WAVE ou ORANGE_MONEY.');
+    }
+
+    const buffer = await data.toBuffer();
+    const file = {
+      buffer,
+      originalname: data.filename,
+      mimetype: data.mimetype,
+    };
+
+    return this.subs.uploadProof(
+      user.tenantId,
+      invoiceId,
+      method as PaymentMethod,
+      file as any,
+      note,
     );
   }
 

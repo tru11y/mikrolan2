@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import {
   AuditAction,
   BillingPeriod,
   ManagementMode,
   NotificationType,
+  PaymentMethod,
   PaymentStatus,
   Prisma,
   RemotePeerStatus,
@@ -11,6 +12,8 @@ import {
   SubscriptionStatus,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
+import { writeFile, mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -339,6 +342,61 @@ export class SubscriptionsService {
     });
 
     return this.getForTenant(tenantId);
+  }
+
+  async getPaymentInfo() {
+    const rows = await this.prisma.platformConfig.findMany({
+      where: { key: { in: ['wave_number', 'om_number', 'payment_instructions'] } },
+    });
+    const map: Record<string, string> = {};
+    for (const r of rows) map[r.key] = r.value;
+    return {
+      wave: map['wave_number'] ?? null,
+      orangeMoney: map['om_number'] ?? null,
+      instructions: map['payment_instructions'] ?? null,
+    };
+  }
+
+  async uploadProof(
+    tenantId: string,
+    invoiceId: string,
+    method: PaymentMethod,
+    file: { buffer: Buffer; originalname: string; mimetype: string },
+    note?: string,
+  ) {
+    const invoice = await this.prisma.invoice.findFirst({
+      where: { id: invoiceId, tenantId },
+    });
+    if (!invoice) throw new BadRequestException('Facture introuvable.');
+
+    const dir = join(process.cwd(), 'uploads', 'proofs');
+    await mkdir(dir, { recursive: true });
+    const ext = file.originalname.split('.').pop() ?? 'jpg';
+    const filename = `${invoiceId}-${Date.now()}.${ext}`;
+    await writeFile(join(dir, filename), file.buffer);
+
+    const proof = await this.prisma.paymentProof.create({
+      data: {
+        invoiceId,
+        method,
+        imageUrl: `/uploads/proofs/${filename}`,
+        note: note ?? null,
+      },
+    });
+
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { name: true },
+    });
+
+    this.events.publishPlatform({
+      type: NotificationType.PAYMENT_PROOF_RECEIVED,
+      title: 'Preuve de paiement reçue',
+      body: `${tenant?.name ?? 'Un client'} a envoyé une preuve de paiement (${method}).`,
+      data: { tenantId, invoiceId, proofId: proof.id },
+    });
+
+    return { proof, message: 'Preuve envoyée. L\'administrateur validera votre paiement.' };
   }
 
   // Append-only, never throws (audit must not break the operation).

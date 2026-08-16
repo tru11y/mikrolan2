@@ -42,13 +42,15 @@ import {
 import { AppHeader } from '@/src/components/AppHeader';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 
-type Tab = 'apercu' | 'demandes' | 'comptes' | 'formules';
+type Tab = 'apercu' | 'demandes' | 'comptes' | 'formules' | 'tickets' | 'config';
 
-const TABS: { key: Tab; label: string; icon: 'speedometer-outline' | 'mail-unread-outline' | 'people-outline' | 'pricetags-outline' }[] = [
+const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: 'apercu', label: 'Aperçu', icon: 'speedometer-outline' },
   { key: 'demandes', label: 'Demandes', icon: 'mail-unread-outline' },
   { key: 'comptes', label: 'Comptes', icon: 'people-outline' },
+  { key: 'tickets', label: 'SAV', icon: 'chatbubbles-outline' },
   { key: 'formules', label: 'Formules', icon: 'pricetags-outline' },
+  { key: 'config', label: 'Config', icon: 'settings-outline' },
 ];
 
 function shortDate(iso: string | null): string {
@@ -351,8 +353,10 @@ function TenantRow({
   onToggle: () => void;
   busy: boolean;
 }) {
+  const router = useRouter();
   const suspended = tenant.status === 'SUSPENDED';
   return (
+    <Press onPress={() => router.push({ pathname: '/admin-tenant', params: { id: tenant.id } })}>
     <Card>
       <Row style={{ alignItems: 'flex-start' }}>
         <View style={{ flex: 1, paddingRight: space.md }}>
@@ -387,6 +391,7 @@ function TenantRow({
         loading={busy}
       />
     </Card>
+    </Press>
   );
 }
 
@@ -766,6 +771,116 @@ function TiersTab() {
  * ci-dessous ne fait qu'éviter d'afficher un écran d'erreurs à quelqu'un qui
  * arriverait ici par un lien direct.
  */
+
+function TicketsTab() {
+  const toast = useToast();
+  const ticketsQuery = useQuery({
+    queryKey: ['admin-tickets'],
+    queryFn: () => api.admin.listTickets(),
+    placeholderData: keepPreviousData,
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED' }) =>
+      api.admin.setTicketStatus(id, status),
+    onSuccess: () => {
+      ticketsQuery.refetch();
+      toast.success('Statut mis à jour.');
+    },
+    onError: (e) => toast.error(describeError(e).message),
+  });
+
+  if (ticketsQuery.isLoading) return <SkeletonCard />;
+  if (ticketsQuery.isError) return <ErrorState message={describeError(ticketsQuery.error).message} onRetry={() => ticketsQuery.refetch()} retrying={ticketsQuery.isFetching} />;
+
+  const tickets = ticketsQuery.data?.items ?? [];
+
+  if (!tickets.length) return <Empty icon="chatbubbles-outline" text="Aucun ticket SAV." />;
+
+  return (
+    <View style={{ gap: space.md }}>
+      <SectionTitle>Tickets SAV</SectionTitle>
+      {tickets.map((t: any) => (
+        <Card key={t.id}>
+          <Row style={{ justifyContent: 'space-between', marginBottom: 6 }}>
+            <Text numberOfLines={1} style={{ color: theme.text, fontWeight: '700', fontSize: type.body, flex: 1, marginRight: space.sm }}>
+              {t.subject}
+            </Text>
+            <Badge label={t.status} tone={t.status === 'OPEN' ? 'primary' : t.status === 'RESOLVED' ? 'success' : 'muted'} />
+          </Row>
+          <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
+            {t.tenantName} — {shortDate(t.createdAt)} — {t._count?.messages ?? 0} msg
+          </Text>
+          <Row style={{ gap: space.sm, marginTop: space.sm, flexWrap: 'wrap' }}>
+            {['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'].filter((s) => s !== t.status).map((s) => (
+              <Press
+                key={s}
+                onPress={() => statusMutation.mutate({ id: t.id, status: s as any })}
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  borderRadius: radius.pill,
+                  backgroundColor: theme.surfaceAlt,
+                }}
+              >
+                <Text style={{ color: theme.textMuted, fontSize: 10, fontWeight: '600' }}>{s}</Text>
+              </Press>
+            ))}
+          </Row>
+        </Card>
+      ))}
+    </View>
+  );
+}
+
+function ConfigTab() {
+  const toast = useToast();
+  const qc = useQueryClient();
+  const configQuery = useQuery({
+    queryKey: ['admin-config'],
+    queryFn: () => api.admin.getConfig(),
+  });
+
+  const [waveNumber, setWaveNumber] = useState('');
+  const [omNumber, setOmNumber] = useState('');
+  const [instructions, setInstructions] = useState('');
+  const [loaded, setLoaded] = useState(false);
+
+  if (configQuery.data && !loaded) {
+    setWaveNumber(configQuery.data['wave_number'] ?? '');
+    setOmNumber(configQuery.data['om_number'] ?? '');
+    setInstructions(configQuery.data['payment_instructions'] ?? '');
+    setLoaded(true);
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      api.admin.updateConfig({
+        wave_number: waveNumber,
+        om_number: omNumber,
+        payment_instructions: instructions,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-config'] });
+      toast.success('Configuration sauvegardée.');
+    },
+    onError: (e) => toast.error(describeError(e).message),
+  });
+
+  if (configQuery.isLoading) return <SkeletonCard />;
+  if (configQuery.isError) return <ErrorState message={describeError(configQuery.error).message} onRetry={() => configQuery.refetch()} retrying={configQuery.isFetching} />;
+
+  return (
+    <View style={{ gap: space.lg }}>
+      <SectionTitle>Numéros de paiement</SectionTitle>
+      <Field label="Numéro Wave" value={waveNumber} onChangeText={setWaveNumber} placeholder="Ex: 77 123 45 67" />
+      <Field label="Numéro Orange Money" value={omNumber} onChangeText={setOmNumber} placeholder="Ex: 78 987 65 43" />
+      <Field label="Instructions de paiement" value={instructions} onChangeText={setInstructions} placeholder="Texte affiché au client lors du paiement" multiline />
+      <Button title="Sauvegarder" variant="primary" onPress={() => saveMutation.mutate()} loading={saveMutation.isPending} />
+    </View>
+  );
+}
+
 export default function AdminScreen() {
   const navHeight = useBottomNavHeight();
   const router = useRouter();
@@ -880,7 +995,9 @@ export default function AdminScreen() {
         {tab === 'apercu' ? <OverviewTab /> : null}
         {tab === 'demandes' ? <RequestsTab /> : null}
         {tab === 'comptes' ? <AccountsTab /> : null}
+        {tab === 'tickets' ? <TicketsTab /> : null}
         {tab === 'formules' ? <TiersTab /> : null}
+        {tab === 'config' ? <ConfigTab /> : null}
       </ScrollView>
       <BottomNav active="account" />
     </View>
