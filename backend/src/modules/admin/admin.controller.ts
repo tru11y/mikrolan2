@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  UseInterceptors,
 } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import { AlwaysAllowed } from '../../common/decorators/always-allowed.decorator';
@@ -23,6 +24,7 @@ import {
   type CreateTierDto,
   type UpdateTierDto,
 } from '../subscriptions/dto/tier.schemas';
+import { AdminBypassInterceptor } from '../../common/interceptors/admin-bypass.interceptor';
 import { AdminService } from './admin.service';
 import {
   listAuditQuerySchema,
@@ -50,6 +52,7 @@ import {
 @Controller('admin')
 @Roles(UserRole.SUPER_ADMIN)
 @AlwaysAllowed()
+@UseInterceptors(AdminBypassInterceptor)
 export class AdminController {
   constructor(
     private readonly admin: AdminService,
