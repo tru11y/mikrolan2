@@ -27,18 +27,32 @@ import {
 import { AdminBypassInterceptor } from '../../common/interceptors/admin-bypass.interceptor';
 import { AdminService } from './admin.service';
 import {
+  adminTicketMessageSchema,
   listAuditQuerySchema,
   listInvoicesQuerySchema,
   listTenantsQuerySchema,
+  listTenantRoutersQuerySchema,
+  listTicketsQuerySchema,
   listUsersQuerySchema,
+  rejectInvoiceSchema,
   setTenantStatusSchema,
+  setTicketStatusSchema,
   setUserStatusSchema,
+  updateConfigSchema,
+  validateInvoiceSchema,
+  type AdminTicketMessageDto,
   type ListAuditQueryDto,
   type ListInvoicesQueryDto,
   type ListTenantsQueryDto,
+  type ListTenantRoutersQueryDto,
+  type ListTicketsQueryDto,
   type ListUsersQueryDto,
+  type RejectInvoiceDto,
   type SetTenantStatusDto,
+  type SetTicketStatusDto,
   type SetUserStatusDto,
+  type UpdateConfigDto,
+  type ValidateInvoiceDto,
 } from './dto/admin.schemas';
 
 /**
@@ -154,5 +168,90 @@ export class AdminController {
   @HttpCode(200)
   archiveTier(@Param('id', ParseUUIDPipe) id: string) {
     return this.tiers.archive(id);
+  }
+
+  // ── Routeurs d'un tenant ──────────────────────────────
+
+  @Get('tenants/:id/routers')
+  listTenantRouters(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query(new ZodValidationPipe(listTenantRoutersQuerySchema)) query: ListTenantRoutersQueryDto,
+  ) {
+    return this.admin.listTenantRouters(id, query);
+  }
+
+  // ── Validation / rejet de facture ─────────────────────
+
+  @Get('invoices/:id/proofs')
+  getInvoiceProofs(@Param('id', ParseUUIDPipe) id: string) {
+    return this.admin.getInvoiceProofs(id);
+  }
+
+  @Post('invoices/:id/validate')
+  @HttpCode(200)
+  validateInvoice(
+    @CurrentUser() actor: TenantContext,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(validateInvoiceSchema)) dto: ValidateInvoiceDto,
+  ) {
+    return this.admin.validateInvoice(id, actor, dto);
+  }
+
+  @Post('invoices/:id/reject')
+  @HttpCode(200)
+  rejectInvoice(
+    @CurrentUser() actor: TenantContext,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(rejectInvoiceSchema)) dto: RejectInvoiceDto,
+  ) {
+    return this.admin.rejectInvoice(id, actor, dto);
+  }
+
+  // ── Tickets SAV ───────────────────────────────────────
+
+  @Get('tickets')
+  listTickets(
+    @Query(new ZodValidationPipe(listTicketsQuerySchema)) query: ListTicketsQueryDto,
+  ) {
+    return this.admin.listTickets(query);
+  }
+
+  @Get('tickets/:id')
+  getTicket(@Param('id', ParseUUIDPipe) id: string) {
+    return this.admin.getTicket(id);
+  }
+
+  @Post('tickets/:id/messages')
+  @HttpCode(201)
+  replyToTicket(
+    @CurrentUser() actor: TenantContext,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(adminTicketMessageSchema)) dto: AdminTicketMessageDto,
+  ) {
+    return this.admin.replyToTicket(id, actor.userId, dto.body);
+  }
+
+  @Patch('tickets/:id/status')
+  @HttpCode(200)
+  setTicketStatus(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(setTicketStatusSchema)) dto: SetTicketStatusDto,
+  ) {
+    return this.admin.setTicketStatus(id, dto);
+  }
+
+  // ── Config plateforme ─────────────────────────────────
+
+  @Get('config')
+  getConfig() {
+    return this.admin.getConfig();
+  }
+
+  @Patch('config')
+  @HttpCode(200)
+  updateConfig(
+    @Body(new ZodValidationPipe(updateConfigSchema)) dto: UpdateConfigDto,
+  ) {
+    return this.admin.updateConfig(dto);
   }
 }
