@@ -70,7 +70,14 @@ enum RemotePeerStatus {
 }
 
 enum PaymentProvider {
-  MANUAL // activation abonnement validée manuellement (pas de paiement auto)
+  MANUAL
+  WAVE
+  ORANGE_MONEY
+}
+
+enum PaymentMethod {
+  WAVE
+  ORANGE_MONEY
 }
 
 enum PaymentStatus {
@@ -90,6 +97,8 @@ enum AuditAction {
   SUBSCRIBE
   SUSPEND
   RESTORE
+  ACTIVATE
+  REJECT
 }
 
 // ─── HOTSPOT / VOUCHERS (P7 — boucle vendable) ───────────
@@ -151,8 +160,9 @@ model Tenant {
   voucherBatches VoucherBatch[]
   vouchers       Voucher[]
   sessions       Session[]
-  notifications  Notification[]
-  createdAt      DateTime       @default(now())
+  notifications    Notification[]
+  supportTickets   SupportTicket[]
+  createdAt        DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
   deletedAt      DateTime?
 
@@ -179,6 +189,8 @@ model User {
   pushToken            String? // Expo push token pour les notifications OS
   lastLoginAt          DateTime? // dernière authentification réussie (vue admin)
   refreshTokens        RefreshToken[]
+  supportTickets       SupportTicket[]
+  ticketMessages       TicketMessage[]
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
 
@@ -340,6 +352,7 @@ model Invoice {
   idempotencyKey String            @unique
   status         PaymentStatus     @default(PENDING)
   paidAt         DateTime?
+  proofs         PaymentProof[]
   createdAt      DateTime          @default(now())
 
   @@index([tenantId])
@@ -482,6 +495,9 @@ enum NotificationType {
   UPGRADE_REQUESTED // un client demande PRO (destinée à la plateforme)
   ROUTER_OFFLINE // heartbeat manqué
   ROUTER_ONLINE // routeur de nouveau joignable après une coupure
+  PAYMENT_PROOF_RECEIVED // preuve de paiement soumise (destinée à la plateforme)
+  PAYMENT_REJECTED // paiement refusé par l'admin
+  TICKET_REPLY // réponse sur un ticket SAV
 }
 
 // ─── NOTIFICATION (flux in-app, pas de push OS pour l'instant) ─
@@ -499,4 +515,71 @@ model Notification {
 
   @@index([tenantId, createdAt])
   @@index([tenantId, readAt])
+}
+
+// ─── PAYMENT PROOF (preuve de paiement mobile money) ─────
+model PaymentProof {
+  id        String        @id @default(uuid())
+  invoiceId String
+  invoice   Invoice       @relation(fields: [invoiceId], references: [id])
+  method    PaymentMethod
+  imageUrl  String
+  note      String?
+  createdAt DateTime      @default(now())
+
+  @@index([invoiceId])
+}
+
+// ─── SUPPORT / SAV ───────────────────────────────────────
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model SupportTicket {
+  id        String         @id @default(uuid())
+  tenantId  String
+  tenant    Tenant         @relation(fields: [tenantId], references: [id])
+  userId    String
+  user      User           @relation(fields: [userId], references: [id])
+  subject   String
+  status    TicketStatus   @default(OPEN)
+  priority  TicketPriority @default(MEDIUM)
+  closedAt  DateTime?
+  messages  TicketMessage[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@index([tenantId])
+  @@index([status, createdAt])
+}
+
+model TicketMessage {
+  id        String        @id @default(uuid())
+  ticketId  String
+  ticket    SupportTicket @relation(fields: [ticketId], references: [id])
+  userId    String
+  user      User          @relation(fields: [userId], references: [id])
+  body      String
+  imageUrl  String?
+  isAdmin   Boolean       @default(false)
+  createdAt DateTime      @default(now())
+
+  @@index([ticketId, createdAt])
+}
+
+// ─── CONFIG PLATEFORME ───────────────────────────────────
+model PlatformConfig {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
 }

@@ -3,6 +3,7 @@ import {
   AuditAction,
   PaymentStatus,
   TenantStatus,
+  TicketStatus,
   UserStatus,
 } from '@prisma/client';
 
@@ -63,3 +64,40 @@ export const setUserStatusSchema = z.object({
   reason: z.string().trim().max(280).optional(),
 });
 export type SetUserStatusDto = z.infer<typeof setUserStatusSchema>;
+
+export const listTenantRoutersQuerySchema = z.object({ cursor, limit });
+export type ListTenantRoutersQueryDto = z.infer<typeof listTenantRoutersQuerySchema>;
+
+export const validateInvoiceSchema = z.object({
+  periodDays: z.coerce.number().int().min(1).max(3650).optional(),
+});
+export type ValidateInvoiceDto = z.infer<typeof validateInvoiceSchema>;
+
+export const rejectInvoiceSchema = z.object({
+  reason: z.string().trim().min(1).max(280),
+});
+export type RejectInvoiceDto = z.infer<typeof rejectInvoiceSchema>;
+
+export const updateConfigSchema = z.record(
+  z.string().min(1).max(60),
+  z.string().max(500),
+);
+export type UpdateConfigDto = z.infer<typeof updateConfigSchema>;
+
+export const listTicketsQuerySchema = z.object({
+  status: z.nativeEnum(TicketStatus).optional(),
+  tenantId: z.string().uuid().optional(),
+  cursor,
+  limit,
+});
+export type ListTicketsQueryDto = z.infer<typeof listTicketsQuerySchema>;
+
+export const setTicketStatusSchema = z.object({
+  status: z.nativeEnum(TicketStatus),
+});
+export type SetTicketStatusDto = z.infer<typeof setTicketStatusSchema>;
+
+export const adminTicketMessageSchema = z.object({
+  body: z.string().trim().min(1).max(2000),
+});
+export type AdminTicketMessageDto = z.infer<typeof adminTicketMessageSchema>;
