@@ -2,85 +2,55 @@
 
 ## Project Overview
 
-**MikroLan** is a production-ready backend for onboarding multiple MikroTik routers in parallel, with safe concurrency, idempotent operations, and isolated failure handling.
+**MikroLan** is a commercial multi-tenant SaaS for onboarding and managing MikroTik routers (hotspot/FAI), with manual mobile money billing (Wave/Orange Money), an admin back-office, and RouterOS remote provisioning.
 
-- **Tech Stack:** Python 3.9+, FastAPI, SQLite, asyncio
-- **Architecture:** Single FastAPI instance, lock-free state machine per router, database-as-coordinator
-- **Key Design:** Minimal dependencies (no K8s, Redis, Celery); async I/O; idempotent operations; failure isolation
+- **Backend:** NestJS + Fastify + Prisma + PostgreSQL — `backend/`
+- **Mobile:** Expo / React Native — `mobile/` (includes the SUPER_ADMIN back-office screens, no separate web frontend)
+- **Deploy:** GitHub Actions CI (`.github/workflows/ci.yml`) → SSH deploy to VPS, systemd service `mikrolan-api`
+
+**Scope: `backend/` and `mobile/` only.** The `mikroserver/` submodule is a separate, unrelated fork — never read, explore, or modify it without explicit user permission.
+
+`_legacy/` contains the original Python/FastAPI prototype (main.py, models.py, onboarding.py, routeros_api.py, etc.) and early design docs — superseded by `backend/`, kept for reference only, not deployed anywhere.
 
 ## Repository Structure
 
 ```
 .
-├── ARCHITECTURE.md           # High-level design & DB schema
-├── CONCURRENCY.md            # Detailed async design & proofs
-├── DEPLOYMENT.md             # Docker, systemd, troubleshooting
-├── IMPLEMENTATION_CHECKLIST.md
-├── MOBILE_APP_SPEC_V1.md     # Mobile app integration spec
-├── V1_PRODUCT_VALIDATION.md  # Feature validation
-├── models.py                 # Database models & ORM
-├── routeros_api.py           # Idempotent RouterOS API wrappers
-├── onboarding.py             # Core state machine
-├── main.py                   # FastAPI app (3 endpoints)
-├── requirements.txt          # Dependencies
-├── mikroserver/              # Backend submodule (git@github.com:tru11y/mikroserver.git)
-└── mikrolan-mobile/          # Mobile app submodule (local)
+├── backend/           # NestJS API (source of truth, deployed to VPS)
+├── mobile/             # Expo app (client + SUPER_ADMIN admin screens)
+├── mikroserver/        # unrelated submodule — DO NOT TOUCH without explicit permission
+├── _legacy/            # archived Python/FastAPI prototype + old docs
+├── README.md
+└── .github/workflows/ci.yml
 ```
 
-## Key Files to Understand
+## Backend (`backend/`)
 
-1. **CONCURRENCY.md** ← Start here to understand async design
-2. **ARCHITECTURE.md** ← DB schema, state machine flow
-3. **main.py** → FastAPI endpoints & async handlers
-4. **onboarding.py** → State machine logic
-5. **routeros_api.py** → RouterOS API calls (check-then-create pattern)
+- NestJS modules under `src/modules/`: `auth`, `admin`, `subscriptions`, `remote-access`, `notifications`, `mail`, `health`, etc.
+- Prisma schema: `backend/prisma/schema.prisma` — `Tenant`, `User` (roles incl. `SUPER_ADMIN`), `Subscription`, `SubscriptionTier`, `Invoice`, `PaymentProof`, `PlatformConfig` (key/value app config).
+- Payment flow (manual mobile money, no payment API): client uploads a payment proof (`SubscriptionsService.uploadProof`) → SUPER_ADMIN validates in the admin back-office (`AdminService.validateInvoice`) → atomic transaction activates Invoice/Subscription/Tenant.
+- Global guards: JWT + `RolesGuard` (`@Roles(UserRole.SUPER_ADMIN)` etc.), Zod validation at every controller boundary, global rate limiting (`ThrottlerModule`), Helmet, CORS restricted via `CORS_ORIGINS`.
+- RouterOS credentials stored AES-256-GCM encrypted (`Tenant.credEncrypted`).
+- Tests: `npm test` (unit, `*.spec.ts`), `npm run test:e2e` (testcontainers, `test/jest-e2e.json`) — **CI currently only runs unit tests**, e2e must be run manually until wired into `ci.yml`.
 
-## API Endpoints
+## Mobile (`mobile/`)
 
-- `POST /routers/onboard` → Trigger onboarding (async, returns immediately)
-- `GET /routers/{router_id}/status` → Check progress & logs
-- `POST /routers/{router_id}/retry` → Retry failed onboarding (idempotent)
-
-## Concurrency Model
-
-- **No global locks** — each router updates only its own DB row
-- **asyncio single event loop** — efficient I/O scheduling for 10–50 concurrent routers
-- **All state persisted** — database acts as coordinator; safe to restart
-- **Idempotent operations** — every step uses check-then-create pattern
-
-## State Machine
-
-```
-NEW → API_OK → WG_READY → TUNNEL_UP → LOCKED → DONE
-     (or ERROR at any step; can retry)
-```
-
-See `onboarding.py` for implementation.
-
-## Environment
-
-- **Working Directory:** `c:\Users\PC\OneDrive - Epitech\amy\PROJETS-TERMINES\mikrolan`
-- **GitHub Remote:** `git@github.com:tru11y/mikroserver.git`
-- **User Email:** b2.bamba2@gmail.com
+- Client app + admin back-office (`app/admin.tsx`) in one Expo app, gated by role.
+- Payment screen `app/payment.tsx` reads `GET /subscriptions/payment-info` (Wave/Orange Money numbers configured by SUPER_ADMIN via `PlatformConfig`).
+- Sentry + `ErrorBoundary` per screen; Android keystore committed at `mobile/android/mikrolan-release.keystore`.
+- **Protected native files** (LAN access to MikroTik routers — never touch without explicit consent, see `mobile/CLAUDE.md` for the full list and why): `LanBinderModule.kt`, `MainApplication.kt`, `MainActivity.kt`, `AndroidManifest.xml`, `network_security_config.xml`.
 
 ## Development Notes
 
-- Use `CONCURRENCY.md` as reference for async safety questions
-- All RouterOS operations must be idempotent (check-then-create)
-- Database queries replace Redis/queues — keep it simple
-- Failure handling is per-router; one failure doesn't cascade
+- All RouterOS operations must be idempotent (check-then-create).
+- Failure handling is per-router/per-tenant; one failure doesn't cascade.
+- Read a file before modifying it. Understand existing code before suggesting changes.
 
-## Common Tasks
+## Known Gaps (as of last audit)
 
-- **Add new endpoint** → Update `main.py`, document in ARCHITECTURE.md
-- **Add new state** → Update state machine in `onboarding.py`, migration plan
-- **Debug concurrency** → Check SQLite transaction logs in CONCURRENCY.md
-- **Deployment** → See DEPLOYMENT.md for Docker/systemd setup
-
-## Next Steps for Production
-
-- [ ] Add password encryption (Fernet)
-- [ ] Add API authentication (OAuth2 / API keys)
-- [ ] Switch to PostgreSQL if >100 concurrent routers
-- [ ] Structured logging (JSON, syslog)
-- [ ] Integration tests with real/mock routers
+- [ ] No CGU / privacy policy anywhere in the repo — required before Play Store submission.
+- [ ] CI never runs `test:e2e` — only `/api/auth/*` has e2e coverage; nothing for `/admin/config`, invoice validation, or `/subscriptions/payment-info`.
+- [ ] `AdminService.validateInvoice`/`rejectInvoice` and `SubscriptionsService.uploadProof` have no unit tests despite being the revenue-critical path.
+- [ ] No i18n — all UI strings hardcoded in French.
+- [ ] Postgres backup strategy on the VPS not documented in-repo — verify manually.
+- [ ] `mail.service.ts` silently no-ops (just a `logger.warn`) if `SMTP_HOST` is unset — confirm it's actually configured in prod.
