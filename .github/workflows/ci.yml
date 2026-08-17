@@ -39,6 +39,11 @@ jobs:
         env:
           NODE_ENV: test
 
+      - name: E2E tests
+        run: npx jest --config test/jest-e2e.json --runInBand --ci
+        env:
+          NODE_ENV: test
+
   mobile:
     name: Mobile — Lint / Type-check
     runs-on: ubuntu-latest

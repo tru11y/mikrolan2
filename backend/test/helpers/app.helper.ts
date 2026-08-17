@@ -4,6 +4,7 @@ import {
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import { ThrottlerGuard, ThrottlerStorage } from '@nestjs/throttler';
+import multipart from '@fastify/multipart';
 import { AppModule } from '../../src/app.module';
 import { MailService } from '../../src/modules/mail/mail.service';
 
@@ -46,6 +47,7 @@ export async function createTestApp(): Promise<NestFastifyApplication> {
     new FastifyAdapter(),
   );
   app.setGlobalPrefix('api');
+  await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } });
 
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
