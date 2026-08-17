@@ -9,20 +9,9 @@ import { AppModule } from '../../src/app.module';
 import { MailService } from '../../src/modules/mail/mail.service';
 
 export async function createTestApp(): Promise<NestFastifyApplication> {
-  Object.assign(process.env, {
-    NODE_ENV: 'test',
-    JWT_ACCESS_SECRET: 'test-secret-that-is-at-least-32-chars-long',
-    JWT_ACCESS_TTL: '900',
-    JWT_REFRESH_TTL: '2592000',
-    ROUTER_CRED_KEY: 'a'.repeat(64).replace(/a/g, '0'),
-    CORS_ORIGINS: '',
-    REDIS_HOST: 'localhost',
-    REDIS_PORT: '6380',
-    WG_ENABLED: 'false',
-    SENTRY_DSN: '',
-    SMTP_HOST: '',
-  });
-
+  // Env vars are set by test/setup/env-setup.ts (a Jest setupFiles entry),
+  // which runs before this module — and its AppModule import that validates
+  // env at load time — is even required.
   const moduleRef = await Test.createTestingModule({
     imports: [AppModule],
   })
