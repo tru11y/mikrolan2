@@ -8,11 +8,13 @@ import {
   ParseUUIDPipe,
   Post,
   Req,
+  UseInterceptors,
 } from '@nestjs/common';
 import { PaymentMethod, UserRole } from '@prisma/client';
 import type { FastifyRequest } from 'fastify';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AlwaysAllowed } from '../../common/decorators/always-allowed.decorator';
+import { AdminBypassInterceptor } from '../../common/interceptors/admin-bypass.interceptor';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { TenantContext } from '../../common/context/tenant-context';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
@@ -109,6 +111,7 @@ export class SubscriptionsController {
   // ── Platform admin (manual validation) ──────────────────
   @Post(':tenantId/activate')
   @Roles(UserRole.SUPER_ADMIN)
+  @UseInterceptors(AdminBypassInterceptor)
   @HttpCode(200)
   activate(
     @CurrentUser() actor: TenantContext,
@@ -125,6 +128,7 @@ export class SubscriptionsController {
 
   @Post(':tenantId/deactivate')
   @Roles(UserRole.SUPER_ADMIN)
+  @UseInterceptors(AdminBypassInterceptor)
   @HttpCode(200)
   deactivate(
     @CurrentUser() actor: TenantContext,
