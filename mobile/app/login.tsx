@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   Image,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   ScrollView,
   Text,
@@ -176,6 +177,32 @@ export default function LoginScreen() {
               loading={isBusy}
               disabled={!canSubmit}
             />
+
+            {mode === 'signup' ? (
+              <Text
+                style={{
+                  color: theme.textMuted,
+                  fontSize: type.micro,
+                  textAlign: 'center',
+                }}
+              >
+                En créant un compte, vous acceptez les{' '}
+                <Text
+                  style={{ textDecorationLine: 'underline' }}
+                  onPress={() => Linking.openURL('https://api.mikrolan.net/legal/terms.html')}
+                >
+                  conditions d'utilisation
+                </Text>{' '}
+                et la{' '}
+                <Text
+                  style={{ textDecorationLine: 'underline' }}
+                  onPress={() => Linking.openURL('https://api.mikrolan.net/legal/privacy.html')}
+                >
+                  politique de confidentialité
+                </Text>
+                .
+              </Text>
+            ) : null}
 
             {GOOGLE_WEB_CLIENT_ID ? (
               <>
