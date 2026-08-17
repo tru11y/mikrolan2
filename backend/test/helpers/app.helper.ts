@@ -10,7 +10,6 @@ import { MailService } from '../../src/modules/mail/mail.service';
 
 export async function createTestApp(): Promise<NestFastifyApplication> {
   Object.assign(process.env, {
-    DATABASE_URL: process.env.__TC_DATABASE_URL__,
     NODE_ENV: 'test',
     JWT_ACCESS_SECRET: 'test-secret-that-is-at-least-32-chars-long',
     JWT_ACCESS_TTL: '900',
