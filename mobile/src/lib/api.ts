@@ -1259,7 +1259,7 @@ export const api = {
       return unwrap(res);
     },
     async updateConfig(entries: Record<string, string>): Promise<void> {
-      await apiClient.patch('/admin/config', { entries });
+      await apiClient.patch('/admin/config', entries);
     },
     async audit(
       params: { tenantId?: string; cursor?: string; limit?: number } = {},
