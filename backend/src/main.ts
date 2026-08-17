@@ -28,6 +28,11 @@ async function bootstrap(): Promise<void> {
     prefix: '/uploads/',
     decorateReply: false,
   });
+  await app.register(fastifyStatic, {
+    root: join(process.cwd(), 'public', 'legal'),
+    prefix: '/legal/',
+    decorateReply: false,
+  });
 
   app.setGlobalPrefix('api');
 
