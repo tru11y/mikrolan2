@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Politique de confidentialité — MikroLan</title>
+<style>
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1.25rem; line-height: 1.6; color: #1a1a1a; }
+  h1 { font-size: 1.5rem; } h2 { font-size: 1.15rem; margin-top: 2rem; }
+  code { background: #f2f2f2; padding: 0.1rem 0.3rem; border-radius: 3px; }
+  footer { margin-top: 3rem; font-size: 0.85rem; color: #666; }
+</style>
+</head>
+<body>
+<h1>Politique de confidentialité — MikroLan</h1>
+<p><em>Dernière mise à jour : 17 août 2026</em></p>
+
+<p>MikroLan (exploité par Balley, Côte d'Ivoire) est une application de gestion de routeurs MikroTik pour opérateurs de hotspot/FAI. Cette page explique quelles données sont collectées, pourquoi, et comment elles sont protégées.</p>
+
+<h2>1. Données collectées</h2>
+<ul>
+  <li><strong>Compte</strong> : nom de l'entreprise, adresse e-mail, mot de passe (stocké haché, jamais en clair).</li>
+  <li><strong>Paiement</strong> : preuve de paiement mobile money (capture d'écran/photo) envoyée volontairement par l'utilisateur pour activer son abonnement. Aucune donnée bancaire ou de carte n'est collectée — le paiement se fait manuellement vers un numéro Wave/Orange Money affiché dans l'app, validé ensuite par un administrateur.</li>
+  <li><strong>Routeurs</strong> : identifiants de connexion RouterOS de vos routeurs, chiffrés (AES-256-GCM) avant stockage — jamais en clair, jamais transmis à un tiers.</li>
+  <li><strong>Usage technique</strong> : notifications push (jeton Expo), journaux d'erreurs (Sentry), adresse IP (limitation de débit et sécurité des webhooks).</li>
+</ul>
+
+<h2>2. Pourquoi ces données</h2>
+<p>Strictement pour faire fonctionner le service : authentification, provisioning et supervision de vos routeurs, activation de votre abonnement, support technique, et prévention des abus (rate limiting).</p>
+
+<h2>3. Partage avec des tiers</h2>
+<p>Aucune vente ni partage commercial de vos données. Des sous-traitants techniques sont utilisés uniquement pour faire fonctionner le service :</p>
+<ul>
+  <li><strong>Sentry</strong> — suivi des erreurs applicatives (backend et mobile).</li>
+  <li><strong>Brevo</strong> — envoi des e-mails transactionnels (bienvenue, réinitialisation de mot de passe).</li>
+  <li>Hébergement du backend sur un serveur privé (VPS) dédié à MikroLan.</li>
+</ul>
+
+<h2>4. Conservation</h2>
+<p>Les données sont conservées tant que votre compte est actif. Un compte supprimé est désactivé (soft delete) puis ses données personnelles identifiables sont purgées sur demande à l'adresse ci-dessous.</p>
+
+<h2>5. Vos droits</h2>
+<p>Vous pouvez demander l'accès, la correction ou la suppression de vos données à tout moment en écrivant à <a href="mailto:contact@mikrolan.net">contact@mikrolan.net</a>.</p>
+
+<h2>6. Sécurité</h2>
+<p>Mots de passe hachés (Argon2), identifiants routeur chiffrés (AES-256-GCM), connexions HTTPS, limitation de débit sur les routes publiques, en-têtes de sécurité HTTP (Helmet), CORS restreint.</p>
+
+<h2>7. Contact</h2>
+<p>Pour toute question sur cette politique : <a href="mailto:contact@mikrolan.net">contact@mikrolan.net</a>.</p>
+
+<footer>MikroLan — Balley — Côte d'Ivoire</footer>
+</body>
+</html>
