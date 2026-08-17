@@ -41,6 +41,42 @@ export default function TicketsScreen() {
       >
       <Subtitle>Choisissez un routeur pour générer des codes WiFi</Subtitle>
 
+      <Press
+        accessibilityRole="button"
+        accessibilityLabel="Vérifier un ticket"
+        onPress={() => router.push('/verify-ticket')}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: space.md,
+          backgroundColor: theme.surface,
+          borderRadius: radius.md,
+          borderWidth: 1.5,
+          borderColor: theme.primary,
+          padding: space.md,
+        }}
+      >
+        <View
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 12,
+            backgroundColor: theme.primary + '22',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Ionicons name="shield-checkmark-outline" size={20} color={theme.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ color: theme.text, fontWeight: '700' }}>Vérifier un ticket</Text>
+          <Text style={{ color: theme.textMuted, fontSize: 12 }}>
+            Contrôler un code présenté par un client avant de l&apos;accepter
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
+      </Press>
+
       {routers.isLoading ? (
         <View style={{ gap: space.sm }}>
           <Skeleton height={64} radius={radius.md} />
