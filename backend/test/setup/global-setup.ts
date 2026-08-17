@@ -1,7 +1,9 @@
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { execSync } from 'child_process';
+import * as fs from 'fs';
 import * as net from 'net';
 import * as path from 'path';
+import { ENV_FILE } from './env-file';
 
 function waitForPort(
   host: string,
@@ -65,4 +67,10 @@ export default async function globalSetup() {
 
   process.env.__TC_DATABASE_URL__ = databaseUrl;
   (globalThis as any).__TC_CONTAINER__ = container;
+
+  // globalSetup runs in a process separate from each test file's own
+  // environment, so process.env mutations above are invisible to the tests
+  // themselves — write the URL to disk and re-read it from `setupFiles`
+  // (which does run inside each test file's environment) instead.
+  fs.writeFileSync(ENV_FILE, JSON.stringify({ DATABASE_URL: databaseUrl }));
 }
