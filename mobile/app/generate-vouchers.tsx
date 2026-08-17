@@ -187,6 +187,42 @@ export default function GenerateVouchersScreen() {
           </Press>
         </View>
 
+        <Press
+          accessibilityRole="button"
+          accessibilityLabel="Vérifier un ticket"
+          onPress={() => router.push({ pathname: '/verify-ticket', params: { routerId } })}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 12,
+            backgroundColor: theme.surface,
+            borderRadius: 12,
+            borderWidth: 1.5,
+            borderColor: theme.primary,
+            padding: 14,
+          }}
+        >
+          <View
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 12,
+              backgroundColor: theme.primary + '22',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Ionicons name="shield-checkmark-outline" size={20} color={theme.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: theme.text, fontWeight: '700' }}>Vérifier un ticket</Text>
+            <Text style={{ color: theme.textMuted, fontSize: 12 }}>
+              Contrôler un code présenté par un client avant de l&apos;accepter
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
+        </Press>
+
         <View style={{ gap: 16 }}>
           {/* Serveur Hotspot (routeur déjà sélectionné) */}
           <View>
