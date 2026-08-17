@@ -83,7 +83,7 @@ jobs:
             cd backend
             sudo npm ci --legacy-peer-deps
             sudo npx prisma generate
-            sudo npx prisma migrate deploy || true
+            sudo npx prisma migrate deploy
             sudo npm run build
             sudo chown -R mikrolan:mikrolan $REPO
             sudo systemctl restart mikrolan-api
