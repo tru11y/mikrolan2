@@ -5,9 +5,13 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { Prisma, PrismaClient, UserRole } from '@prisma/client';
-import { getTenantContext, isAdminBypass } from '../common/context/tenant-context';
+import { getTenantContext, isAdminBypass, type TenantContext } from '../common/context/tenant-context';
 
 // Models carrying a tenantId column — subject to row-level isolation.
+// TicketMessage is intentionally excluded: it has no tenantId column (only a
+// ticketId relation to SupportTicket), so it cannot be scoped by this
+// middleware without a schema migration. Its isolation relies on the
+// service layer verifying ticket ownership before writing (support.service.ts).
 const TENANT_MODELS = new Set<Prisma.ModelName>([
   'User',
   'Router',
@@ -20,7 +24,65 @@ const TENANT_MODELS = new Set<Prisma.ModelName>([
   'Voucher',
   'Session',
   'Notification',
+  'SupportTicket',
 ]);
+
+/**
+ * Pure, side-effect-free tenant scoping logic — extracted from the Prisma
+ * middleware so it can be unit-tested directly against real
+ * Prisma.MiddlewareParams shapes, without spinning up a database connection.
+ */
+export function applyTenantScope(
+  params: Prisma.MiddlewareParams,
+  ctx: TenantContext,
+): Prisma.MiddlewareParams {
+  const tenantId = ctx.tenantId;
+
+  switch (params.action) {
+    case 'create':
+      params.args.data = { ...params.args.data, tenantId };
+      break;
+    case 'createMany': {
+      const data = params.args.data;
+      params.args.data = Array.isArray(data)
+        ? data.map((d: Record<string, unknown>) => ({ ...d, tenantId }))
+        : { ...data, tenantId };
+      break;
+    }
+    case 'findUnique':
+    case 'findUniqueOrThrow':
+      // Unique-by-id lookups can't carry extra filters → widen to findFirst.
+      params.action =
+        params.action === 'findUnique' ? 'findFirst' : 'findFirstOrThrow';
+      params.args.where = { ...params.args.where, tenantId };
+      break;
+    case 'findFirst':
+    case 'findFirstOrThrow':
+    case 'findMany':
+    case 'count':
+    case 'aggregate':
+    case 'groupBy':
+    case 'updateMany':
+    case 'deleteMany':
+      params.args = params.args ?? {};
+      params.args.where = { ...params.args.where, tenantId };
+      break;
+    case 'update':
+    case 'delete':
+      // update/delete require a unique where → scope via updateMany/deleteMany.
+      params.action = params.action === 'update' ? 'updateMany' : 'deleteMany';
+      params.args.where = { ...params.args.where, tenantId };
+      break;
+    case 'upsert':
+      params.args.where = { ...params.args.where, tenantId };
+      params.args.create = { ...params.args.create, tenantId };
+      break;
+    default:
+      break;
+  }
+
+  return params;
+}
 
 @Injectable()
 export class PrismaService
@@ -60,52 +122,6 @@ export class PrismaService
     if (!ctx) return next(params);
     if (ctx.role === UserRole.SUPER_ADMIN && isAdminBypass()) return next(params);
 
-    const tenantId = ctx.tenantId;
-
-    switch (params.action) {
-      case 'create':
-        params.args.data = { ...params.args.data, tenantId };
-        break;
-      case 'createMany': {
-        const data = params.args.data;
-        params.args.data = Array.isArray(data)
-          ? data.map((d: Record<string, unknown>) => ({ ...d, tenantId }))
-          : { ...data, tenantId };
-        break;
-      }
-      case 'findUnique':
-      case 'findUniqueOrThrow':
-        // Unique-by-id lookups can't carry extra filters → widen to findFirst.
-        params.action =
-          params.action === 'findUnique' ? 'findFirst' : 'findFirstOrThrow';
-        params.args.where = { ...params.args.where, tenantId };
-        break;
-      case 'findFirst':
-      case 'findFirstOrThrow':
-      case 'findMany':
-      case 'count':
-      case 'aggregate':
-      case 'groupBy':
-      case 'updateMany':
-      case 'deleteMany':
-        params.args = params.args ?? {};
-        params.args.where = { ...params.args.where, tenantId };
-        break;
-      case 'update':
-      case 'delete':
-        // update/delete require a unique where → scope via updateMany/deleteMany.
-        params.action =
-          params.action === 'update' ? 'updateMany' : 'deleteMany';
-        params.args.where = { ...params.args.where, tenantId };
-        break;
-      case 'upsert':
-        params.args.where = { ...params.args.where, tenantId };
-        params.args.create = { ...params.args.create, tenantId };
-        break;
-      default:
-        break;
-    }
-
-    return next(params);
+    return next(applyTenantScope(params, ctx));
   }
 }
