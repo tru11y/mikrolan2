@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+  StreamableFile,
+} from '@nestjs/common';
 import {
   AuditAction,
   BillingPeriod,
@@ -10,10 +15,12 @@ import {
   RemotePeerStatus,
   SubscriptionPlan,
   SubscriptionStatus,
+  UserRole,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
-import { writeFile, mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { writeFile, mkdir, readFile } from 'node:fs/promises';
+import { basename, join, resolve, sep } from 'node:path';
+import type { TenantContext } from '../../common/context/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -369,17 +376,31 @@ export class SubscriptionsService {
     });
     if (!invoice) throw new BadRequestException('Facture introuvable.');
 
-    const dir = join(process.cwd(), 'uploads', 'proofs');
+    // FIND-005: the stored extension is derived exclusively from the
+    // server-validated mimetype — never from the client-supplied filename,
+    // which cannot be trusted (originalname/mimetype are independently
+    // controlled by the caller and were previously never cross-checked).
+    const ext = extensionForMimetype(file.mimetype);
+    if (!ext) throw new BadRequestException('Type de fichier non supporté.');
+    if (!hasValidImageSignature(file.buffer, file.mimetype)) {
+      throw new BadRequestException('Fichier image invalide.');
+    }
+
+    const dir = join(process.cwd(), PROOFS_PRIVATE_DIR);
     await mkdir(dir, { recursive: true });
-    const ext = file.originalname.split('.').pop() ?? 'jpg';
-    const filename = `${invoiceId}-${Date.now()}.${ext}`;
+    // Server-generated name — the client's original filename is never used
+    // to build a filesystem path (FIND-005 / path traversal hardening).
+    const filename = `${randomUUID()}.${ext}`;
     await writeFile(join(dir, filename), file.buffer);
 
     const proof = await this.prisma.paymentProof.create({
       data: {
         invoiceId,
         method,
-        imageUrl: `/uploads/proofs/${filename}`,
+        // New uploads are tagged with the private-storage prefix so the
+        // resolver (resolveProofFile) can tell them apart from legacy
+        // records that still point at the old, formerly-public directory.
+        imageUrl: `${PROOFS_PRIVATE_URL_PREFIX}/${filename}`,
         note: note ?? null,
       },
     });
@@ -399,6 +420,44 @@ export class SubscriptionsService {
     return { proof, message: 'Preuve envoyée. L\'administrateur validera votre paiement.' };
   }
 
+  /**
+   * FIND-004 fix: the only way to retrieve a payment proof's file content.
+   * `PaymentProof` has no tenantId column (only a relation through
+   * `Invoice`), so it is not — and cannot be — auto-scoped by the Prisma
+   * tenant middleware (same structural constraint as `TicketMessage` for
+   * FIND-003). Authorization is therefore explicit here: SUPER_ADMIN may
+   * read any proof (validation workflow); any other role may only read a
+   * proof belonging to an invoice of their own tenant. A non-owning tenant
+   * gets the same 404 as a nonexistent proof, never a distinguishing 403 —
+   * this avoids confirming to an attacker that a given proofId exists.
+   */
+  async getProofFile(actor: TenantContext, proofId: string): Promise<StreamableFile> {
+    const proof = await this.prisma.paymentProof.findUnique({
+      where: { id: proofId },
+      include: { invoice: { select: { tenantId: true } } },
+    });
+    if (!proof) throw new NotFoundException('Preuve introuvable.');
+
+    const isOwner = proof.invoice.tenantId === actor.tenantId;
+    if (actor.role !== UserRole.SUPER_ADMIN && !isOwner) {
+      throw new NotFoundException('Preuve introuvable.');
+    }
+
+    const { path, ext } = resolveProofFile(proof.imageUrl);
+    let buffer: Buffer;
+    try {
+      buffer = await readFile(path);
+    } catch {
+      throw new NotFoundException('Fichier de preuve introuvable.');
+    }
+
+    const stream = new StreamableFile(buffer, {
+      type: MIME_FOR_EXTENSION[ext],
+      disposition: `inline; filename="proof.${ext}"`,
+    });
+    return stream;
+  }
+
   // Append-only, never throws (audit must not break the operation).
   private async audit(
     tenantId: string,
@@ -416,4 +475,100 @@ export class SubscriptionsService {
       // swallow
     }
   }
+}
+
+// ─── Payment proof storage/validation (FIND-004 / FIND-005) ────────────────
+//
+// These are free functions (not class members) so they can be unit-tested
+// directly without instantiating SubscriptionsService or mocking Prisma.
+
+/** New uploads are written here — never registered as a static/public route. */
+const PROOFS_PRIVATE_DIR = join('private-uploads', 'proofs');
+/** Prefix stored in `imageUrl` for new uploads, to distinguish them from the
+ *  legacy `/uploads/proofs/...` records at resolution time. */
+const PROOFS_PRIVATE_URL_PREFIX = '/private-uploads/proofs';
+/** Where the formerly-public directory used to live — old records still
+ *  physically live here and are NOT moved by this fix. */
+const PROOFS_LEGACY_DIR = join('uploads', 'proofs');
+const PROOFS_LEGACY_URL_PREFIX = '/uploads/proofs';
+
+/** Server-side whitelist: the only extensions this system will ever write
+ *  or serve for a payment proof. Never derived from client input. */
+const MIME_FOR_EXTENSION: Record<string, string> = {
+  jpg: 'image/jpeg',
+  png: 'image/png',
+};
+const EXTENSION_FOR_MIME: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+};
+
+/** Returns the server-controlled extension for an accepted mimetype, or
+ *  `undefined` if the mimetype is not in the whitelist. Never touches
+ *  `originalname` — that value is not trusted anywhere in this module. */
+export function extensionForMimetype(mimetype: string): string | undefined {
+  return EXTENSION_FOR_MIME[mimetype];
+}
+
+/**
+ * Minimal, deterministic magic-byte check — deliberately not a general
+ * parser. Confirms the buffer actually starts with the signature expected
+ * for the *claimed* mimetype, so a client cannot pair `Content-Type:
+ * image/png` with an HTML/script payload and have it accepted (FIND-005
+ * Scenario D — MIME spoofing).
+ */
+export function hasValidImageSignature(buffer: Buffer, mimetype: string): boolean {
+  if (buffer.length < 8) return false;
+  if (mimetype === 'image/jpeg') {
+    return buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  }
+  if (mimetype === 'image/png') {
+    const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+    return PNG_SIGNATURE.every((byte, i) => buffer[i] === byte);
+  }
+  return false;
+}
+
+const FILENAME_PATTERN = /^[A-Za-z0-9._-]+\.(jpg|jpeg|png)$/i;
+
+/**
+ * Resolves a `PaymentProof.imageUrl` DB value to an absolute, contained
+ * filesystem path — for both new (`/private-uploads/proofs/...`) and
+ * legacy (`/uploads/proofs/...`) records.
+ *
+ * Security properties, in order:
+ *  1. `basename()` discards every directory component of the stored value
+ *     — a `..`, an absolute path, or an unexpected separator can only ever
+ *     survive as (invalid) characters in the final segment, never as an
+ *     actual path traversal, regardless of what the DB value contains.
+ *  2. The resulting basename is checked against a strict whitelist regex
+ *     (alphanumeric/`.`/`_`/`-` only, one of the three accepted image
+ *     extensions) — rejects anything else outright.
+ *  3. The final joined path is re-verified to be contained within the
+ *     selected root directory (defense in depth; steps 1-2 already make
+ *     escaping the root structurally impossible, but this makes the
+ *     invariant explicit and independently testable).
+ *
+ * Throws NotFoundException — not a lower-level error — so a malformed or
+ * tampered `imageUrl` never leaks filesystem information to the caller.
+ */
+export function resolveProofFile(imageUrl: string): { path: string; ext: string } {
+  const isLegacy =
+    imageUrl.startsWith(PROOFS_LEGACY_URL_PREFIX + '/') ||
+    imageUrl.startsWith(PROOFS_LEGACY_URL_PREFIX.slice(1) + '/');
+  const root = resolve(process.cwd(), isLegacy ? PROOFS_LEGACY_DIR : PROOFS_PRIVATE_DIR);
+
+  const safeName = basename(imageUrl);
+  if (!FILENAME_PATTERN.test(safeName)) {
+    throw new NotFoundException('Preuve introuvable.');
+  }
+
+  const fullPath = resolve(root, safeName);
+  if (fullPath !== join(root, safeName) || !fullPath.startsWith(root + sep)) {
+    throw new NotFoundException('Preuve introuvable.');
+  }
+
+  const ext = safeName.split('.').pop()!.toLowerCase();
+  const normalizedExt = ext === 'jpeg' ? 'jpg' : ext;
+  return { path: fullPath, ext: normalizedExt };
 }
