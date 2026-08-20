@@ -8,3 +8,7 @@ deploy/*.tar.gz
 *.tar.gz
 *.tsbuildinfo
 coverage/
+
+# Payment proofs (real client financial documents) — never committed.
+/uploads/
+/private-uploads/
