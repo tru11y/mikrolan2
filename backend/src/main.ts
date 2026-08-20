@@ -23,11 +23,10 @@ async function bootstrap(): Promise<void> {
 
   await app.register(helmet);
   await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } });
-  await app.register(fastifyStatic, {
-    root: join(process.cwd(), 'uploads'),
-    prefix: '/uploads/',
-    decorateReply: false,
-  });
+  // Payment proofs are intentionally NOT served here (FIND-004): they are
+  // private financial documents, served exclusively through the
+  // authenticated/authorized endpoint in SubscriptionsController, which is
+  // the only code path with tenant-isolation logic for them.
   await app.register(fastifyStatic, {
     root: join(process.cwd(), 'public', 'legal'),
     prefix: '/legal/',
