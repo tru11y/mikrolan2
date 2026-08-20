@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  Header,
   Param,
   ParseUUIDPipe,
   Post,
@@ -16,6 +17,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { AlwaysAllowed } from '../../common/decorators/always-allowed.decorator';
 import { AdminBypassInterceptor } from '../../common/interceptors/admin-bypass.interceptor';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { NoEnvelope } from '../../common/decorators/no-envelope.decorator';
 import { TenantContext } from '../../common/context/tenant-context';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { SubscriptionsService } from './subscriptions.service';
@@ -106,6 +108,28 @@ export class SubscriptionsController {
       file as any,
       note,
     );
+  }
+
+  /**
+   * FIND-004 fix: the only way to retrieve a payment proof's file content.
+   * Replaces the formerly-public static route (`/uploads/proofs/...`,
+   * removed from main.ts). Authorization is enforced inside
+   * SubscriptionsService.getProofFile — SUPER_ADMIN or the owning tenant
+   * only; every other case (anonymous, wrong tenant, unknown id) is a 404,
+   * never a distinguishing 401/403 that would confirm a proof's existence.
+   * Standard JwtAuthGuard (global) already rejects unauthenticated callers
+   * before this handler runs.
+   */
+  @Get('proofs/:proofId')
+  @Roles(UserRole.OWNER, UserRole.SUPER_ADMIN)
+  @NoEnvelope() // StreamableFile must reach Nest's Fastify reply undecorated
+  @Header('X-Content-Type-Options', 'nosniff')
+  @Header('Cache-Control', 'private, no-store')
+  getProof(
+    @CurrentUser() user: TenantContext,
+    @Param('proofId', ParseUUIDPipe) proofId: string,
+  ) {
+    return this.subs.getProofFile(user, proofId);
   }
 
   // ── Platform admin (manual validation) ──────────────────
