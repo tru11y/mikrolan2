@@ -51,7 +51,7 @@ export async function buildTicketsHtml(opts: TicketsPdfOpts): Promise<string> {
         ? await QRCode.toString(ticket.code, {
             type: 'svg',
             margin: 0,
-            width: 120,
+            width: 60,
           })
         : '';
       return `
@@ -83,26 +83,28 @@ export async function buildTicketsHtml(opts: TicketsPdfOpts): Promise<string> {
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8" />
   <style>
     * { box-sizing: border-box; }
+    @page { size: A4; margin: 5mm; }
     body { margin: 0; font-family: -apple-system, Roboto, sans-serif; color: #0B0B12; }
-    .page-header { text-align: center; font-size: 12px; font-weight: 700; padding: 10px 0; }
-    .grid { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px; }
+    .page-header { text-align: center; font-size: 10px; font-weight: 700; padding: 2mm 0; }
+    .grid { display: flex; flex-wrap: wrap; gap: 1.5mm; }
     .ticket {
-      width: 260px; border: 1.5px dashed #9AA0B4; border-radius: 12px;
-      padding: 12px; text-align: center; page-break-inside: avoid;
+      width: 37.4mm; border: 1px dashed #9AA0B4; border-radius: 2mm;
+      padding: 1mm; text-align: center; page-break-inside: avoid;
+      overflow: hidden; line-height: 1.15;
     }
     .head { display: flex; justify-content: space-between; align-items: center;
-      font-size: 11px; font-weight: 700; margin-bottom: 6px; }
-    .brand { color: #7B61FF; text-transform: uppercase; letter-spacing: .5px; }
+      font-size: 5px; font-weight: 700; margin-bottom: 0.5mm; }
+    .brand { color: #7B61FF; text-transform: uppercase; letter-spacing: .3px; }
     .num { color: #9AA0B4; }
     .qr { display: flex; justify-content: center; }
-    .qr svg { width: 120px; height: 120px; }
-    .code { font-family: monospace; font-size: 20px; font-weight: 700;
-      letter-spacing: 2px; margin: 8px 0 2px; }
-    .meta { font-size: 12px; color: #444; }
-    .hint { font-size: 9px; color: #9AA0B4; margin-top: 4px; }
-    .note { font-size: 9px; color: #444; font-style: italic; margin-top: 4px; }
-    .powered { font-size: 8px; color: #9AA0B4; margin-top: 6px; }
-    .page-footer { text-align: center; font-size: 10px; color: #9AA0B4; padding: 8px 0; }
+    .qr svg { width: 13mm; height: 13mm; }
+    .code { font-family: monospace; font-size: 8px; font-weight: 700;
+      letter-spacing: .5px; margin: 1mm 0 0.5mm; word-break: break-all; }
+    .meta { font-size: 5px; color: #444; }
+    .hint { font-size: 4px; color: #9AA0B4; margin-top: 0.5mm; }
+    .note { font-size: 4px; color: #444; font-style: italic; margin-top: 0.5mm; }
+    .powered { font-size: 4px; color: #9AA0B4; margin-top: 0.5mm; }
+    .page-footer { text-align: center; font-size: 9px; color: #9AA0B4; padding: 2mm 0; }
     @page { counter-increment: page; }
     .page-number:after { content: counter(page); }
   </style></head>
