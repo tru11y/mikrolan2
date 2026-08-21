@@ -620,6 +620,18 @@ export const api = {
       });
       return unwrap(res);
     },
+    async appleLogin(
+      identityToken: string,
+      nonce?: string,
+      fullName?: string,
+    ): Promise<AuthTokens> {
+      const res = await apiClient.post<ApiEnvelope<AuthTokens>>('/auth/apple', {
+        identityToken,
+        ...(nonce ? { nonce } : {}),
+        ...(fullName ? { fullName } : {}),
+      });
+      return unwrap(res);
+    },
     async me(): Promise<Me> {
       const res = await apiClient.get<ApiEnvelope<Me>>('/auth/me');
       return unwrap(res);

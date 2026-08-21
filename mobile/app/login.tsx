@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import * as Crypto from 'expo-crypto';
 import * as Google from 'expo-auth-session/providers/google';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import * as WebBrowser from 'expo-web-browser';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/src/providers/auth-provider';
@@ -33,8 +34,17 @@ const GOOGLE_WEB_CLIENT_ID = Constants.expoConfig?.extra?.googleWebClientId as s
 const GOOGLE_ANDROID_CLIENT_ID = Constants.expoConfig?.extra?.googleAndroidClientId as string | undefined;
 
 export default function LoginScreen() {
-  const { login, signup, googleLogin, isBusy, error, clearError, apiBaseUrl, updateApiBaseUrl } =
-    useAuth();
+  const {
+    login,
+    signup,
+    googleLogin,
+    appleLogin,
+    isBusy,
+    error,
+    clearError,
+    apiBaseUrl,
+    updateApiBaseUrl,
+  } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
@@ -72,6 +82,29 @@ export default function LoginScreen() {
   function handleGoogle() {
     clearError();
     promptGoogle();
+  }
+
+  async function handleApple() {
+    clearError();
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+        nonce,
+      });
+      if (!credential.identityToken) return;
+      const fullName = credential.fullName
+        ? [credential.fullName.givenName, credential.fullName.familyName]
+            .filter(Boolean)
+            .join(' ')
+        : undefined;
+      await appleLogin(credential.identityToken, nonce, fullName || undefined).catch(() => {});
+    } catch (e: any) {
+      // ERR_REQUEST_CANCELED : l'utilisateur a annulé, pas une erreur à afficher.
+      if (e?.code !== 'ERR_REQUEST_CANCELED') throw e;
+    }
   }
 
   async function submit() {
@@ -239,6 +272,30 @@ export default function LoginScreen() {
                   </Text>
                 </Press>
               </>
+            ) : null}
+
+            {Platform.OS === 'ios' ? (
+              <Press
+                onPress={handleApple}
+                disabled={isBusy}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: space.sm,
+                  height: 48,
+                  borderRadius: radius.lg,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  backgroundColor: theme.surface,
+                  opacity: isBusy ? 0.5 : 1,
+                }}
+              >
+                <Ionicons name="logo-apple" size={20} color={theme.text} />
+                <Text style={{ color: theme.text, fontWeight: '600', fontSize: type.body }}>
+                  Continuer avec Apple
+                </Text>
+              </Press>
             ) : null}
 
             <Press

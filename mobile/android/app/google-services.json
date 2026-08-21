@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "909364359384",
+    "project_id": "mikrolan-50e88",
+    "storage_bucket": "mikrolan-50e88.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:909364359384:android:4db7c1aa6c256c6b8ba7ad",
+        "android_client_info": {
+          "package_name": "com.mikrolan.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC9R8jdu11-TiupNWkknb_QbZ7DPDt1vCY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
