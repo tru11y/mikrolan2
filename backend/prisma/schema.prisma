@@ -183,6 +183,7 @@ model User {
   passwordHash         String
   hasPassword          Boolean        @default(true)
   googleId             String?        @unique
+  appleId              String?        @unique
   role                 UserRole       @default(MEMBER)
   status               UserStatus     @default(ACTIVE)
   notificationsEnabled Boolean        @default(true)

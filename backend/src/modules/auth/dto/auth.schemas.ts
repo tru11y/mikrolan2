@@ -89,3 +89,13 @@ export const googleOAuthSchema = z
   })
   .strict();
 export type GoogleOAuthDto = z.infer<typeof googleOAuthSchema>;
+
+export const appleOAuthSchema = z
+  .object({
+    identityToken: z.string().min(20).max(4000),
+    nonce: z.string().min(1).max(200).optional(),
+    // Apple ne renvoie le nom qu'au tout premier login — le client doit le transmettre à cette occasion.
+    fullName: z.string().min(1).max(200).optional(),
+  })
+  .strict();
+export type AppleOAuthDto = z.infer<typeof appleOAuthSchema>;

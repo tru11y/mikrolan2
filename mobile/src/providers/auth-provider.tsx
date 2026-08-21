@@ -53,6 +53,11 @@ type AuthContextValue = {
   ) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   googleLogin: (idToken: string, nonce?: string) => Promise<void>;
+  appleLogin: (
+    identityToken: string,
+    nonce?: string,
+    fullName?: string,
+  ) => Promise<void>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   updateApiBaseUrl: (value: string) => Promise<void>;
@@ -152,6 +157,24 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
   }
 
+  async function appleLogin(
+    identityToken: string,
+    nonce?: string,
+    fullName?: string,
+  ): Promise<void> {
+    setIsBusy(true);
+    setError(null);
+    try {
+      await setAuthTokens(await api.auth.appleLogin(identityToken, nonce, fullName));
+      await afterAuth();
+    } catch (e) {
+      setError(extractErrorMessage(e));
+      throw e;
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
   async function logout(): Promise<void> {
     setIsBusy(true);
     try {
@@ -202,6 +225,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       signup,
       login,
       googleLogin,
+      appleLogin,
       logout,
       refreshProfile,
       updateApiBaseUrl,

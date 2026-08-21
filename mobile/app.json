@@ -3,7 +3,7 @@
     "name": "MikroLan",
     "slug": "mikrolan",
     "scheme": "mikrolan",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
@@ -16,7 +16,8 @@
     },
     "android": {
       "package": "com.mikrolan.app",
-      "versionCode": 29,
+      "googleServicesFile": "./google-services.json",
+      "versionCode": 33,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/logo.png",
         "backgroundColor": "#0B0B12"
@@ -24,7 +25,8 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.mikrolan.app"
+      "bundleIdentifier": "com.mikrolan.app",
+      "usesAppleSignIn": true
     },
     "web": {
       "bundler": "metro",
@@ -41,6 +43,7 @@
         }
       ],
       "expo-web-browser",
+      "expo-apple-authentication",
       [
         "@sentry/react-native/expo",
         {

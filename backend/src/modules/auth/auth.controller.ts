@@ -15,6 +15,7 @@ import { TenantContext } from '../../common/context/tenant-context';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { AuthService } from './auth.service';
 import {
+  appleOAuthSchema,
   changePasswordSchema,
   confirmPasswordResetSchema,
   deleteAccountSchema,
@@ -27,6 +28,7 @@ import {
   signupSchema,
   updateNotificationsSchema,
   updateProfileSchema,
+  type AppleOAuthDto,
   type ChangePasswordDto,
   type ConfirmPasswordResetDto,
   type DeleteAccountDto,
@@ -128,6 +130,14 @@ export class AuthController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   googleLogin(@Body(new ZodValidationPipe(googleOAuthSchema)) dto: GoogleOAuthDto) {
     return this.auth.googleLogin(dto.idToken, dto.nonce);
+  }
+
+  @Public()
+  @Post('apple')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  appleLogin(@Body(new ZodValidationPipe(appleOAuthSchema)) dto: AppleOAuthDto) {
+    return this.auth.appleLogin(dto.identityToken, dto.nonce, dto.fullName);
   }
 
   @Public()
