@@ -15,6 +15,7 @@ import {
 import * as argon2 from 'argon2';
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import { OAuth2Client } from 'google-auth-library';
+import appleSignin from 'apple-signin-auth';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TokenService, TokenPair } from './token.service';
 import {
@@ -368,6 +369,106 @@ export class AuthService {
           passwordHash: placeholderHash,
           hasPassword: false,
           googleId,
+          role: UserRole.OWNER,
+          status: UserStatus.ACTIVE,
+        },
+      });
+    });
+
+    return this.tokens.issueTokens({
+      id: user.id,
+      tenantId: user.tenantId,
+      role: user.role,
+    });
+  }
+
+  async appleLogin(
+    identityToken: string,
+    nonce?: string,
+    fullName?: string,
+  ): Promise<TokenPair> {
+    const clientId = this.config.get<string>('APPLE_CLIENT_ID');
+    if (!clientId) {
+      throw new UnauthorizedException('Apple Sign-In non configuré.');
+    }
+
+    let payload;
+    try {
+      payload = await appleSignin.verifyIdToken(identityToken, {
+        audience: clientId,
+        nonce: nonce
+          ? createHash('sha256').update(nonce).digest('hex')
+          : undefined,
+        ignoreExpiration: false,
+      });
+    } catch {
+      throw new UnauthorizedException('Token Apple invalide.');
+    }
+
+    if (payload.email && payload.email_verified !== 'true' && payload.email_verified !== true) {
+      throw new UnauthorizedException('Adresse e-mail Apple non vérifiée.');
+    }
+
+    const appleId = payload.sub;
+    // Apple ne renvoie l'e-mail (réel ou relais privé) qu'au tout premier
+    // login — un retour sans e-mail signifie forcément un compte existant.
+    const email = payload.email?.toLowerCase();
+
+    const byAppleId = await this.prisma.user.findUnique({ where: { appleId } });
+    const existing =
+      byAppleId ?? (email ? await this.prisma.user.findUnique({ where: { email } }) : null);
+
+    if (existing) {
+      if (existing.status !== UserStatus.ACTIVE) {
+        throw new UnauthorizedException('Compte désactivé.');
+      }
+      if (!existing.appleId) {
+        await this.prisma.user.update({
+          where: { id: existing.id },
+          data: { appleId },
+        });
+      }
+      await this.prisma.user
+        .update({ where: { id: existing.id }, data: { lastLoginAt: new Date() } })
+        .catch(() => undefined);
+      return this.tokens.issueTokens({
+        id: existing.id,
+        tenantId: existing.tenantId,
+        role: existing.role,
+      });
+    }
+
+    if (!email) {
+      throw new UnauthorizedException('E-mail Apple requis pour la création de compte.');
+    }
+
+    const now = new Date();
+    const name = fullName || email.split('@')[0];
+    const placeholderHash = await argon2.hash(randomBytes(32).toString('hex'), ARGON);
+
+    const user = await this.prisma.$transaction(async (tx) => {
+      const tenant = await tx.tenant.create({
+        data: {
+          name,
+          slug: slugify(name),
+          subscription: {
+            create: {
+              plan: SubscriptionPlan.FREE,
+              status: SubscriptionStatus.TRIALING,
+              currentPeriodStart: now,
+              currentPeriodEnd: new Date(now.getTime() + TRIAL_DAYS * 86_400_000),
+            },
+          },
+        },
+      });
+      return tx.user.create({
+        data: {
+          tenantId: tenant.id,
+          email,
+          name,
+          passwordHash: placeholderHash,
+          hasPassword: false,
+          appleId,
           role: UserRole.OWNER,
           status: UserStatus.ACTIVE,
         },
