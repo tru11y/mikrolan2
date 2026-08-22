@@ -349,6 +349,46 @@ export default function RapportScreen() {
                   );
                 })()
               ) : null}
+
+              {data?.dataQuality && data.dataQuality !== 'EXACT' ? (
+                <View style={{ gap: 6 }}>
+                  <Row style={{ justifyContent: 'flex-start', gap: 6 }}>
+                    <Badge
+                      label={
+                        data.dataQuality === 'ESTIMATED'
+                          ? 'Estimé'
+                          : data.dataQuality === 'MIXED'
+                            ? 'Partiellement estimé'
+                            : data.dataQuality === 'INCOMPLETE'
+                              ? 'Incomplet'
+                              : 'Aucune donnée'
+                      }
+                      tone={data.dataQuality === 'NO_DATA' ? 'muted' : 'warning'}
+                    />
+                    {data.exactRevenueXof != null && data.estimatedRevenueXof != null ? (
+                      <Text style={{ color: theme.textMuted, fontSize: 11, flex: 1 }}>
+                        Exact : {fmtXof(data.exactRevenueXof)} · Estimé : {fmtXof(data.estimatedRevenueXof)}
+                      </Text>
+                    ) : null}
+                  </Row>
+                  {data.dataQuality === 'ESTIMATED' || data.dataQuality === 'MIXED' ? (
+                    <Text style={{ color: theme.textMuted, fontSize: 11 }}>
+                      Une partie de ce chiffre d&apos;affaires est estimée à partir du prix actuel des forfaits.
+                    </Text>
+                  ) : null}
+                  {(data.unknownSalesCount ?? 0) > 0 || (data.invalidSourceCount ?? 0) > 0 ? (
+                    <Text style={{ color: theme.textMuted, fontSize: 11 }}>
+                      {(data.unknownSalesCount ?? 0) > 0
+                        ? `${data.unknownSalesCount} vente(s) de provenance inconnue`
+                        : ''}
+                      {(data.unknownSalesCount ?? 0) > 0 && (data.invalidSourceCount ?? 0) > 0 ? ' · ' : ''}
+                      {(data.invalidSourceCount ?? 0) > 0
+                        ? `${data.invalidSourceCount} donnée(s) invalide(s)`
+                        : ''}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
             </Card>
 
             {/* KPIs business : conversion et panier moyen, les deux métriques
