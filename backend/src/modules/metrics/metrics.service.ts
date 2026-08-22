@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { SessionStatus, VoucherStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { RevenueService, type RevenueDataQuality } from '../revenue/revenue.service';
+import { getTenantContext } from '../../common/context/tenant-context';
 import type { ClientsQueryDto, MetricsQueryDto } from './dto/metrics.schemas';
 
 export interface PlanBreakdown {
@@ -9,6 +11,15 @@ export interface PlanBreakdown {
   priceXof: number;
   sold: number;
   revenueXof: number;
+  // Qualité du revenu — ajoutés audit/55 (défaut confirmé audit/54 §7 :
+  // ces indicateurs existaient déjà côté RevenueService mais n'étaient
+  // jamais exposés). Un ancien client mobile qui ignore ces champs continue
+  // de fonctionner (aucun champ existant retiré/renommé).
+  exactRevenueXof: number;
+  estimatedRevenueXof: number;
+  unknownSalesCount: number;
+  invalidSourceCount: number;
+  dataQuality: RevenueDataQuality;
 }
 
 export interface RecentClient {
@@ -33,6 +44,14 @@ export interface MetricsSummary {
   previousRevenueXof: number;
   trendPct: number | null; // vs période précédente ; null si aucune vente avant
   byPlan: PlanBreakdown[];
+  // Qualité du revenu (audit/55, corrige audit/54 §7) — champs additifs,
+  // aucun champ ci-dessus n'est retiré ni renommé. Un client mobile qui ne
+  // les lit pas encore continue de fonctionner à l'identique.
+  exactRevenueXof: number;
+  estimatedRevenueXof: number;
+  unknownSalesCount: number;
+  invalidSourceCount: number;
+  dataQuality: RevenueDataQuality;
 }
 
 // A LOCAL router's Session rows only get reconciled when the app polls it
@@ -54,29 +73,30 @@ function periodStart(period: MetricsQueryDto['period']): Date {
 
 @Injectable()
 export class MetricsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly revenue: RevenueService,
+  ) {}
 
   /**
-   * Sales dashboard for the current tenant. Revenue is booked per voucher
-   * that has actually been redeemed (ACTIVE or USED) in the window — a
-   * GENERATED voucher is a printed code that may never sell, so it does not
-   * count as revenue until a client connects with it. All reads go through
-   * tenant-scoped Prisma actions (findMany/count), never groupBy — the
-   * isolation middleware does not scope groupBy.
+   * Sales dashboard for the current tenant. Revenue now flows exclusively
+   * through RevenueService (audit/51, audit/52) — the canonical rule is
+   * usedAt-based, never createdAt. `ticketsGenerated` remains a distinct,
+   * createdAt-scoped funnel metric ("how many codes were printed in this
+   * window", not a revenue figure) and keeps its own definition.
    */
   async summary(query: MetricsQueryDto): Promise<MetricsSummary> {
+    const ctx = getTenantContext();
+    if (!ctx) throw new Error('Contexte tenant manquant');
+
     const start = periodStart(query.period);
     const routerFilter = query.routerId ? { routerId: query.routerId } : {};
 
-    const vouchers = await this.prisma.voucher.findMany({
+    const ticketsGenerated = await this.prisma.voucher.count({
       where: {
         createdAt: { gte: start },
         status: { not: VoucherStatus.REVOKED },
         ...routerFilter,
-      },
-      select: {
-        status: true,
-        plan: { select: { id: true, name: true, priceXof: true } },
       },
     });
 
@@ -84,62 +104,52 @@ export class MetricsService {
       where: { status: SessionStatus.ACTIVE, ...routerFilter },
     });
 
-    // Previous window of equal length, for the trend badge (« +24% vs … »).
-    const windowMs = Date.now() - start.getTime();
+    const now = new Date();
+    const windowMs = now.getTime() - start.getTime();
     const prevStart = new Date(start.getTime() - windowMs);
-    const prevVouchers = await this.prisma.voucher.findMany({
-      where: {
-        createdAt: { gte: prevStart, lt: start },
-        status: { not: VoucherStatus.REVOKED },
-        ...routerFilter,
-      },
-      select: { status: true, plan: { select: { priceXof: true } } },
-    });
-    const isRedeemed = (status: VoucherStatus) =>
-      status === VoucherStatus.USED || status === VoucherStatus.ACTIVE;
 
-    const previousRevenueXof = prevVouchers
-      .filter((v) => isRedeemed(v.status))
-      .reduce((sum, v) => sum + v.plan.priceXof, 0);
-
-    const byPlanMap = new Map<string, PlanBreakdown>();
-    let revenueXof = 0;
-    let ticketsUsed = 0;
-
-    for (const v of vouchers) {
-      // Only redeemed vouchers are sales — a plan with nothing sold has no
-      // place in the breakdown (it would draw an empty bar).
-      if (!isRedeemed(v.status)) continue;
-
-      revenueXof += v.plan.priceXof;
-      ticketsUsed += 1;
-
-      const entry = byPlanMap.get(v.plan.id) ?? {
-        planId: v.plan.id,
-        planName: v.plan.name,
-        priceXof: v.plan.priceXof,
-        sold: 0,
-        revenueXof: 0,
-      };
-      entry.sold += 1;
-      entry.revenueXof += v.plan.priceXof;
-      byPlanMap.set(v.plan.id, entry);
-    }
+    const revenueQuery = {
+      tenantId: ctx.tenantId,
+      from: start,
+      to: now,
+      routerId: query.routerId,
+    };
+    const [current, previous, byPlan] = await Promise.all([
+      this.revenue.computeRevenue(revenueQuery),
+      this.revenue.computeRevenue({ ...revenueQuery, from: prevStart, to: start }),
+      this.revenue.revenueByPlan(revenueQuery),
+    ]);
 
     return {
       period: query.period,
-      revenueXof,
-      ticketsGenerated: vouchers.length,
-      ticketsUsed,
+      revenueXof: current.revenueXof,
+      ticketsGenerated,
+      ticketsUsed: current.valuedSalesCount,
       activeSessions,
-      previousRevenueXof,
+      previousRevenueXof: previous.revenueXof,
       trendPct:
-        previousRevenueXof > 0
+        previous.revenueXof > 0
           ? Math.round(
-              ((revenueXof - previousRevenueXof) / previousRevenueXof) * 100,
+              ((current.revenueXof - previous.revenueXof) / previous.revenueXof) * 100,
             )
           : null,
-      byPlan: [...byPlanMap.values()].sort((a, b) => b.revenueXof - a.revenueXof),
+      byPlan: byPlan.map((p) => ({
+        planId: p.planId,
+        planName: p.planName,
+        priceXof: p.sold > 0 ? Math.round(p.revenueXof / p.sold) : 0,
+        sold: p.sold,
+        revenueXof: p.revenueXof,
+        exactRevenueXof: p.exactRevenueXof,
+        estimatedRevenueXof: p.estimatedRevenueXof,
+        unknownSalesCount: p.unknownSalesCount,
+        invalidSourceCount: p.invalidSourceCount,
+        dataQuality: p.dataQuality,
+      })),
+      exactRevenueXof: current.exactRevenueXof,
+      estimatedRevenueXof: current.estimatedRevenueXof,
+      unknownSalesCount: current.unknownSalesCount,
+      invalidSourceCount: current.invalidSourceCount,
+      dataQuality: current.dataQuality,
     };
   }
 

@@ -103,6 +103,7 @@ export class SessionsService {
         code: true,
         status: true,
         session: { select: { id: true } },
+        plan: { select: { priceXof: true } },
       },
     });
 
@@ -131,9 +132,24 @@ export class SessionsService {
 
       const firstSight = voucher.status === VoucherStatus.GENERATED;
       if (firstSight) {
+        // Revenue snapshot, figé une seule fois ici — jamais recalculé si le
+        // forfait change de prix ensuite (audit/51, audit/52). Le prix vient
+        // uniquement de Plan.priceXof lu côté serveur, jamais du client.
+        const price = voucher.plan.priceXof;
+        const priceValid = Number.isInteger(price) && price > 0;
+        if (!priceValid) {
+          this.logger.warn(
+            'Activation avec prix de forfait non exploitable — snapshot non écrit (priceSnapshotSource=UNKNOWN).',
+          );
+        }
         const promoted = await this.prisma.voucher.updateMany({
           where: { id: voucher.id, status: VoucherStatus.GENERATED },
-          data: { status: VoucherStatus.ACTIVE, usedAt: now },
+          data: {
+            status: VoucherStatus.ACTIVE,
+            usedAt: now,
+            priceXofAtActivation: priceValid ? price : null,
+            priceSnapshotSource: priceValid ? 'EXACT' : 'UNKNOWN',
+          },
         });
         if (promoted.count === 0) continue; // another tick got there first
       }
