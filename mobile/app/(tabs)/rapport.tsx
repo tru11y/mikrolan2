@@ -1,16 +1,20 @@
 import { useCallback, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, View, Text } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BarChart, LineChart, PieChart } from 'react-native-gifted-charts';
 import {
   api,
+  type AnalyticsPeriod,
+  type AnalyticsPlanPerformance,
+  type AnalyticsRouterSummary,
   type MetricsPeriod,
   type RevenueByPeriodItem,
   type RevenueByRouterItem,
 } from '@/src/lib/api';
 import { exportMetricsCsv } from '@/src/lib/metricsCsv';
+import { busiestCell, describeBusiest, fmtGrowth } from '@/src/lib/analyticsFormat';
 import {
   Badge,
   Card,
@@ -185,13 +189,150 @@ function RouterRankingChart({ data }: { data: RevenueByRouterItem[] }) {
   );
 }
 
+const ANALYTICS_PERIOD_BY_METRICS_PERIOD: Record<MetricsPeriod, AnalyticsPeriod> = {
+  today: 'today',
+  '7d': 'last7days',
+  '30d': 'last30days',
+};
+
+/** Classement compact des routeurs — tap pour le détail. */
+function RoutersRankingSection({
+  data,
+  onSelect,
+}: {
+  data: AnalyticsRouterSummary[];
+  onSelect: (routerId: string) => void;
+}) {
+  if (!data.length) {
+    return <Empty icon="hardware-chip-outline" text="Aucun routeur avec des ventes sur cette période." />;
+  }
+  return (
+    <View style={{ gap: 8 }}>
+      {data.slice(0, 8).map((r) => {
+        const growth = fmtGrowth(r.growthPercent);
+        const growthColor = r.growthPercent == null ? theme.textMuted : r.growthPercent >= 0 ? theme.success : theme.danger;
+        return (
+          <Press
+            key={r.routerId}
+            onPress={() => onSelect(r.routerId)}
+            style={{
+              backgroundColor: theme.surface,
+              borderWidth: 1,
+              borderColor: theme.border,
+              borderRadius: 14,
+              padding: 12,
+              gap: 4,
+            }}
+          >
+            <Row>
+              <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700', flex: 1 }} numberOfLines={1}>
+                {r.routerName}
+              </Text>
+              <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />
+            </Row>
+            <Row style={{ justifyContent: 'flex-start', gap: 10 }}>
+              <Mono style={{ color: theme.success, fontSize: 13, fontWeight: '800' }}>{fmtXof(r.revenueXof)}</Mono>
+              <Text style={{ color: theme.textMuted, fontSize: 11 }}>{r.salesCount} vente(s)</Text>
+              <Text style={{ color: theme.textMuted, fontSize: 11 }}>{r.contributionPercent.toFixed(0)}% du CA</Text>
+              {growth ? <Text style={{ color: growthColor, fontSize: 11, fontWeight: '700' }}>{growth}</Text> : null}
+            </Row>
+          </Press>
+        );
+      })}
+    </View>
+  );
+}
+
+/** Double classement forfaits : par volume et par contribution CA — les deux
+ * peuvent diverger (un forfait très vendu mais peu cher pèse peu au final). */
+function PlansDualRankingSection({ data }: { data: AnalyticsPlanPerformance[] }) {
+  if (!data.length) {
+    return <Empty icon="pricetags-outline" text="Aucune vente de forfait sur cette période." />;
+  }
+  const byRevenue = [...data].sort((a, b) => b.revenueXof - a.revenueXof).slice(0, 5);
+  const bySales = [...data].sort((a, b) => b.salesCount - a.salesCount).slice(0, 5);
+
+  const renderPlan = (p: AnalyticsPlanPerformance, metric: 'revenue' | 'sales') => {
+    const growth = fmtGrowth(p.growthPercent);
+    const sentence =
+      metric === 'revenue'
+        ? `Ce forfait représente ${p.revenueContributionPercent.toFixed(0)} % du chiffre d'affaires de la période.`
+        : `Ce forfait représente ${p.salesContributionPercent.toFixed(0)} % des ventes de la période.`;
+    return (
+      <View key={`${metric}-${p.planId}`} style={{ gap: 2, paddingVertical: 6 }}>
+        <Row>
+          <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700', flex: 1 }} numberOfLines={1}>
+            {p.name}
+          </Text>
+          <Mono style={{ color: theme.textMuted, fontSize: 12 }}>{fmtXof(p.revenueXof)}</Mono>
+        </Row>
+        <Text style={{ color: theme.textMuted, fontSize: 11 }}>{sentence}</Text>
+        {growth ? (
+          <Text style={{ color: theme.textMuted, fontSize: 11 }}>
+            Son volume {p.growthPercent! >= 0 ? 'augmente' : 'baisse'} de {Math.abs(p.growthPercent!).toFixed(0)} % par
+            rapport à la période précédente.
+          </Text>
+        ) : null}
+      </View>
+    );
+  };
+
+  return (
+    <View style={{ gap: 16 }}>
+      <View>
+        <Text style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginBottom: 4 }}>
+          TOP PAR CHIFFRE D&apos;AFFAIRES
+        </Text>
+        {byRevenue.map((p) => renderPlan(p, 'revenue'))}
+      </View>
+      <View>
+        <Text style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginBottom: 4 }}>
+          TOP PAR VOLUME DE VENTES
+        </Text>
+        {bySales.map((p) => renderPlan(p, 'sales'))}
+      </View>
+    </View>
+  );
+}
+
+/** Jour/heure le plus actif — vend (commercial) vs sessions (réseau), jamais
+ * confondus car issus de sources différentes (Voucher.usedAt vs Session.startedAt). */
+function AffluenceSection({
+  salesHeatmap,
+  sessionsHeatmap,
+}: {
+  salesHeatmap: { dayOfWeek: number; hour: number; count: number }[];
+  sessionsHeatmap: { dayOfWeek: number; hour: number; count: number }[];
+}) {
+  const busiestSales = busiestCell(salesHeatmap);
+  const busiestSessions = busiestCell(sessionsHeatmap);
+  return (
+    <View style={{ gap: 10 }}>
+      <Row style={{ justifyContent: 'flex-start', gap: 8 }}>
+        <Ionicons name="cart-outline" size={16} color={theme.primary} />
+        <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700', flex: 1 }}>
+          Pic de ventes : {describeBusiest(busiestSales)}
+        </Text>
+      </Row>
+      <Row style={{ justifyContent: 'flex-start', gap: 8 }}>
+        <Ionicons name="wifi-outline" size={16} color={theme.primarySoft} />
+        <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700', flex: 1 }}>
+          Pic de sessions réseau : {describeBusiest(busiestSessions)}
+        </Text>
+      </Row>
+    </View>
+  );
+}
+
 export default function RapportScreen() {
   const { routerId } = useLocalSearchParams<{ routerId?: string }>();
   const { activeRouterId } = useActiveRouter();
   const navHeight = useBottomNavHeight();
   const qc = useQueryClient();
+  const router = useRouter();
   const [period, setPeriod] = useState<MetricsPeriod>('30d');
   const [refreshing, setRefreshing] = useState(false);
+  const analyticsPeriod = ANALYTICS_PERIOD_BY_METRICS_PERIOD[period];
 
   const metrics = useQuery({
     queryKey: ['metrics', period, routerId],
@@ -212,6 +353,21 @@ export default function RapportScreen() {
     queryKey: ['accounting', 'revenue-router'],
     queryFn: () => api.accounting.revenueByRouter(),
   });
+  const overview = useQuery({
+    queryKey: ['analytics', 'overview', analyticsPeriod, routerId],
+    queryFn: () => api.analytics.overview({ period: analyticsPeriod, routerId }),
+    placeholderData: keepPreviousData,
+  });
+  const analyticsRouters = useQuery({
+    queryKey: ['analytics', 'routers', analyticsPeriod],
+    queryFn: () => api.analytics.routers({ period: analyticsPeriod }),
+    placeholderData: keepPreviousData,
+  });
+  const traffic = useQuery({
+    queryKey: ['analytics', 'traffic', analyticsPeriod, routerId],
+    queryFn: () => api.analytics.traffic({ period: analyticsPeriod, routerId }),
+    placeholderData: keepPreviousData,
+  });
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -219,6 +375,7 @@ export default function RapportScreen() {
       qc.invalidateQueries({ queryKey: ['metrics'] }),
       qc.invalidateQueries({ queryKey: ['clients'] }),
       qc.invalidateQueries({ queryKey: ['accounting'] }),
+      qc.invalidateQueries({ queryKey: ['analytics'] }),
     ]);
     setRefreshing(false);
   }, [qc]);
@@ -457,6 +614,52 @@ export default function RapportScreen() {
                 )}
               </Card>
             ) : null}
+
+            {/* Classement routeurs (Analytics) — accès au détail par routeur */}
+            <View>
+              <SectionTitle>Routeurs</SectionTitle>
+              {overview.isLoading && analyticsRouters.isLoading ? (
+                <Skeleton height={100} />
+              ) : overview.error || analyticsRouters.error ? (
+                <ErrorState message="Impossible de charger le classement des routeurs." onRetry={onRefresh} />
+              ) : (
+                <RoutersRankingSection
+                  data={analyticsRouters.data ?? []}
+                  onSelect={(id) => router.push(`/analytics-router/${id}?period=${analyticsPeriod}`)}
+                />
+              )}
+            </View>
+
+            {/* Forfaits — double classement (volume vs contribution CA) */}
+            <View>
+              <SectionTitle>Forfaits</SectionTitle>
+              {overview.isLoading ? (
+                <Skeleton height={140} />
+              ) : overview.error ? (
+                <ErrorState message="Impossible de charger l'analyse des forfaits." onRetry={onRefresh} />
+              ) : (
+                <Card style={{ gap: 8 }}>
+                  <PlansDualRankingSection data={overview.data?.topPlans ?? []} />
+                </Card>
+              )}
+            </View>
+
+            {/* Affluence : jours/heures d'activité, ventes vs sessions séparées */}
+            <View>
+              <SectionTitle>Affluence</SectionTitle>
+              {traffic.isLoading ? (
+                <Skeleton height={80} />
+              ) : traffic.error ? (
+                <ErrorState message="Impossible de charger l'affluence." onRetry={onRefresh} />
+              ) : (
+                <Card>
+                  <AffluenceSection
+                    salesHeatmap={traffic.data?.salesHeatmap ?? []}
+                    sessionsHeatmap={traffic.data?.sessionsHeatmap ?? []}
+                  />
+                </Card>
+              )}
+            </View>
 
             {/* Clients récents */}
             <View>
