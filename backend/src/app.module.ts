@@ -25,6 +25,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { EventsModule } from './modules/events/events.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { AccountingModule } from './modules/accounting/accounting.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { MailModule } from './modules/mail/mail.module';
 import { SupportModule } from './modules/support/support.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
@@ -55,6 +56,7 @@ import { TenantContextMiddleware } from './common/context/tenant-context.middlew
     MetricsModule,
     NotificationsModule,
     AccountingModule,
+    AnalyticsModule,
     MailModule,
     SupportModule,
     HealthModule,
