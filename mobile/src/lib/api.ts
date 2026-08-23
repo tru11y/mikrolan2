@@ -187,12 +187,21 @@ export type Plan = {
 export type PlanExpiration = 'ELAPSED' | 'RADIO_PAUSE';
 
 export type MetricsPeriod = 'today' | '7d' | '30d';
+// Liste fermée backend (revenue.service.ts) — audit/55 étape 6. Optionnel
+// côté mobile : un backend pas encore mis à jour ne les envoie pas encore
+// (transition de version, audit/55 étape 7), traité comme absence d'info.
+export type RevenueDataQuality = 'EXACT' | 'ESTIMATED' | 'MIXED' | 'INCOMPLETE' | 'NO_DATA';
 export type PlanBreakdown = {
   planId: string;
   planName: string;
   priceXof: number;
   sold: number;
   revenueXof: number;
+  exactRevenueXof?: number;
+  estimatedRevenueXof?: number;
+  unknownSalesCount?: number;
+  invalidSourceCount?: number;
+  dataQuality?: RevenueDataQuality;
 };
 export type MetricsSummary = {
   period: MetricsPeriod;
@@ -203,6 +212,13 @@ export type MetricsSummary = {
   previousRevenueXof: number;
   trendPct: number | null;
   byPlan: PlanBreakdown[];
+  // Champs additifs (audit/55) — absents si le backend appelé est plus
+  // ancien que cette version mobile ; toujours lus avec un repli défensif.
+  exactRevenueXof?: number;
+  estimatedRevenueXof?: number;
+  unknownSalesCount?: number;
+  invalidSourceCount?: number;
+  dataQuality?: RevenueDataQuality;
 };
 
 export type RecentClient = {
@@ -280,6 +296,11 @@ export type RevenueByPeriodItem = {
   monthNum: number;
   totalXof: number;
   transactionCount: number;
+  exactXof?: number;
+  estimatedXof?: number;
+  unknownSalesCount?: number;
+  invalidSourceCount?: number;
+  dataQuality?: RevenueDataQuality;
 };
 
 export type RevenueByRouterItem = {
@@ -287,6 +308,11 @@ export type RevenueByRouterItem = {
   routerName: string;
   totalXof: number;
   transactionCount: number;
+  exactXof?: number;
+  estimatedXof?: number;
+  unknownSalesCount?: number;
+  invalidSourceCount?: number;
+  dataQuality?: RevenueDataQuality;
 };
 
 export type InvoiceItem = {
