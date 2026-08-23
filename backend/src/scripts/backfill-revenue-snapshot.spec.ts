@@ -252,12 +252,12 @@ describe('backfillRevenueSnapshot — mode --apply explicite', () => {
     await backfillRevenueSnapshot(mockPrisma as any, { apply: true, batchSize: 500 });
 
     expect(mockPrisma.voucher.updateMany).toHaveBeenCalledWith({
-      where: { id: 'v1', priceXofAtActivation: null },
+      where: { id: 'v1', priceXofAtActivation: null, priceSnapshotSource: null },
       data: { priceXofAtActivation: 500, priceSnapshotSource: 'ESTIMATED_FROM_CURRENT_PLAN_PRICE' },
     });
   });
 
-  it('le SELECT ne cible que ACTIVE/USED, usedAt non nul, snapshot encore nul, trié par id', async () => {
+  it("le SELECT ne cible que ACTIVE/USED, usedAt non nul, snapshot ET provenance encore nuls (jamais qualifié), trié par id", async () => {
     mockPrisma.voucher.findMany.mockResolvedValue([]);
     await backfillRevenueSnapshot(mockPrisma as any, { apply: true, batchSize: 500 });
 
@@ -267,6 +267,7 @@ describe('backfillRevenueSnapshot — mode --apply explicite', () => {
           status: { in: [VoucherStatus.ACTIVE, VoucherStatus.USED] },
           usedAt: { not: null },
           priceXofAtActivation: null,
+          priceSnapshotSource: null,
         },
         orderBy: { id: 'asc' },
       }),
@@ -312,7 +313,9 @@ describe('backfillRevenueSnapshot — mode --apply explicite', () => {
     const counters = await backfillRevenueSnapshot(mockPrisma as any, { apply: true, batchSize: 500 });
 
     expect(mockPrisma.voucher.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ priceXofAtActivation: null }) }),
+      expect.objectContaining({
+        where: expect.objectContaining({ priceXofAtActivation: null, priceSnapshotSource: null }),
+      }),
     );
     expect(counters.updated).toBe(0);
   });
@@ -321,5 +324,73 @@ describe('backfillRevenueSnapshot — mode --apply explicite', () => {
     mockPrisma.voucher.findMany.mockResolvedValueOnce([row('v1', 500)]).mockResolvedValueOnce([]);
     const counters = await backfillRevenueSnapshot(mockPrisma as any, { apply: true, batchSize: 500 });
     expect(JSON.stringify(counters)).not.toMatch(/v1|voucher|tenant|router|plan/i);
+  });
+});
+
+describe('backfillRevenueSnapshot — préservation des classifications existantes (corrige audit/61 §7)', () => {
+  it("1. ligne vierge (priceXofAtActivation:null, priceSnapshotSource:null) : le SELECT exige explicitement les deux conditions", async () => {
+    mockPrisma.voucher.findMany.mockResolvedValue([]);
+    await backfillRevenueSnapshot(mockPrisma as any, { apply: true, batchSize: 500 });
+    const where = mockPrisma.voucher.findMany.mock.calls[0][0].where;
+    expect(where.priceXofAtActivation).toBeNull();
+    expect(where.priceSnapshotSource).toBeNull();
+  });
+
+  it('2-6. le WHERE du SELECT et celui de UPDATE excluent systématiquement toute ligne déjà qualifiée (UNKNOWN, provenance invalide, EXACT, ESTIMATED, ou montant orphelin) — un vrai PostgreSQL ne renverrait jamais ces lignes sous ce filtre', async () => {
+    // Une DB réelle sous ce WHERE ne renvoie jamais de ligne portant déjà
+    // UNKNOWN/EXACT/ESTIMATED/une provenance invalide, même avec un montant
+    // orphelin nul — seul l'appel effectivement observé au niveau du mock
+    // (findMany) prouve que le code interroge bien avec ce double filtre.
+    mockPrisma.voucher.findMany.mockResolvedValueOnce([row('v1', 500)]).mockResolvedValueOnce([]);
+    await backfillRevenueSnapshot(mockPrisma as any, { apply: true, batchSize: 500 });
+
+    const selectWhere = mockPrisma.voucher.findMany.mock.calls[0][0].where;
+    expect(selectWhere).toMatchObject({ priceXofAtActivation: null, priceSnapshotSource: null });
+
+    const updateWhere = mockPrisma.voucher.updateMany.mock.calls[0][0].where;
+    expect(updateWhere).toMatchObject({ priceXofAtActivation: null, priceSnapshotSource: null });
+  });
+
+  it("9-10. apply ne traite et n'écrit que des lignes null/null : chaque UPDATE répète les deux conditions, jamais une seule", async () => {
+    mockPrisma.voucher.findMany
+      .mockResolvedValueOnce([row('v1', 500), row('v2', 300)])
+      .mockResolvedValueOnce([]);
+    await backfillRevenueSnapshot(mockPrisma as any, { apply: true, batchSize: 500 });
+
+    for (const call of mockPrisma.voucher.updateMany.mock.calls) {
+      expect(call[0].where.priceXofAtActivation).toBeNull();
+      expect(call[0].where.priceSnapshotSource).toBeNull();
+    }
+    expect(mockPrisma.voucher.updateMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('11. concurrence : une ligne lue null/null mais qualifiée entre-temps par un autre processus (updateMany renvoie count:0) — jamais comptée comme mise à jour, jamais réécrite une seconde fois', async () => {
+    mockPrisma.voucher.findMany.mockResolvedValueOnce([row('v1', 500)]).mockResolvedValueOnce([]);
+    mockPrisma.voucher.updateMany.mockResolvedValueOnce({ count: 0 }); // qualifiée entre lecture et écriture
+
+    const counters = await backfillRevenueSnapshot(mockPrisma as any, { apply: true, batchSize: 500 });
+
+    expect(mockPrisma.voucher.updateMany).toHaveBeenCalledTimes(1);
+    expect(mockPrisma.voucher.updateMany.mock.calls[0][0].where).toMatchObject({
+      priceXofAtActivation: null,
+      priceSnapshotSource: null,
+    });
+    expect(counters.updated).toBe(0); // la condition anti-écrasement a empêché le comptage
+  });
+
+  it('12. second apply après un premier passage complet : zéro réécriture (idempotence explicitement vérifiée après le correctif)', async () => {
+    mockPrisma.voucher.findMany.mockResolvedValueOnce([row('v1', 500)]).mockResolvedValueOnce([]);
+    await backfillRevenueSnapshot(mockPrisma as any, { apply: true, batchSize: 500 });
+    expect(mockPrisma.voucher.updateMany).toHaveBeenCalledTimes(1);
+
+    mockPrisma.voucher.updateMany.mockClear();
+    mockPrisma.voucher.findMany.mockReset();
+    // La ligne v1 est désormais qualifiée (ESTIMATED) -> un vrai PostgreSQL
+    // sous le nouveau WHERE ne la renverrait plus jamais.
+    mockPrisma.voucher.findMany.mockResolvedValueOnce([]);
+    const counters = await backfillRevenueSnapshot(mockPrisma as any, { apply: true, batchSize: 500 });
+
+    expect(mockPrisma.voucher.updateMany).not.toHaveBeenCalled();
+    expect(counters.updated).toBe(0);
   });
 });

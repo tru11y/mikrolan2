@@ -13,6 +13,7 @@ import { signupUser } from '../helpers/auth.helper';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { RevenueService } from '../../src/modules/revenue/revenue.service';
 import { tenantStore, setTenantContext } from '../../src/common/context/tenant-context';
+import { backfillRevenueSnapshot } from '../../src/scripts/backfill-revenue-snapshot';
 
 describe('Revenue foundation — intégration réelle (PostgreSQL isolé)', () => {
   let app: NestFastifyApplication;
@@ -351,4 +352,111 @@ describe('Revenue foundation — intégration réelle (PostgreSQL isolé)', () =
       ),
     ).resolves.toBeDefined();
   });
+
+  it(
+    '17. [CORRECTIF audit/61 §7 / audit/62] backfill contre un vrai PostgreSQL : ' +
+      'seule la ligne vierge (priceXofAtActivation:null ET priceSnapshotSource:null) devient ' +
+      'ESTIMATED ; UNKNOWN reste UNKNOWN ; provenance invalide reste invalide ; EXACT et ESTIMATED ' +
+      'déjà écrits restent inchangés ; le scénario INCOMPLETE conserve sa classification après le ' +
+      "backfill ; le dry-run n'écrit rien ; le second apply est idempotent.",
+    async () => {
+      const tag = Date.now();
+
+      const vierge = await makeVoucher({
+        tenantId: tenantA,
+        routerId: routerA,
+        planId: planA,
+        code: `BF-VIERGE-${tag}`,
+        priceXofAtActivation: null,
+        priceSnapshotSource: null,
+      });
+      const unknown = await makeVoucher({
+        tenantId: tenantA,
+        routerId: routerA,
+        planId: planA,
+        code: `BF-UNKNOWN-${tag}`,
+        priceXofAtActivation: null,
+        priceSnapshotSource: 'UNKNOWN',
+      });
+      const invalide = await makeVoucher({
+        tenantId: tenantA,
+        routerId: routerA,
+        planId: planA,
+        code: `BF-INVALID-${tag}`,
+        priceXofAtActivation: null,
+        priceSnapshotSource: 'CORRUPTED',
+      });
+      const exact = await makeVoucher({
+        tenantId: tenantA,
+        routerId: routerA,
+        planId: planA,
+        code: `BF-EXACT-${tag}`,
+        priceXofAtActivation: 500,
+        priceSnapshotSource: 'EXACT',
+      });
+      const estime = await makeVoucher({
+        tenantId: tenantA,
+        routerId: routerA,
+        planId: planA,
+        code: `BF-ESTIME-${tag}`,
+        priceXofAtActivation: 500,
+        priceSnapshotSource: 'ESTIMATED_FROM_CURRENT_PLAN_PRICE',
+      });
+
+      // Scénario INCOMPLETE : EXACT + UNKNOWN + invalide, mesuré AVANT backfill.
+      const from2 = new Date('2020-01-01T00:00:00Z');
+      const to2 = new Date('2030-01-01T00:00:00Z');
+      const avant = await asTenant(tenantA, UserRole.OWNER, () =>
+        revenue.computeRevenue({ tenantId: tenantA, from: from2, to: to2, planId: planA }),
+      );
+      expect(avant.unknownSalesCount).toBeGreaterThanOrEqual(1);
+      expect(avant.invalidSourceCount).toBeGreaterThanOrEqual(1);
+      expect(avant.dataQuality === 'INCOMPLETE').toBe(true);
+
+      // Dry-run : zéro écriture.
+      const dry = await backfillRevenueSnapshot(prisma as any, { apply: false, batchSize: 500 });
+      expect(dry.eligibleFound).toBeGreaterThanOrEqual(1);
+
+      const rereadAfterDry = await prisma.voucher.findUniqueOrThrow({ where: { id: vierge.id } });
+      expect(rereadAfterDry.priceXofAtActivation).toBeNull();
+      expect(rereadAfterDry.priceSnapshotSource).toBeNull();
+
+      // Apply réel.
+      const apply1 = await backfillRevenueSnapshot(prisma as any, { apply: true, batchSize: 500 });
+      expect(apply1.updated).toBeGreaterThanOrEqual(1);
+
+      const vergeApres = await prisma.voucher.findUniqueOrThrow({ where: { id: vierge.id } });
+      expect(vergeApres.priceSnapshotSource).toBe('ESTIMATED_FROM_CURRENT_PLAN_PRICE');
+      expect(vergeApres.priceXofAtActivation).toBe(500); // priceXof courant du plan A
+
+      const unknownApres = await prisma.voucher.findUniqueOrThrow({ where: { id: unknown.id } });
+      expect(unknownApres.priceSnapshotSource).toBe('UNKNOWN');
+      expect(unknownApres.priceXofAtActivation).toBeNull();
+
+      const invalideApres = await prisma.voucher.findUniqueOrThrow({ where: { id: invalide.id } });
+      expect(invalideApres.priceSnapshotSource).toBe('CORRUPTED');
+      expect(invalideApres.priceXofAtActivation).toBeNull();
+
+      const exactApres = await prisma.voucher.findUniqueOrThrow({ where: { id: exact.id } });
+      expect(exactApres.priceSnapshotSource).toBe('EXACT');
+      expect(exactApres.priceXofAtActivation).toBe(500);
+
+      const estimeApres = await prisma.voucher.findUniqueOrThrow({ where: { id: estime.id } });
+      expect(estimeApres.priceSnapshotSource).toBe('ESTIMATED_FROM_CURRENT_PLAN_PRICE');
+      expect(estimeApres.priceXofAtActivation).toBe(500);
+
+      // Le scénario INCOMPLETE conserve sa classification après le backfill —
+      // UNKNOWN et la provenance invalide restent exclus, jamais requalifiés.
+      const apres = await asTenant(tenantA, UserRole.OWNER, () =>
+        revenue.computeRevenue({ tenantId: tenantA, from: from2, to: to2, planId: planA }),
+      );
+      expect(apres.unknownSalesCount).toBe(avant.unknownSalesCount);
+      expect(apres.invalidSourceCount).toBe(avant.invalidSourceCount);
+      expect(apres.dataQuality === 'INCOMPLETE').toBe(true);
+
+      // Second apply : idempotent, plus rien à écrire.
+      const apply2 = await backfillRevenueSnapshot(prisma as any, { apply: true, batchSize: 500 });
+      expect(apply2.updated).toBe(0);
+    },
+  );
 });
