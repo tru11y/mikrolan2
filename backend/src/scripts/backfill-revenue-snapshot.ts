@@ -5,10 +5,18 @@
  * production dans cette phase — dry-run par défaut, écriture uniquement
  * sous --apply.
  *
- * Périmètre exact (audit/51 §12, audit/52 §12) : ACTIVE ou USED, usedAt non
- * nul, priceXofAtActivation encore nul, plan résolvable, priceXof > 0.
+ * Périmètre exact (audit/51 §12, audit/52 §12, corrigé audit/61 étape 7) :
+ * ACTIVE ou USED, usedAt non nul, priceXofAtActivation ET priceSnapshotSource
+ * TOUS DEUX encore nuls (jamais qualifié), plan résolvable, priceXof > 0.
  * Toujours ESTIMATED_FROM_CURRENT_PLAN_PRICE — jamais EXACT pour l'historique
  * (aucune source de prix historique n'existe, audit/52 §8).
+ *
+ * Invariant de non-requalification (audit/61 §7 — défaut corrigé ici) : une
+ * ligne déjà classifiée (UNKNOWN, provenance invalide, ou tout autre état
+ * explicite) n'est JAMAIS éligible même si son montant est encore nul — le
+ * filtre exige `priceXofAtActivation: null` ET `priceSnapshotSource: null`
+ * simultanément, dans le SELECT comme dans l'UPDATE. Une donnée déjà
+ * classifiée ne doit jamais être silencieusement requalifiée en ESTIMATED.
  *
  * Terminaison garantie (audit/54 §8.1, corrigé audit/55 étape 4) : la
  * progression d'un lot au suivant se fait par un curseur sur `id`
@@ -82,6 +90,7 @@ async function runBatch(
       status: { in: [VoucherStatus.ACTIVE, VoucherStatus.USED] },
       usedAt: { not: null },
       priceXofAtActivation: null,
+      priceSnapshotSource: null,
       ...(cursorId ? { id: { gt: cursorId } } : {}),
     },
     orderBy: { id: 'asc' },
@@ -109,7 +118,7 @@ async function runBatch(
       // amont) : entre la lecture et l'écriture, un autre process aurait pu
       // déjà backfiller cette ligne — updateMany conditionnel, idempotent.
       const res = await prisma.voucher.updateMany({
-        where: { id: v.id, priceXofAtActivation: null },
+        where: { id: v.id, priceXofAtActivation: null, priceSnapshotSource: null },
         data: { priceXofAtActivation: price, priceSnapshotSource: 'ESTIMATED_FROM_CURRENT_PLAN_PRICE' },
       });
       if (res.count > 0) updated += 1;
