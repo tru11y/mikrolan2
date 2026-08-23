@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { VoucherStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getTenantContext } from '../../common/context/tenant-context';
+import { RevenueService, type ActivationLine, type RevenueDataQuality } from '../revenue/revenue.service';
 
 export interface RevenueByPeriodItem {
   month: string;
@@ -9,6 +10,12 @@ export interface RevenueByPeriodItem {
   monthNum: number;
   totalXof: number;
   transactionCount: number;
+  // Qualité du revenu — ajoutés audit/55, corrige audit/54 §7.
+  exactXof: number;
+  estimatedXof: number;
+  unknownSalesCount: number;
+  invalidSourceCount: number;
+  dataQuality: RevenueDataQuality;
 }
 
 export interface RevenueByRouterItem {
@@ -16,6 +23,11 @@ export interface RevenueByRouterItem {
   routerName: string;
   totalXof: number;
   transactionCount: number;
+  exactXof: number;
+  estimatedXof: number;
+  unknownSalesCount: number;
+  invalidSourceCount: number;
+  dataQuality: RevenueDataQuality;
 }
 
 export interface InvoiceItem {
@@ -38,79 +50,107 @@ const MONTH_NAMES = [
 
 @Injectable()
 export class AccountingService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly revenue: RevenueService,
+  ) {}
 
+  /**
+   * Revenu hotspot par mois glissant. Passe désormais par
+   * RevenueService.listActivations (audit/51, audit/52, audit/55) — même
+   * règle EXACT/ESTIMATED/UNKNOWN/INVALID_SOURCE que le dashboard global,
+   * jamais un recalcul indépendant du montant. Chaque bucket mensuel expose
+   * sa propre qualité (audit/54 §7 : ces indicateurs étaient calculés puis
+   * perdus, désormais exposés par groupe).
+   */
   async revenueByPeriod(months: number): Promise<RevenueByPeriodItem[]> {
+    const ctx = getTenantContext();
+    if (!ctx) throw new Error('Contexte tenant manquant');
+
     const since = new Date();
     since.setMonth(since.getMonth() - months);
     since.setDate(1);
     since.setHours(0, 0, 0, 0);
 
-    const vouchers = await this.prisma.voucher.findMany({
-      where: {
-        status: { in: [VoucherStatus.USED, VoucherStatus.ACTIVE] },
-        usedAt: { gte: since },
-      },
-      select: {
-        usedAt: true,
-        plan: { select: { priceXof: true } },
-      },
+    const activations = await this.revenue.listActivations({
+      tenantId: ctx.tenantId,
+      from: since,
+      to: new Date(),
     });
 
-    const buckets = new Map<string, RevenueByPeriodItem>();
-
-    for (const v of vouchers) {
-      const d = v.usedAt!;
+    const byMonth = new Map<string, ActivationLine[]>();
+    const meta = new Map<string, { year: number; monthNum: number }>();
+    for (const a of activations) {
+      const d = a.usedAt;
       const key = `${d.getFullYear()}-${d.getMonth()}`;
-      const entry = buckets.get(key) ?? {
-        month: MONTH_NAMES[d.getMonth()],
-        year: d.getFullYear(),
-        monthNum: d.getMonth() + 1,
-        totalXof: 0,
-        transactionCount: 0,
-      };
-      entry.totalXof += v.plan.priceXof;
-      entry.transactionCount += 1;
-      buckets.set(key, entry);
+      const lines = byMonth.get(key) ?? [];
+      lines.push(a);
+      byMonth.set(key, lines);
+      meta.set(key, { year: d.getFullYear(), monthNum: d.getMonth() + 1 });
     }
 
-    return [...buckets.values()].sort(
-      (a, b) => a.year - b.year || a.monthNum - b.monthNum,
-    );
+    const items: RevenueByPeriodItem[] = [];
+    for (const [key, lines] of byMonth) {
+      const q = this.revenue.summarizeQuality(lines);
+      const { year, monthNum } = meta.get(key)!;
+      items.push({
+        month: MONTH_NAMES[monthNum - 1],
+        year,
+        monthNum,
+        totalXof: q.exactRevenueXof + q.estimatedRevenueXof,
+        transactionCount: lines.filter((l) => l.xof !== null).length,
+        exactXof: q.exactRevenueXof,
+        estimatedXof: q.estimatedRevenueXof,
+        unknownSalesCount: q.unknownSalesCount,
+        invalidSourceCount: q.invalidSourceCount,
+        dataQuality: q.dataQuality,
+      });
+    }
+
+    return items.sort((a, b) => a.year - b.year || a.monthNum - b.monthNum);
   }
 
   async revenueByRouter(from?: string, to?: string): Promise<RevenueByRouterItem[]> {
-    const dateFilter: Record<string, unknown> = {};
-    if (from) dateFilter.gte = new Date(from);
-    if (to) dateFilter.lte = new Date(to);
+    const ctx = getTenantContext();
+    if (!ctx) throw new Error('Contexte tenant manquant');
 
-    const vouchers = await this.prisma.voucher.findMany({
-      where: {
-        status: { in: [VoucherStatus.USED, VoucherStatus.ACTIVE] },
-        ...(Object.keys(dateFilter).length ? { usedAt: dateFilter } : {}),
-      },
-      select: {
-        routerId: true,
-        router: { select: { identity: true, alias: true } },
-        plan: { select: { priceXof: true } },
-      },
+    const activations = await this.revenue.listActivations({
+      tenantId: ctx.tenantId,
+      from: from ? new Date(from) : new Date(0),
+      to: to ? new Date(to) : new Date(),
     });
 
-    const buckets = new Map<string, RevenueByRouterItem>();
+    const routerIds = [...new Set(activations.map((a) => a.routerId))];
+    const routers = await this.prisma.router.findMany({
+      where: { id: { in: routerIds } },
+      select: { id: true, identity: true, alias: true },
+    });
+    const routerName = new Map(routers.map((r) => [r.id, r.alias || r.identity]));
 
-    for (const v of vouchers) {
-      const entry = buckets.get(v.routerId) ?? {
-        routerId: v.routerId,
-        routerName: v.router.alias || v.router.identity,
-        totalXof: 0,
-        transactionCount: 0,
-      };
-      entry.totalXof += v.plan.priceXof;
-      entry.transactionCount += 1;
-      buckets.set(v.routerId, entry);
+    const byRouter = new Map<string, ActivationLine[]>();
+    for (const a of activations) {
+      const lines = byRouter.get(a.routerId) ?? [];
+      lines.push(a);
+      byRouter.set(a.routerId, lines);
     }
 
-    return [...buckets.values()].sort((a, b) => b.totalXof - a.totalXof);
+    const items: RevenueByRouterItem[] = [];
+    for (const [routerId, lines] of byRouter) {
+      const q = this.revenue.summarizeQuality(lines);
+      items.push({
+        routerId,
+        routerName: routerName.get(routerId) ?? routerId,
+        totalXof: q.exactRevenueXof + q.estimatedRevenueXof,
+        transactionCount: lines.filter((l) => l.xof !== null).length,
+        exactXof: q.exactRevenueXof,
+        estimatedXof: q.estimatedRevenueXof,
+        unknownSalesCount: q.unknownSalesCount,
+        invalidSourceCount: q.invalidSourceCount,
+        dataQuality: q.dataQuality,
+      });
+    }
+
+    return items.sort((a, b) => b.totalXof - a.totalXof);
   }
 
   async invoices(page: number, limit: number) {

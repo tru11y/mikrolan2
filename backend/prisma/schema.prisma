@@ -151,6 +151,7 @@ model Tenant {
   name           String
   slug           String         @unique
   status         TenantStatus   @default(ACTIVE)
+  timezone       String?        @default("Africa/Abidjan")
   users          User[]
   routers        Router[]
   subscription   Subscription?
@@ -450,6 +451,10 @@ model Voucher {
   mikrotikId     String? // .id du /ip/hotspot/user sur le routeur
   expiresAt      DateTime?
   usedAt         DateTime?
+  // Prix figé au moment de la première activation (jamais recalculé depuis
+  // Plan.priceXof après coup) et sa provenance — voir audit/51 et audit/52.
+  priceXofAtActivation Int?
+  priceSnapshotSource  String? // 'EXACT' | 'ESTIMATED_FROM_CURRENT_PLAN_PRICE' | 'UNKNOWN'
   revokedAt      DateTime?
   createdById    String?
   session        Session?
