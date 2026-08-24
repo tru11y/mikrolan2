@@ -315,6 +315,119 @@ export type RevenueByRouterItem = {
   dataQuality?: RevenueDataQuality;
 };
 
+// Module Analytics/BI — audit/67. Périodes nommées identiques au backend
+// (analytics/dto/analytics.schemas.ts) ; jamais de tenantId côté client.
+export type AnalyticsPeriod =
+  | 'today'
+  | 'yesterday'
+  | 'last7days'
+  | 'last30days'
+  | 'currentWeek'
+  | 'currentMonth'
+  | 'custom';
+
+export type AnalyticsFilters = {
+  period: AnalyticsPeriod;
+  from?: string;
+  to?: string;
+  routerId?: string;
+  planId?: string;
+};
+
+export type AnalyticsRouterSummary = {
+  routerId: string;
+  routerName: string;
+  revenueXof: number;
+  exactRevenueXof: number;
+  estimatedRevenueXof: number;
+  salesCount: number;
+  averageSaleXof: number;
+  contributionPercent: number;
+  growthPercent: number | null;
+  dataQuality: RevenueDataQuality;
+};
+
+export type AnalyticsPlanPerformance = {
+  planId: string;
+  name: string;
+  salesCount: number;
+  revenueXof: number;
+  exactRevenueXof: number;
+  estimatedRevenueXof: number;
+  revenueContributionPercent: number;
+  salesContributionPercent: number;
+  averageSaleXof: number;
+  routerCount: number;
+  growthPercent: number | null;
+  dataQuality: RevenueDataQuality;
+};
+
+export type AnalyticsHeatmapCell = {
+  dayOfWeek: number; // 0=lundi..6=dimanche
+  hour: number; // 0-23
+  count: number;
+  revenueXof?: number; // uniquement salesHeatmap
+};
+
+export type AnalyticsOverview = {
+  period: { from: string; to: string };
+  timezone: string;
+  revenueXof: number;
+  exactRevenueXof: number;
+  estimatedRevenueXof: number;
+  salesCount: number;
+  averageSaleXof: number;
+  unknownSalesCount: number;
+  invalidSourceCount: number;
+  dataQuality: RevenueDataQuality;
+  previousPeriod: { from: string; to: string };
+  revenueGrowthPercent: number | null;
+  salesGrowthPercent: number | null;
+  routersSummary: AnalyticsRouterSummary[];
+  topPlans: AnalyticsPlanPerformance[];
+  lastCalculatedAt: string;
+};
+
+export type AnalyticsRouterDetail = {
+  routerId: string;
+  routerName: string;
+  health: string | null;
+  period: { from: string; to: string };
+  timezone: string;
+  revenueXof: number;
+  exactRevenueXof: number;
+  estimatedRevenueXof: number;
+  salesCount: number;
+  averageSaleXof: number;
+  unknownSalesCount: number;
+  invalidSourceCount: number;
+  dataQuality: RevenueDataQuality;
+  contributionPercent: number;
+  growthPercent: number | null;
+  plans: {
+    planId: string;
+    name: string;
+    salesCount: number;
+    revenueXof: number;
+    exactRevenueXof: number;
+    estimatedRevenueXof: number;
+    dataQuality: RevenueDataQuality;
+  }[];
+  timeSeries: { date: string; revenueXof: number; salesCount: number }[];
+  salesHeatmap: AnalyticsHeatmapCell[];
+  sessionsHeatmap: AnalyticsHeatmapCell[];
+  sessionsCount: number;
+  comparisonToTenantAverage: { averageRouterRevenueXof: number; deltaPercent: number | null };
+  lastCalculatedAt: string;
+};
+
+export type AnalyticsTraffic = {
+  period: { from: string; to: string };
+  timezone: string;
+  salesHeatmap: AnalyticsHeatmapCell[];
+  sessionsHeatmap: AnalyticsHeatmapCell[];
+};
+
 export type InvoiceItem = {
   id: string;
   number: string;
@@ -1367,6 +1480,42 @@ export const api = {
         '/accounting/invoices/generate',
         { periodStart, periodEnd },
       );
+      return unwrap(res);
+    },
+  },
+  analytics: {
+    async overview(filters: AnalyticsFilters): Promise<AnalyticsOverview> {
+      const res = await apiClient.get<ApiEnvelope<AnalyticsOverview>>('/analytics/overview', {
+        params: filters,
+      });
+      return unwrap(res);
+    },
+    async routers(filters: Omit<AnalyticsFilters, 'routerId' | 'planId'>): Promise<AnalyticsRouterSummary[]> {
+      const res = await apiClient.get<ApiEnvelope<AnalyticsRouterSummary[]>>('/analytics/routers', {
+        params: filters,
+      });
+      return unwrap(res);
+    },
+    async routerDetail(
+      routerId: string,
+      filters: Omit<AnalyticsFilters, 'routerId' | 'planId'>,
+    ): Promise<AnalyticsRouterDetail> {
+      const res = await apiClient.get<ApiEnvelope<AnalyticsRouterDetail>>(
+        `/analytics/routers/${routerId}`,
+        { params: filters },
+      );
+      return unwrap(res);
+    },
+    async plans(filters: Omit<AnalyticsFilters, 'planId'>): Promise<AnalyticsPlanPerformance[]> {
+      const res = await apiClient.get<ApiEnvelope<AnalyticsPlanPerformance[]>>('/analytics/plans', {
+        params: filters,
+      });
+      return unwrap(res);
+    },
+    async traffic(filters: Omit<AnalyticsFilters, 'planId'>): Promise<AnalyticsTraffic> {
+      const res = await apiClient.get<ApiEnvelope<AnalyticsTraffic>>('/analytics/traffic', {
+        params: filters,
+      });
       return unwrap(res);
     },
   },
