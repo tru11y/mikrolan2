@@ -428,6 +428,89 @@ export type AnalyticsTraffic = {
   sessionsHeatmap: AnalyticsHeatmapCell[];
 };
 
+// Prévisions BI explicables — audit/73. Liste fermée backend
+// (forecast.types.ts) : jamais HIGH par intuition, INSUFFICIENT_DATA
+// systématique sous les seuils.
+export type ForecastConfidence = 'HIGH' | 'MEDIUM' | 'LOW' | 'INSUFFICIENT_DATA' | 'UNAVAILABLE';
+export type ForecastModelName =
+  | 'NAIVE'
+  | 'MOVING_AVERAGE_7'
+  | 'MOVING_AVERAGE_14'
+  | 'MOVING_AVERAGE_28'
+  | 'WEEKDAY_SEASONAL'
+  | 'LINEAR_TREND';
+
+export type ForecastPoint = {
+  date: string;
+  predicted: number;
+  lowerBound: number;
+  upperBound: number;
+};
+
+export type ForecastResult = {
+  metric: 'revenueXof' | 'salesCount';
+  points: ForecastPoint[];
+  model: ForecastModelName;
+  confidence: ForecastConfidence;
+  historyStart: string | null;
+  historyEnd: string | null;
+  trainingPoints: number;
+  validationMetric: { mae: number; wape: number | null; bias: number } | null;
+  modelComparison: { model: ForecastModelName; mae: number; wape: number | null; bias: number }[];
+  calculatedAt: string;
+  isForecast: true;
+  warnings: string[];
+};
+
+export type ForecastOverview = {
+  revenueForecast: ForecastResult;
+  salesForecast: ForecastResult;
+  warnings: string[];
+};
+
+export type ForecastTraffic = {
+  salesPeakDays: { dayOfWeek: number; averageCount: number }[];
+  salesPeakHours: { hour: number; averageCount: number }[];
+  sessionsPeakDays: { dayOfWeek: number; averageCount: number }[];
+  sessionsPeakHours: { hour: number; averageCount: number }[];
+  confidence: ForecastConfidence;
+  historyCoverageDays: number;
+  insufficientDataReason: string | null;
+  calculatedAt: string;
+};
+
+export type RouterForecastItem = {
+  routerId: string;
+  routerName: string;
+  currentTrend: 'UP' | 'DOWN' | 'STABLE' | 'UNKNOWN';
+  expectedDirection: 'UP' | 'DOWN' | 'STABLE' | 'UNKNOWN';
+  forecastRevenueXof: number | null;
+  forecastSalesCount: number | null;
+  confidence: ForecastConfidence;
+  warning: string | null;
+};
+
+export type PlanForecastItem = {
+  planId: string;
+  name: string;
+  salesTrend: 'UP' | 'DOWN' | 'STABLE' | 'UNKNOWN';
+  revenueTrend: 'UP' | 'DOWN' | 'STABLE' | 'UNKNOWN';
+  expectedDemand: number | null;
+  confidence: ForecastConfidence;
+  warning: string | null;
+};
+
+export type BusinessInsight = {
+  type: string;
+  title: string;
+  observation: string;
+  evidence: string;
+  period: { from: string; to: string };
+  confidence: ForecastConfidence;
+  recommendedAction: string | null;
+  limitations: string;
+};
+
 export type InvoiceItem = {
   id: string;
   number: string;
@@ -1516,6 +1599,28 @@ export const api = {
       const res = await apiClient.get<ApiEnvelope<AnalyticsTraffic>>('/analytics/traffic', {
         params: filters,
       });
+      return unwrap(res);
+    },
+    async forecast(params: { horizonDays?: number; routerId?: string; planId?: string }): Promise<ForecastOverview> {
+      const res = await apiClient.get<ApiEnvelope<ForecastOverview>>('/analytics/forecast', { params });
+      return unwrap(res);
+    },
+    async forecastTraffic(routerId?: string): Promise<ForecastTraffic> {
+      const res = await apiClient.get<ApiEnvelope<ForecastTraffic>>('/analytics/forecast/traffic', {
+        params: { routerId },
+      });
+      return unwrap(res);
+    },
+    async forecastRouters(): Promise<RouterForecastItem[]> {
+      const res = await apiClient.get<ApiEnvelope<RouterForecastItem[]>>('/analytics/forecast/routers');
+      return unwrap(res);
+    },
+    async forecastPlans(): Promise<PlanForecastItem[]> {
+      const res = await apiClient.get<ApiEnvelope<PlanForecastItem[]>>('/analytics/forecast/plans');
+      return unwrap(res);
+    },
+    async insights(): Promise<BusinessInsight[]> {
+      const res = await apiClient.get<ApiEnvelope<BusinessInsight[]>>('/analytics/insights');
       return unwrap(res);
     },
   },

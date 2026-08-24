@@ -14,7 +14,7 @@ import {
   type RevenueByRouterItem,
 } from '@/src/lib/api';
 import { exportMetricsCsv } from '@/src/lib/metricsCsv';
-import { busiestCell, describeBusiest, fmtGrowth } from '@/src/lib/analyticsFormat';
+import { busiestCell, describeBusiest, fmtGrowth, DAY_LABELS } from '@/src/lib/analyticsFormat';
 import {
   Badge,
   Card,
@@ -324,6 +324,130 @@ function AffluenceSection({
   );
 }
 
+const CONFIDENCE_LABEL: Record<string, string> = {
+  HIGH: 'Fiabilité haute',
+  MEDIUM: 'Fiabilité moyenne',
+  LOW: 'Fiabilité faible',
+  INSUFFICIENT_DATA: 'Données insuffisantes',
+  UNAVAILABLE: 'Non disponible',
+};
+const CONFIDENCE_TONE: Record<string, 'success' | 'warning' | 'muted' | 'danger'> = {
+  HIGH: 'success',
+  MEDIUM: 'warning',
+  LOW: 'warning',
+  INSUFFICIENT_DATA: 'muted',
+  UNAVAILABLE: 'muted',
+};
+
+const INSUFFICIENT_DATA_MESSAGE =
+  "L'historique disponible est encore insuffisant pour produire une prévision fiable.";
+
+/** Tendance + modèle retenu + période d'historique — jamais un modèle présenté comme vérité, toujours accompagné de sa confiance. */
+function TrendsSection({ forecast }: { forecast: import('@/src/lib/api').ForecastOverview | undefined }) {
+  if (!forecast) return <Skeleton height={80} />;
+  const { revenueForecast, salesForecast } = forecast;
+  if (revenueForecast.confidence === 'INSUFFICIENT_DATA') {
+    return <Empty icon="analytics-outline" text={INSUFFICIENT_DATA_MESSAGE} />;
+  }
+  return (
+    <View style={{ gap: 10 }}>
+      <Row style={{ justifyContent: 'flex-start', gap: 8 }}>
+        <Badge label={CONFIDENCE_LABEL[revenueForecast.confidence]} tone={CONFIDENCE_TONE[revenueForecast.confidence]} />
+        <Text style={{ color: theme.textMuted, fontSize: 11 }}>
+          Modèle : {revenueForecast.model} · Historique : {revenueForecast.historyStart} → {revenueForecast.historyEnd}
+        </Text>
+      </Row>
+      <Text style={{ color: theme.textMuted, fontSize: 11 }}>
+        Chiffre d'affaires : {revenueForecast.trainingPoints} jour(s) d'historique analysés.
+      </Text>
+      <Text style={{ color: theme.textMuted, fontSize: 11 }}>
+        Ventes : {salesForecast.trainingPoints} jour(s) d'historique analysés, modèle {salesForecast.model}.
+      </Text>
+    </View>
+  );
+}
+
+/** Prévision des prochains jours — distinction visuelle explicite réel/prévision, jamais présentée comme un fait acquis. */
+function ForecastPointsSection({ points, metricLabel }: { points: { date: string; predicted: number; lowerBound: number; upperBound: number }[]; metricLabel: string }) {
+  if (!points.length) return <Empty icon="calendar-outline" text={INSUFFICIENT_DATA_MESSAGE} />;
+  return (
+    <View style={{ gap: 8 }}>
+      <Text style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 }}>{metricLabel}</Text>
+      {points.map((p) => (
+        <Row key={p.date} style={{ gap: 8 }}>
+          <Text style={{ color: theme.textMuted, fontSize: 12, width: 90 }}>{p.date.slice(5)}</Text>
+          <Row style={{ justifyContent: 'flex-start', gap: 6, flex: 1 }}>
+            <Ionicons name="sparkles-outline" size={12} color={theme.primarySoft} />
+            <Mono style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>{p.predicted}</Mono>
+            <Text style={{ color: theme.textMuted, fontSize: 10 }}>
+              ({p.lowerBound}–{p.upperBound})
+            </Text>
+          </Row>
+        </Row>
+      ))}
+      <Text style={{ color: theme.textMuted, fontSize: 10, fontStyle: 'italic' }}>
+        Prévision — pas une donnée réelle. Intervalle basé sur l'erreur historique du modèle.
+      </Text>
+    </View>
+  );
+}
+
+/** Affluence prévue — jours/heures probables, ventes et sessions toujours distinguées. */
+function PredictedTrafficSection({ data }: { data: import('@/src/lib/api').ForecastTraffic | undefined }) {
+  if (!data) return <Skeleton height={80} />;
+  if (data.confidence === 'INSUFFICIENT_DATA') {
+    return <Empty icon="time-outline" text={data.insufficientDataReason ?? INSUFFICIENT_DATA_MESSAGE} />;
+  }
+  const topSalesDay = data.salesPeakDays[0];
+  const topSalesHour = data.salesPeakHours[0];
+  const topSessionsDay = data.sessionsPeakDays[0];
+  const topSessionsHour = data.sessionsPeakHours[0];
+  return (
+    <View style={{ gap: 10 }}>
+      <Row style={{ justifyContent: 'flex-start', gap: 8 }}>
+        <Ionicons name="cart-outline" size={16} color={theme.primary} />
+        <Text style={{ color: theme.text, fontSize: 12, flex: 1 }}>
+          Ventes probables : {topSalesDay ? DAY_LABELS[topSalesDay.dayOfWeek] : '—'}
+          {topSalesHour ? ` vers ${topSalesHour.hour}h` : ''}
+        </Text>
+      </Row>
+      <Row style={{ justifyContent: 'flex-start', gap: 8 }}>
+        <Ionicons name="wifi-outline" size={16} color={theme.primarySoft} />
+        <Text style={{ color: theme.text, fontSize: 12, flex: 1 }}>
+          Sessions probables : {topSessionsDay ? DAY_LABELS[topSessionsDay.dayOfWeek] : '—'}
+          {topSessionsHour ? ` vers ${topSessionsHour.hour}h` : ''}
+        </Text>
+      </Row>
+      <Badge label={CONFIDENCE_LABEL[data.confidence]} tone={CONFIDENCE_TONE[data.confidence]} />
+    </View>
+  );
+}
+
+/** Insights métier — cartes concises avec preuve et limite, jamais de causalité ni de jugement. */
+function InsightsSection({ insights }: { insights: import('@/src/lib/api').BusinessInsight[] | undefined }) {
+  if (!insights) return <Skeleton height={100} />;
+  if (!insights.length || (insights.length === 1 && insights[0].type === 'INSUFFICIENT_DATA')) {
+    return <Empty icon="bulb-outline" text={insights[0]?.observation ?? INSUFFICIENT_DATA_MESSAGE} />;
+  }
+  return (
+    <View style={{ gap: 10 }}>
+      {insights.slice(0, 6).map((ins, idx) => (
+        <View
+          key={`${ins.type}-${idx}`}
+          style={{ backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 12, padding: 12, gap: 4 }}
+        >
+          <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>{ins.title}</Text>
+          <Text style={{ color: theme.textMuted, fontSize: 12 }}>{ins.observation}</Text>
+          <Row style={{ justifyContent: 'flex-start', gap: 8 }}>
+            <Badge label={CONFIDENCE_LABEL[ins.confidence] ?? ins.confidence} tone={CONFIDENCE_TONE[ins.confidence] ?? 'muted'} />
+          </Row>
+          <Text style={{ color: theme.textMuted, fontSize: 10, fontStyle: 'italic' }}>{ins.limitations}</Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export default function RapportScreen() {
   const { routerId } = useLocalSearchParams<{ routerId?: string }>();
   const { activeRouterId } = useActiveRouter();
@@ -366,6 +490,21 @@ export default function RapportScreen() {
   const traffic = useQuery({
     queryKey: ['analytics', 'traffic', analyticsPeriod, routerId],
     queryFn: () => api.analytics.traffic({ period: analyticsPeriod, routerId }),
+    placeholderData: keepPreviousData,
+  });
+  const forecast = useQuery({
+    queryKey: ['analytics', 'forecast', routerId],
+    queryFn: () => api.analytics.forecast({ routerId }),
+    placeholderData: keepPreviousData,
+  });
+  const forecastTraffic = useQuery({
+    queryKey: ['analytics', 'forecast-traffic', routerId],
+    queryFn: () => api.analytics.forecastTraffic(routerId),
+    placeholderData: keepPreviousData,
+  });
+  const insights = useQuery({
+    queryKey: ['analytics', 'insights'],
+    queryFn: () => api.analytics.insights(),
     placeholderData: keepPreviousData,
   });
 
@@ -658,6 +797,54 @@ export default function RapportScreen() {
                     sessionsHeatmap={traffic.data?.sessionsHeatmap ?? []}
                   />
                 </Card>
+              )}
+            </View>
+
+            {/* Tendances et prévisions BI explicables — audit/73 */}
+            <View>
+              <SectionTitle>Tendances</SectionTitle>
+              {forecast.error ? (
+                <ErrorState message="Impossible de charger les tendances." onRetry={onRefresh} />
+              ) : (
+                <Card>
+                  <TrendsSection forecast={forecast.data} />
+                </Card>
+              )}
+            </View>
+
+            <View>
+              <SectionTitle>Prévisions</SectionTitle>
+              {forecast.isLoading ? (
+                <Skeleton height={160} />
+              ) : forecast.error ? (
+                <ErrorState message="Impossible de charger les prévisions." onRetry={onRefresh} />
+              ) : forecast.data?.revenueForecast.confidence === 'INSUFFICIENT_DATA' ? (
+                <Empty icon="calendar-outline" text={INSUFFICIENT_DATA_MESSAGE} />
+              ) : (
+                <Card style={{ gap: 16 }}>
+                  <ForecastPointsSection points={forecast.data?.revenueForecast.points ?? []} metricLabel="CHIFFRE D'AFFAIRES PRÉVU (XOF)" />
+                  <ForecastPointsSection points={forecast.data?.salesForecast.points ?? []} metricLabel="VENTES PRÉVUES" />
+                </Card>
+              )}
+            </View>
+
+            <View>
+              <SectionTitle>Affluence prévue</SectionTitle>
+              {forecastTraffic.error ? (
+                <ErrorState message="Impossible de charger l'affluence prévue." onRetry={onRefresh} />
+              ) : (
+                <Card>
+                  <PredictedTrafficSection data={forecastTraffic.data} />
+                </Card>
+              )}
+            </View>
+
+            <View>
+              <SectionTitle>Insights</SectionTitle>
+              {insights.error ? (
+                <ErrorState message="Impossible de charger les insights." onRetry={onRefresh} />
+              ) : (
+                <InsightsSection insights={insights.data} />
               )}
             </View>
 
