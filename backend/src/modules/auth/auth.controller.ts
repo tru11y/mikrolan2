@@ -166,6 +166,12 @@ export class AuthController {
     return this.auth.registerPushToken(user.userId, dto.token);
   }
 
+  @Delete('push-token')
+  @HttpCode(200)
+  unregisterPushToken(@CurrentUser() user: TenantContext) {
+    return this.auth.unregisterPushToken(user.userId);
+  }
+
   @Post('logout-all')
   @HttpCode(200)
   logoutAll(@CurrentUser() user: TenantContext) {
