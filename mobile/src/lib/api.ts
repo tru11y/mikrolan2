@@ -878,6 +878,7 @@ export const api = {
       });
     },
     async logout(): Promise<void> {
+      await apiClient.delete('/auth/push-token').catch(() => {});
       if (!refreshToken) return;
       await apiClient.post('/auth/logout', { refreshToken });
     },

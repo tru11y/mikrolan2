@@ -12,15 +12,17 @@ const mockPrisma: Record<string, any> = {
   invoice: { findUnique: jest.fn(), update: jest.fn() },
   subscription: { update: jest.fn() },
   tenant: { update: jest.fn() },
-  notification: { create: jest.fn() },
+  notification: { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) },
   auditLog: { create: jest.fn() },
   $transaction: jest.fn((ops: unknown[]) => Promise.all(ops)),
 };
 
+const mockNotifications = { sendPushToTenant: jest.fn().mockResolvedValue(undefined) };
+
 const actor = { userId: 'admin-1', tenantId: 'platform' };
 
 function buildService() {
-  return new AdminService(mockPrisma as any);
+  return new AdminService(mockPrisma as any, mockNotifications as any);
 }
 
 beforeEach(() => jest.clearAllMocks());
