@@ -271,7 +271,7 @@ export class SubscriptionsService {
         : now;
     const end = new Date(from.getTime() + days * 86_400_000);
 
-    await this.prisma.$transaction(async (tx) => {
+    const notification = await this.prisma.$transaction(async (tx) => {
       await tx.subscription.update({
         where: { tenantId },
         data: {
@@ -289,7 +289,7 @@ export class SubscriptionsService {
           : { tenantId, status: PaymentStatus.PENDING },
         data: { status: PaymentStatus.PAID, paidAt: now },
       });
-      await tx.notification.create({
+      return tx.notification.create({
         data: {
           tenantId,
           type: NotificationType.SUBSCRIPTION_ACTIVATED,
@@ -314,7 +314,13 @@ export class SubscriptionsService {
       body: 'Votre paiement a été validé. La gestion à distance est débloquée.',
       data: { endsAt: end.toISOString(), tierKey: invoice?.tier?.key ?? null },
     });
-    this.notifications.sendPushToTenant(tenantId, 'Abonnement activé', 'Votre paiement a été validé. La gestion à distance est débloquée.');
+    this.notifications.sendPushToTenant(
+      tenantId,
+      'Abonnement activé',
+      'Votre paiement a été validé. La gestion à distance est débloquée.',
+      null,
+      { notificationId: notification.id, type: NotificationType.SUBSCRIPTION_ACTIVATED },
+    );
 
     return this.getForTenant(tenantId);
   }
