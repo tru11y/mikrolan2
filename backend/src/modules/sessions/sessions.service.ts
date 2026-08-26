@@ -161,7 +161,7 @@ export class SessionsService {
       if (firstSight) {
         const title = 'Ticket activé';
         const body = `Le ticket ${voucher.code} vient de se connecter au hotspot.`;
-        await this.prisma.notification.create({
+        const notification = await this.prisma.notification.create({
           data: {
             tenantId,
             type: NotificationType.VOUCHER_ACTIVATED,
@@ -180,7 +180,10 @@ export class SessionsService {
           body,
           data: { voucherId: voucher.id, routerId, code: voucher.code },
         });
-        this.notifications.sendPushToTenant(tenantId, title, body, routerId);
+        this.notifications.sendPushToTenant(tenantId, title, body, routerId, {
+          notificationId: notification.id,
+          type: NotificationType.VOUCHER_ACTIVATED,
+        });
       }
     }
   }
