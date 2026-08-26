@@ -284,6 +284,14 @@ export class AuthService {
     return { registered: true };
   }
 
+  async unregisterPushToken(userId: string): Promise<{ registered: false }> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { pushToken: null },
+    });
+    return { registered: false };
+  }
+
   async googleLogin(idToken: string, nonce?: string): Promise<TokenPair> {
     if (!this.googleClient) {
       throw new UnauthorizedException('Google OAuth non configuré.');

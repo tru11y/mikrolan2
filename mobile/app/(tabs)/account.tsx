@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ScrollView, Switch, Text, View } from 'react-native';
+import { Linking, ScrollView, Switch, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
@@ -277,11 +277,18 @@ export default function AccountScreen() {
           />
         </View>
         {pushStatus === 'permission_denied' ? (
-          <Banner tone="warning">
-            Les notifications sont bloquées dans les réglages du téléphone —
-            ce réglage n'aura aucun effet tant qu'elles n'y sont pas
-            autorisées.
-          </Banner>
+          <View style={{ gap: 8 }}>
+            <Banner tone="warning">
+              Les notifications sont bloquées dans les réglages du téléphone —
+              ce réglage n'aura aucun effet tant qu'elles n'y sont pas
+              autorisées.
+            </Banner>
+            <Press accessibilityLabel="Ouvrir les réglages Android" onPress={() => Linking.openSettings()}>
+              <Text style={{ color: theme.primary, fontWeight: '700', fontSize: type.body }}>
+                Ouvrir les réglages du téléphone
+              </Text>
+            </Press>
+          </View>
         ) : pushStatus === 'missing_config' || pushStatus === 'failed' ? (
           <Banner tone="warning">
             Les notifications ne peuvent pas être activées sur cette
