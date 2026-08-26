@@ -24,6 +24,7 @@ export class NotificationsService {
     title: string,
     body: string,
     routerId?: string | null,
+    extraData?: Record<string, unknown>,
   ): Promise<void> {
     try {
       if (routerId) {
@@ -41,14 +42,21 @@ export class NotificationsService {
           pushToken: { not: null },
           status: 'ACTIVE',
         },
-        select: { pushToken: true },
+        select: { id: true, pushToken: true },
       });
-      const tokens = users
-        .map((u) => u.pushToken)
-        .filter((t): t is string => Boolean(t));
-      if (!tokens.length) return;
+      if (!users.length) return;
 
-      const messages = tokens.map((to) => ({ to, title, body, sound: 'default' as const }));
+      const data = { ...(routerId ? { routerId } : {}), ...extraData };
+      const messages = users.map((u) => ({
+        to: u.pushToken as string,
+        title,
+        body,
+        sound: 'default' as const,
+        channelId: 'default',
+        priority: 'high' as const,
+        ...(Object.keys(data).length ? { data } : {}),
+      }));
+
       const res = await fetch('https://exp.host/--/api/v2/push/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -56,7 +64,27 @@ export class NotificationsService {
       });
       if (!res.ok) {
         this.logger.warn(`Expo push failed: ${res.status}`);
+        return;
       }
+
+      const { data: tickets } = (await res.json()) as {
+        data?: Array<{ status: string; details?: { error?: string } }>;
+      };
+      if (!tickets) return;
+
+      const deadUserIds = tickets
+        .map((ticket, i) =>
+          ticket.status === 'error' && ticket.details?.error === 'DeviceNotRegistered'
+            ? users[i]?.id
+            : null,
+        )
+        .filter((id): id is string => Boolean(id));
+
+      await Promise.all(
+        deadUserIds.map((id) =>
+          this.prisma.user.update({ where: { id }, data: { pushToken: null } }),
+        ),
+      );
     } catch (e) {
       this.logger.warn(`Push error: ${e instanceof Error ? e.message : e}`);
     }
