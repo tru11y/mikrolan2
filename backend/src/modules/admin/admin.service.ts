@@ -17,6 +17,7 @@ import {
   VoucherStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { monthlyPrice } from '../subscriptions/tiers.service';
 import type {
   ListAuditQueryDto,
@@ -54,7 +55,10 @@ const DAY_MS = 86_400_000;
  */
 @Injectable()
 export class AdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   // ── Comptes clients ────────────────────────────────────
 
@@ -521,7 +525,7 @@ export class AdminService {
     const periodDays = dto.periodDays ?? invoice.periodDays;
 
     const now = new Date();
-    await this.prisma.$transaction([
+    const [, , , notification] = await this.prisma.$transaction([
       this.prisma.invoice.update({
         where: { id: invoiceId },
         data: {
@@ -554,6 +558,13 @@ export class AdminService {
         },
       }),
     ]);
+    this.notifications.sendPushToTenant(
+      invoice.tenantId,
+      'Paiement validé',
+      'Votre abonnement PRO est maintenant actif.',
+      null,
+      { notificationId: notification.id, type: 'SUBSCRIPTION_ACTIVATED' },
+    );
 
     await this.audit(
       invoice.tenantId,
@@ -580,7 +591,7 @@ export class AdminService {
       throw new BadRequestException('Cette facture n\'est pas en attente.');
     }
 
-    await this.prisma.$transaction([
+    const [, notification] = await this.prisma.$transaction([
       this.prisma.invoice.update({
         where: { id: invoiceId },
         data: { status: 'FAILED' },
@@ -594,6 +605,13 @@ export class AdminService {
         },
       }),
     ]);
+    this.notifications.sendPushToTenant(
+      invoice.tenantId,
+      'Paiement refusé',
+      dto.reason,
+      null,
+      { notificationId: notification.id, type: 'PAYMENT_REJECTED' },
+    );
 
     await this.audit(
       invoice.tenantId,
@@ -683,7 +701,8 @@ export class AdminService {
     });
     if (!ticket) throw new NotFoundException('Ticket introuvable');
 
-    const [message] = await this.prisma.$transaction([
+    const notifBody = body.length > 100 ? `${body.slice(0, 99)}…` : body;
+    const [message, , notification] = await this.prisma.$transaction([
       this.prisma.ticketMessage.create({
         data: { ticketId, userId, body, isAdmin: true },
       }),
@@ -696,10 +715,17 @@ export class AdminService {
           tenantId: ticket.tenantId,
           type: 'TICKET_REPLY',
           title: 'Réponse du support',
-          body: body.length > 100 ? `${body.slice(0, 99)}…` : body,
+          body: notifBody,
         },
       }),
     ]);
+    this.notifications.sendPushToTenant(
+      ticket.tenantId,
+      'Réponse du support',
+      notifBody,
+      null,
+      { notificationId: notification.id, type: 'TICKET_REPLY', ticketId },
+    );
     return message;
   }
 
