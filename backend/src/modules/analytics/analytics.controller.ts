@@ -1,6 +1,7 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { AnalyticsService } from './analytics.service';
+import { ForecastService } from './forecast/forecast.service';
 import {
   overviewQuerySchema,
   routersQuerySchema,
@@ -13,10 +14,19 @@ import {
   type PlansQueryDto,
   type TrafficQueryDto,
 } from './dto/analytics.schemas';
+import {
+  forecastQuerySchema,
+  forecastTrafficQuerySchema,
+  type ForecastQueryDto,
+  type ForecastTrafficQueryDto,
+} from './forecast/forecast.schemas';
 
 @Controller('analytics')
 export class AnalyticsController {
-  constructor(private readonly analytics: AnalyticsService) {}
+  constructor(
+    private readonly analytics: AnalyticsService,
+    private readonly forecastService: ForecastService,
+  ) {}
 
   @Get('overview')
   overview(@Query(new ZodValidationPipe(overviewQuerySchema)) query: OverviewQueryDto) {
@@ -44,5 +54,30 @@ export class AnalyticsController {
   @Get('traffic')
   traffic(@Query(new ZodValidationPipe(trafficQuerySchema)) query: TrafficQueryDto) {
     return this.analytics.traffic(query);
+  }
+
+  @Get('forecast')
+  forecast(@Query(new ZodValidationPipe(forecastQuerySchema)) query: ForecastQueryDto) {
+    return this.forecastService.forecast(query);
+  }
+
+  @Get('forecast/traffic')
+  forecastTraffic(@Query(new ZodValidationPipe(forecastTrafficQuerySchema)) query: ForecastTrafficQueryDto) {
+    return this.forecastService.forecastTraffic(query.routerId);
+  }
+
+  @Get('forecast/routers')
+  forecastRouters() {
+    return this.forecastService.forecastRouters();
+  }
+
+  @Get('forecast/plans')
+  forecastPlans() {
+    return this.forecastService.forecastPlans();
+  }
+
+  @Get('insights')
+  insights() {
+    return this.forecastService.insights();
   }
 }
