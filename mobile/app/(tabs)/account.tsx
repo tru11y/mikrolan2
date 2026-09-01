@@ -458,16 +458,19 @@ export default function AccountScreen() {
           </View>
         ) : null}
 
-        <Text
-          style={{
-            color: theme.textMuted,
-            fontSize: 12,
-            textAlign: 'center',
-            marginTop: 24,
-          }}
-        >
-          MikroLan2 v{version}
-        </Text>
+        <View style={{ gap: 8, alignItems: 'center', marginTop: 24 }}>
+          <View style={{ flexDirection: 'row', gap: 16 }}>
+            <Press onPress={() => Linking.openURL('https://api.mikrolan.net/api/legal/terms')}>
+              <Text style={{ color: theme.primary, fontSize: 12 }}>CGU</Text>
+            </Press>
+            <Press onPress={() => Linking.openURL('https://api.mikrolan.net/api/legal/privacy')}>
+              <Text style={{ color: theme.primary, fontSize: 12 }}>Politique de confidentialité</Text>
+            </Press>
+          </View>
+          <Text style={{ color: theme.textMuted, fontSize: 12 }}>
+            MikroLan2 v{version}
+          </Text>
+        </View>
       </ScrollView>
       <BottomNav active="account" />
     </View>
