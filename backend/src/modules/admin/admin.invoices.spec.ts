@@ -74,6 +74,13 @@ describe('AdminService.validateInvoice', () => {
         }),
       }),
     );
+    expect(mockNotifications.sendPushToTenant).toHaveBeenCalledWith(
+      'tenant-1',
+      'Paiement validé',
+      'Votre abonnement PRO est maintenant actif.',
+      null,
+      expect.objectContaining({ type: 'SUBSCRIPTION_ACTIVATED' }),
+    );
   });
 
   it("utilise le périodDays fourni au lieu de celui de la facture s'il est passé", async () => {
@@ -160,6 +167,13 @@ describe('AdminService.rejectInvoice', () => {
           metadata: { reason: 'Preuve illisible' },
         }),
       }),
+    );
+    expect(mockNotifications.sendPushToTenant).toHaveBeenCalledWith(
+      'tenant-1',
+      'Paiement refusé',
+      'Preuve illisible',
+      null,
+      expect.objectContaining({ type: 'PAYMENT_REJECTED' }),
     );
     // Le rejet ne doit jamais toucher subscription/tenant — seule la facture change d'état.
     expect(mockPrisma.subscription.update).not.toHaveBeenCalled();
