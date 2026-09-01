@@ -24,4 +24,11 @@ fi
 
 find "${BACKUP_DIR}" -name 'mikrolan-*.sql.gz' -mtime "+${RETENTION_DAYS}" -delete
 
-echo "Backup OK: ${OUT_FILE} ($(du -h "${OUT_FILE}" | cut -f1))"
+S3_BUCKET="s3://mikrolan-backups"
+export AWS_SHARED_CREDENTIALS_FILE="/home/ubuntu/.aws/credentials"
+export AWS_CONFIG_FILE="/home/ubuntu/.aws/config"
+if aws s3 cp --profile backup "${OUT_FILE}" "${S3_BUCKET}/$(basename "${OUT_FILE}")" --quiet 2>/dev/null; then
+  echo "Backup OK: ${OUT_FILE} ($(du -h "${OUT_FILE}" | cut -f1)) — uploaded to S3"
+else
+  echo "Backup OK: ${OUT_FILE} ($(du -h "${OUT_FILE}" | cut -f1)) — S3 upload FAILED" >&2
+fi
