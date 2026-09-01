@@ -15,6 +15,18 @@ gunzip -c /opt/mikrolan2/backups/mikrolan-<timestamp>.sql.gz | \
   docker exec -i mikrolan2-pg psql -U mikrolan -d mikrolan -h 127.0.0.1 -p 5544
 ```
 
-## Limite connue
+## Backup off-site (S3)
 
-Les backups sont stockés uniquement sur le VPS — une perte totale du serveur (disque, résiliation) emporte aussi les backups. Pas de copie externe (S3/Backblaze) pour l'instant, décision volontaire pour rester simple au démarrage.
+Chaque backup est uploadé automatiquement vers `s3://mikrolan-backups` (us-east-1) via le profil AWS `backup` (`~/.aws/credentials`).
+
+- IAM user : `mikrolan-backup-writer` (politique `s3-backup-write` : `s3:PutObject` uniquement)
+- Le script ne fail pas si l'upload S3 échoue — le backup local reste disponible
+- Pas de `s3:DeleteObject` : les backups S3 ne peuvent pas être supprimés par le script (protection contre suppression accidentelle)
+
+Pour restaurer depuis S3 :
+
+```bash
+aws s3 cp --profile backup s3://mikrolan-backups/mikrolan-<timestamp>.sql.gz /tmp/
+gunzip -c /tmp/mikrolan-<timestamp>.sql.gz | \
+  docker exec -i mikrolan2-pg psql -U mikrolan -d mikrolan -h 127.0.0.1 -p 5544
+```
