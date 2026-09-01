@@ -5,8 +5,13 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
+import Constants from 'expo-constants';
+import * as Crypto from 'expo-crypto';
+import * as Google from 'expo-auth-session/providers/google';
+import * as WebBrowser from 'expo-web-browser';
 import {
   api,
   bootstrapApiState,
@@ -21,6 +26,11 @@ import {
   type Me,
 } from '@/src/lib/api';
 import { deleteLocalCredentials } from '@/src/lib/router-credentials';
+
+WebBrowser.maybeCompleteAuthSession();
+
+const GOOGLE_WEB_CLIENT_ID = Constants.expoConfig?.extra?.googleWebClientId as string | undefined;
+const GOOGLE_ANDROID_CLIENT_ID = Constants.expoConfig?.extra?.googleAndroidClientId as string | undefined;
 
 async function clearAllLocalRouterCredentials(): Promise<void> {
   try {
@@ -53,6 +63,8 @@ type AuthContextValue = {
   ) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   googleLogin: (idToken: string, nonce?: string) => Promise<void>;
+  googleAuthAvailable: boolean;
+  promptGoogleLogin: () => void;
   appleLogin: (
     identityToken: string,
     nonce?: string,
@@ -72,6 +84,31 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [me, setMe] = useState<Me | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [apiBaseUrl, setApiBaseUrlState] = useState(getApiBaseUrl());
+
+  const nonceRef = useRef(Crypto.randomUUID());
+  const [nonceHash, setNonceHash] = useState<string | null>(null);
+
+  useEffect(() => {
+    Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, nonceRef.current).then(
+      setNonceHash,
+    );
+  }, []);
+
+  const [, googleResponse, promptGoogle] = Google.useIdTokenAuthRequest({
+    clientId: GOOGLE_WEB_CLIENT_ID,
+    androidClientId: GOOGLE_ANDROID_CLIENT_ID,
+    extraParams: nonceHash ? { nonce: nonceHash } : undefined,
+  });
+
+  useEffect(() => {
+    if (googleResponse?.type === 'success') {
+      const idToken = googleResponse.params.id_token;
+      if (idToken) {
+        googleLogin(idToken, nonceRef.current).catch(() => {});
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [googleResponse]);
 
   useEffect(() => {
     let mounted = true;
@@ -225,12 +262,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
       signup,
       login,
       googleLogin,
+      googleAuthAvailable: Boolean(GOOGLE_WEB_CLIENT_ID),
+      promptGoogleLogin: () => {
+        promptGoogle().catch(() => {});
+      },
       appleLogin,
       logout,
       refreshProfile,
       updateApiBaseUrl,
     }),
-    [apiBaseUrl, entitlement, error, isBusy, isReady, me],
+    [apiBaseUrl, entitlement, error, isBusy, isReady, me, promptGoogle],
   );
 
   return (

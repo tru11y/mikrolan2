@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Image,
   KeyboardAvoidingView,
@@ -11,9 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import * as Crypto from 'expo-crypto';
-import * as Google from 'expo-auth-session/providers/google';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import * as WebBrowser from 'expo-web-browser';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/src/providers/auth-provider';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,17 +26,13 @@ import {
   type,
 } from '@/src/components/ui';
 
-WebBrowser.maybeCompleteAuthSession();
-
-const GOOGLE_WEB_CLIENT_ID = Constants.expoConfig?.extra?.googleWebClientId as string | undefined;
-const GOOGLE_ANDROID_CLIENT_ID = Constants.expoConfig?.extra?.googleAndroidClientId as string | undefined;
-
 export default function LoginScreen() {
   const {
     login,
     signup,
-    googleLogin,
     appleLogin,
+    googleAuthAvailable,
+    promptGoogleLogin,
     isBusy,
     error,
     clearError,
@@ -56,32 +50,10 @@ export default function LoginScreen() {
   const [baseUrl, setBaseUrl] = useState(apiBaseUrl);
 
   const nonce = useMemo(() => Crypto.randomUUID(), []);
-  const [nonceHash, setNonceHash] = useState<string | null>(null);
-
-  useEffect(() => {
-    Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, nonce).then(
-      setNonceHash,
-    );
-  }, [nonce]);
-
-  const [, googleResponse, promptGoogle] = Google.useIdTokenAuthRequest({
-    clientId: GOOGLE_WEB_CLIENT_ID,
-    androidClientId: GOOGLE_ANDROID_CLIENT_ID,
-    extraParams: nonceHash ? { nonce: nonceHash } : undefined,
-  });
-
-  useEffect(() => {
-    if (googleResponse?.type === 'success') {
-      const idToken = googleResponse.params.id_token;
-      if (idToken) {
-        googleLogin(idToken, nonce).catch(() => {});
-      }
-    }
-  }, [googleResponse]);
 
   function handleGoogle() {
     clearError();
-    promptGoogle();
+    promptGoogleLogin();
   }
 
   async function handleApple() {
@@ -237,7 +209,7 @@ export default function LoginScreen() {
               </Text>
             ) : null}
 
-            {GOOGLE_WEB_CLIENT_ID ? (
+            {googleAuthAvailable ? (
               <>
                 <View
                   style={{
