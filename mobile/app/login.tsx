@@ -194,14 +194,14 @@ export default function LoginScreen() {
                 En créant un compte, vous acceptez les{' '}
                 <Text
                   style={{ textDecorationLine: 'underline' }}
-                  onPress={() => Linking.openURL('https://api.mikrolan.net/legal/terms.html')}
+                  onPress={() => Linking.openURL('https://api.mikrolan.net/api/legal/terms')}
                 >
                   conditions d'utilisation
                 </Text>{' '}
                 et la{' '}
                 <Text
                   style={{ textDecorationLine: 'underline' }}
-                  onPress={() => Linking.openURL('https://api.mikrolan.net/legal/privacy.html')}
+                  onPress={() => Linking.openURL('https://api.mikrolan.net/api/legal/privacy')}
                 >
                   politique de confidentialité
                 </Text>
