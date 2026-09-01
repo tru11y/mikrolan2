@@ -9,9 +9,11 @@ import {
 } from 'react';
 import { AppState, AppStateStatus, Vibration } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
+import * as Notifications from 'expo-notifications';
 import { api, getApiBaseUrl, getAuthTokens } from '@/src/lib/api';
 import { openSse, type SseConnection } from '@/src/lib/sse';
 import { useAuth } from '@/src/providers/auth-provider';
+import { markSeen } from '@/src/providers/push-notifications-provider';
 import { useToast } from '@/src/components/ui';
 
 /**
@@ -64,6 +66,7 @@ const LiveEventsContext = createContext<LiveEventsValue>({
 
 /** Les évènements qui méritent d'interrompre l'utilisateur. */
 const ANNOUNCED: Partial<Record<LiveEventType, 'success' | 'danger' | 'info'>> = {
+  VOUCHER_ACTIVATED: 'success',
   SUBSCRIPTION_ACTIVATED: 'success',
   ROUTER_OFFLINE: 'danger',
   UPGRADE_REQUESTED: 'info',
@@ -92,6 +95,17 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
         Vibration.vibrate(event.type === 'ROUTER_OFFLINE' ? 80 : 40);
         const text = event.body ? `${event.title} — ${event.body}` : event.title;
         toast.show(text.length > 120 ? `${text.slice(0, 119)}…` : text, tone);
+
+        markSeen(event.data as Record<string, unknown>);
+        Notifications.scheduleNotificationAsync({
+          content: {
+            title: event.title,
+            body: event.body,
+            sound: 'default',
+            data: { ...event.data, type: event.type, fromSse: true },
+          },
+          trigger: null,
+        }).catch(() => {});
       }
 
       // Un ticket qui s'active change le CA, les sessions et l'état du lot ;

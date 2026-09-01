@@ -312,7 +312,7 @@ export class SubscriptionsService {
       type: NotificationType.SUBSCRIPTION_ACTIVATED,
       title: 'Abonnement activé',
       body: 'Votre paiement a été validé. La gestion à distance est débloquée.',
-      data: { endsAt: end.toISOString(), tierKey: invoice?.tier?.key ?? null },
+      data: { notificationId: notification.id, endsAt: end.toISOString(), tierKey: invoice?.tier?.key ?? null },
     });
     this.notifications.sendPushToTenant(
       tenantId,
