@@ -131,9 +131,6 @@ export function PushNotificationsProvider({ children }: PropsWithChildren) {
         }
       })
       .catch((e) => {
-        // Cause fréquente en environnement de test : FIS_AUTH_ERROR quand le
-        // SHA-1 du keystore utilisé n'est pas enregistré dans le projet
-        // Firebase (google-services.json ne suffit pas, cf. Firebase Console).
         Sentry.captureException(e);
         setStatus('failed');
       });
