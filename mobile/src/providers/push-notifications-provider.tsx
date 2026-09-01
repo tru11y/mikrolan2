@@ -99,7 +99,7 @@ function routeForNotification(data: Record<string, unknown> | undefined): string
 // fois (reçu au premier plan puis re-livré par un relance de app state, etc).
 const seenNotificationIds = new Set<string>();
 
-function markSeen(data: Record<string, unknown> | undefined): boolean {
+export function markSeen(data: Record<string, unknown> | undefined): boolean {
   const id = data?.notificationId;
   if (typeof id !== 'string') return false;
   if (seenNotificationIds.has(id)) return true;
@@ -151,12 +151,14 @@ export function PushNotificationsProvider({ children }: PropsWithChildren) {
     return () => sub.remove();
   }, [isAuthenticated]);
 
-  // Premier plan : le handler ci-dessus affiche déjà la notif système ; ici on
-  // rafraîchit juste le centre interne pour rester cohérent, avec dédup.
   useEffect(() => {
     const sub = Notifications.addNotificationReceivedListener((notification) => {
       const data = notification.request.content.data as Record<string, unknown> | undefined;
-      if (markSeen(data)) return;
+      if (data?.fromSse) return;
+      if (markSeen(data)) {
+        Notifications.dismissNotificationAsync(notification.request.identifier).catch(() => {});
+        return;
+      }
       qc.invalidateQueries({ queryKey: ['notifications'] });
     });
     return () => sub.remove();

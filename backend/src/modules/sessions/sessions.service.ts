@@ -178,7 +178,7 @@ export class SessionsService {
           type: NotificationType.VOUCHER_ACTIVATED,
           title,
           body,
-          data: { voucherId: voucher.id, routerId, code: voucher.code },
+          data: { notificationId: notification.id, voucherId: voucher.id, routerId, code: voucher.code },
         });
         this.notifications.sendPushToTenant(tenantId, title, body, routerId, {
           notificationId: notification.id,
