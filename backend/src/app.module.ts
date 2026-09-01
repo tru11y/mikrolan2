@@ -12,6 +12,7 @@ import { validateEnv } from './config/configuration';
 import { PrismaModule } from './prisma/prisma.module';
 import { CryptoModule } from './common/crypto/crypto.module';
 import { HealthModule } from './modules/health/health.module';
+import { LegalModule } from './modules/legal/legal.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { RoutersModule } from './modules/routers/routers.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
@@ -60,6 +61,7 @@ import { TenantContextMiddleware } from './common/context/tenant-context.middlew
     MailModule,
     SupportModule,
     HealthModule,
+    LegalModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
