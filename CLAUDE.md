@@ -48,9 +48,9 @@
 
 ## Known Gaps (as of last audit)
 
-- [ ] No CGU / privacy policy anywhere in the repo — required before Play Store submission.
-- [ ] CI never runs `test:e2e` — only `/api/auth/*` has e2e coverage; nothing for `/admin/config`, invoice validation, or `/subscriptions/payment-info`.
-- [ ] `AdminService.validateInvoice`/`rejectInvoice` and `SubscriptionsService.uploadProof` have no unit tests despite being the revenue-critical path.
+- [x] ~~No CGU / privacy policy~~ — added at `/api/legal/terms` and `/api/legal/privacy` (PR #19).
+- [x] ~~CI never runs `test:e2e`~~ — CI runs e2e tests (auth, payments, revenue, analytics, forecast).
+- [x] ~~Revenue-critical path has no unit tests~~ — `upload-proof.spec.ts` and push notification assertions added (PR #17).
+- [x] ~~Postgres backup strategy not documented~~ — `pg_backup.sh` with S3 off-site backup to `s3://mikrolan-backups` (PR #19).
 - [ ] No i18n — all UI strings hardcoded in French.
-- [ ] Postgres backup strategy on the VPS not documented in-repo — verify manually.
-- [ ] `mail.service.ts` silently no-ops (just a `logger.warn`) if `SMTP_HOST` is unset — confirm it's actually configured in prod.
+- [x] ~~`mail.service.ts` no-ops if `SMTP_HOST` unset~~ — confirmed SMTP configured in prod (Brevo).
