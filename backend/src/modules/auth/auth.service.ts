@@ -61,6 +61,7 @@ function slugify(name: string): string {
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
   private googleClient: OAuth2Client | null = null;
+  private readonly googleAudiences: string[] = [];
 
   constructor(
     private readonly prisma: PrismaService,
@@ -72,6 +73,11 @@ export class AuthService {
     const clientId = this.config.get<string>('GOOGLE_CLIENT_ID');
     if (clientId) {
       this.googleClient = new OAuth2Client(clientId);
+      this.googleAudiences.push(clientId);
+    }
+    const androidClientId = this.config.get<string>('GOOGLE_ANDROID_CLIENT_ID');
+    if (androidClientId) {
+      this.googleAudiences.push(androidClientId);
     }
   }
 
@@ -297,12 +303,11 @@ export class AuthService {
       throw new UnauthorizedException('Google OAuth non configuré.');
     }
 
-    const clientId = this.config.get<string>('GOOGLE_CLIENT_ID');
     let ticket;
     try {
       ticket = await this.googleClient.verifyIdToken({
         idToken,
-        audience: clientId,
+        audience: this.googleAudiences,
       });
     } catch {
       throw new UnauthorizedException('Token Google invalide.');
@@ -572,11 +577,10 @@ export class AuthService {
       if (!ok) throw new UnauthorizedException('Mot de passe incorrect');
     } else if (dto.googleIdToken) {
       if (!this.googleClient) throw new UnauthorizedException('Google OAuth non configuré.');
-      const clientId = this.config.get<string>('GOOGLE_CLIENT_ID');
       try {
         const ticket = await this.googleClient.verifyIdToken({
           idToken: dto.googleIdToken,
-          audience: clientId,
+          audience: this.googleAudiences,
         });
         const payload = ticket.getPayload();
         if (payload?.sub !== user.googleId) {
