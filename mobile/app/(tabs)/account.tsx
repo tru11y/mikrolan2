@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Linking, ScrollView, Switch, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { useAuth } from '@/src/providers/auth-provider';
 import { useAppLock } from '@/src/providers/app-lock-provider';
 import { usePushStatus } from '@/src/providers/push-notifications-provider';
+import { useBatteryOptimization } from '@/src/hooks/use-battery-optimization';
 import { api, extractErrorMessage } from '@/src/lib/api';
 import { Banner, Button, Field, Press, space, theme, type } from '@/src/components/ui';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
@@ -91,6 +93,8 @@ export default function AccountScreen() {
       setAppLockBusy(false);
     }
   }
+  const battery = useBatteryOptimization();
+  useFocusEffect(useCallback(() => { battery.recheck(); }, [battery.recheck]));
   const version = Constants.expoConfig?.version ?? '0.1.0';
 
   const [editingProfile, setEditingProfile] = useState(false);
@@ -294,6 +298,22 @@ export default function AccountScreen() {
             Les notifications ne peuvent pas être activées sur cette
             installation de l'app. Contactez le support.
           </Banner>
+        ) : null}
+        {battery.available && battery.ignored === false ? (
+          <View style={{ gap: 8, paddingVertical: 8 }}>
+            <Banner tone="warning">
+              L'économiseur de batterie peut empêcher la réception des
+              notifications quand l'app est fermée.
+            </Banner>
+            <Press
+              accessibilityLabel="Désactiver l'économiseur de batterie"
+              onPress={battery.request}
+            >
+              <Text style={{ color: theme.primary, fontWeight: '700', fontSize: type.body }}>
+                Désactiver l'économiseur de batterie
+              </Text>
+            </Press>
+          </View>
         ) : null}
         <Divider />
 
