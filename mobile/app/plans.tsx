@@ -18,6 +18,7 @@ import {
   updateUserProfileLan,
   type RouterProfile,
 } from '@/src/services/mikrotik-lan/hotspotLan';
+import { useTranslation } from 'react-i18next';
 import { describeError, type FieldErrors } from '@/src/lib/errors';
 import {
   Badge,
@@ -123,6 +124,7 @@ export default function PlansScreen() {
     routerId: string;
     onboarding?: string;
   }>();
+  const { t } = useTranslation();
   const router = useRouter();
   const qc = useQueryClient();
   const toast = useToast();
@@ -194,18 +196,18 @@ export default function PlansScreen() {
    */
   const errors = useMemo(() => {
     const e: FieldErrors = {};
-    if (!name.trim()) e.name = 'Donnez un nom au forfait.';
-    else if (name.trim().length < 2) e.name = 'Au moins 2 caractères.';
-    if (price === '') e.priceXof = 'Indiquez un prix (0 = gratuit).';
-    if (durationMinutes <= 0) e.durationMinutes = 'La durée doit être supérieure à 0.';
+    if (!name.trim()) e.name = t('plans.nameRequired');
+    else if (name.trim().length < 2) e.name = t('plans.nameMinChars');
+    if (price === '') e.priceXof = t('plans.priceRequired');
+    if (durationMinutes <= 0) e.durationMinutes = t('plans.durationRequired');
     const len = Number.parseInt(codeLength, 10);
-    if (Number.isNaN(len)) e.codeLength = 'Obligatoire.';
+    if (Number.isNaN(len)) e.codeLength = t('common.required');
     else if (len < CODE_LENGTH_MIN)
-      e.codeLength = `Minimum ${CODE_LENGTH_MIN} caractères (trop court = devinable).`;
+      e.codeLength = t('plans.codeLengthMin', { min: CODE_LENGTH_MIN });
     else if (len > CODE_LENGTH_MAX)
-      e.codeLength = `Maximum ${CODE_LENGTH_MAX} caractères (trop long à recopier).`;
+      e.codeLength = t('plans.codeLengthMax', { max: CODE_LENGTH_MAX });
     const users = Number.parseInt(maxUsers, 10);
-    if (Number.isNaN(users) || users < 1) e.sharedUsers = 'Au moins 1 utilisateur.';
+    if (Number.isNaN(users) || users < 1) e.sharedUsers = t('plans.usersMinOne');
     return e;
   }, [codeLength, durationMinutes, maxUsers, name, price]);
 
@@ -282,7 +284,7 @@ export default function PlansScreen() {
       } else {
         await api.plans.create(routerId, payload);
       }
-      toast.success(editingId ? 'Forfait mis à jour.' : 'Forfait créé.');
+      toast.success(editingId ? t('plans.planUpdated') : t('plans.planCreated'));
       resetForm();
       setShowForm(false);
       await qc.invalidateQueries({ queryKey: ['plans', routerId] });
@@ -306,7 +308,7 @@ export default function PlansScreen() {
     if (!routerId) return;
     try {
       await api.plans.remove(routerId, id);
-      toast.success('Forfait supprimé.');
+      toast.success(t('plans.planDeleted'));
       await qc.invalidateQueries({ queryKey: ['plans', routerId] });
     } catch (e) {
       toast.error(describeError(e).message);
@@ -339,12 +341,12 @@ export default function PlansScreen() {
     if (!deviceEditing) return;
     const users = Number.parseInt(deviceUsers, 10);
     if (Number.isNaN(users) || users < 1) {
-      toast.error('Au moins 1 utilisateur.');
+      toast.error(t('plans.usersMinOne'));
       return;
     }
     const rate = deviceRate.trim();
     if (rate && !/^\d+[kMG]?\/\d+[kMG]?$/.test(rate)) {
-      toast.error('Débit au format « 5M/10M » (envoi/réception).');
+      toast.error(t('plans.rateFormatError'));
       return;
     }
     setDeviceBusy(true);
@@ -356,7 +358,7 @@ export default function PlansScreen() {
       } else {
         await api.routers.updateUserProfile(routerId, deviceEditing.id, patch);
       }
-      toast.success('Profil du routeur mis à jour.');
+      toast.success(t('plans.deviceProfileUpdated'));
       setDeviceEditing(null);
       await qc.invalidateQueries({ queryKey: ['device-profiles', routerId] });
     } catch (e) {
@@ -376,7 +378,7 @@ export default function PlansScreen() {
       } else {
         await api.routers.deleteUserProfile(routerId, deviceRemoving.id);
       }
-      toast.success('Profil supprimé du routeur.');
+      toast.success(t('plans.deviceProfileDeleted'));
       setDeviceRemoving(null);
       await qc.invalidateQueries({ queryKey: ['device-profiles', routerId] });
     } catch (e) {
@@ -388,15 +390,15 @@ export default function PlansScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title="Forfaits" back />
+      <AppHeader title={t('plans.screenTitle')} back />
       <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: 100 }}>
         <Row>
           <View style={{ flex: 1, paddingRight: 12 }}>
-            <Title>Forfaits & Plans WiFi</Title>
-            <Subtitle>Définissez les tarifs, vitesses et durées</Subtitle>
+            <Title>{t('plans.titleFull')}</Title>
+            <Subtitle>{t('plans.subtitle')}</Subtitle>
           </View>
           <Press
-            accessibilityLabel={showForm ? 'Fermer le formulaire' : 'Nouveau forfait'}
+            accessibilityLabel={showForm ? t('plans.closeForm') : t('plans.newPlan')}
             onPress={() => {
               if (showForm) {
                 setShowForm(false);
@@ -427,21 +429,21 @@ export default function PlansScreen() {
         {showForm ? (
           <FadeIn>
           <Card>
-            <Label>{editingId ? 'Modifier le forfait' : 'Nouveau forfait'}</Label>
+            <Label>{editingId ? t('plans.editPlan') : t('plans.newPlan')}</Label>
             <Row style={{ gap: 12, alignItems: 'flex-start' }}>
               <View style={{ flex: 2 }}>
                 <Field
-                  label="Nom"
+                  label={t('plans.nameLabel')}
                   value={name}
                   onChangeText={setName}
-                  placeholder="Ex. 1 Heure"
+                  placeholder={t('plans.namePlaceholder')}
                   maxLength={100}
                   error={shownError('name')}
                 />
               </View>
               <View style={{ flex: 1 }}>
                 <NumberField
-                  label="Prix (FCFA)"
+                  label={t('plans.priceLabel')}
                   value={price}
                   onChangeValue={setPrice}
                   min={0}
@@ -455,7 +457,7 @@ export default function PlansScreen() {
             <Row style={{ gap: 12, alignItems: 'flex-start' }}>
               <View style={{ flex: 1 }}>
                 <NumberField
-                  label="Users max"
+                  label={t('plans.usersMax')}
                   value={maxUsers}
                   onChangeValue={setMaxUsers}
                   min={1}
@@ -471,7 +473,7 @@ export default function PlansScreen() {
                   onChangeValue={setUpMbps}
                   min={1}
                   max={1000}
-                  placeholder="Illimité"
+                  placeholder={t('common.unlimited')}
                   optional
                 />
               </View>
@@ -482,42 +484,42 @@ export default function PlansScreen() {
                   onChangeValue={setDownMbps}
                   min={1}
                   max={1000}
-                  placeholder="Illimité"
+                  placeholder={t('common.unlimited')}
                   optional
                 />
               </View>
             </Row>
 
             <View>
-              <Label>Type de décompte temps</Label>
+              <Label>{t('plans.expirationMode')}</Label>
               <Row style={{ gap: 8, alignItems: 'stretch' }}>
                 <SegmentedOption
                   active={expirationMode === 'ELAPSED'}
                   onPress={() => setExpirationMode('ELAPSED')}
-                  title="Temps écoulé"
-                  desc="Le chrono tourne dès la 1ère connexion"
+                  title={t('plans.elapsed')}
+                  desc={t('plans.elapsedDesc')}
                 />
                 <SegmentedOption
                   active={expirationMode === 'RADIO_PAUSE'}
                   onPress={() => setExpirationMode('RADIO_PAUSE')}
-                  title="Pause radio"
-                  desc="Le décompte s'arrête à la déconnexion"
+                  title={t('plans.radioPause')}
+                  desc={t('plans.radioPauseDesc')}
                 />
               </Row>
             </View>
 
             <View>
-              <Label>Durée de validité</Label>
+              <Label>{t('plans.validityLabel')}</Label>
               <Row style={{ gap: 12, alignItems: 'flex-start' }}>
                 <View style={{ flex: 1 }}>
-                  <NumberField label="Jours" value={days} onChangeValue={setDays} max={365} />
+                  <NumberField label={t('plans.daysLabel')} value={days} onChangeValue={setDays} max={365} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <NumberField label="Heures" value={hours} onChangeValue={setHours} max={23} />
+                  <NumberField label={t('plans.hoursLabel')} value={hours} onChangeValue={setHours} max={23} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <NumberField
-                    label="Minutes"
+                    label={t('plans.minutesLabel')}
                     value={minutes}
                     onChangeValue={setMinutes}
                     max={59}
@@ -528,14 +530,14 @@ export default function PlansScreen() {
             </View>
 
             <View>
-              <Label>Format du code</Label>
+              <Label>{t('plans.codeFormatLabel')}</Label>
               <Row style={{ gap: 12, alignItems: 'flex-start' }}>
                 <View style={{ flex: 2 }}>
                   <Field
-                    label="Préfixe"
+                    label={t('plans.prefix')}
                     value={codePrefix}
                     onChangeText={(v) => setCodePrefix(v.replace(/[^A-Za-z0-9]/g, ''))}
-                    placeholder="Ex. 1h"
+                    placeholder={t('plans.prefixPlaceholder')}
                     autoCapitalize="none"
                     maxLength={12}
                     error={shownError('codePrefix')}
@@ -543,7 +545,7 @@ export default function PlansScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <NumberField
-                    label="Longueur"
+                    label={t('plans.lengthLabel')}
                     value={codeLength}
                     onChangeValue={setCodeLength}
                     min={CODE_LENGTH_MIN}
@@ -555,20 +557,19 @@ export default function PlansScreen() {
                 </View>
               </Row>
               <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 6 }}>
-                Entre {CODE_LENGTH_MIN} et {CODE_LENGTH_MAX} caractères, préfixe non
-                compris.
+                {t('plans.codeLengthRange', { min: CODE_LENGTH_MIN, max: CODE_LENGTH_MAX })}
               </Text>
               <Row style={{ gap: 8, marginTop: 12, alignItems: 'stretch' }}>
                 <SegmentedOption
                   active={codeFormat === 'ALPHANUMERIC'}
                   onPress={() => setCodeFormat('ALPHANUMERIC')}
-                  title="Lettres + Chiffres"
+                  title={t('plans.alphanumeric')}
                   desc={`Ex. ${sampleCode('ALPHANUMERIC', codePrefix, codeLength)}`}
                 />
                 <SegmentedOption
                   active={codeFormat === 'NUMERIC'}
                   onPress={() => setCodeFormat('NUMERIC')}
-                  title="Chiffres uniquement"
+                  title={t('plans.numericOnly')}
                   desc={`Ex. ${sampleCode('NUMERIC', codePrefix, codeLength)}`}
                 />
               </Row>
@@ -578,7 +579,7 @@ export default function PlansScreen() {
               <Row style={{ gap: 8 }}>
                 <View style={{ flex: 1 }}>
                   <Button
-                    title="Annuler"
+                    title={t('common.cancel')}
                     variant="ghost"
                     onPress={() => {
                       setShowForm(false);
@@ -587,11 +588,11 @@ export default function PlansScreen() {
                   />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Button title="Mettre à jour" onPress={submit} loading={busy} />
+                  <Button title={t('plans.update')} onPress={submit} loading={busy} />
                 </View>
               </Row>
             ) : (
-              <Button title="Créer le forfait" onPress={submit} loading={busy} />
+              <Button title={t('plans.createPlan')} onPress={submit} loading={busy} />
             )}
           </Card>
           </FadeIn>
@@ -611,9 +612,9 @@ export default function PlansScreen() {
         ) : !query.data?.length ? (
           <Empty
             icon="pricetags-outline"
-            text="Aucun forfait pour ce routeur."
+            text={t('plans.noPlanForRouter')}
             action={{
-              label: 'Créer le premier forfait',
+              label: t('plans.createFirst'),
               onPress: () => {
                 resetForm();
                 setShowForm(true);
@@ -658,7 +659,7 @@ export default function PlansScreen() {
                         </Text>
                         <Text style={{ color: theme.textMuted, fontSize: 12 }}>•</Text>
                         <Text style={{ color: theme.textMuted, fontSize: 12 }}>
-                          {p.expirationMode === 'RADIO_PAUSE' ? 'Pause radio' : 'Temps écoulé'}
+                          {p.expirationMode === 'RADIO_PAUSE' ? t('plans.radioPause') : t('plans.elapsed')}
                         </Text>
                       </Row>
                       {p.description ? (
@@ -672,7 +673,7 @@ export default function PlansScreen() {
                     </View>
                   </Row>
                   <Press
-                    accessibilityLabel="Options du forfait"
+                    accessibilityLabel={t('plans.planOptions')}
                     onPress={() => setMenuFor(menuFor === p.id ? null : p.id)}
                     hitSlop={8}
                     scaleTo={0.85}
@@ -685,7 +686,7 @@ export default function PlansScreen() {
                 {menuFor === p.id ? (
                   <FadeIn from={-6} style={{ gap: 8 }}>
                     <Press
-                      accessibilityLabel="Modifier ce forfait"
+                      accessibilityLabel={t('plans.editThisPlan')}
                       onPress={() => startEdit(p)}
                       style={{
                         flexDirection: 'row',
@@ -701,11 +702,11 @@ export default function PlansScreen() {
                     >
                       <Ionicons name="create-outline" size={16} color={theme.primary} />
                       <Text style={{ color: theme.primary, fontWeight: '600', fontSize: 13 }}>
-                        Modifier ce forfait
+                        {t('plans.editThisPlan')}
                       </Text>
                     </Press>
                     <Press
-                      accessibilityLabel="Supprimer ce forfait"
+                      accessibilityLabel={t('plans.deleteThisPlan')}
                       onPress={() => {
                         setMenuFor(null);
                         remove(p.id);
@@ -724,7 +725,7 @@ export default function PlansScreen() {
                     >
                       <Ionicons name="trash-outline" size={16} color={theme.danger} />
                       <Text style={{ color: theme.danger, fontWeight: '600', fontSize: 13 }}>
-                        Supprimer ce forfait
+                        {t('plans.deleteThisPlan')}
                       </Text>
                     </Press>
                   </FadeIn>
@@ -763,7 +764,7 @@ export default function PlansScreen() {
         )}
         {unmanagedProfiles.length > 0 ? (
           <View style={{ gap: 12 }}>
-            <Subtitle>Profils déjà sur le routeur</Subtitle>
+            <Subtitle>{t('plans.deviceProfiles')}</Subtitle>
             {unmanagedProfiles.map((p) => (
               <Card key={p.id} style={{ gap: 8 }}>
                 <Row style={{ alignItems: 'center' }}>
@@ -806,7 +807,7 @@ export default function PlansScreen() {
                     <Row style={{ gap: 12, alignItems: 'flex-start' }}>
                       <View style={{ flex: 1 }}>
                         <NumberField
-                          label="Users max"
+                          label={t('plans.usersMax')}
                           value={deviceUsers}
                           onChangeValue={setDeviceUsers}
                           min={1}
@@ -815,10 +816,10 @@ export default function PlansScreen() {
                       </View>
                       <View style={{ flex: 1 }}>
                         <Field
-                          label="Débit (envoi/réception)"
+                          label={t('plans.rateLabel')}
                           value={deviceRate}
                           onChangeText={setDeviceRate}
-                          placeholder="Ex. 5M/10M"
+                          placeholder={t('plans.ratePlaceholder')}
                           autoCapitalize="none"
                         />
                       </View>
@@ -826,14 +827,14 @@ export default function PlansScreen() {
                     <Row style={{ gap: 8 }}>
                       <View style={{ flex: 1 }}>
                         <Button
-                          title="Annuler"
+                          title={t('common.cancel')}
                           variant="ghost"
                           onPress={() => setDeviceEditing(null)}
                         />
                       </View>
                       <View style={{ flex: 1 }}>
                         <Button
-                          title="Enregistrer"
+                          title={t('common.save')}
                           onPress={saveDeviceProfile}
                           loading={deviceBusy}
                         />
@@ -843,7 +844,7 @@ export default function PlansScreen() {
                 ) : (
                   <Row style={{ gap: 8, justifyContent: 'flex-end' }}>
                     <Press
-                      accessibilityLabel={`Modifier le profil ${p.name}`}
+                      accessibilityLabel={`${t('common.modify')} ${p.name}`}
                       onPress={() => startEditDevice(p)}
                       style={{
                         flexDirection: 'row',
@@ -859,11 +860,11 @@ export default function PlansScreen() {
                     >
                       <Ionicons name="create-outline" size={15} color={theme.primary} />
                       <Text style={{ color: theme.primary, fontWeight: '600', fontSize: 12 }}>
-                        Modifier
+                        {t('common.modify')}
                       </Text>
                     </Press>
                     <Press
-                      accessibilityLabel={`Supprimer le profil ${p.name}`}
+                      accessibilityLabel={`${t('common.delete')} ${p.name}`}
                       onPress={() => setDeviceRemoving(p)}
                       style={{
                         flexDirection: 'row',
@@ -879,7 +880,7 @@ export default function PlansScreen() {
                     >
                       <Ionicons name="trash-outline" size={15} color={theme.danger} />
                       <Text style={{ color: theme.danger, fontWeight: '600', fontSize: 12 }}>
-                        Supprimer
+                        {t('common.delete')}
                       </Text>
                     </Press>
                   </Row>
@@ -893,9 +894,9 @@ export default function PlansScreen() {
       <ConfirmDialog
         visible={deviceRemoving != null}
         icon="trash-outline"
-        title="Supprimer ce profil ?"
-        message={`« ${deviceRemoving?.name ?? ''} » sera retiré du routeur. Les clients actuellement connectés avec ce forfait peuvent être déconnectés, et les tickets qui s'y rattachent perdent leur profil. Action irréversible.`}
-        confirmLabel="Supprimer"
+        title={t('plans.deleteProfileTitle')}
+        message={t('plans.deleteProfileMessage', { name: deviceRemoving?.name ?? '' })}
+        confirmLabel={t('common.delete')}
         busy={deviceBusy}
         onConfirm={removeDeviceProfile}
         onCancel={() => setDeviceRemoving(null)}

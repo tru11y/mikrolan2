@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { api, extractErrorMessage } from '@/src/lib/api';
 import {
@@ -34,6 +35,7 @@ type TestState =
   | { kind: 'error'; message: string };
 
 export default function RouterCredentialsScreen() {
+  const { t } = useTranslation();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const router = useRouter();
 
@@ -75,7 +77,7 @@ export default function RouterCredentialsScreen() {
   async function testConnection() {
     setError(null);
     if (!address.trim()) {
-      setTest({ kind: 'error', message: 'Renseignez l’adresse du routeur' });
+      setTest({ kind: 'error', message: t('routerCredentials.addressRequired') });
       return;
     }
     setTest({ kind: 'testing' });
@@ -88,9 +90,9 @@ export default function RouterCredentialsScreen() {
     } catch (e) {
       const message =
         e instanceof LanAuthFailedError
-          ? 'Identifiants RouterOS incorrects'
+          ? t('addRouter.authFailed')
           : e instanceof LanUnreachableError
-            ? "Routeur injoignable — vérifiez l'adresse et que le routeur est allumé."
+            ? t('addRouter.unreachable')
             : extractErrorMessage(e);
       setTest({ kind: 'error', message });
     }
@@ -119,7 +121,7 @@ export default function RouterCredentialsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title="Identifiants du routeur" back />
+      <AppHeader title={t('routerCredentials.screenTitle')} back />
       <Screen>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -144,12 +146,10 @@ export default function RouterCredentialsScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>
-                    Connexion API MikroTik
+                    {t('routerCredentials.mikrotikApi')}
                   </Text>
                   <Text style={{ color: theme.textMuted, fontSize: 12 }}>
-                    Sans ces identifiants sur ce téléphone, les appareils
-                    autorisés et les sessions de ce routeur ne peuvent pas
-                    s'afficher.
+                    {t('routerCredentials.description')}
                   </Text>
                 </View>
               </View>
@@ -161,7 +161,7 @@ export default function RouterCredentialsScreen() {
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <View style={{ flex: 1 }}>
                   <Field
-                    label="Adresse"
+                    label={t('routerCredentials.addressLabel')}
                     placeholder="192.168.88.1"
                     value={address}
                     onChangeText={setAddress}
@@ -171,7 +171,7 @@ export default function RouterCredentialsScreen() {
                 </View>
                 <View style={{ width: 90 }}>
                   <NumberField
-                    label="Port"
+                    label={t('routerCredentials.portLabel')}
                     placeholder="8728"
                     value={port}
                     onChangeValue={setPort}
@@ -181,19 +181,19 @@ export default function RouterCredentialsScreen() {
                 </View>
               </View>
               <Field
-                label="Utilisateur RouterOS"
+                label={t('routerCredentials.routerosUser')}
                 value={username}
                 onChangeText={setUsername}
                 autoCapitalize="none"
               />
               <Field
-                label="Mot de passe RouterOS"
+                label={t('routerCredentials.routerosPassword')}
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry
               />
               <Button
-                title="Tester la connexion"
+                title={t('routerCredentials.testConnection')}
                 variant="ghost"
                 onPress={testConnection}
                 loading={test.kind === 'testing'}
@@ -201,7 +201,7 @@ export default function RouterCredentialsScreen() {
               {test.kind === 'ok' ? (
                 <Banner tone="success">
                   <Ionicons name="checkmark-circle" size={14} color={theme.success} />{' '}
-                  Connecté — identité : {test.identity}
+                  {t('routerCredentials.connected', { identity: test.identity })}
                 </Banner>
               ) : null}
               {test.kind === 'error' ? (
@@ -210,7 +210,7 @@ export default function RouterCredentialsScreen() {
             </Card>
 
             <Button
-              title="Enregistrer les identifiants"
+              title={t('routerCredentials.saveCredentials')}
               onPress={save}
               loading={saving}
               disabled={!canSave}

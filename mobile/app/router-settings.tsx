@@ -3,6 +3,7 @@ import { Linking, ScrollView, Switch, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, extractErrorMessage } from '@/src/lib/api';
 import {
@@ -55,6 +56,7 @@ async function resolveAccessMode(routerId: string) {
 }
 
 export default function RouterSettingsScreen() {
+  const { t } = useTranslation();
   const navHeight = useBottomNavHeight();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const router = useRouter();
@@ -159,7 +161,7 @@ export default function RouterSettingsScreen() {
         await withApi(creds, (c) => c.reboot());
         setRebootResult({
           tone: 'success',
-          text: 'Redémarrage en cours (~45s).',
+          text: t('routerSettings.rebootSuccess'),
         });
         return;
       } catch (e) {
@@ -176,7 +178,7 @@ export default function RouterSettingsScreen() {
         await api.routers.rebootRemote(routerId);
         setRebootResult({
           tone: 'success',
-          text: 'Redémarrage en cours (~45s).',
+          text: t('routerSettings.rebootSuccess'),
         });
       } catch (e) {
         setRebootResult({ tone: 'danger', text: extractErrorMessage(e) });
@@ -189,55 +191,55 @@ export default function RouterSettingsScreen() {
     setRebootBusy(false);
     setRebootResult({
       tone: 'danger',
-      text: 'Routeur injoignable (hors LAN et hors tunnel PRO).',
+      text: t('routerSettings.routerUnreachable'),
     });
   }
 
   const items: Item[] = [
     {
       id: 'lan_credentials',
-      title: 'Identifiants du routeur',
-      subtitle: 'Nécessaires pour les appareils autorisés et les sessions',
+      title: t('routerSettings.lanCredentials'),
+      subtitle: t('routerSettings.lanCredentialsSubtitle'),
       icon: 'key-outline',
       color: theme.secondary,
       onPress: () => go('/router-credentials'),
     },
     {
       id: 'anti_tethering',
-      title: 'Bloquer le partage de connexion',
-      subtitle: 'Empêcher un client de partager son accès',
+      title: t('routerSettings.blockSharing'),
+      subtitle: t('routerSettings.blockSharingSubtitle'),
       icon: 'share-social-outline',
       color: theme.warning,
       onPress: () => go('/internet-sharing'),
     },
     {
       id: 'dns_name',
-      title: 'Page de connexion',
-      subtitle: 'Adresse de la page vue par les clients',
+      title: t('routerSettings.loginPage'),
+      subtitle: t('routerSettings.loginPageSubtitle'),
       icon: 'globe-outline',
       color: theme.secondary,
       onPress: () => go('/hotspot-setup'),
     },
     {
       id: 'ip_bindings',
-      title: 'Appareils autorisés',
-      subtitle: 'Donner ou retirer l’accès à un appareil précis',
+      title: t('routerSettings.authorizedDevices'),
+      subtitle: t('routerSettings.authorizedDevicesSubtitle'),
       icon: 'shield-outline',
       color: theme.primary,
       onPress: () => go('/ip-bindings'),
     },
     {
       id: 'users',
-      title: 'Utilisateurs & sessions',
-      subtitle: 'Sessions actives sur le routeur',
+      title: t('routerSettings.usersAndSessions'),
+      subtitle: t('routerSettings.usersAndSessionsSubtitle'),
       icon: 'people-outline',
       color: theme.secondary,
       onPress: () => go('/sessions'),
     },
     {
       id: 'ticket_template',
-      title: 'Paramètres du ticket',
-      subtitle: 'Personnaliser le reçu imprimé (logo, notes, mentions)',
+      title: t('routerSettings.ticketSettingsLabel'),
+      subtitle: t('routerSettings.ticketSettingsSubtitle'),
       icon: 'receipt-outline',
       color: theme.gold,
       onPress: () => go('/ticket-settings'),
@@ -251,8 +253,8 @@ export default function RouterSettingsScreen() {
           // (captive portal), and it obscures the real infra when it kicks in.
           {
             id: 'webfig',
-            title: 'WebFig',
-            subtitle: "Interface web d'administration RouterOS",
+            title: t('routerSettings.webfig'),
+            subtitle: t('routerSettings.webfigSubtitle'),
             icon: 'globe-outline' as IoniconName,
             color: theme.primary,
             onPress: () => {
@@ -263,16 +265,16 @@ export default function RouterSettingsScreen() {
                 setSheet({
                   icon: 'globe-outline',
                   title: 'WebFig',
-                  message: "Gestion à distance non activée pour ce routeur.",
-                  actions: [{ label: 'Fermer', variant: 'cancel', onPress: closeSheet }],
+                  message: t('routerSettings.remoteNotEnabled'),
+                  actions: [{ label: t('common.close'), variant: 'cancel', onPress: closeSheet }],
                 });
               }
             },
           },
           {
             id: 'ssh',
-            title: 'Accès SSH',
-            subtitle: 'Terminal en ligne de commande',
+            title: t('routerSettings.sshAccess'),
+            subtitle: t('routerSettings.sshSubtitle'),
             icon: 'terminal-outline' as IoniconName,
             color: theme.secondary,
             onPress: () => {
@@ -281,27 +283,27 @@ export default function RouterSettingsScreen() {
                 setSheet({
                   icon: 'terminal-outline',
                   title: 'SSH',
-                  message: 'Gestion à distance non activée.',
-                  actions: [{ label: 'Fermer', variant: 'cancel', onPress: closeSheet }],
+                  message: t('routerSettings.remoteNotEnabledShort'),
+                  actions: [{ label: t('common.close'), variant: 'cancel', onPress: closeSheet }],
                 });
                 return;
               }
               const { command, host, port } = urls.ssh;
               setSheet({
                 icon: 'terminal-outline',
-                title: 'Accès SSH',
+                title: t('routerSettings.sshAccess'),
                 message: command,
                 mono: true,
                 actions: [
                   {
-                    label: 'Copier',
+                    label: t('common.copy'),
                     onPress: () => {
                       void Clipboard.setStringAsync(command);
                       closeSheet();
                     },
                   },
                   {
-                    label: 'Ouvrir',
+                    label: t('common.open'),
                     tone: 'primary',
                     onPress: () => {
                       closeSheet();
@@ -309,21 +311,21 @@ export default function RouterSettingsScreen() {
                         setSheet({
                           icon: 'terminal-outline',
                           title: 'SSH',
-                          message: 'Aucun client SSH détecté.',
-                          actions: [{ label: 'Fermer', variant: 'cancel', onPress: closeSheet }],
+                          message: t('routerSettings.noSshClient'),
+                          actions: [{ label: t('common.close'), variant: 'cancel', onPress: closeSheet }],
                         });
                       });
                     },
                   },
-                  { label: 'Fermer', variant: 'cancel', onPress: closeSheet },
+                  { label: t('common.close'), variant: 'cancel', onPress: closeSheet },
                 ],
               });
             },
           },
           {
             id: 'winbox',
-            title: 'Winbox',
-            subtitle: 'Application de gestion MikroTik',
+            title: t('routerSettings.winbox'),
+            subtitle: t('routerSettings.winboxSubtitle'),
             icon: 'cube-outline' as IoniconName,
             color: theme.gold,
             onPress: () => {
@@ -332,27 +334,27 @@ export default function RouterSettingsScreen() {
                 setSheet({
                   icon: 'cube-outline',
                   title: 'Winbox',
-                  message: 'Gestion à distance non activée.',
-                  actions: [{ label: 'Fermer', variant: 'cancel', onPress: closeSheet }],
+                  message: t('routerSettings.remoteNotEnabledShort'),
+                  actions: [{ label: t('common.close'), variant: 'cancel', onPress: closeSheet }],
                 });
                 return;
               }
               const { address, host, port } = urls.winbox;
               setSheet({
                 icon: 'cube-outline',
-                title: 'Winbox',
+                title: t('routerSettings.winbox'),
                 message: address,
                 mono: true,
                 actions: [
                   {
-                    label: 'Copier',
+                    label: t('common.copy'),
                     onPress: () => {
                       void Clipboard.setStringAsync(address);
                       closeSheet();
                     },
                   },
                   {
-                    label: 'Ouvrir MikroTik App',
+                    label: t('routerSettings.openMikrotikApp'),
                     tone: 'primary',
                     onPress: () => {
                       closeSheet();
@@ -360,15 +362,15 @@ export default function RouterSettingsScreen() {
                         () => {
                           setSheet({
                             icon: 'cube-outline',
-                            title: 'Winbox',
-                            message: 'Application MikroTik non installée.',
-                            actions: [{ label: 'Fermer', variant: 'cancel', onPress: closeSheet }],
+                            title: t('routerSettings.winbox'),
+                            message: t('routerSettings.mikrotikNotInstalled'),
+                            actions: [{ label: t('common.close'), variant: 'cancel', onPress: closeSheet }],
                           });
                         },
                       );
                     },
                   },
-                  { label: 'Fermer', variant: 'cancel', onPress: closeSheet },
+                  { label: t('common.close'), variant: 'cancel', onPress: closeSheet },
                 ],
               });
             },
@@ -377,8 +379,8 @@ export default function RouterSettingsScreen() {
       : []),
     {
       id: 'reboot',
-      title: 'Redémarrer le routeur',
-      subtitle: 'Coupe et relance le routeur',
+      title: t('routerSettings.rebootRouter'),
+      subtitle: t('routerSettings.rebootSubtitle'),
       icon: 'refresh-outline',
       color: theme.danger,
       danger: true,
@@ -388,7 +390,7 @@ export default function RouterSettingsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title="Paramètres routeur" back />
+      <AppHeader title={t('routerSettings.screenTitle')} back />
       <ScrollView
         contentContainerStyle={{ padding: space.lg, gap: space.lg, paddingBottom: navHeight }}
       >
@@ -490,10 +492,10 @@ export default function RouterSettingsScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
-                Notifications push
+                {t('routerSettings.pushNotifications')}
               </Text>
               <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 1 }}>
-                Recevoir les alertes de ce routeur
+                {t('routerSettings.pushSubtitle')}
               </Text>
             </View>
           </View>
@@ -516,13 +518,13 @@ export default function RouterSettingsScreen() {
             gap: 12,
           }}
         >
-          <Label>Alias</Label>
-          <Field value={alias} onChangeText={setAlias} placeholder="Nom du routeur" />
-          <Button title="Enregistrer" onPress={saveAlias} loading={aliasBusy} />
+          <Label>{t('routerSettings.alias')}</Label>
+          <Field value={alias} onChangeText={setAlias} placeholder={t('routerSettings.routerNamePlaceholder')} />
+          <Button title={t('common.save')} onPress={saveAlias} loading={aliasBusy} />
         </View>
 
         <Button
-          title="Supprimer le routeur"
+          title={t('routerSettings.deleteRouter')}
           variant="danger"
           onPress={() => setRemoveOpen(true)}
         />
@@ -531,9 +533,9 @@ export default function RouterSettingsScreen() {
       <ConfirmDialog
         visible={rebootOpen}
         icon="refresh-outline"
-        title="Redémarrer le routeur ?"
-        message="Toutes les connexions en cours seront interrompues pendant environ 45 secondes."
-        confirmLabel="Redémarrer"
+        title={t('routerSettings.rebootConfirmTitle')}
+        message={t('routerSettings.rebootConfirmMessage')}
+        confirmLabel={t('routerSettings.rebootLabel')}
         busy={rebootBusy}
         banner={rebootResult}
         onConfirm={rebootRouter}
@@ -548,9 +550,9 @@ export default function RouterSettingsScreen() {
       <ConfirmDialog
         visible={removeOpen}
         icon="trash-outline"
-        title="Supprimer ce routeur ?"
-        message={`« ${routerQuery.data?.alias || routerQuery.data?.identity || 'Ce routeur'} » sera supprimé définitivement, comme s'il n'avait jamais été ajouté : accès à distance désactivé, tickets et fichiers générés effacés. Impossible à annuler.`}
-        confirmLabel="Supprimer"
+        title={t('routerSettings.deleteConfirmTitle')}
+        message={t('routerSettings.deleteConfirmMessage', { name: routerQuery.data?.alias || routerQuery.data?.identity || '' })}
+        confirmLabel={t('common.delete')}
         busy={removeBusy}
         onConfirm={removeRouter}
         onCancel={() => setRemoveOpen(false)}

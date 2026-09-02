@@ -2,6 +2,7 @@ import { ScrollView, View, Text } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { api, extractErrorMessage } from '@/src/lib/api';
 import {
   Badge,
@@ -23,6 +24,7 @@ import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
 export default function TicketsScreen() {
+  const { t } = useTranslation();
   const navHeight = useBottomNavHeight();
   const router = useRouter();
   const routers = useQuery({ queryKey: ['routers'], queryFn: api.routers.list });
@@ -30,7 +32,7 @@ export default function TicketsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title="Créer des tickets" />
+      <AppHeader title={t('tickets.title')} />
       <ScrollView
         style={{ flex: 1, backgroundColor: theme.bg }}
         contentContainerStyle={{
@@ -39,11 +41,11 @@ export default function TicketsScreen() {
           paddingBottom: navHeight,
         }}
       >
-      <Subtitle>Choisissez un routeur pour générer des codes WiFi</Subtitle>
+      <Subtitle>{t('tickets.chooseRouter')}</Subtitle>
 
       <Press
         accessibilityRole="button"
-        accessibilityLabel="Vérifier un ticket"
+        accessibilityLabel={t('tickets.verifyTicket')}
         onPress={() => router.push('/verify-ticket')}
         style={{
           flexDirection: 'row',
@@ -69,9 +71,9 @@ export default function TicketsScreen() {
           <Ionicons name="shield-checkmark-outline" size={20} color={theme.primary} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: theme.text, fontWeight: '700' }}>Vérifier un ticket</Text>
+          <Text style={{ color: theme.text, fontWeight: '700' }}>{t('tickets.verifyTicket')}</Text>
           <Text style={{ color: theme.textMuted, fontSize: 12 }}>
-            Contrôler un code présenté par un client avant de l&apos;accepter
+            {t('tickets.verifySubtitle')}
           </Text>
         </View>
         <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
@@ -91,10 +93,10 @@ export default function TicketsScreen() {
       ) : list.length === 0 ? (
         <Card>
           <Text style={{ color: theme.textMuted }}>
-            Ajoutez d'abord un routeur pour générer des tickets.
+            {t('tickets.addRouterFirst')}
           </Text>
           <Button
-            title="Ajouter un routeur"
+            title={t('routers.addRouter')}
             onPress={() => router.push('/add-router')}
           />
         </Card>
@@ -151,7 +153,7 @@ export default function TicketsScreen() {
                         })
                       }
                       accessibilityRole="button"
-                      accessibilityLabel={`Vérifier un ticket pour ${r.alias || r.identity}`}
+                      accessibilityLabel={t('tickets.verifyTicket')}
                       style={{
                         width: 32,
                         height: 32,

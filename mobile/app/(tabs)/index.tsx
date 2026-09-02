@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { RefreshControl, ScrollView, View, Text } from 'react-native';
 import { Link, Redirect, useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api, extractErrorMessage, type RouterHealth, type RouterItem } from '@/src/lib/api';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
@@ -65,8 +66,9 @@ function StatCard({
   onPress: () => void;
   state?: StatState;
 }) {
+  const { t } = useTranslation();
   const subColor = subTone === 'success' ? theme.success : theme.textMuted;
-  const a11yValue = state === 'error' ? 'indisponible' : `${value}, ${sub}`;
+  const a11yValue = state === 'error' ? t('common.unavailable') : `${value}, ${sub}`;
   // `flex: 1` vit sur ce `View`, pas sur `Press` : le style de `Press`
   // s'applique à son `Animated.View` interne, un niveau trop profond pour
   // participer au partage de largeur entre siblings du `Row` parent — sans
@@ -124,7 +126,7 @@ function StatCard({
               fontSize: type.micro,
             }}
           >
-            {state === 'error' ? 'Indisponible' : sub}
+            {state === 'error' ? t('common.unavailable') : sub}
           </Text>
         )}
       </Press>
@@ -133,6 +135,7 @@ function StatCard({
 }
 
 export default function MaisonScreen() {
+  const { t } = useTranslation();
   const router = useRouter();
   const { isReady, activeRouterId } = useActiveRouter();
   const navHeight = useBottomNavHeight();
@@ -237,7 +240,7 @@ export default function MaisonScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title="Maison" />
+      <AppHeader title={t('home.title')} />
       <ScrollView
         style={{ flex: 1, backgroundColor: theme.bg }}
         contentContainerStyle={{
@@ -257,8 +260,7 @@ export default function MaisonScreen() {
           le même avertissement sur chaque section touchée par l'erreur. */}
       {anyStale ? (
         <Banner tone="danger">
-          Certaines informations peuvent ne pas être à jour. Tirez vers le bas
-          pour réessayer.
+          {t('home.staleWarning')}
         </Banner>
       ) : null}
 
@@ -291,7 +293,7 @@ export default function MaisonScreen() {
                 numberOfLines={1}
                 style={{ color: theme.text, fontSize: type.title, fontWeight: weight.bold }}
               >
-                Bienvenue, {firstName}
+                {t('home.welcomeUser', { name: firstName })}
               </Text>
               <Text
                 numberOfLines={1}
@@ -302,7 +304,7 @@ export default function MaisonScreen() {
             </View>
           </Row>
           <Press
-            accessibilityLabel="Voir mon profil"
+            accessibilityLabel={t('home.viewProfile')}
             onPress={() => router.push('/(tabs)/account')}
             style={{
               paddingHorizontal: space.lg - 2,
@@ -314,7 +316,7 @@ export default function MaisonScreen() {
             }}
           >
             <Text style={{ color: theme.textMuted, fontSize: type.caption, fontWeight: weight.semibold }}>
-              Profil
+              {t('home.profile')}
             </Text>
           </Press>
         </Row>
@@ -323,7 +325,7 @@ export default function MaisonScreen() {
       {/* Indicateur financier principal — seul bloc en dégradé de l'écran. */}
       <AuroraCard>
         <Text style={{ color: theme.primaryText, fontWeight: weight.semibold, opacity: 0.9 }}>
-          Revenu du jour
+          {t('home.revenueToday')}
         </Text>
         {metricsState === 'loading' ? (
           <View style={{ marginTop: space.sm + 2 }}>
@@ -335,7 +337,7 @@ export default function MaisonScreen() {
           </View>
         ) : metricsState === 'error' ? (
           <Press
-            accessibilityLabel="Revenu du jour indisponible, réessayer"
+            accessibilityLabel={t('common.unavailable')}
             onPress={() => metrics.refetch()}
             style={{ marginTop: space.sm + 2 }}
           >
@@ -343,10 +345,10 @@ export default function MaisonScreen() {
               <Ionicons name="cloud-offline-outline" size={icon.lg} color={theme.primaryText} />
               <View>
                 <Text style={{ color: theme.primaryText, fontSize: type.bodyLg, fontWeight: weight.bold }}>
-                  Indisponible
+                  {t('common.unavailable')}
                 </Text>
                 <Text style={{ color: theme.primaryText, opacity: 0.8, fontSize: type.micro }}>
-                  Toucher pour réessayer
+                  {t('common.touchToRetry')}
                 </Text>
               </View>
             </Row>
@@ -365,14 +367,14 @@ export default function MaisonScreen() {
                 fontWeight: weight.semibold,
               }}
             >
-              FCFA
+              {t('home.fcfa')}
             </Text>
           </Row>
         )}
         {metricsState === 'ready' ? (
           <Text style={{ color: theme.primaryText, opacity: 0.8, fontSize: type.caption, marginTop: space.xs }}>
-            {metrics.data?.ticketsGenerated ?? 0} tickets vendus ·{' '}
-            {metrics.data?.activeSessions ?? 0} sessions actives
+            {t('home.ticketsSold', { count: metrics.data?.ticketsGenerated ?? 0 })} ·{' '}
+            {t('home.activeSessions', { count: metrics.data?.activeSessions ?? 0 })}
           </Text>
         ) : null}
       </AuroraCard>
@@ -383,12 +385,12 @@ export default function MaisonScreen() {
           <Row style={{ gap: space.sm, justifyContent: 'flex-start' }}>
             <Ionicons name="hardware-chip" size={icon.md} color={theme.primary} />
             <Text style={{ color: theme.text, fontWeight: weight.bold, fontSize: type.bodyLg }}>
-              Mes routeurs
+              {t('home.myRouters')}
             </Text>
           </Row>
           <Press
-            accessibilityLabel="Ajouter un routeur"
-            accessibilityHint="Ouvre le formulaire de connexion à un nouveau routeur"
+            accessibilityLabel={t('home.addRouterAction')}
+            accessibilityHint={t('home.addRouterAction')}
             onPress={() => router.push('/add-router')}
             style={{
               flexDirection: 'row',
@@ -402,7 +404,7 @@ export default function MaisonScreen() {
           >
             <Ionicons name="add" size={icon.sm} color={theme.primaryText} />
             <Text style={{ color: theme.primaryText, fontWeight: weight.bold, fontSize: type.caption }}>
-              Ajouter
+              {t('home.addRouter')}
             </Text>
           </Press>
         </Row>
@@ -421,9 +423,9 @@ export default function MaisonScreen() {
           />
         ) : list.length === 0 ? (
           <Empty
-            text="Aucun routeur pour l’instant. Ajoutez-en un pour commencer."
+            text={t('home.noRouterYet')}
             icon="hardware-chip-outline"
-            action={{ label: 'Ajouter un routeur', onPress: () => router.push('/add-router') }}
+            action={{ label: t('home.addRouterAction'), onPress: () => router.push('/add-router') }}
           />
         ) : (
           <View style={{ gap: space.sm }}>
@@ -434,7 +436,7 @@ export default function MaisonScreen() {
                 <Link key={r.id} href={`/router/${r.id}`} asChild>
                   <Press
                     accessibilityLabel={`${r.alias || r.identity}, ${healthInfo.label}`}
-                    accessibilityHint="Ouvre le tableau de bord de ce routeur"
+                    accessibilityHint={t('routers.openDashboard')}
                   >
                     <Row
                       style={{
@@ -470,12 +472,12 @@ export default function MaisonScreen() {
             })}
             {list.length > 3 ? (
               <Press
-                accessibilityLabel={`Voir tous les ${list.length} routeurs`}
+                accessibilityLabel={t('home.viewAllRouters', { count: list.length })}
                 onPress={() => router.push('/(tabs)/routeurs')}
                 style={{ alignItems: 'center', paddingVertical: space.sm }}
               >
                 <Text style={{ color: theme.primary, fontWeight: weight.bold, fontSize: type.caption }}>
-                  Voir tous les routeurs ({list.length})
+                  {t('home.viewAllRouters', { count: list.length })}
                 </Text>
               </Press>
             ) : null}
@@ -487,27 +489,27 @@ export default function MaisonScreen() {
           doublon (le compte de routeurs vit déjà dans la section au-dessus). */}
       <Row style={{ gap: space.md, alignItems: 'stretch' }}>
         <StatCard
-          label="Clients"
+          label={t('home.clients')}
           value={`${metrics.data?.ticketsUsed ?? 0}`}
-          sub="tickets utilisés"
+          sub={t('home.ticketsUsed')}
           icon="people-circle-outline"
           iconColor={theme.primary}
           state={metricsState}
           onPress={() => router.push('/(tabs)/rapport')}
         />
         <StatCard
-          label="Tickets"
+          label={t('home.tickets')}
           value={`${metrics.data?.ticketsGenerated ?? 0}`}
-          sub="générés aujourd'hui"
+          sub={t('home.generatedToday')}
           icon="ticket-outline"
           iconColor={theme.primary}
           state={metricsState}
           onPress={() => router.push('/(tabs)/tickets')}
         />
         <StatCard
-          label="Sessions"
+          label={t('home.sessions')}
           value={`${metrics.data?.activeSessions ?? 0}`}
-          sub="actives"
+          sub={t('home.active')}
           subTone="success"
           icon="people-outline"
           iconColor={theme.success}
@@ -532,20 +534,18 @@ export default function MaisonScreen() {
                     letterSpacing: 0.5,
                   }}
                 >
-                  PÉRIODE D'ESSAI ACTIVE
+                  {t('home.trialActive')}
                 </Text>
                 <Text style={{ color: theme.text, fontSize: type.body, marginTop: 2 }}>
-                  Encore{' '}
                   <Text style={{ color: theme.warning, fontWeight: weight.bold }}>
-                    {trial} jour{trial > 1 ? 's' : ''}
+                    {t('home.trialDaysLeft', { count: trial })}
                   </Text>
-                  . Ensuite, l’accès à vos routeurs sera suspendu jusqu’à
-                  l’activation d’un forfait.
+                  {t('home.trialExpiredMessage')}
                 </Text>
               </View>
             </Row>
             <Press
-              accessibilityLabel="Activer un forfait PRO"
+              accessibilityLabel={t('home.activate')}
               onPress={() => router.push('/pro')}
               style={{
                 paddingHorizontal: space.md,
@@ -555,7 +555,7 @@ export default function MaisonScreen() {
               }}
             >
               <Text style={{ color: theme.goldText, fontWeight: weight.bold, fontSize: type.caption }}>
-                Activer
+                {t('home.activate')}
               </Text>
             </Press>
           </Row>
@@ -564,8 +564,8 @@ export default function MaisonScreen() {
 
       {!isPro ? (
         <Press
-          accessibilityLabel="Découvrir le pass PRO"
-          accessibilityHint="Ouvre la grille tarifaire de l'abonnement PRO"
+          accessibilityLabel={t('home.proUnlimited')}
+          accessibilityHint={t('home.proDescription')}
           onPress={() => router.push('/pro')}
         >
           <Card style={{ borderColor: theme.gold, borderWidth: 1.5 }}>
@@ -581,10 +581,10 @@ export default function MaisonScreen() {
                       letterSpacing: 0.5,
                     }}
                   >
-                    PASS PRO UNLIMITED
+                    {t('home.proUnlimited')}
                   </Text>
                   <Text style={{ color: theme.textMuted, fontSize: type.caption, marginTop: 2 }}>
-                    Multi-routeurs, cloud backup & impression thermique.
+                    {t('home.proDescription')}
                   </Text>
                 </View>
               </Row>

@@ -3,6 +3,7 @@ import { ScrollView, View, Text, Alert, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, router } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
 import { api } from '@/src/lib/api';
 import { describeError } from '@/src/lib/errors';
@@ -37,6 +38,7 @@ function MethodCard({
   selected: boolean;
   onPress: () => void;
 }) {
+  const { t } = useTranslation();
   const isWave = method === 'WAVE';
   const color = isWave ? '#1DC3F7' : '#FF6600';
   const label = isWave ? 'Wave' : 'Orange Money';
@@ -45,7 +47,7 @@ function MethodCard({
   return (
     <Press
       accessibilityRole="radio"
-      accessibilityLabel={`Payer par ${label}`}
+      accessibilityLabel={t('payment.payWith', { method: label })}
       onPress={onPress}
       scaleTo={0.97}
       style={{
@@ -83,7 +85,7 @@ function MethodCard({
               </Text>
             ) : (
               <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
-                Non configuré
+                {t('common.notConfigured')}
               </Text>
             )}
           </View>
@@ -97,6 +99,7 @@ function MethodCard({
 }
 
 export default function PaymentScreen() {
+  const { t } = useTranslation();
   const { invoiceId } = useLocalSearchParams<{ invoiceId: string }>();
   const navHeight = useBottomNavHeight();
   const toast = useToast();
@@ -125,7 +128,7 @@ export default function PaymentScreen() {
   async function takePhoto() {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert('Permission requise', 'Autorisez la caméra pour prendre une photo.');
+      Alert.alert(t('payment.permissionRequired'), t('payment.cameraPermission'));
       return;
     }
     const result = await ImagePicker.launchCameraAsync({
@@ -155,7 +158,7 @@ export default function PaymentScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title="Paiement" back />
+      <AppHeader title={t('payment.title')} back />
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{
@@ -185,13 +188,12 @@ export default function PaymentScreen() {
               >
                 <Ionicons name="checkmark-circle" size={40} color={theme.success} />
               </View>
-              <Title>Preuve envoyée</Title>
+              <Title>{t('payment.proofSent')}</Title>
               <Subtitle>
-                Votre preuve de paiement a été transmise. Un administrateur validera
-                votre abonnement sous 24 h.
+                {t('payment.proofSentDetail')}
               </Subtitle>
               <Button
-                title="Retour à l'accueil"
+                title={t('payment.backToHome')}
                 variant="primary"
                 onPress={() => router.replace('/(tabs)')}
               />
@@ -201,9 +203,9 @@ export default function PaymentScreen() {
           <>
             <FadeIn>
               <View style={{ alignItems: 'center', gap: 6 }}>
-                <Title>Choisissez votre moyen de paiement</Title>
+                <Title>{t('payment.chooseMethod')}</Title>
                 <Subtitle>
-                  Envoyez le montant au numéro affiché, puis partagez la capture d'écran
+                  {t('payment.sendAmountThen')}
                 </Subtitle>
               </View>
             </FadeIn>
@@ -252,7 +254,7 @@ export default function PaymentScreen() {
                   <Row style={{ gap: space.sm, marginBottom: space.sm }}>
                     <Ionicons name="information-circle" size={18} color={theme.primary} />
                     <Text style={{ color: theme.text, fontWeight: '700', fontSize: type.body }}>
-                      Instructions
+                      {t('payment.instructions')}
                     </Text>
                   </Row>
                   <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
@@ -266,7 +268,7 @@ export default function PaymentScreen() {
               <FadeIn delay={180}>
                 <View style={{ gap: space.md }}>
                   <Text style={{ color: theme.text, fontWeight: '700', fontSize: type.bodyLg }}>
-                    Capture d'écran du paiement
+                    {t('payment.screenshot')}
                   </Text>
 
                   {imageUri ? (
@@ -284,14 +286,14 @@ export default function PaymentScreen() {
                       <Row style={{ gap: space.md }}>
                         <View style={{ flex: 1 }}>
                           <Button
-                            title="Changer"
+                            title={t('payment.change')}
                             variant="ghost"
                             onPress={pickImage}
                           />
                         </View>
                         <View style={{ flex: 1 }}>
                           <Button
-                            title="Envoyer"
+                            title={t('common.send')}
                             variant="gold"
                             onPress={submit}
                             loading={uploading}
@@ -302,7 +304,7 @@ export default function PaymentScreen() {
                   ) : (
                     <Row style={{ gap: space.md }}>
                       <Press
-                        accessibilityLabel="Prendre une photo"
+                        accessibilityLabel={t('payment.takePhoto')}
                         onPress={takePhoto}
                         style={{
                           flex: 1,
@@ -317,11 +319,11 @@ export default function PaymentScreen() {
                       >
                         <Ionicons name="camera-outline" size={32} color={theme.primary} />
                         <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
-                          Photo
+                          {t('payment.photo')}
                         </Text>
                       </Press>
                       <Press
-                        accessibilityLabel="Choisir depuis la galerie"
+                        accessibilityLabel={t('payment.chooseFromGallery')}
                         onPress={pickImage}
                         style={{
                           flex: 1,
@@ -336,7 +338,7 @@ export default function PaymentScreen() {
                       >
                         <Ionicons name="images-outline" size={32} color={theme.primary} />
                         <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
-                          Galerie
+                          {t('payment.gallery')}
                         </Text>
                       </Press>
                     </Row>
