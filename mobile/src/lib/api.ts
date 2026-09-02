@@ -428,6 +428,33 @@ export type AnalyticsTraffic = {
   sessionsHeatmap: AnalyticsHeatmapCell[];
 };
 
+export type SessionStats = {
+  totalSessions: number;
+  activeSessions: number;
+  terminatedSessions: number;
+  averageDurationMinutes: number | null;
+  totalBytesIn: string;
+  totalBytesOut: string;
+  totalBytes: string;
+  byRouter: {
+    routerId: string;
+    routerName: string;
+    sessionCount: number;
+    activeSessions: number;
+    averageDurationMinutes: number | null;
+    bytesIn: string;
+    bytesOut: string;
+  }[];
+  byPlan: {
+    planId: string;
+    planName: string;
+    sessionCount: number;
+    averageDurationMinutes: number | null;
+    bytesIn: string;
+    bytesOut: string;
+  }[];
+};
+
 // Prévisions BI explicables — audit/73. Liste fermée backend
 // (forecast.types.ts) : jamais HIGH par intuition, INSUFFICIENT_DATA
 // systématique sous les seuils.
@@ -1598,6 +1625,12 @@ export const api = {
     },
     async traffic(filters: Omit<AnalyticsFilters, 'planId'>): Promise<AnalyticsTraffic> {
       const res = await apiClient.get<ApiEnvelope<AnalyticsTraffic>>('/analytics/traffic', {
+        params: filters,
+      });
+      return unwrap(res);
+    },
+    async sessionStats(filters: Omit<AnalyticsFilters, 'planId'>): Promise<SessionStats> {
+      const res = await apiClient.get<ApiEnvelope<SessionStats>>('/analytics/sessions', {
         params: filters,
       });
       return unwrap(res);

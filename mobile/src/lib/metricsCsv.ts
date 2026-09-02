@@ -1,6 +1,6 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import type { MetricsSummary } from './api';
+import type { MetricsSummary, SessionStats } from './api';
 import { buildMetricsCsvRows, rowsToCsv } from './metricsCsvRows';
 
 // Builds a CSV of the sales report (revenue + per-plan breakdown) and hands it
@@ -12,8 +12,9 @@ import { buildMetricsCsvRows, rowsToCsv } from './metricsCsvRows';
 export async function exportMetricsCsv(
   data: MetricsSummary,
   periodLabel: string,
+  sessionStats?: SessionStats,
 ): Promise<void> {
-  const csv = rowsToCsv(buildMetricsCsvRows(data, periodLabel));
+  const csv = rowsToCsv(buildMetricsCsvRows(data, periodLabel, sessionStats));
 
   const uri = `${FileSystem.cacheDirectory}rapport-ventes.csv`;
   await FileSystem.writeAsStringAsync(uri, csv, {

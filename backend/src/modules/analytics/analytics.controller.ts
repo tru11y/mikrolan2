@@ -8,11 +8,13 @@ import {
   routerDetailQuerySchema,
   plansQuerySchema,
   trafficQuerySchema,
+  sessionStatsQuerySchema,
   type OverviewQueryDto,
   type RoutersQueryDto,
   type RouterDetailQueryDto,
   type PlansQueryDto,
   type TrafficQueryDto,
+  type SessionStatsQueryDto,
 } from './dto/analytics.schemas';
 import {
   forecastQuerySchema,
@@ -49,6 +51,11 @@ export class AnalyticsController {
   @Get('plans')
   plans(@Query(new ZodValidationPipe(plansQuerySchema)) query: PlansQueryDto) {
     return this.analytics.plans(query);
+  }
+
+  @Get('sessions')
+  sessionStats(@Query(new ZodValidationPipe(sessionStatsQuerySchema)) query: SessionStatsQueryDto) {
+    return this.analytics.sessionStats(query);
   }
 
   @Get('traffic')

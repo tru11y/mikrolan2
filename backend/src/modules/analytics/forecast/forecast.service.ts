@@ -18,6 +18,9 @@ import {
   insightPlanVolumeVsContributionMismatch,
   insightRouterMajorShare,
   insightTrend,
+  insightConversionRate,
+  insightArpu,
+  insightHighDataUsage,
   insightInsufficientData,
   type Insight,
 } from './forecast.insights';
@@ -81,11 +84,15 @@ export class ForecastService {
    * jamais un recalcul indépendant du revenu.
    */
   async insights(): Promise<Insight[]> {
-    const [overview, routers, plans, traffic] = await Promise.all([
+    const ctx = getTenantContext();
+    if (!ctx) throw new Error('Contexte tenant manquant');
+
+    const [overview, routers, plans, traffic, sessions] = await Promise.all([
       this.analytics.overview({ period: 'last30days' }),
       this.analytics.routers({ period: 'last30days' }),
       this.analytics.plans({ period: 'last30days' }),
       this.analytics.traffic({ period: 'last30days' }),
+      this.analytics.sessionStats({ period: 'last30days' }),
     ]);
     const period = overview.period;
     const insights: Insight[] = [];
@@ -94,6 +101,20 @@ export class ForecastService {
       insights.push(insightInsufficientData('Vue d\'ensemble', "Aucune vente sur les 30 derniers jours — pas assez de données pour produire des insights.", period));
       return insights;
     }
+
+    // Conversion rate insight (tickets generated vs used)
+    const ticketCount = await this.prisma.voucher.count({
+      where: { tenantId: ctx.tenantId, createdAt: { gte: new Date(period.from) } },
+    });
+    const conversionInsight = insightConversionRate(ticketCount, overview.salesCount, period);
+    if (conversionInsight) insights.push(conversionInsight);
+
+    // ARPU insight (compare to previous period)
+    const previousArpu = overview.salesGrowthPercent !== null && overview.revenueGrowthPercent !== null
+      ? (overview.revenueXof / (1 + overview.revenueGrowthPercent / 100)) / (overview.salesCount / (1 + overview.salesGrowthPercent / 100))
+      : null;
+    const arpuInsight = insightArpu(overview.revenueXof, overview.salesCount, previousArpu !== null && Number.isFinite(previousArpu) ? Math.round(previousArpu) : null, period);
+    if (arpuInsight) insights.push(arpuInsight);
 
     for (const r of routers) {
       const rev = insightHighRevenueContribution(r.routerName, r.contributionPercent, period);
@@ -113,6 +134,13 @@ export class ForecastService {
       if (vol) insights.push(vol);
       const mismatch = insightPlanVolumeVsContributionMismatch(p.name, p.salesContributionPercent, p.revenueContributionPercent, period);
       if (mismatch) insights.push(mismatch);
+    }
+
+    // Network usage insights per router
+    for (const rs of sessions.byRouter) {
+      const totalBytes = BigInt(rs.bytesIn) + BigInt(rs.bytesOut);
+      const dataInsight = insightHighDataUsage(rs.routerName, totalBytes, rs.sessionCount, period);
+      if (dataInsight) insights.push(dataInsight);
     }
 
     const busiestSalesDay = [...traffic.salesHeatmap].sort((a, b) => b.count - a.count)[0];

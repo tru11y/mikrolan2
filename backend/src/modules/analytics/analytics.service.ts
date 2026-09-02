@@ -82,6 +82,33 @@ export interface HeatmapCell {
   revenueXof?: number; // uniquement salesHeatmap
 }
 
+export interface SessionStatsResult {
+  totalSessions: number;
+  activeSessions: number;
+  terminatedSessions: number;
+  averageDurationMinutes: number | null;
+  totalBytesIn: string;
+  totalBytesOut: string;
+  totalBytes: string;
+  byRouter: {
+    routerId: string;
+    routerName: string;
+    sessionCount: number;
+    activeSessions: number;
+    averageDurationMinutes: number | null;
+    bytesIn: string;
+    bytesOut: string;
+  }[];
+  byPlan: {
+    planId: string;
+    planName: string;
+    sessionCount: number;
+    averageDurationMinutes: number | null;
+    bytesIn: string;
+    bytesOut: string;
+  }[];
+}
+
 export interface OverviewResult {
   period: { from: string; to: string };
   timezone: string;
@@ -459,6 +486,106 @@ export class AnalyticsService {
         dataQuality: p.dataQuality,
       }))
       .sort((a, b) => b.revenueXof - a.revenueXof);
+  }
+
+  async sessionStats(query: PeriodFilters): Promise<SessionStatsResult> {
+    const ctx = getTenantContext();
+    if (!ctx) throw new Error('Contexte tenant manquant');
+    if (query.routerId) await this.assertRouterInTenant(ctx.tenantId, query.routerId);
+
+    const { bounds } = await this.resolveBounds(query);
+
+    const sessions = await this.prisma.session.findMany({
+      where: {
+        tenantId: ctx.tenantId,
+        ...(query.routerId ? { routerId: query.routerId } : {}),
+        startedAt: { gte: bounds.from, lt: bounds.to },
+      },
+      select: {
+        routerId: true,
+        status: true,
+        bytesIn: true,
+        bytesOut: true,
+        startedAt: true,
+        terminatedAt: true,
+        voucher: { select: { planId: true, plan: { select: { name: true } } } },
+        router: { select: { identity: true, alias: true } },
+      },
+    });
+
+    let totalBytesIn = BigInt(0);
+    let totalBytesOut = BigInt(0);
+    let activeSessions = 0;
+    let terminatedSessions = 0;
+    let totalDurationMs = 0;
+    let durationCount = 0;
+
+    const routerMap = new Map<string, { name: string; count: number; active: number; durationMs: number; durationCount: number; bytesIn: bigint; bytesOut: bigint }>();
+    const planMap = new Map<string, { name: string; count: number; durationMs: number; durationCount: number; bytesIn: bigint; bytesOut: bigint }>();
+
+    for (const s of sessions) {
+      totalBytesIn += s.bytesIn;
+      totalBytesOut += s.bytesOut;
+
+      if (s.status === 'ACTIVE') activeSessions++;
+      else terminatedSessions++;
+
+      if (s.terminatedAt) {
+        const dur = s.terminatedAt.getTime() - s.startedAt.getTime();
+        totalDurationMs += dur;
+        durationCount++;
+      }
+
+      // Router aggregation
+      const re = routerMap.get(s.routerId) ?? { name: s.router.alias || s.router.identity, count: 0, active: 0, durationMs: 0, durationCount: 0, bytesIn: BigInt(0), bytesOut: BigInt(0) };
+      re.count++;
+      if (s.status === 'ACTIVE') re.active++;
+      if (s.terminatedAt) { re.durationMs += s.terminatedAt.getTime() - s.startedAt.getTime(); re.durationCount++; }
+      re.bytesIn += s.bytesIn;
+      re.bytesOut += s.bytesOut;
+      routerMap.set(s.routerId, re);
+
+      // Plan aggregation
+      if (s.voucher?.planId) {
+        const pe = planMap.get(s.voucher.planId) ?? { name: s.voucher.plan?.name ?? '', count: 0, durationMs: 0, durationCount: 0, bytesIn: BigInt(0), bytesOut: BigInt(0) };
+        pe.count++;
+        if (s.terminatedAt) { pe.durationMs += s.terminatedAt.getTime() - s.startedAt.getTime(); pe.durationCount++; }
+        pe.bytesIn += s.bytesIn;
+        pe.bytesOut += s.bytesOut;
+        planMap.set(s.voucher.planId, pe);
+      }
+    }
+
+    return {
+      totalSessions: sessions.length,
+      activeSessions,
+      terminatedSessions,
+      averageDurationMinutes: durationCount > 0 ? Math.round(totalDurationMs / durationCount / 60000) : null,
+      totalBytesIn: totalBytesIn.toString(),
+      totalBytesOut: totalBytesOut.toString(),
+      totalBytes: (totalBytesIn + totalBytesOut).toString(),
+      byRouter: [...routerMap.entries()]
+        .map(([routerId, r]) => ({
+          routerId,
+          routerName: r.name,
+          sessionCount: r.count,
+          activeSessions: r.active,
+          averageDurationMinutes: r.durationCount > 0 ? Math.round(r.durationMs / r.durationCount / 60000) : null,
+          bytesIn: r.bytesIn.toString(),
+          bytesOut: r.bytesOut.toString(),
+        }))
+        .sort((a, b) => b.sessionCount - a.sessionCount),
+      byPlan: [...planMap.entries()]
+        .map(([planId, p]) => ({
+          planId,
+          planName: p.name,
+          sessionCount: p.count,
+          averageDurationMinutes: p.durationCount > 0 ? Math.round(p.durationMs / p.durationCount / 60000) : null,
+          bytesIn: p.bytesIn.toString(),
+          bytesOut: p.bytesOut.toString(),
+        }))
+        .sort((a, b) => b.sessionCount - a.sessionCount),
+    };
   }
 
   async traffic(query: PeriodFilters) {
