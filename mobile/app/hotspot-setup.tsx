@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { api, extractErrorMessage } from '@/src/lib/api';
 import {
   Banner,
@@ -17,6 +18,7 @@ import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
 export default function HotspotSetupScreen() {
+  const { t } = useTranslation();
   const navHeight = useBottomNavHeight();
   const router = useRouter();
   const { routerId, onboarding } = useLocalSearchParams<{
@@ -33,7 +35,7 @@ export default function HotspotSetupScreen() {
     setError(null);
     setDone(null);
     if (!iface.trim()) {
-      setError("L'interface est requise (ex. bridge, wlan1).");
+      setError(t('hotspotSetup.interfaceRequired'));
       return;
     }
     setBusy(true);
@@ -42,7 +44,7 @@ export default function HotspotSetupScreen() {
         interface: iface.trim(),
         network: network.trim() || undefined,
       });
-      setDone(`Hotspot configuré — passerelle ${res.gateway} (${res.network}).`);
+      setDone(t('hotspotSetup.hotspotConfigured', { gateway: res.gateway, network: res.network }));
     } catch (e) {
       setError(extractErrorMessage(e));
     } finally {
@@ -52,13 +54,12 @@ export default function HotspotSetupScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title="Configurer le hotspot" back />
+      <AppHeader title={t('hotspotSetup.title')} back />
       <ScrollView
         contentContainerStyle={{ gap: space.lg, padding: space.lg, paddingBottom: navHeight }}
       >
                 <Banner tone="warning">
-          Cette action modifie le réseau du routeur (adresse, DHCP, serveur
-          hotspot). À n’utiliser que sur un routeur sans hotspot existant.
+          {t('hotspotSetup.warning')}
         </Banner>
 
         {error ? <Banner tone="danger">{error}</Banner> : null}
@@ -66,26 +67,26 @@ export default function HotspotSetupScreen() {
 
         <Card>
           <Field
-            label="Interface"
+            label={t('hotspotSetup.interface')}
             value={iface}
             onChangeText={setIface}
-            placeholder="bridge"
+            placeholder={t('hotspotSetup.interfacePlaceholder')}
             autoCapitalize="none"
           />
           <Field
-            label="Réseau (CIDR, optionnel)"
+            label={t('hotspotSetup.network')}
             value={network}
             onChangeText={setNetwork}
-            placeholder="10.5.50.0/24"
+            placeholder={t('hotspotSetup.networkPlaceholder')}
             autoCapitalize="none"
           />
           <Subtitle>
-            Par défaut 10.5.50.0/24 — passerelle .1, plage DHCP .10–.254.
+            {t('hotspotSetup.defaultNetwork')}
           </Subtitle>
-          <Button title="Configurer" onPress={configure} loading={busy} />
+          <Button title={t('hotspotSetup.configure')} onPress={configure} loading={busy} />
           {done && onboarding === '1' ? (
             <Button
-              title="Continuer — créer mon premier forfait"
+              title={t('hotspotSetup.continueCreatePlan')}
               onPress={() =>
                 router.replace({
                   pathname: '/plans',

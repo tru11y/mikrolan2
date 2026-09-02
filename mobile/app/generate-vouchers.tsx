@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Plan, type VoucherItem } from '@/src/lib/api';
+import { useTranslation } from 'react-i18next';
 import { describeError } from '@/src/lib/errors';
 import { getLocalCredentials } from '@/src/lib/router-credentials';
 import { pushVouchersLan } from '@/src/services/mikrotik-lan/hotspotLan';
@@ -51,6 +52,7 @@ type OutputFormat = 'screen' | 'pdf';
 export default function GenerateVouchersScreen() {
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const router = useRouter();
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const toast = useToast();
   const navHeight = useBottomNavHeight();
@@ -96,11 +98,11 @@ export default function GenerateVouchersScreen() {
 
   async function generate() {
     if (!planId) {
-      toast.error('Choisissez d’abord un forfait.');
+      toast.error(t('tickets.choosePlanFirst'));
       return;
     }
     if (quantity < 1 || quantity > MAX_QUANTITY) {
-      toast.error(`La quantité doit être comprise entre 1 et ${MAX_QUANTITY}.`);
+      toast.error(t('tickets.quantityRange', { max: MAX_QUANTITY }));
       return;
     }
     setBusy(true);
@@ -114,9 +116,7 @@ export default function GenerateVouchersScreen() {
       if (!res.pushedByServer && res.push) {
         const creds = await getLocalCredentials(routerId);
         if (!creds) {
-          toast.error(
-            'Identifiants locaux requis : testez d’abord la connexion LAN sur ce routeur.',
-          );
+          toast.error(t('tickets.localCredsRequired'));
           return;
         }
         const items = await pushVouchersLan(creds, res.vouchers, res.push);
@@ -128,9 +128,7 @@ export default function GenerateVouchersScreen() {
       setJustGenerated(res.vouchers);
       await qc.invalidateQueries({ queryKey: ['vouchers', routerId] });
       await qc.invalidateQueries({ queryKey: ['batches', routerId] });
-      toast.success(
-        `${res.vouchers.length} ticket${res.vouchers.length > 1 ? 's' : ''} généré${res.vouchers.length > 1 ? 's' : ''}.`,
-      );
+      toast.success(t('tickets.generated', { count: res.vouchers.length }));
       if (outputFormat === 'pdf' && selectedPlan) {
         await printBatch(res.vouchers, selectedPlan);
       }
@@ -143,14 +141,14 @@ export default function GenerateVouchersScreen() {
 
   async function shareCodes(codes: VoucherItem[]) {
     const text = codes.map((v) => v.code).join('\n');
-    await Share.share({ message: `Codes WiFi :\n${text}` });
+    await Share.share({ message: `${t('tickets.wifiCodes')}\n${text}` });
   }
 
   const r = routerQuery.data;
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title="Tickets" back />
+      <AppHeader title={t('bottomNav.tickets')} back />
       <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: navHeight }}>
         <View
           style={{
@@ -161,14 +159,14 @@ export default function GenerateVouchersScreen() {
         >
           <View style={{ flex: 1 }}>
             <Text style={{ color: theme.text, fontSize: 20, fontWeight: '700' }}>
-              Créer des Tickets
+              {t('tickets.createTickets')}
             </Text>
             <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
-              Générez des codes d’accès WiFi uniques RouterOS
+              {t('tickets.generateSubtitle')}
             </Text>
           </View>
           <Press
-            accessibilityLabel="Paramètres du ticket"
+            accessibilityLabel={t('tickets.ticketSettings')}
             onPress={() =>
               router.push({ pathname: '/ticket-settings', params: { routerId } })
             }
@@ -189,7 +187,7 @@ export default function GenerateVouchersScreen() {
 
         <Press
           accessibilityRole="button"
-          accessibilityLabel="Vérifier un ticket"
+          accessibilityLabel={t('tickets.verifyTicket')}
           onPress={() => router.push({ pathname: '/verify-ticket', params: { routerId } })}
           style={{
             flexDirection: 'row',
@@ -215,9 +213,9 @@ export default function GenerateVouchersScreen() {
             <Ionicons name="shield-checkmark-outline" size={20} color={theme.primary} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: theme.text, fontWeight: '700' }}>Vérifier un ticket</Text>
+            <Text style={{ color: theme.text, fontWeight: '700' }}>{t('tickets.verifyTicket')}</Text>
             <Text style={{ color: theme.textMuted, fontSize: 12 }}>
-              Contrôler un code présenté par un client avant de l&apos;accepter
+              {t('tickets.verifySubtitle')}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={theme.textMuted} />
@@ -226,7 +224,7 @@ export default function GenerateVouchersScreen() {
         <View style={{ gap: 16 }}>
           {/* Serveur Hotspot (routeur déjà sélectionné) */}
           <View>
-            <FieldLabel>Serveur Hotspot</FieldLabel>
+            <FieldLabel>{t('tickets.hotspotServer')}</FieldLabel>
             <View
               style={{
                 backgroundColor: theme.surfaceAlt,
@@ -245,7 +243,7 @@ export default function GenerateVouchersScreen() {
 
           {/* Forfait / Plan WiFi */}
           <View>
-            <FieldLabel>Forfait / Plan WiFi</FieldLabel>
+            <FieldLabel>{t('tickets.wifiPlan')}</FieldLabel>
             {plansQuery.isLoading ? (
               <View style={{ gap: 8 }}>
                 {[0, 1, 2].map((i) => (
@@ -261,7 +259,7 @@ export default function GenerateVouchersScreen() {
               />
             ) : !plansQuery.data?.length ? (
               <Press
-                accessibilityLabel="Créer un forfait"
+                accessibilityLabel={t('tickets.createPlan')}
                 onPress={() => router.push({ pathname: '/plans', params: { routerId } })}
                 style={{
                   borderWidth: 1,
@@ -276,7 +274,7 @@ export default function GenerateVouchersScreen() {
               >
                 <Ionicons name="add-circle-outline" size={18} color={theme.primary} />
                 <Text style={{ color: theme.primary, fontSize: 13, fontWeight: '600' }}>
-                  Aucun forfait — créez-en un pour générer des tickets.
+                  {t('tickets.noPlan')}
                 </Text>
               </Press>
             ) : (
@@ -344,14 +342,14 @@ export default function GenerateVouchersScreen() {
                 </Text>
               </View>
               <Text style={{ color: theme.textMuted, fontSize: 12 }}>
-                Durée : {fmtDuration(selectedPlan.durationMinutes)}
+                {t('tickets.duration', { duration: fmtDuration(selectedPlan.durationMinutes) })}
               </Text>
             </View>
           ) : null}
 
           {/* Format de sortie */}
           <View>
-            <FieldLabel>Format de Sortie (Impression / Export)</FieldLabel>
+            <FieldLabel>{t('tickets.outputFormat')}</FieldLabel>
             <Press
               onPress={() => setFormatOpen((v) => !v)}
               style={{
@@ -373,7 +371,7 @@ export default function GenerateVouchersScreen() {
                   color={outputFormat === 'screen' ? theme.secondary : theme.primary}
                 />
                 <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>
-                  {outputFormat === 'screen' ? 'Ticket à l’écran' : 'Fichier PDF'}
+                  {outputFormat === 'screen' ? t('tickets.screenTicket') : t('tickets.pdfFile')}
                 </Text>
               </View>
               <Ionicons name="chevron-down" size={16} color={theme.textMuted} />
@@ -387,15 +385,15 @@ export default function GenerateVouchersScreen() {
                       value: 'screen' as const,
                       icon: 'phone-portrait-outline' as const,
                       color: theme.secondary,
-                      title: 'Ticket à l’écran',
-                      desc: 'Afficher les tickets générés avec QR code',
+                      title: t('tickets.screenTicket'),
+                      desc: t('tickets.screenTicketDesc'),
                     },
                     {
                       value: 'pdf' as const,
                       icon: 'document-text-outline' as const,
                       color: theme.primary,
-                      title: 'Fichier PDF',
-                      desc: 'Générer un PDF imprimable de tous les tickets',
+                      title: t('tickets.pdfFile'),
+                      desc: t('tickets.pdfFileDesc'),
                     },
                   ]
                 ).map((opt) => {
@@ -442,7 +440,7 @@ export default function GenerateVouchersScreen() {
           </View>
 
           <View>
-            <FieldLabel>Quantité de Tickets à Générer</FieldLabel>
+            <FieldLabel>{t('tickets.quantity')}</FieldLabel>
             <View
               style={{
                 flexDirection: 'row',
@@ -546,7 +544,7 @@ export default function GenerateVouchersScreen() {
           </View>
 
           <Button
-            title={`+ Créer des tickets (${quantity})`}
+            title={t('tickets.createButton', { count: quantity })}
             onPress={generate}
             loading={busy}
           />
@@ -562,9 +560,9 @@ export default function GenerateVouchersScreen() {
               }}
             >
               <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
-                {justGenerated.length} ticket(s) généré(s)
+                {t('tickets.generated', { count: justGenerated.length })}
               </Text>
-              <Badge label="Nouveau" tone="success" />
+              <Badge label={t('tickets.new')} tone="success" />
             </View>
             {justGenerated.map((v, i) => (
               <TicketCard
@@ -580,12 +578,12 @@ export default function GenerateVouchersScreen() {
               />
             ))}
             <Button
-              title="Imprimer les tickets (PDF)"
+              title={t('tickets.printPdf')}
               onPress={() => selectedPlan && printBatch(justGenerated, selectedPlan)}
               loading={printBusy}
             />
             <Button
-              title="Partager tous les codes"
+              title={t('tickets.shareAllCodes')}
               variant="ghost"
               onPress={() => shareCodes(justGenerated)}
             />
