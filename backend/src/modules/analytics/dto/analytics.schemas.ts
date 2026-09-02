@@ -65,3 +65,9 @@ export const trafficQuerySchema = z
   .strict()
   .superRefine(refineCustomBounds);
 export type TrafficQueryDto = z.infer<typeof trafficQuerySchema>;
+
+export const sessionStatsQuerySchema = z
+  .object({ period: baseFilters.period, from: baseFilters.from, to: baseFilters.to, routerId: baseFilters.routerId })
+  .strict()
+  .superRefine(refineCustomBounds);
+export type SessionStatsQueryDto = z.infer<typeof sessionStatsQuerySchema>;
