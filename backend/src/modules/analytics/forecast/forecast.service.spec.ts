@@ -8,6 +8,7 @@ const mockPrisma = {
   router: { findMany: jest.fn(), findFirst: jest.fn() },
   plan: { findMany: jest.fn(), findFirst: jest.fn() },
   session: { findMany: jest.fn() },
+  voucher: { count: jest.fn() },
 };
 
 const revenue = new RevenueService({} as never);
@@ -158,6 +159,7 @@ describe('ForecastService', () => {
       mockPrisma.router.findMany.mockResolvedValue([{ id: 'r1', identity: 'R1', alias: null }]);
       mockPrisma.plan.findMany.mockResolvedValue([]);
       mockPrisma.session.findMany.mockResolvedValue([]);
+      mockPrisma.voucher.count.mockResolvedValue(50);
       const insights = await service.insights();
       const causalWords = /parce que|à cause de|grâce à|entraîne|provoque|cause/i;
       for (const insight of insights) {
@@ -171,6 +173,7 @@ describe('ForecastService', () => {
       mockPrisma.router.findMany.mockResolvedValue([]);
       mockPrisma.plan.findMany.mockResolvedValue([]);
       mockPrisma.session.findMany.mockResolvedValue([]);
+      mockPrisma.voucher.count.mockResolvedValue(0);
       const insights = await service.insights();
       expect(insights).toHaveLength(1);
       expect(insights[0].type).toBe('INSUFFICIENT_DATA');
