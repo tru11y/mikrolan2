@@ -152,3 +152,37 @@ test('montants entiers préservés (jamais convertis en flottant/chaîne inutile
   assert.equal(typeof rows[2][1], 'number');
   assert.equal(Number.isInteger(rows[2][1] as number), true);
 });
+
+test('session stats incluses dans le CSV quand fournies', () => {
+  const sessionStats = {
+    totalSessions: 50,
+    activeSessions: 5,
+    terminatedSessions: 45,
+    averageDurationMinutes: 42,
+    totalBytesIn: '1073741824',
+    totalBytesOut: '536870912',
+    totalBytes: '1610612736',
+    byRouter: [
+      { routerId: 'r1', routerName: 'R1', sessionCount: 30, activeSessions: 3, averageDurationMinutes: 40, bytesIn: '536870912', bytesOut: '268435456' },
+      { routerId: 'r2', routerName: 'R2', sessionCount: 20, activeSessions: 2, averageDurationMinutes: 45, bytesIn: '536870912', bytesOut: '268435456' },
+    ],
+    byPlan: [],
+  };
+  const rows = buildMetricsCsvRows(baseSummary(), 'Ce Mois', sessionStats);
+  const sessHeader = rows.findIndex((r) => r[0] === 'Sessions & réseau');
+  assert.ok(sessHeader > 0, 'session section header present');
+  assert.deepEqual(rows[sessHeader + 1], ['Sessions totales', 50]);
+  assert.deepEqual(rows[sessHeader + 2], ['Sessions actives', 5]);
+  assert.deepEqual(rows[sessHeader + 3], ['Sessions terminées', 45]);
+  assert.deepEqual(rows[sessHeader + 4], ['Durée moyenne (min)', 42]);
+  const routerHeader = rows.findIndex((r) => r[0] === 'Routeur' && r[1] === 'Sessions');
+  assert.ok(routerHeader > sessHeader, 'router breakdown present');
+  assert.equal(rows[routerHeader + 1][0], 'R1');
+  assert.equal(rows[routerHeader + 2][0], 'R2');
+});
+
+test('session stats omises quand non fournies — aucune section ajoutée', () => {
+  const rows = buildMetricsCsvRows(baseSummary(), 'Ce Mois');
+  const sessHeader = rows.findIndex((r) => r[0] === 'Sessions & réseau');
+  assert.equal(sessHeader, -1);
+});

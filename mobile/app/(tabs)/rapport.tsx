@@ -13,8 +13,10 @@ import {
   type MetricsPeriod,
   type RevenueByPeriodItem,
   type RevenueByRouterItem,
+  type SessionStats,
 } from '@/src/lib/api';
 import { exportMetricsCsv } from '@/src/lib/metricsCsv';
+import { exportMetricsPdf } from '@/src/lib/metricsPdf';
 import { busiestCell, describeBusiest, fmtGrowth, DAY_LABELS } from '@/src/lib/analyticsFormat';
 import {
   Badge,
@@ -44,10 +46,28 @@ const PERIOD_KEYS: { key: string; value: MetricsPeriod }[] = [
   { key: 'rapport.thisMonth', value: '30d' },
 ];
 
+const ANALYTICS_PERIODS: { key: string; value: AnalyticsPeriod }[] = [
+  { key: 'rapport.today', value: 'today' },
+  { key: 'rapport.yesterday', value: 'yesterday' },
+  { key: 'rapport.last7d', value: 'last7days' },
+  { key: 'rapport.last30d', value: 'last30days' },
+  { key: 'rapport.currentWeek', value: 'currentWeek' },
+  { key: 'rapport.currentMonth', value: 'currentMonth' },
+];
+
 const PLAN_COLORS = [theme.primary, theme.success, theme.warning, theme.danger, '#38BDF8', '#F472B6'];
 
 function fmtXof(n: number): string {
   return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(n) + ' F';
+}
+
+function fmtBytes(bytesStr: string): string {
+  const bytes = Number(bytesStr);
+  if (!bytes || bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const val = bytes / Math.pow(1024, i);
+  return `${val < 10 ? val.toFixed(1) : Math.round(val)} ${units[i]}`;
 }
 
 /** KPI card: value + label, optionally a trend chip. */
@@ -454,6 +474,59 @@ function InsightsSection({ insights }: { insights: import('@/src/lib/api').Busin
   );
 }
 
+function SessionStatsSection({ data, t }: { data: SessionStats | undefined; t: (key: string, opts?: Record<string, unknown>) => string }) {
+  if (!data) return <Skeleton height={120} />;
+  if (data.totalSessions === 0) return <Empty icon="wifi-outline" text={t('rapport.noSessionData')} />;
+  return (
+    <View style={{ gap: 12 }}>
+      <Row style={{ gap: space.sm }}>
+        <Kpi icon="pulse-outline" iconColor={theme.primary} value={`${data.totalSessions}`} label={t('rapport.totalSessions')} />
+        <Kpi icon="wifi-outline" iconColor={theme.success} value={`${data.activeSessions}`} label={t('rapport.activeSessions')} />
+        <Kpi icon="time-outline" iconColor={theme.warning} value={data.averageDurationMinutes != null ? `${data.averageDurationMinutes} min` : '—'} label={t('rapport.avgDuration')} />
+      </Row>
+      <Card style={{ gap: 8 }}>
+        <Text style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 }}>
+          {t('rapport.dataUsage')}
+        </Text>
+        <Row style={{ justifyContent: 'flex-start', gap: 16 }}>
+          <View style={{ alignItems: 'center', gap: 2 }}>
+            <Row style={{ gap: 4 }}>
+              <Ionicons name="arrow-down-outline" size={14} color={theme.success} />
+              <Mono style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>{fmtBytes(data.totalBytesIn)}</Mono>
+            </Row>
+            <Text style={{ color: theme.textMuted, fontSize: 10 }}>{t('rapport.download')}</Text>
+          </View>
+          <View style={{ alignItems: 'center', gap: 2 }}>
+            <Row style={{ gap: 4 }}>
+              <Ionicons name="arrow-up-outline" size={14} color={theme.primary} />
+              <Mono style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>{fmtBytes(data.totalBytesOut)}</Mono>
+            </Row>
+            <Text style={{ color: theme.textMuted, fontSize: 10 }}>{t('rapport.upload')}</Text>
+          </View>
+          <View style={{ alignItems: 'center', gap: 2 }}>
+            <Mono style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>{fmtBytes(data.totalBytes)}</Mono>
+            <Text style={{ color: theme.textMuted, fontSize: 10 }}>{t('rapport.total')}</Text>
+          </View>
+        </Row>
+      </Card>
+      {data.byRouter.length > 1 ? (
+        <View style={{ gap: 6 }}>
+          <Text style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 }}>
+            {t('rapport.sessionsByRouter')}
+          </Text>
+          {data.byRouter.slice(0, 5).map((r) => (
+            <Row key={r.routerId} style={{ backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 10, padding: 10 }}>
+              <Text style={{ color: theme.text, fontSize: 12, fontWeight: '600', flex: 1 }} numberOfLines={1}>{r.routerName}</Text>
+              <Mono style={{ color: theme.textMuted, fontSize: 11 }}>{r.sessionCount} sess.</Mono>
+              <Mono style={{ color: theme.textMuted, fontSize: 11, marginLeft: 8 }}>{fmtBytes((BigInt(r.bytesIn) + BigInt(r.bytesOut)).toString())}</Mono>
+            </Row>
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 export default function RapportScreen() {
   const { t } = useTranslation();
   const { routerId } = useLocalSearchParams<{ routerId?: string }>();
@@ -461,11 +534,21 @@ export default function RapportScreen() {
   const navHeight = useBottomNavHeight();
   const qc = useQueryClient();
   const router = useRouter();
-  const [period, setPeriod] = useState<MetricsPeriod>('30d');
+  const [analyticsPeriod, setAnalyticsPeriod] = useState<AnalyticsPeriod>('last30days');
   const [refreshing, setRefreshing] = useState(false);
-  const analyticsPeriod = ANALYTICS_PERIOD_BY_METRICS_PERIOD[period];
+  const METRICS_BY_ANALYTICS: Record<AnalyticsPeriod, MetricsPeriod> = {
+    today: 'today',
+    yesterday: 'today',
+    last7days: '7d',
+    last30days: '30d',
+    currentWeek: '7d',
+    currentMonth: '30d',
+    custom: '30d',
+  };
+  const period = METRICS_BY_ANALYTICS[analyticsPeriod];
 
   const PERIODS = PERIOD_KEYS.map((p) => ({ value: p.value, label: t(p.key) }));
+  const AP = ANALYTICS_PERIODS.map((p) => ({ value: p.value, label: t(p.key) }));
 
   const confidenceLabel = (key: string) => {
     const map: Record<string, string> = {
@@ -522,6 +605,11 @@ export default function RapportScreen() {
     queryFn: () => api.analytics.forecastTraffic(routerId),
     placeholderData: keepPreviousData,
   });
+  const sessionStats = useQuery({
+    queryKey: ['analytics', 'sessions', analyticsPeriod, routerId],
+    queryFn: () => api.analytics.sessionStats({ period: analyticsPeriod, routerId }),
+    placeholderData: keepPreviousData,
+  });
   const insights = useQuery({
     queryKey: ['analytics', 'insights'],
     queryFn: () => api.analytics.insights(),
@@ -535,6 +623,7 @@ export default function RapportScreen() {
       qc.invalidateQueries({ queryKey: ['clients'] }),
       qc.invalidateQueries({ queryKey: ['accounting'] }),
       qc.invalidateQueries({ queryKey: ['analytics'] }),
+      qc.invalidateQueries({ queryKey: ['analytics', 'sessions'] }),
     ]);
     setRefreshing(false);
   }, [qc]);
@@ -575,52 +664,70 @@ export default function RapportScreen() {
             <Title>{t('rapport.title')}</Title>
             <Subtitle>{t('rapport.subtitle')}</Subtitle>
           </View>
-          <Press
-            onPress={() => {
-              if (!data) return;
-              const periodLabel = PERIODS.find((p) => p.value === period)!.label;
-              exportMetricsCsv(data, periodLabel);
-            }}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 6,
-              backgroundColor: theme.surface,
-              borderWidth: 1,
-              borderColor: theme.border,
-              borderRadius: 12,
-              paddingHorizontal: 10,
-              paddingVertical: 10,
-            }}
-          >
-            <Ionicons name="download-outline" size={16} color={theme.secondary} />
-          </Press>
+          <Row style={{ gap: 6 }}>
+            <Press
+              onPress={() => {
+                if (!data) return;
+                const periodLabel = PERIODS.find((p) => p.value === period)!.label;
+                exportMetricsCsv(data, periodLabel, sessionStats.data);
+              }}
+              style={{
+                alignItems: 'center',
+                backgroundColor: theme.surface,
+                borderWidth: 1,
+                borderColor: theme.border,
+                borderRadius: 12,
+                paddingHorizontal: 10,
+                paddingVertical: 10,
+              }}
+            >
+              <Text style={{ color: theme.secondary, fontSize: 10, fontWeight: '700' }}>CSV</Text>
+            </Press>
+            <Press
+              onPress={() => {
+                if (!data) return;
+                const periodLabel = PERIODS.find((p) => p.value === period)!.label;
+                exportMetricsPdf(data, periodLabel, sessionStats.data, overview.data);
+              }}
+              style={{
+                alignItems: 'center',
+                backgroundColor: theme.primary,
+                borderRadius: 12,
+                paddingHorizontal: 10,
+                paddingVertical: 10,
+              }}
+            >
+              <Text style={{ color: theme.primaryText, fontSize: 10, fontWeight: '700' }}>PDF</Text>
+            </Press>
+          </Row>
         </Row>
 
         {error ? (
           <ErrorState message={t('rapport.loadError')} onRetry={onRefresh} />
         ) : (
           <>
-            {/* Filtre de période — pilote les KPIs court terme (CA, conversion, ARPU). */}
-            <Row
+            {/* Filtre de période — pilote tous les KPIs et graphiques. */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
               style={{
                 backgroundColor: theme.surface,
                 borderWidth: 1,
                 borderColor: theme.border,
                 borderRadius: 16,
-                padding: 6,
-                gap: 4,
+                padding: 4,
               }}
+              contentContainerStyle={{ gap: 4 }}
             >
-              {PERIODS.map((p) => {
-                const active = p.value === period;
+              {AP.map((p) => {
+                const active = p.value === analyticsPeriod;
                 return (
                   <Press
                     key={p.value}
-                    onPress={() => setPeriod(p.value)}
+                    onPress={() => setAnalyticsPeriod(p.value)}
                     style={{
-                      flex: 1,
                       paddingVertical: 8,
+                      paddingHorizontal: 14,
                       borderRadius: 12,
                       alignItems: 'center',
                       backgroundColor: active ? theme.primary : 'transparent',
@@ -638,7 +745,7 @@ export default function RapportScreen() {
                   </Press>
                 );
               })}
-            </Row>
+            </ScrollView>
 
             {/* Chiffre d'affaires + tendance */}
             <Card style={{ gap: 8 }}>
@@ -819,6 +926,16 @@ export default function RapportScreen() {
                     t={t}
                   />
                 </Card>
+              )}
+            </View>
+
+            {/* Sessions et utilisation réseau */}
+            <View>
+              <SectionTitle>{t('rapport.sessionsSection')}</SectionTitle>
+              {sessionStats.error ? (
+                <ErrorState message={t('rapport.sessionsLoadError')} onRetry={onRefresh} />
+              ) : (
+                <SessionStatsSection data={sessionStats.data} t={t} />
               )}
             </View>
 

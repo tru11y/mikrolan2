@@ -10,6 +10,11 @@ export type InsightType =
   | 'ROUTER_MAJOR_SHARE'
   | 'PLAN_HIGH_VOLUME_LOW_CONTRIBUTION'
   | 'PLAN_LOW_VOLUME_HIGH_CONTRIBUTION'
+  | 'LOW_CONVERSION_RATE'
+  | 'HIGH_CONVERSION_RATE'
+  | 'HIGH_ARPU'
+  | 'LOW_ARPU'
+  | 'HIGH_DATA_USAGE'
   | 'INSUFFICIENT_DATA';
 
 export interface Insight {
@@ -170,6 +175,101 @@ export function insightPlanVolumeVsContributionMismatch(
       period,
       confidence: 'HIGH',
       recommendedAction: null,
+      limitations: LIMITATIONS_STANDARD,
+    };
+  }
+  return null;
+}
+
+export function insightConversionRate(
+  generated: number,
+  used: number,
+  period: { from: string; to: string },
+): Insight | null {
+  if (generated < 10) return null;
+  const rate = Math.round((used / generated) * 100);
+  if (rate < 30) {
+    return {
+      type: 'LOW_CONVERSION_RATE',
+      title: 'Taux de conversion faible',
+      observation: `Seulement ${rate} % des tickets générés ont été utilisés (${used}/${generated}).`,
+      evidence: `conversionRate=${rate}`,
+      period,
+      confidence: 'HIGH',
+      recommendedAction: 'Réduire la quantité de tickets pré-imprimés pour limiter le gaspillage.',
+      limitations: LIMITATIONS_STANDARD,
+    };
+  }
+  if (rate >= 80) {
+    return {
+      type: 'HIGH_CONVERSION_RATE',
+      title: 'Taux de conversion élevé',
+      observation: `${rate} % des tickets générés ont été utilisés (${used}/${generated}).`,
+      evidence: `conversionRate=${rate}`,
+      period,
+      confidence: 'HIGH',
+      recommendedAction: null,
+      limitations: LIMITATIONS_STANDARD,
+    };
+  }
+  return null;
+}
+
+export function insightArpu(
+  revenueXof: number,
+  salesCount: number,
+  previousArpu: number | null,
+  period: { from: string; to: string },
+): Insight | null {
+  if (salesCount < 5) return null;
+  const arpu = Math.round(revenueXof / salesCount);
+  if (previousArpu !== null && previousArpu > 0) {
+    const change = Math.round(((arpu - previousArpu) / previousArpu) * 100);
+    if (change >= 20) {
+      return {
+        type: 'HIGH_ARPU',
+        title: 'Panier moyen en hausse',
+        observation: `Le panier moyen est de ${arpu} FCFA, en hausse de ${change} % par rapport à la période précédente.`,
+        evidence: `arpu=${arpu},previousArpu=${previousArpu},change=${change}`,
+        period,
+        confidence: 'MEDIUM',
+        recommendedAction: null,
+        limitations: LIMITATIONS_STANDARD,
+      };
+    }
+    if (change <= -20) {
+      return {
+        type: 'LOW_ARPU',
+        title: 'Panier moyen en baisse',
+        observation: `Le panier moyen est de ${arpu} FCFA, en baisse de ${Math.abs(change)} % par rapport à la période précédente.`,
+        evidence: `arpu=${arpu},previousArpu=${previousArpu},change=${change}`,
+        period,
+        confidence: 'MEDIUM',
+        recommendedAction: 'Vérifier si un forfait peu cher a capté une part inhabituelle des ventes.',
+        limitations: LIMITATIONS_STANDARD,
+      };
+    }
+  }
+  return null;
+}
+
+export function insightHighDataUsage(
+  routerName: string,
+  bytesTotal: bigint,
+  sessionCount: number,
+  period: { from: string; to: string },
+): Insight | null {
+  if (sessionCount < 5) return null;
+  const avgMb = Number(bytesTotal / BigInt(sessionCount)) / (1024 * 1024);
+  if (avgMb >= 500) {
+    return {
+      type: 'HIGH_DATA_USAGE',
+      title: `${routerName} : consommation de données élevée`,
+      observation: `Moyenne de ${Math.round(avgMb)} Mo par session sur ${routerName} (${sessionCount} sessions).`,
+      evidence: `avgMb=${Math.round(avgMb)},sessionCount=${sessionCount}`,
+      period,
+      confidence: 'MEDIUM',
+      recommendedAction: 'Vérifier si les limites de données des forfaits sont adaptées.',
       limitations: LIMITATIONS_STANDARD,
     };
   }
