@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ScrollView, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { api, type VoucherVerificationResult } from '@/src/lib/api';
 import { describeError } from '@/src/lib/errors';
 import {
@@ -55,7 +56,7 @@ function fmtBytes(raw: string): string {
   return `${(n / (1024 * 1024 * 1024)).toFixed(2)} Go`;
 }
 
-function verdictFor(r: VoucherVerificationResult): Verdict {
+function verdictFor(r: VoucherVerificationResult, t: (key: string, opts?: Record<string, unknown>) => string): Verdict {
   const expired =
     r.status === 'EXPIRED' ||
     (r.expiresAt != null && new Date(r.expiresAt).getTime() < Date.now());
@@ -64,8 +65,8 @@ function verdictFor(r: VoucherVerificationResult): Verdict {
     return {
       tone: 'invalid',
       icon: 'ban-outline',
-      title: 'Ticket annulé',
-      detail: 'Ce ticket a été révoqué. Ne pas accepter.',
+      title: t('verifyTicket.cancelled'),
+      detail: t('verifyTicket.cancelledDetail'),
       result: r,
     };
   }
@@ -73,10 +74,10 @@ function verdictFor(r: VoucherVerificationResult): Verdict {
     return {
       tone: 'invalid',
       icon: 'time-outline',
-      title: 'Ticket expiré',
+      title: t('verifyTicket.expired'),
       detail: r.expiresAt
-        ? `Il a expiré le ${fmtDate(r.expiresAt)}.`
-        : 'Sa durée de validité est dépassée.',
+        ? t('verifyTicket.expiredAt', { date: fmtDate(r.expiresAt) })
+        : t('verifyTicket.expiredGeneric'),
       result: r,
     };
   }
@@ -84,10 +85,10 @@ function verdictFor(r: VoucherVerificationResult): Verdict {
     return {
       tone: 'used',
       icon: 'checkmark-done-outline',
-      title: 'Ticket déjà consommé',
+      title: t('verifyTicket.used'),
       detail: r.activatedAt
-        ? `Il a été utilisé le ${fmtDate(r.activatedAt)}.`
-        : 'Ce ticket a déjà servi.',
+        ? t('verifyTicket.usedAt', { date: fmtDate(r.activatedAt) })
+        : t('verifyTicket.usedGeneric'),
       result: r,
     };
   }
@@ -95,18 +96,18 @@ function verdictFor(r: VoucherVerificationResult): Verdict {
     return {
       tone: 'used',
       icon: 'wifi-outline',
-      title: 'Ticket en cours d’utilisation',
+      title: t('verifyTicket.inUse'),
       detail: r.activatedAt
-        ? `Connexion démarrée le ${fmtDate(r.activatedAt)}.`
-        : 'Une connexion est déjà ouverte avec ce code.',
+        ? t('verifyTicket.inUseAt', { date: fmtDate(r.activatedAt) })
+        : t('verifyTicket.inUseGeneric'),
       result: r,
     };
   }
   return {
     tone: 'valid',
     icon: 'shield-checkmark-outline',
-    title: 'Ticket valide',
-    detail: r.message || 'Ce ticket est authentique et n’a jamais été utilisé.',
+    title: t('verifyTicket.valid'),
+    detail: r.message || t('verifyTicket.validDetail'),
     result: r,
   };
 }
@@ -129,6 +130,7 @@ function InfoRow({ label, value, color }: { label: string; value: string; color?
 }
 
 export default function VerifyTicketScreen() {
+  const { t } = useTranslation();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const navHeight = useBottomNavHeight();
 
@@ -145,16 +147,15 @@ export default function VerifyTicketScreen() {
     setVerdict(null);
     try {
       const result = await api.vouchers.verify(wanted, undefined, routerId);
-      setVerdict(verdictFor(result));
+      setVerdict(verdictFor(result, t));
     } catch (e) {
       const described = describeError(e);
       if (described.status === 401 || described.status === 404) {
         setVerdict({
           tone: 'invalid',
           icon: 'close-circle-outline',
-          title: 'Ticket inconnu',
-          detail:
-            'Ce code n’a pas été trouvé. Il peut être faux ou provenir d’un autre point de vente.',
+          title: t('verifyTicket.unknown'),
+          detail: t('verifyTicket.unknownDetail'),
           result: null as never,
         });
       } else {
@@ -171,7 +172,7 @@ export default function VerifyTicketScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title="Vérifier un ticket" back />
+      <AppHeader title={t('verifyTicket.title')} back />
       <ScrollView
         contentContainerStyle={{
           gap: space.lg,

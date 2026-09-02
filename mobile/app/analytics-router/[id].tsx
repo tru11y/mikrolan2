@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { LineChart } from 'react-native-gifted-charts';
@@ -33,6 +34,7 @@ const ALLOWED_PERIODS: AnalyticsPeriod[] = [
 ];
 
 export default function AnalyticsRouterDetailScreen() {
+  const { t } = useTranslation();
   const { id, period: periodParam } = useLocalSearchParams<{ id: string; period?: string }>();
   const navHeight = useBottomNavHeight();
   const [period] = useState<AnalyticsPeriod>(
@@ -51,7 +53,7 @@ export default function AnalyticsRouterDetailScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title={data?.routerName ?? 'Détail routeur'} back />
+      <AppHeader title={data?.routerName ?? t('analyticsRouter.detailTitle')} back />
       <ScrollView
         style={{ flex: 1, backgroundColor: theme.bg }}
         contentContainerStyle={{ padding: space.lg, gap: space.lg, paddingBottom: navHeight }}
@@ -63,25 +65,25 @@ export default function AnalyticsRouterDetailScreen() {
             <Skeleton height={140} />
           </>
         ) : detail.error ? (
-          <ErrorState message="Impossible de charger le détail de ce routeur." onRetry={() => detail.refetch()} />
+          <ErrorState message={t('analyticsRouter.loadError')} onRetry={() => detail.refetch()} />
         ) : !data ? (
-          <Empty icon="hardware-chip-outline" text="Aucune donnée disponible." />
+          <Empty icon="hardware-chip-outline" text={t('analyticsRouter.noData')} />
         ) : (
           <>
             <View>
               <Title>{data.routerName}</Title>
-              <Subtitle>Performance sur la période sélectionnée.</Subtitle>
+              <Subtitle>{t('analyticsRouter.periodSubtitle')}</Subtitle>
             </View>
 
             <Card style={{ gap: 8 }}>
               <Text style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 }}>
-                CHIFFRE D&apos;AFFAIRES
+                {t('analyticsRouter.revenue')}
               </Text>
               <Mono style={{ color: theme.success, fontSize: 28, fontWeight: '900' }}>{fmtXof(data.revenueXof)}</Mono>
               <Row style={{ justifyContent: 'flex-start', gap: 10 }}>
-                <Text style={{ color: theme.textMuted, fontSize: 12 }}>{data.salesCount} vente(s)</Text>
+                <Text style={{ color: theme.textMuted, fontSize: 12 }}>{t('analyticsRouter.sales', { count: data.salesCount })}</Text>
                 <Text style={{ color: theme.textMuted, fontSize: 12 }}>
-                  {data.contributionPercent.toFixed(0)}% du CA global
+                  {t('analyticsRouter.ofGlobalRevenue', { pct: data.contributionPercent.toFixed(0) })}
                 </Text>
                 {fmtGrowth(data.growthPercent) ? (
                   <Text
@@ -91,7 +93,7 @@ export default function AnalyticsRouterDetailScreen() {
                       fontWeight: '700',
                     }}
                   >
-                    {fmtGrowth(data.growthPercent)} vs période précédente
+                    {fmtGrowth(data.growthPercent)} {t('analyticsRouter.vsPrevious')}
                   </Text>
                 ) : null}
               </Row>
@@ -100,22 +102,22 @@ export default function AnalyticsRouterDetailScreen() {
                   <Badge
                     label={
                       data.dataQuality === 'ESTIMATED'
-                        ? 'Estimé'
+                        ? t('rapport.dataEstimated')
                         : data.dataQuality === 'MIXED'
-                          ? 'Partiellement estimé'
-                          : 'Incomplet'
+                          ? t('rapport.dataMixed')
+                          : t('rapport.dataIncomplete')
                     }
                     tone="warning"
                   />
                   {data.dataQuality === 'ESTIMATED' || data.dataQuality === 'MIXED' ? (
                     <Text style={{ color: theme.textMuted, fontSize: 11 }}>
-                      Une partie de ce chiffre d&apos;affaires est estimée à partir du prix actuel des forfaits.
+                      {t('rapport.estimatedNote')}
                     </Text>
                   ) : null}
                 </View>
               ) : null}
               <Text style={{ color: theme.textMuted, fontSize: 11 }}>
-                Moyenne des routeurs du tenant : {fmtXof(data.comparisonToTenantAverage.averageRouterRevenueXof)}
+                {t('analyticsRouter.tenantAverage', { amount: fmtXof(data.comparisonToTenantAverage.averageRouterRevenueXof) })}
                 {fmtGrowth(data.comparisonToTenantAverage.deltaPercent)
                   ? ` (${fmtGrowth(data.comparisonToTenantAverage.deltaPercent)})`
                   : ''}
@@ -123,13 +125,13 @@ export default function AnalyticsRouterDetailScreen() {
             </Card>
 
             <View>
-              <SectionTitle>Évolution</SectionTitle>
+              <SectionTitle>{t('analyticsRouter.evolution')}</SectionTitle>
               {data.timeSeries.length < 2 ? (
-                <Empty icon="trending-up-outline" text="Historique insuffisant pour tracer une courbe." />
+                <Empty icon="trending-up-outline" text={t('analyticsRouter.insufficientHistory')} />
               ) : (
                 <Card>
                   <LineChart
-                    data={data.timeSeries.map((t) => ({ value: t.revenueXof, label: t.date.slice(5) }))}
+                    data={data.timeSeries.map((pt) => ({ value: pt.revenueXof, label: pt.date.slice(5) }))}
                     width={280}
                     height={140}
                     color={theme.primary}
@@ -155,9 +157,9 @@ export default function AnalyticsRouterDetailScreen() {
             </View>
 
             <View>
-              <SectionTitle>Forfaits</SectionTitle>
+              <SectionTitle>{t('analyticsRouter.plansSection')}</SectionTitle>
               {!data.plans.length ? (
-                <Empty icon="pricetags-outline" text="Aucune vente de forfait sur cette période." />
+                <Empty icon="pricetags-outline" text={t('analyticsRouter.noPlanSales')} />
               ) : (
                 <View style={{ gap: 8 }}>
                   {data.plans.map((p) => (
@@ -166,7 +168,7 @@ export default function AnalyticsRouterDetailScreen() {
                         <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700', flex: 1 }}>{p.name}</Text>
                         <Mono style={{ color: theme.textMuted, fontSize: 12 }}>{fmtXof(p.revenueXof)}</Mono>
                       </Row>
-                      <Text style={{ color: theme.textMuted, fontSize: 11 }}>{p.salesCount} vente(s)</Text>
+                      <Text style={{ color: theme.textMuted, fontSize: 11 }}>{t('analyticsRouter.sales', { count: p.salesCount })}</Text>
                     </Card>
                   ))}
                 </View>
@@ -174,18 +176,18 @@ export default function AnalyticsRouterDetailScreen() {
             </View>
 
             <View>
-              <SectionTitle>Affluence</SectionTitle>
+              <SectionTitle>{t('analyticsRouter.affluence')}</SectionTitle>
               <Card style={{ gap: 10 }}>
                 <Row style={{ justifyContent: 'flex-start', gap: 8 }}>
                   <Ionicons name="cart-outline" size={16} color={theme.primary} />
                   <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700', flex: 1 }}>
-                    Pic de ventes : {describeBusiest(busiestSales)}
+                    {t('analyticsRouter.salesPeak', { desc: describeBusiest(busiestSales) })}
                   </Text>
                 </Row>
                 <Row style={{ justifyContent: 'flex-start', gap: 8 }}>
                   <Ionicons name="wifi-outline" size={16} color={theme.primarySoft} />
                   <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700', flex: 1 }}>
-                    Pic de sessions réseau ({data.sessionsCount}) : {describeBusiest(busiestSessions)}
+                    {t('analyticsRouter.sessionsPeak', { count: data.sessionsCount, desc: describeBusiest(busiestSessions) })}
                   </Text>
                 </Row>
               </Card>

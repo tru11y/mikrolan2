@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import axios from 'axios';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, extractErrorMessage } from '@/src/lib/api';
@@ -57,6 +58,7 @@ function dedupeIdentity(base: string, taken: Set<string>): string {
 }
 
 export default function AddRouterScreen() {
+  const { t } = useTranslation();
   const router = useRouter();
   const qc = useQueryClient();
   const existingRouters = useQuery({
@@ -103,7 +105,7 @@ export default function AddRouterScreen() {
   async function testLocal() {
     setError(null);
     if (!address.trim()) {
-      setTest({ kind: 'error', message: 'Renseignez l’adresse du routeur' });
+      setTest({ kind: 'error', message: t('addRouter.addressRequired') });
       return;
     }
     setTest({ kind: 'testing' });
@@ -118,16 +120,16 @@ export default function AddRouterScreen() {
         setIdentity(suggested);
         if (suggested !== res.name) {
           setIdentityNote(
-            `Le nom « ${res.name} » est déjà utilisé par un autre de vos routeurs, nous l’avons adapté.`,
+            t('addRouter.nameAdapted', { name: res.name }),
           );
         }
       }
     } catch (e) {
       const message =
         e instanceof LanAuthFailedError
-          ? 'Identifiants RouterOS incorrects'
+          ? t('addRouter.authFailed')
           : e instanceof LanUnreachableError
-            ? "Routeur injoignable — vérifiez l'adresse et que le routeur est allumé."
+            ? t('addRouter.unreachable')
             : extractErrorMessage(e);
       setTest({ kind: 'error', message });
     }
@@ -165,7 +167,7 @@ export default function AddRouterScreen() {
       const status = axios.isAxiosError(e) ? e.response?.status : null;
       setError(
         status === 409
-          ? `Vous avez déjà un routeur nommé « ${identity.trim()} ». Choisissez un autre nom.`
+          ? t('addRouter.nameConflict', { name: identity.trim() })
           : extractErrorMessage(e),
       );
     } finally {
@@ -177,7 +179,7 @@ export default function AddRouterScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title="Ajouter un routeur" back />
+      <AppHeader title={t('addRouter.title')} back />
       <Screen>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -202,11 +204,10 @@ export default function AddRouterScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>
-                  Connexion API MikroTik
+                  {t('addRouter.mikrotikApi')}
                 </Text>
                 <Text style={{ color: theme.textMuted, fontSize: 12 }}>
-                  Port API RouterOS (défaut 8728). Les identifiants restent sur
-                  votre téléphone.
+                  {t('addRouter.apiInfo')}
                 </Text>
               </View>
             </View>
@@ -218,7 +219,7 @@ export default function AddRouterScreen() {
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={{ flex: 1 }}>
                 <Field
-                  label="Adresse"
+                  label={t('addRouter.address')}
                   placeholder="192.168.88.1"
                   value={address}
                   onChangeText={setAddress}
@@ -228,7 +229,7 @@ export default function AddRouterScreen() {
               </View>
               <View style={{ width: 90 }}>
                 <NumberField
-                  label="Port"
+                  label={t('addRouter.port')}
                   placeholder="8728"
                   value={port}
                   onChangeValue={setPort}
@@ -247,16 +248,16 @@ export default function AddRouterScreen() {
               <Ionicons name="search" size={15} color={theme.secondary} />
               <Text style={{ color: theme.secondary, fontSize: 13.5, fontWeight: '600' }}>
                 {scan.kind === 'scanning'
-                  ? `Recherche… ${scan.done}/${scan.total}`
-                  : 'Rechercher les routeurs sur mon réseau'}
+                  ? t('addRouter.scanning', { done: scan.done, total: scan.total })
+                  : t('addRouter.scanRouters')}
               </Text>
             </Press>
 
             {scan.kind === 'done' ? (
               <Text style={{ color: theme.textMuted, fontSize: 11.5, fontFamily: theme.mono }}>
                 {scan.ip
-                  ? `Tél ${scan.ip}${scan.gateway ? ` · passerelle ${scan.gateway}` : ''}`
-                  : 'IP locale indisponible — connectez le Wi-Fi du routeur.'}
+                  ? `${t('addRouter.phoneIp', { ip: scan.ip })}${scan.gateway ? ` · ${t('addRouter.gateway', { gateway: scan.gateway })}` : ''}`
+                  : t('addRouter.ipUnavailable')}
               </Text>
             ) : null}
             {scan.kind === 'done' && scan.hosts.length > 0 ? (
@@ -285,8 +286,7 @@ export default function AddRouterScreen() {
             ) : null}
             {scan.kind === 'done' && scan.hosts.length === 0 ? (
               <Banner tone="warning">
-                Aucun routeur détecté. Le téléphone doit être sur le même Wi-Fi
-                que le routeur, et le port www/REST ({portNum}) activé.
+                {t('addRouter.noRouterDetected', { port: portNum })}
               </Banner>
             ) : null}
           </Card>
@@ -302,23 +302,23 @@ export default function AddRouterScreen() {
                   letterSpacing: 0.5,
                 }}
               >
-                IDENTIFIANTS ADMINISTRATEUR
+                {t('addRouter.adminCredentials')}
               </Text>
             </View>
             <Field
-              label="Utilisateur RouterOS"
+              label={t('addRouter.routerosUser')}
               value={username}
               onChangeText={setUsername}
               autoCapitalize="none"
             />
             <Field
-              label="Mot de passe RouterOS"
+              label={t('addRouter.routerosPassword')}
               value={password}
               onChangeText={setPassword}
               secureTextEntry
             />
             <Button
-              title="Tester la connexion locale"
+              title={t('addRouter.testLocal')}
               variant="ghost"
               onPress={testLocal}
               loading={test.kind === 'testing'}
@@ -326,7 +326,7 @@ export default function AddRouterScreen() {
             {test.kind === 'ok' ? (
               <Banner tone="success">
                 <Ionicons name="checkmark-circle" size={14} color={theme.success} />{' '}
-                Connecté — identité : {test.identity}
+                {t('addRouter.connected', { identity: test.identity })}
               </Banner>
             ) : null}
             {test.kind === 'error' ? (
@@ -336,8 +336,8 @@ export default function AddRouterScreen() {
 
           <Card>
             <Field
-              label="Nom du routeur (unique sur votre compte)"
-              placeholder="BOUTIQUE-PLATEAU"
+              label={t('addRouter.routerName')}
+              placeholder={t('addRouter.namePlaceholder')}
               value={identity}
               onChangeText={(v) => {
                 setIdentity(v);
@@ -349,13 +349,13 @@ export default function AddRouterScreen() {
               <Banner tone="warning">{identityNote}</Banner>
             ) : null}
             <Field
-              label="Alias (optionnel)"
-              placeholder="Routeur du plateau"
+              label={t('addRouter.alias')}
+              placeholder={t('addRouter.aliasPlaceholder')}
               value={alias}
               onChangeText={setAlias}
             />
             <Button
-              title="Enregistrer le routeur"
+              title={t('addRouter.saveRouter')}
               onPress={save}
               loading={saving}
               disabled={!canSave}

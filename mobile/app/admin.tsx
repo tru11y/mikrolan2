@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   api,
@@ -44,14 +45,17 @@ import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 
 type Tab = 'apercu' | 'demandes' | 'comptes' | 'formules' | 'tickets' | 'config';
 
-const TABS: { key: Tab; label: string; icon: any }[] = [
-  { key: 'apercu', label: 'Aperçu', icon: 'speedometer-outline' },
-  { key: 'demandes', label: 'Demandes', icon: 'mail-unread-outline' },
-  { key: 'comptes', label: 'Comptes', icon: 'people-outline' },
-  { key: 'tickets', label: 'SAV', icon: 'chatbubbles-outline' },
-  { key: 'formules', label: 'Formules', icon: 'pricetags-outline' },
-  { key: 'config', label: 'Config', icon: 'settings-outline' },
-];
+function useTabs(): { key: Tab; label: string; icon: any }[] {
+  const { t } = useTranslation();
+  return [
+    { key: 'apercu', label: t('admin.overview'), icon: 'speedometer-outline' },
+    { key: 'demandes', label: t('admin.requests'), icon: 'mail-unread-outline' },
+    { key: 'comptes', label: t('admin.accounts'), icon: 'people-outline' },
+    { key: 'tickets', label: t('admin.sav'), icon: 'chatbubbles-outline' },
+    { key: 'formules', label: t('admin.formulas'), icon: 'pricetags-outline' },
+    { key: 'config', label: t('admin.config'), icon: 'settings-outline' },
+  ];
+}
 
 function shortDate(iso: string | null): string {
   if (!iso) return '—';
@@ -65,6 +69,7 @@ function shortDate(iso: string | null): string {
 // ─── Aperçu ──────────────────────────────────────────────────────────────────
 
 function OverviewTab() {
+  const { t } = useTranslation();
   const query = useQuery({
     queryKey: ['admin', 'metrics'],
     queryFn: api.admin.metrics,
@@ -103,13 +108,13 @@ function OverviewTab() {
             icon="cash-outline"
             tone="gold"
             value={formatXof(m.revenue.mrrXof)}
-            label="Revenu mensuel récurrent"
+            label={t('admin.mrr')}
           />
           <Stat
             icon="mail-unread-outline"
             tone={m.pendingInvoices > 0 ? 'primary' : 'text'}
             value={String(m.pendingInvoices)}
-            label="Demandes en attente"
+            label={t('admin.pendingRequests')}
           />
         </Row>
       </FadeIn>
@@ -119,13 +124,13 @@ function OverviewTab() {
           <Stat
             icon="business-outline"
             value={String(m.tenants.total)}
-            label="Comptes clients"
+            label={t('admin.clientAccounts')}
           />
           <Stat
             icon="ribbon-outline"
             tone="success"
             value={String(m.tenants.pro)}
-            label="Abonnés PRO"
+            label={t('admin.proSubscribers')}
           />
         </Row>
       </FadeIn>
@@ -135,23 +140,23 @@ function OverviewTab() {
           <Stat
             icon="hourglass-outline"
             value={String(m.tenants.trialing)}
-            label="En période d’essai"
+            label={t('admin.trialing')}
           />
           <Stat
             icon="lock-closed-outline"
             tone={m.tenants.locked > 0 ? 'danger' : 'text'}
             value={String(m.tenants.locked)}
-            label="Verrouillés"
+            label={t('admin.locked')}
           />
         </Row>
       </FadeIn>
 
       <FadeIn delay={180}>
         <Card>
-          <SectionTitle>Exploitation</SectionTitle>
+          <SectionTitle>{t('admin.operations')}</SectionTitle>
           <Row>
             <Text style={{ color: theme.textMuted, fontSize: type.body }}>
-              Routeurs en ligne
+              {t('admin.routersOnline')}
             </Text>
             <Text style={{ color: theme.text, fontSize: type.body, fontWeight: '700' }}>
               {m.routers.online} / {m.routers.total}
@@ -159,7 +164,7 @@ function OverviewTab() {
           </Row>
           <Row>
             <Text style={{ color: theme.textMuted, fontSize: type.body }}>
-              Tickets générés (30 j)
+              {t('admin.ticketsGenerated30d')}
             </Text>
             <Text style={{ color: theme.text, fontSize: type.body, fontWeight: '700' }}>
               {m.vouchers30d.generated.toLocaleString('fr-FR')}
@@ -167,7 +172,7 @@ function OverviewTab() {
           </Row>
           <Row>
             <Text style={{ color: theme.textMuted, fontSize: type.body }}>
-              Tickets utilisés (30 j)
+              {t('admin.ticketsUsed30d')}
             </Text>
             <Text style={{ color: theme.text, fontSize: type.body, fontWeight: '700' }}>
               {m.vouchers30d.activated.toLocaleString('fr-FR')}
@@ -175,7 +180,7 @@ function OverviewTab() {
           </Row>
           <Row>
             <Text style={{ color: theme.textMuted, fontSize: type.body }}>
-              Essais expirant sous 7 jours
+              {t('admin.trialsExpiring7d')}
             </Text>
             <Text
               style={{
@@ -207,9 +212,7 @@ function OverviewTab() {
             <Text
               style={{ color: theme.text, fontSize: type.micro, flex: 1, lineHeight: 16 }}
             >
-              {m.revenue.untieredActive} abonnement(s) actif(s) sans formule rattachée —
-              activés avant la mise en place de la grille. Ils ne sont pas comptés dans le
-              revenu récurrent ; réactivez-les depuis une demande pour les rattacher.
+              {t('admin.untieredWarning', { count: m.revenue.untieredActive })}
             </Text>
           </Row>
         </FadeIn>
@@ -221,6 +224,7 @@ function OverviewTab() {
 // ─── Demandes d'activation ───────────────────────────────────────────────────
 
 function RequestsTab() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const toast = useToast();
   const [confirming, setConfirming] = useState<AdminInvoice | null>(null);
@@ -236,7 +240,7 @@ function RequestsTab() {
     mutationFn: (invoice: AdminInvoice) =>
       api.subscriptions.activate(invoice.tenantId, invoice.periodDays),
     onSuccess: async () => {
-      toast.success('Abonnement activé. Le client est notifié.');
+      toast.success(t('admin.subscriptionActivated'));
       setConfirming(null);
       await qc.invalidateQueries({ queryKey: ['admin'] });
     },
@@ -259,7 +263,7 @@ function RequestsTab() {
     return (
       <Empty
         icon="checkmark-done-outline"
-        text="Aucune demande en attente. Tout est traité."
+        text={t('admin.noRequests')}
       />
     );
   }
@@ -277,7 +281,7 @@ function RequestsTab() {
                   {inv.tenantName}
                 </Text>
                 <Text style={{ color: theme.textMuted, fontSize: type.micro }}>
-                  Demandé le {shortDate(inv.createdAt)}
+                  {t('admin.requestedOn', { date: shortDate(inv.createdAt) })}
                 </Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
@@ -288,7 +292,7 @@ function RequestsTab() {
                 </Text>
                 <Text style={{ color: theme.textMuted, fontSize: type.micro }}>
                   {inv.tierName ?? '—'} ·{' '}
-                  {inv.billingPeriod === 'ANNUAL' ? 'annuel' : 'mensuel'}
+                  {inv.billingPeriod === 'ANNUAL' ? t('admin.annualBilling') : t('admin.monthlyBilling')}
                 </Text>
               </View>
             </Row>
@@ -315,7 +319,7 @@ function RequestsTab() {
             ) : null}
 
             <Button
-              title={`Valider le paiement — ${inv.periodDays} jours`}
+              title={t('admin.validatePayment', { days: inv.periodDays })}
               onPress={() => setConfirming(inv)}
               loading={activate.isPending && confirming?.id === inv.id}
             />
@@ -327,13 +331,13 @@ function RequestsTab() {
         visible={confirming !== null}
         icon="cash-outline"
         tone="primary"
-        title="Confirmer l’encaissement"
+        title={t('admin.confirmCollection')}
         message={
           confirming
-            ? `Vous confirmez avoir reçu ${formatXof(confirming.amount)} de ${confirming.tenantName}. Son accès sera ouvert pour ${confirming.periodDays} jours.`
+            ? t('admin.confirmCollectionMessage', { amount: formatXof(confirming.amount), tenant: confirming.tenantName, days: confirming.periodDays })
             : ''
         }
-        confirmLabel="Activer"
+        confirmLabel={t('admin.activateButton')}
         busy={activate.isPending}
         onConfirm={() => confirming && activate.mutate(confirming)}
         onCancel={() => setConfirming(null)}
@@ -353,6 +357,7 @@ function TenantRow({
   onToggle: () => void;
   busy: boolean;
 }) {
+  const { t } = useTranslation();
   const router = useRouter();
   const suspended = tenant.status === 'SUSPENDED';
   return (
@@ -364,7 +369,7 @@ function TenantRow({
             <Text style={{ color: theme.text, fontSize: type.bodyLg, fontWeight: '700' }}>
               {tenant.name}
             </Text>
-            {suspended ? <Badge label="Suspendu" tone="danger" /> : null}
+            {suspended ? <Badge label={t('admin.suspended')} tone="danger" /> : null}
           </Row>
           <Text style={{ color: theme.textMuted, fontSize: type.micro, marginTop: 2 }}>
             {tenant.userCount} utilisateur{tenant.userCount > 1 ? 's' : ''} ·{' '}
@@ -385,7 +390,7 @@ function TenantRow({
       ) : null}
 
       <Button
-        title={suspended ? 'Réactiver le compte' : 'Suspendre le compte'}
+        title={suspended ? t('admin.reactivateAccount') : t('admin.suspendAccount')}
         variant={suspended ? 'ghost' : 'danger'}
         onPress={onToggle}
         loading={busy}
@@ -396,6 +401,7 @@ function TenantRow({
 }
 
 function AccountsTab() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const toast = useToast();
   const [scope, setScope] = useState<'tenants' | 'users'>('tenants');
@@ -433,7 +439,7 @@ function AccountsTab() {
       }
     },
     onSuccess: async () => {
-      toast.success('Statut mis à jour.');
+      toast.success(t('admin.statusUpdated'));
       setPending(null);
       await qc.invalidateQueries({ queryKey: ['admin'] });
     },
@@ -449,7 +455,7 @@ function AccountsTab() {
           <Press
             key={s}
             accessibilityRole="tab"
-            accessibilityLabel={s === 'tenants' ? 'Comptes' : 'Utilisateurs'}
+            accessibilityLabel={s === 'tenants' ? t('admin.tenants') : t('admin.users')}
             onPress={() => setScope(s)}
             style={{
               flex: 1,
@@ -468,22 +474,22 @@ function AccountsTab() {
                 fontWeight: '700',
               }}
             >
-              {s === 'tenants' ? 'Comptes' : 'Utilisateurs'}
+              {s === 'tenants' ? t('admin.tenants') : t('admin.users')}
             </Text>
           </Press>
         ))}
       </Row>
 
       <Field
-        label="Rechercher"
+        label={t('common.search')}
         value={search}
         onChangeText={setSearch}
-        placeholder={scope === 'tenants' ? 'Nom du compte' : 'E-mail ou nom'}
+        placeholder={scope === 'tenants' ? t('admin.searchTenant') : t('admin.searchUser')}
         autoCapitalize="none"
         autoCorrect={false}
         hint={
           search.length > 0 && search.trim().length < 3
-            ? 'Au moins 3 caractères.'
+            ? t('admin.minChars')
             : undefined
         }
       />
@@ -501,7 +507,7 @@ function AccountsTab() {
         />
       ) : scope === 'tenants' ? (
         !tenants.data?.items.length ? (
-          <Empty icon="business-outline" text="Aucun compte ne correspond." />
+          <Empty icon="business-outline" text={t('admin.noTenantMatch')} />
         ) : (
           <View style={{ gap: space.md }}>
             {tenants.data.items.map((t, i) => (
@@ -516,7 +522,7 @@ function AccountsTab() {
           </View>
         )
       ) : !users.data?.items.length ? (
-        <Empty icon="person-outline" text="Aucun utilisateur ne correspond." />
+        <Empty icon="person-outline" text={t('admin.noUserMatch')} />
       ) : (
         <View style={{ gap: space.md }}>
           {users.data.items.map((u, i) => (
@@ -535,12 +541,12 @@ function AccountsTab() {
                     <Text
                       style={{ color: theme.textMuted, fontSize: type.micro, marginTop: 2 }}
                     >
-                      {u.tenantName} · {u.role} · dernière connexion{' '}
+                      {u.tenantName} · {u.role} · {t('admin.lastLogin')}{' '}
                       {shortDate(u.lastLoginAt)}
                     </Text>
                   </View>
                   <Badge
-                    label={u.status === 'ACTIVE' ? 'Actif' : 'Suspendu'}
+                    label={u.status === 'ACTIVE' ? t('admin.active') : t('admin.suspended')}
                     tone={u.status === 'ACTIVE' ? 'success' : 'danger'}
                   />
                 </Row>
@@ -550,8 +556,8 @@ function AccountsTab() {
                   <Button
                     title={
                       u.status === 'SUSPENDED'
-                        ? 'Réactiver l’utilisateur'
-                        : 'Suspendre l’utilisateur'
+                        ? t('admin.reactivateUser')
+                        : t('admin.suspendUser')
                     }
                     variant={u.status === 'SUSPENDED' ? 'ghost' : 'danger'}
                     onPress={() => setPending({ kind: 'user', item: u })}
@@ -569,14 +575,14 @@ function AccountsTab() {
         icon={pending?.item.status === 'SUSPENDED' ? 'lock-open-outline' : 'lock-closed-outline'}
         tone={pending?.item.status === 'SUSPENDED' ? 'primary' : 'danger'}
         title={
-          pending?.item.status === 'SUSPENDED' ? 'Réactiver l’accès' : 'Suspendre l’accès'
+          pending?.item.status === 'SUSPENDED' ? t('admin.reactivateAccess') : t('admin.suspendAccess')
         }
         message={
           pending?.item.status === 'SUSPENDED'
-            ? 'L’accès sera immédiatement rétabli.'
-            : 'Les sessions ouvertes seront révoquées. Les tickets déjà vendus continuent de fonctionner sur le routeur.'
+            ? t('admin.accessRestored')
+            : t('admin.sessionsRevoked')
         }
-        confirmLabel={pending?.item.status === 'SUSPENDED' ? 'Réactiver' : 'Suspendre'}
+        confirmLabel={pending?.item.status === 'SUSPENDED' ? t('admin.reactivateAccess') : t('admin.suspendAccess')}
         busy={toggle.isPending}
         onConfirm={() => toggle.mutate()}
         onCancel={() => setPending(null)}
@@ -588,6 +594,7 @@ function AccountsTab() {
 // ─── Formules ────────────────────────────────────────────────────────────────
 
 function TierEditor({ tier, onDone }: { tier: Tier; onDone: () => void }) {
+  const { t } = useTranslation();
   const toast = useToast();
   const qc = useQueryClient();
   const [name, setName] = useState(tier.name);
@@ -606,7 +613,7 @@ function TierEditor({ tier, onDone }: { tier: Tier; onDone: () => void }) {
         routerLimit: routers === '' ? null : Number.parseInt(routers, 10),
       }),
     onSuccess: async () => {
-      toast.success('Formule mise à jour. Les clients la verront immédiatement.');
+      toast.success(t('admin.formulaUpdated'));
       // La grille client et la vue admin lisent deux routes différentes.
       await qc.invalidateQueries({ queryKey: ['admin'] });
       await qc.invalidateQueries({ queryKey: ['tiers'] });
@@ -620,11 +627,11 @@ function TierEditor({ tier, onDone }: { tier: Tier; onDone: () => void }) {
 
   return (
     <View style={{ gap: space.md }}>
-      <Field label="Nom commercial" value={name} onChangeText={setName} maxLength={60} />
+      <Field label={t('admin.commercialName')} value={name} onChangeText={setName} maxLength={60} />
       <Row style={{ gap: space.md, alignItems: 'flex-start' }}>
         <View style={{ flex: 1 }}>
           <NumberField
-            label="Prix mensuel (FCFA)"
+            label={t('admin.monthlyPriceFcfa')}
             value={price}
             onChangeValue={setPrice}
             min={0}
@@ -708,7 +715,7 @@ function TiersTab() {
   return (
     <View style={{ gap: space.md }}>
       <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
-        Les prix modifiés ici s’appliquent aux nouvelles demandes. Les factures déjà
+        Les prix modifiés ici s'appliquent aux nouvelles demandes. Les factures déjà
         émises gardent leur montant.
       </Text>
 
@@ -773,6 +780,7 @@ function TiersTab() {
  */
 
 function TicketsTab() {
+  const { t } = useTranslation();
   const toast = useToast();
   const ticketsQuery = useQuery({
     queryKey: ['admin-tickets'],
@@ -785,7 +793,7 @@ function TicketsTab() {
       api.admin.setTicketStatus(id, status),
     onSuccess: () => {
       ticketsQuery.refetch();
-      toast.success('Statut mis à jour.');
+      toast.success(t('admin.statusUpdated'));
     },
     onError: (e) => toast.error(describeError(e).message),
   });
@@ -882,9 +890,11 @@ function ConfigTab() {
 }
 
 export default function AdminScreen() {
+  const { t } = useTranslation();
   const navHeight = useBottomNavHeight();
   const router = useRouter();
   const { me } = useAuth();
+  const TABS = useTabs();
   const [tab, setTab] = useState<Tab>('apercu');
 
   const pending = useQuery({
@@ -901,7 +911,7 @@ export default function AdminScreen() {
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
         <AppHeader title="Administration" back />
         <ErrorState
-          message="Cette section est réservée à l’administration de la plateforme."
+          message="Cette section est réservée à l'administration de la plateforme."
           onRetry={() => router.back()}
         />
       </View>
@@ -929,15 +939,15 @@ export default function AdminScreen() {
         <View>
           <Label>Section</Label>
           <Row style={{ gap: space.sm, alignItems: 'stretch' }}>
-            {TABS.map((t) => {
-              const active = tab === t.key;
-              const badge = t.key === 'demandes' && pendingCount > 0 ? pendingCount : null;
+            {TABS.map((tb) => {
+              const active = tab === tb.key;
+              const badge = tb.key === 'demandes' && pendingCount > 0 ? pendingCount : null;
               return (
                 <Press
-                  key={t.key}
+                  key={tb.key}
                   accessibilityRole="tab"
-                  accessibilityLabel={t.label}
-                  onPress={() => setTab(t.key)}
+                  accessibilityLabel={tb.label}
+                  onPress={() => setTab(tb.key)}
                   scaleTo={0.95}
                   style={{
                     flex: 1,
@@ -952,7 +962,7 @@ export default function AdminScreen() {
                 >
                   <View>
                     <Ionicons
-                      name={t.icon}
+                      name={tb.icon}
                       size={18}
                       color={active ? theme.primary : theme.textMuted}
                     />
@@ -984,7 +994,7 @@ export default function AdminScreen() {
                       fontWeight: '700',
                     }}
                   >
-                    {t.label}
+                    {tb.label}
                   </Text>
                 </Press>
               );

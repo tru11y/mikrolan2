@@ -1,5 +1,6 @@
 import { ScrollView, View, Text } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { api, type AdminTenantDetail } from '@/src/lib/api';
@@ -32,6 +33,7 @@ const HEALTH_COLORS: Record<string, string> = {
 };
 
 export default function AdminTenantScreen() {
+  const { t: tr } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const navHeight = useBottomNavHeight();
 
@@ -52,7 +54,7 @@ export default function AdminTenantScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title={t?.name ?? 'Client'} back />
+      <AppHeader title={t?.name ?? tr('adminTenant.client')} back />
       <ScrollView
         contentContainerStyle={{
           padding: space.lg,
@@ -79,16 +81,16 @@ export default function AdminTenantScreen() {
                   <Title>{t.name}</Title>
                   <Badge label={t.status} tone={t.status === 'ACTIVE' ? 'success' : 'danger'} />
                 </Row>
-                <Subtitle>Créé le {new Date(t.createdAt).toLocaleDateString('fr-FR')}</Subtitle>
+                <Subtitle>{tr('adminTenant.createdOn', { date: new Date(t.createdAt).toLocaleDateString('fr-FR') })}</Subtitle>
                 {t.subscription ? (
                   <View style={{ marginTop: space.md, gap: 4 }}>
                     <Row style={{ gap: space.sm }}>
-                      <Text style={{ color: theme.textMuted, fontSize: type.caption }}>Plan :</Text>
+                      <Text style={{ color: theme.textMuted, fontSize: type.caption }}>{tr('adminTenant.planLabel')}</Text>
                       <Badge label={t.subscription.tier?.name ?? t.subscription.plan} tone={t.subscription.plan === 'PRO' ? 'gold' : 'muted'} />
                     </Row>
                     {t.subscription.currentPeriodEnd ? (
                       <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
-                        Expire le {new Date(t.subscription.currentPeriodEnd).toLocaleDateString('fr-FR')}
+                        {tr('adminTenant.expiresOn', { date: new Date(t.subscription.currentPeriodEnd).toLocaleDateString('fr-FR') })}
                       </Text>
                     ) : null}
                   </View>
@@ -97,7 +99,7 @@ export default function AdminTenantScreen() {
             </FadeIn>
 
             <FadeIn delay={60}>
-              <SectionTitle>Utilisateurs ({t.users.length})</SectionTitle>
+              <SectionTitle>{tr('adminTenant.usersSection', { count: t.users.length })}</SectionTitle>
               <View style={{ gap: space.sm }}>
                 {t.users.map((u) => (
                   <Card key={u.id}>
@@ -118,12 +120,12 @@ export default function AdminTenantScreen() {
             </FadeIn>
 
             <FadeIn delay={120}>
-              <SectionTitle>Routeurs ({routers.length})</SectionTitle>
+              <SectionTitle>{tr('adminTenant.routersSection', { count: routers.length })}</SectionTitle>
               {routersQuery.isLoading ? (
                 <SkeletonCard />
               ) : routers.length === 0 ? (
                 <Text style={{ color: theme.textMuted, fontSize: type.body }}>
-                  Aucun routeur enregistré.
+                  {tr('adminTenant.noRouter')}
                 </Text>
               ) : (
                 <View style={{ gap: space.sm }}>
@@ -135,7 +137,7 @@ export default function AdminTenantScreen() {
                             {r.alias ?? r.identity}
                           </Text>
                           <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
-                            {r.model ?? 'Modèle inconnu'} — {r.mode}
+                            {r.model ?? tr('adminTenant.unknownModel')} — {r.mode}
                           </Text>
                         </View>
                         <View
@@ -154,10 +156,10 @@ export default function AdminTenantScreen() {
             </FadeIn>
 
             <FadeIn delay={180}>
-              <SectionTitle>Factures récentes ({t.invoices.length})</SectionTitle>
+              <SectionTitle>{tr('adminTenant.recentInvoices', { count: t.invoices.length })}</SectionTitle>
               {t.invoices.length === 0 ? (
                 <Text style={{ color: theme.textMuted, fontSize: type.body }}>
-                  Aucune facture.
+                  {tr('adminTenant.noInvoice')}
                 </Text>
               ) : (
                 <View style={{ gap: space.sm }}>
