@@ -1,6 +1,7 @@
 import { ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { api, type AppNotification } from '@/src/lib/api';
 import { describeError } from '@/src/lib/errors';
 import { useLiveEvents } from '@/src/providers/live-events-provider';
@@ -21,14 +22,14 @@ import {
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
-function timeAgo(iso: string): string {
+function timeAgo(iso: string, t: (key: string, opts?: Record<string, unknown>) => string): string {
   const ms = Date.now() - new Date(iso).getTime();
   const min = Math.floor(ms / 60_000);
-  if (min < 1) return "à l'instant";
-  if (min < 60) return `il y a ${min} min`;
+  if (min < 1) return t('notifications.justNow');
+  if (min < 60) return t('notifications.minutesAgo', { count: min });
   const h = Math.floor(min / 60);
-  if (h < 24) return `il y a ${h} h`;
-  return `il y a ${Math.floor(h / 24)} j`;
+  if (h < 24) return t('notifications.hoursAgo', { count: h });
+  return t('notifications.daysAgo', { count: Math.floor(h / 24) });
 }
 
 function iconFor(type: string): keyof typeof Ionicons.glyphMap {
@@ -38,6 +39,7 @@ function iconFor(type: string): keyof typeof Ionicons.glyphMap {
 
 /** Petit voyant : dit si le fil tourne, sans jargon technique. */
 function LiveDot({ live }: { live: boolean }) {
+  const { t } = useTranslation();
   return (
     <Row style={{ gap: 6, justifyContent: 'flex-start' }}>
       <View
@@ -49,13 +51,14 @@ function LiveDot({ live }: { live: boolean }) {
         }}
       />
       <Text style={{ color: theme.textMuted, fontSize: type.micro }}>
-        {live ? 'Suivi en direct' : 'En pause'}
+        {live ? t('notifications.liveTracking') : t('notifications.paused')}
       </Text>
     </Row>
   );
 }
 
 export default function NotificationsScreen() {
+  const { t } = useTranslation();
   const navHeight = useBottomNavHeight();
   const qc = useQueryClient();
   const toast = useToast();
@@ -92,7 +95,7 @@ export default function NotificationsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title="Notifications" back />
+      <AppHeader title={t('notifications.title')} back />
       <ScrollView
         contentContainerStyle={{
           gap: space.md,
@@ -103,9 +106,9 @@ export default function NotificationsScreen() {
         <Row>
           <LiveDot live={live} />
           {hasUnread ? (
-            <Press accessibilityLabel="Tout marquer comme lu" onPress={markAllRead}>
+            <Press accessibilityLabel={t('notifications.markAllRead')} onPress={markAllRead}>
               <Text style={{ color: theme.primary, fontWeight: '700', fontSize: type.body }}>
-                Tout marquer comme lu
+                {t('notifications.markAllRead')}
               </Text>
             </Press>
           ) : null}
@@ -126,7 +129,7 @@ export default function NotificationsScreen() {
         ) : !items.length ? (
           <Empty
             icon="notifications-off-outline"
-            text="Aucune notification. Vous serez prévenu dès qu’un client se connectera avec un ticket."
+            text={t('notifications.noNotification')}
           />
         ) : (
           items.map((n, index) => (
@@ -177,7 +180,7 @@ export default function NotificationsScreen() {
                     <Text
                       style={{ color: theme.textMuted, fontSize: type.micro, marginTop: 2 }}
                     >
-                      {timeAgo(n.createdAt)}
+                      {timeAgo(n.createdAt, t)}
                     </Text>
                   </View>
                 </Row>
