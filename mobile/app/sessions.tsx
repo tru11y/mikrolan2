@@ -3,6 +3,7 @@ import { Animated, ScrollView, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { api, extractErrorMessage, type LiveSession } from '@/src/lib/api';
 import { getLocalCredentials } from '@/src/lib/router-credentials';
 import { reportLanSessions } from '@/src/lib/sessionSync';
@@ -121,6 +122,7 @@ function fmtBytes(v: string): string {
 }
 
 export default function SessionsScreen() {
+  const { t } = useTranslation();
   const navHeight = useBottomNavHeight();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const qc = useQueryClient();
@@ -185,18 +187,18 @@ export default function SessionsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title="Utilisateurs actifs" back />
+      <AppHeader title={t('sessions.title')} back />
       <ScrollView
         contentContainerStyle={{ gap: space.lg, padding: space.lg, paddingBottom: navHeight }}
       >
         <Row>
           <View style={{ flex: 1 }}>
             <Subtitle>
-              {sessions.length} session{sessions.length > 1 ? 's' : ''} en cours
+              {t('sessions.sessionCount', { count: sessions.length })}
             </Subtitle>
           </View>
           <Press
-            accessibilityLabel="Rafraîchir"
+            accessibilityLabel={t('common.refresh')}
             onPress={() =>
               qc.invalidateQueries({ queryKey: ['sessions', routerId] })
             }
@@ -232,7 +234,7 @@ export default function SessionsScreen() {
           <TextInput
             value={search}
             onChangeText={setSearch}
-            placeholder="Rechercher nom, MAC, IP…"
+            placeholder={t('sessions.searchPlaceholder')}
             placeholderTextColor={theme.textMuted}
             style={{ flex: 1, color: theme.text, paddingVertical: 11, fontSize: 12 }}
           />
@@ -245,16 +247,14 @@ export default function SessionsScreen() {
 
         {unreliableEmpty ? (
           <Banner tone="warning">
-            Ce routeur n'a pas d'identifiants sur ce téléphone — cette liste
-            peut être obsolète. Ajoutez-les dans Paramètres routeur →
-            Identifiants du routeur.
+            {t('sessions.unreliableWarning')}
           </Banner>
         ) : null}
 
         {query.isLoading ? (
-          <Subtitle>Lecture du routeur…</Subtitle>
+          <Subtitle>{t('sessions.readingRouter')}</Subtitle>
         ) : !filtered.length ? (
-          <Empty icon="people-outline" text="Aucune session active." />
+          <Empty icon="people-outline" text={t('sessions.noSession')} />
         ) : (
           <View style={{ gap: 12 }}>
             {filtered.map((s: LiveSession) => (
@@ -306,7 +306,7 @@ export default function SessionsScreen() {
                     </View>
                   </Row>
                   <Press
-                    accessibilityLabel="Déconnecter"
+                    accessibilityLabel={t('sessions.disconnect')}
                     onPress={() => terminate(s.id)}
                     hitSlop={3}
                     style={{
@@ -337,7 +337,7 @@ export default function SessionsScreen() {
                 >
                   <Row style={{ gap: 6, flex: 1, justifyContent: 'flex-start' }}>
                     <Ionicons name="time-outline" size={13} color={theme.secondary} />
-                    <Text style={{ color: theme.textMuted, fontSize: 12 }}>Temps</Text>
+                    <Text style={{ color: theme.textMuted, fontSize: 12 }}>{t('sessions.time')}</Text>
                     <Text
                       style={{
                         color: theme.text,

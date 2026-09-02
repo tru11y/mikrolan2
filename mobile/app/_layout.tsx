@@ -1,3 +1,4 @@
+import '@/src/i18n';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Sentry } from '@/src/lib/sentry';

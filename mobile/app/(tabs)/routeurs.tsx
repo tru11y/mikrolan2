@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { FlatList, RefreshControl, Text, View } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api, extractErrorMessage, type RouterItem } from '@/src/lib/api';
 import { useAuth } from '@/src/providers/auth-provider';
@@ -28,6 +29,7 @@ import { AppHeader } from '@/src/components/AppHeader';
 import { RouterStatusDot } from '@/src/components/RouterStatusDot';
 
 export default function RouteursScreen() {
+  const { t } = useTranslation();
   const router = useRouter();
   const navHeight = useBottomNavHeight();
   const { isPro } = useAuth();
@@ -45,13 +47,13 @@ export default function RouteursScreen() {
     ({ item }: { item: RouterItem }) => {
       const isOffline = item.health !== 'ONLINE';
       const health = routerHealth(item.health);
-      const modeLabel = item.mode === 'REMOTE' ? 'À distance' : 'Local';
+      const modeLabel = item.mode === 'REMOTE' ? t('routers.remote') : t('routers.local');
       const a11yLabel = `${item.alias || item.identity}, ${health.label}, ${modeLabel}`;
       return (
         <Link href={`/router/${item.id}`} asChild>
           <Press
             accessibilityLabel={a11yLabel}
-            accessibilityHint="Ouvre le tableau de bord de ce routeur"
+            accessibilityHint={t('routers.openDashboard')}
             style={{ marginBottom: space.md }}
           >
             <Card style={{ opacity: isOffline ? 0.65 : 1 }}>
@@ -88,7 +90,7 @@ export default function RouteursScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title="Routeurs" />
+      <AppHeader title={t('routers.title')} />
 
       {query.isLoading ? (
         <View style={{ padding: space.lg, paddingBottom: navHeight, gap: space.md }}>
@@ -124,10 +126,10 @@ export default function RouteursScreen() {
           }
           ListEmptyComponent={
             <Empty
-              text="Aucun routeur pour l’instant. Ajoutez-en un pour commencer."
+              text={t('routers.noRouter')}
               icon="hardware-chip-outline"
               action={{
-                label: 'Ajouter un routeur',
+                label: t('routers.addRouter'),
                 onPress: () => router.push('/add-router'),
               }}
             />
@@ -136,8 +138,8 @@ export default function RouteursScreen() {
       )}
 
       <Press
-        accessibilityLabel="Ajouter un routeur"
-        accessibilityHint="Ouvre le formulaire de connexion à un nouveau routeur"
+        accessibilityLabel={t('routers.addRouter')}
+        accessibilityHint={t('routers.openDashboard')}
         onPress={() => router.push('/add-router')}
         style={[
           {

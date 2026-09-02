@@ -13,6 +13,7 @@ import Constants from 'expo-constants';
 import * as Crypto from 'expo-crypto';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/src/providers/auth-provider';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -39,6 +40,7 @@ export default function LoginScreen() {
     apiBaseUrl,
     updateApiBaseUrl,
   } = useAuth();
+  const { t } = useTranslation();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [mode, setMode] = useState<'login' | 'signup'>('login');
@@ -120,7 +122,7 @@ export default function LoginScreen() {
               resizeMode="contain"
             />
             <Text style={{ color: theme.text, fontSize: type.display, fontWeight: '800' }}>
-              {mode === 'signup' ? 'Créer un compte' : 'Bienvenue'}
+              {mode === 'signup' ? t('login.createAccount') : t('login.welcome')}
             </Text>
           </View>
 
@@ -129,28 +131,28 @@ export default function LoginScreen() {
           <View style={{ gap: space.xl }}>
             {mode === 'signup' ? (
               <OutlinedField
-                label="Nom de l'organisation"
+                label={t('login.orgName')}
                 value={tenantName}
                 onChangeText={setTenantName}
                 autoCapitalize="words"
-                placeholder="Mon ISP"
+                placeholder={t('login.orgPlaceholder')}
               />
             ) : null}
             <OutlinedField
-              label="E-mail"
+              label={t('login.email')}
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
               autoComplete="email"
-              placeholder="vous@exemple.ci"
+              placeholder={t('login.emailPlaceholder')}
             />
             <OutlinedField
-              label="Mot de passe"
+              label={t('login.password')}
               value={password}
               onChangeText={setPassword}
               secureTextEntry={!showPassword}
               onToggleSecure={() => setShowPassword((v) => !v)}
-              placeholder={mode === 'signup' ? '10 caractères minimum' : '••••••••'}
+              placeholder={mode === 'signup' ? t('login.passwordMinChars') : t('login.passwordPlaceholder')}
             />
             {mode === 'login' ? (
               <Press
@@ -167,7 +169,7 @@ export default function LoginScreen() {
                     textAlign: 'right',
                   }}
                 >
-                  Mot de passe oublié ?
+                  {t('login.forgotPassword')}
                 </Text>
               </Press>
             ) : null}
@@ -177,7 +179,7 @@ export default function LoginScreen() {
             {/* Le Button partagé, pas une pilule maison : le premier écran vu
                 par un client doit ressembler au reste de l'app. */}
             <Button
-              title={mode === 'signup' ? 'Créer mon compte' : 'Se connecter'}
+              title={mode === 'signup' ? t('login.submitSignup') : t('login.submitLogin')}
               onPress={submit}
               loading={isBusy}
               disabled={!canSubmit}
@@ -191,19 +193,19 @@ export default function LoginScreen() {
                   textAlign: 'center',
                 }}
               >
-                En créant un compte, vous acceptez les{' '}
+                {t('login.signupLegal')}{' '}
                 <Text
                   style={{ textDecorationLine: 'underline' }}
                   onPress={() => Linking.openURL('https://api.mikrolan.net/api/legal/terms')}
                 >
-                  conditions d'utilisation
+                  {t('login.termsOfUse')}
                 </Text>{' '}
-                et la{' '}
+                {t('login.and')}{' '}
                 <Text
                   style={{ textDecorationLine: 'underline' }}
                   onPress={() => Linking.openURL('https://api.mikrolan.net/api/legal/privacy')}
                 >
-                  politique de confidentialité
+                  {t('common.privacyPolicy')}
                 </Text>
                 .
               </Text>
@@ -219,7 +221,7 @@ export default function LoginScreen() {
                   }}
                 >
                   <View style={{ flex: 1, height: 1, backgroundColor: theme.border }} />
-                  <Text style={{ color: theme.textMuted, fontSize: type.micro }}>ou</Text>
+                  <Text style={{ color: theme.textMuted, fontSize: type.micro }}>{t('common.or')}</Text>
                   <View style={{ flex: 1, height: 1, backgroundColor: theme.border }} />
                 </View>
                 <Press
@@ -240,7 +242,7 @@ export default function LoginScreen() {
                 >
                   <Ionicons name="logo-google" size={20} color={theme.text} />
                   <Text style={{ color: theme.text, fontWeight: '600', fontSize: type.body }}>
-                    Continuer avec Google
+                    {t('login.continueWithGoogle')}
                   </Text>
                 </Press>
               </>
@@ -265,7 +267,7 @@ export default function LoginScreen() {
               >
                 <Ionicons name="logo-apple" size={20} color={theme.text} />
                 <Text style={{ color: theme.text, fontWeight: '600', fontSize: type.body }}>
-                  Continuer avec Apple
+                  {t('login.continueWithApple')}
                 </Text>
               </Press>
             ) : null}
@@ -285,8 +287,8 @@ export default function LoginScreen() {
                 }}
               >
                 {mode === 'login'
-                  ? 'Pas de compte ? Créer un compte'
-                  : "J'ai déjà un compte"}
+                  ? t('login.noAccount')
+                  : t('login.hasAccount')}
               </Text>
             </Press>
           </View>
@@ -298,7 +300,7 @@ export default function LoginScreen() {
               <>
                 <Press onPress={() => setShowConfig((v) => !v)} style={{ alignItems: 'center' }}>
                   <Text style={{ color: theme.textMuted, fontSize: type.micro }}>
-                    {showConfig ? 'Masquer la configuration' : 'Configurer le serveur'}
+                    {showConfig ? t('login.hideConfig') : t('login.configureServer')}
                   </Text>
                 </Press>
                 {showConfig ? (
@@ -313,14 +315,14 @@ export default function LoginScreen() {
                     }}
                   >
                     <OutlinedField
-                      label="URL du serveur API"
+                      label={t('login.serverUrl')}
                       value={baseUrl}
                       onChangeText={setBaseUrl}
                       keyboardType="url"
-                      placeholder="http://10.0.2.2:3001/api"
+                      placeholder={t('login.serverUrlPlaceholder')}
                     />
                     <Button
-                      title="Enregistrer l'URL"
+                      title={t('login.saveUrl')}
                       variant="ghost"
                       onPress={() => updateApiBaseUrl(baseUrl)}
                     />
@@ -330,7 +332,7 @@ export default function LoginScreen() {
             ) : null}
 
             <Text style={{ color: theme.textMuted, fontSize: type.micro, textAlign: 'center' }}>
-              MikroLan2 v{Constants.expoConfig?.version ?? '0.1.0'}
+              {t('common.version', { version: Constants.expoConfig?.version ?? '0.1.0' })}
             </Text>
           </View>
         </ScrollView>
