@@ -267,6 +267,53 @@ describe('AnalyticsService', () => {
     });
   });
 
+  describe('sessionStats', () => {
+    it('agrège sessions, durée et bytes par routeur et par plan', async () => {
+      mockPrisma.session.findMany.mockResolvedValue([
+        {
+          routerId: 'r1',
+          status: 'TERMINATED',
+          bytesIn: BigInt(1024),
+          bytesOut: BigInt(512),
+          startedAt: new Date('2026-08-10T10:00:00Z'),
+          terminatedAt: new Date('2026-08-10T10:30:00Z'),
+          voucher: { planId: 'p1', plan: { name: 'Plan A' } },
+          router: { identity: 'R1', alias: null },
+        },
+        {
+          routerId: 'r1',
+          status: 'ACTIVE',
+          bytesIn: BigInt(2048),
+          bytesOut: BigInt(256),
+          startedAt: new Date('2026-08-10T11:00:00Z'),
+          terminatedAt: null,
+          voucher: { planId: 'p1', plan: { name: 'Plan A' } },
+          router: { identity: 'R1', alias: null },
+        },
+      ]);
+
+      const result = await service.sessionStats({ period: 'last30days' });
+      expect(result.totalSessions).toBe(2);
+      expect(result.activeSessions).toBe(1);
+      expect(result.terminatedSessions).toBe(1);
+      expect(result.averageDurationMinutes).toBe(30);
+      expect(result.totalBytesIn).toBe('3072');
+      expect(result.totalBytesOut).toBe('768');
+      expect(result.byRouter).toHaveLength(1);
+      expect(result.byRouter[0].routerName).toBe('R1');
+      expect(result.byRouter[0].sessionCount).toBe(2);
+      expect(result.byPlan).toHaveLength(1);
+      expect(result.byPlan[0].planName).toBe('Plan A');
+    });
+
+    it('retourne des valeurs nulles pour durée quand aucune session terminée', async () => {
+      mockPrisma.session.findMany.mockResolvedValue([]);
+      const result = await service.sessionStats({ period: 'last30days' });
+      expect(result.totalSessions).toBe(0);
+      expect(result.averageDurationMinutes).toBeNull();
+    });
+  });
+
   describe('sécurité — pas de $queryRaw', () => {
     it("aucune requête SQL brute non scopée dans le service", () => {
       const src = AnalyticsService.toString();
