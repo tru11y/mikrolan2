@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   api,
@@ -41,10 +42,10 @@ import { AppHeader } from '@/src/components/AppHeader';
 const MAC_RE = /^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/;
 const IP_RE = /^(\d{1,3}\.){3}\d{1,3}$/;
 
-const TYPE_META: Record<IpBindingType, { color: string; label: string }> = {
-  bypassed: { color: theme.success, label: 'AUTORISÉ' },
-  blocked: { color: theme.danger, label: 'BLOQUÉ' },
-  regular: { color: theme.textMuted, label: 'STANDARD' },
+const TYPE_META_KEYS: Record<IpBindingType, { color: string; key: string }> = {
+  bypassed: { color: theme.success, key: 'ipBindings.authorized' },
+  blocked: { color: theme.danger, key: 'ipBindings.blocked' },
+  regular: { color: theme.textMuted, key: 'ipBindings.standard' },
 };
 
 function TypeDot({ type }: { type: IpBindingType }) {
@@ -54,13 +55,14 @@ function TypeDot({ type }: { type: IpBindingType }) {
         width: 10,
         height: 10,
         borderRadius: 5,
-        backgroundColor: TYPE_META[type].color,
+        backgroundColor: TYPE_META_KEYS[type].color,
       }}
     />
   );
 }
 
 export default function IpBindingsScreen() {
+  const { t } = useTranslation();
   const navHeight = useBottomNavHeight();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const qc = useQueryClient();
@@ -125,11 +127,11 @@ export default function IpBindingsScreen() {
   async function save() {
     setError(null);
     if (!MAC_RE.test(mac.trim())) {
-      setError('Adresse MAC invalide (format 00:11:22:33:44:55).');
+      setError(t('ipBindings.macInvalid'));
       return;
     }
     if (ip.trim() && !IP_RE.test(ip.trim())) {
-      setError('Adresse IP invalide.');
+      setError(t('ipBindings.ipInvalid'));
       return;
     }
     setBusy(true);
@@ -178,18 +180,18 @@ export default function IpBindingsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title="Appareils autorisés" back />
+      <AppHeader title={t('ipBindings.screenTitle')} back />
       <ScrollView
         contentContainerStyle={{ gap: space.lg, padding: space.lg, paddingBottom: navHeight }}
       >
         <Row style={{ alignItems: 'flex-start' }}>
           <View style={{ flex: 1, paddingRight: 12 }}>
                         <Subtitle>
-              Autoriser ou bloquer des appareils spécifiques sur RouterOS
+              {t('ipBindings.subtitle')}
             </Subtitle>
           </View>
           <Press
-            accessibilityLabel="Autoriser un appareil"
+            accessibilityLabel={t('ipBindings.authorizeDevice')}
             onPress={() => {
               resetForm();
               setFormOpen(true);
@@ -221,7 +223,7 @@ export default function IpBindingsScreen() {
             retrying={bindingsQuery.isRefetching}
           />
         ) : !bindingsQuery.data?.length ? (
-          <Empty icon="shield-outline" text="Aucun IP binding pour ce routeur." />
+          <Empty icon="shield-outline" text={t('ipBindings.noBinding')} />
         ) : (
           <View style={{ gap: 12 }}>
             {bindingsQuery.data.map((b) => (
@@ -233,14 +235,14 @@ export default function IpBindingsScreen() {
                       style={{ color: theme.text, fontWeight: '700', fontSize: 14 }}
                       numberOfLines={1}
                     >
-                      {b.comment || 'Sans commentaire'}
+                      {b.comment || t('ipBindings.noComment')}
                     </Text>
                   </Row>
                   <View
                     style={{
                       borderWidth: 1,
-                      borderColor: TYPE_META[b.type].color + '55',
-                      backgroundColor: TYPE_META[b.type].color + '18',
+                      borderColor: TYPE_META_KEYS[b.type].color + '55',
+                      backgroundColor: TYPE_META_KEYS[b.type].color + '18',
                       borderRadius: 999,
                       paddingHorizontal: 10,
                       paddingVertical: 3,
@@ -248,12 +250,12 @@ export default function IpBindingsScreen() {
                   >
                     <Text
                       style={{
-                        color: TYPE_META[b.type].color,
+                        color: TYPE_META_KEYS[b.type].color,
                         fontSize: 10,
                         fontWeight: '700',
                       }}
                     >
-                      {TYPE_META[b.type].label}
+                      {t(TYPE_META_KEYS[b.type].key)}
                     </Text>
                   </View>
                 </Row>
@@ -273,19 +275,19 @@ export default function IpBindingsScreen() {
                   </Mono>
                   {b.ipAddress ? (
                     <Mono style={{ color: theme.textMuted, fontSize: 12 }}>
-                      IP Fixe: <Mono style={{ color: theme.text }}>{b.ipAddress}</Mono>
+                      {t('ipBindings.fixedIp')}: <Mono style={{ color: theme.text }}>{b.ipAddress}</Mono>
                     </Mono>
                   ) : null}
                   {b.server ? (
                     <Text style={{ color: theme.textMuted, fontSize: 11 }}>
-                      Serveur: <Text style={{ color: theme.text }}>{b.server}</Text>
+                      {t('ipBindings.server')}: <Text style={{ color: theme.text }}>{b.server}</Text>
                     </Text>
                   ) : null}
                 </View>
 
                 <Row style={{ justifyContent: 'flex-end', gap: 8 }}>
                   <Press
-                    accessibilityLabel="Modifier"
+                    accessibilityLabel={t('common.edit')}
                     onPress={() => openEdit(b)}
                     hitSlop={8}
                     style={{
@@ -297,7 +299,7 @@ export default function IpBindingsScreen() {
                     <Ionicons name="create-outline" size={16} color={theme.primary} />
                   </Press>
                   <Press
-                    accessibilityLabel="Supprimer"
+                    accessibilityLabel={t('common.delete')}
                     onPress={() => remove(b.id)}
                     hitSlop={8}
                     style={{
@@ -341,7 +343,7 @@ export default function IpBindingsScreen() {
           >
             <Row>
               <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>
-                {editingId ? 'Modifier IP Binding' : 'Nouveau IP Binding'}
+                {editingId ? t('ipBindings.editBinding') : t('ipBindings.newBinding')}
               </Text>
               <Press onPress={() => setFormOpen(false)} hitSlop={8}>
                 <Ionicons name="close" size={20} color={theme.textMuted} />
@@ -349,34 +351,34 @@ export default function IpBindingsScreen() {
             </Row>
 
             <View>
-              <Label>Type de liaison</Label>
+              <Label>{t('ipBindings.bindingType')}</Label>
               <Row style={{ gap: 8 }}>
-                {(['bypassed', 'blocked', 'regular'] as IpBindingType[]).map((t) => {
-                  const active = t === type;
+                {(['bypassed', 'blocked', 'regular'] as IpBindingType[]).map((bt) => {
+                  const active = bt === type;
                   return (
                     <Press
-                      key={t}
-                      onPress={() => setType(t)}
+                      key={bt}
+                      onPress={() => setType(bt)}
                       style={{
                         flex: 1,
                         paddingVertical: 10,
                         borderRadius: 10,
                         alignItems: 'center',
                         borderWidth: 1,
-                        borderColor: active ? TYPE_META[t].color : theme.border,
+                        borderColor: active ? TYPE_META_KEYS[bt].color : theme.border,
                         backgroundColor: active
-                          ? TYPE_META[t].color + '18'
+                          ? TYPE_META_KEYS[bt].color + '18'
                           : theme.surfaceAlt,
                       }}
                     >
                       <Text
                         style={{
-                          color: active ? TYPE_META[t].color : theme.textMuted,
+                          color: active ? TYPE_META_KEYS[bt].color : theme.textMuted,
                           fontSize: 11,
                           fontWeight: '700',
                         }}
                       >
-                        {TYPE_META[t].label}
+                        {t(TYPE_META_KEYS[bt].key)}
                       </Text>
                     </Press>
                   );
@@ -386,7 +388,7 @@ export default function IpBindingsScreen() {
 
             <View>
               <Row>
-                <Label>Adresse MAC</Label>
+                <Label>{t('ipBindings.macAddress')}</Label>
               </Row>
               <Row style={{ gap: 8 }}>
                 <View style={{ flex: 1 }}>
@@ -398,7 +400,7 @@ export default function IpBindingsScreen() {
                   />
                 </View>
                 <Press
-                  accessibilityLabel="Choisir un appareil connecté"
+                  accessibilityLabel={t('ipBindings.chooseDevice')}
                   onPress={() => setScanOpen(true)}
                   style={{
                     width: 44,
@@ -415,7 +417,7 @@ export default function IpBindingsScreen() {
             </View>
 
             <Field
-              label="Adresse IP (optionnelle)"
+              label={t('ipBindings.ipOptional')}
               value={ip}
               onChangeText={setIp}
               placeholder="10.10.10.150"
@@ -423,22 +425,22 @@ export default function IpBindingsScreen() {
             />
 
             <Field
-              label="Commentaire / Description"
+              label={t('ipBindings.commentLabel')}
               value={comment}
               onChangeText={setComment}
-              placeholder="ex: Imprimante Caisse"
+              placeholder={t('ipBindings.commentPlaceholder')}
             />
 
             <Row style={{ gap: 8 }}>
               <View style={{ flex: 1 }}>
                 <Button
-                  title="Annuler"
+                  title={t('common.cancel')}
                   variant="ghost"
                   onPress={() => setFormOpen(false)}
                 />
               </View>
               <View style={{ flex: 1 }}>
-                <Button title={editingId ? 'Modifier' : 'Sauvegarder'} onPress={save} loading={busy} />
+                <Button title={editingId ? t('common.modify') : t('common.save')} onPress={save} loading={busy} />
               </View>
             </Row>
           </View>
@@ -480,18 +482,18 @@ export default function IpBindingsScreen() {
               <Row style={{ gap: 8, justifyContent: 'flex-start' }}>
                 <Ionicons name="wifi" size={18} color={theme.secondary} />
                 <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>
-                  Appareils connectés au hotspot
+                  {t('ipBindings.connectedDevices')}
                 </Text>
               </Row>
               <Press onPress={() => setScanOpen(false)} hitSlop={8}>
-                <Text style={{ color: theme.textMuted, fontSize: 12 }}>Fermer</Text>
+                <Text style={{ color: theme.textMuted, fontSize: 12 }}>{t('common.close')}</Text>
               </Press>
             </Row>
 
             {sessionsQuery.isLoading ? (
-              <Subtitle>Analyse des sessions actives…</Subtitle>
+              <Subtitle>{t('ipBindings.analyzingSessions')}</Subtitle>
             ) : !sessionsQuery.data?.length ? (
-              <Empty icon="wifi-outline" text="Aucun appareil connecté actuellement." />
+              <Empty icon="wifi-outline" text={t('ipBindings.noConnectedDevice')} />
             ) : (
               <ScrollView style={{ maxHeight: 320 }}>
                 <View style={{ gap: 8 }}>
@@ -503,7 +505,7 @@ export default function IpBindingsScreen() {
                             <Text
                               style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}
                             >
-                              {s.user || 'Appareil'}
+                              {s.user || t('ipBindings.device')}
                             </Text>
                             <Mono style={{ color: theme.textMuted, fontSize: 11 }}>
                               {s.macAddress ?? '—'} · {s.ipAddress ?? '—'}
@@ -512,7 +514,7 @@ export default function IpBindingsScreen() {
                           <Text
                             style={{ color: theme.primary, fontSize: 12, fontWeight: '700' }}
                           >
-                            Sélectionner →
+                            {t('ipBindings.select')}
                           </Text>
                         </Row>
                       </Card>

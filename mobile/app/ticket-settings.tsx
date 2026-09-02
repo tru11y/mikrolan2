@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ScrollView, Switch, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useLocalSearchParams } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -61,6 +62,7 @@ function Divider() {
 }
 
 export default function TicketSettingsScreen() {
+  const { t } = useTranslation();
   const navHeight = useBottomNavHeight();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const qc = useQueryClient();
@@ -127,7 +129,7 @@ export default function TicketSettingsScreen() {
     try {
       await api.routers.updateTicketTemplate(routerId, tpl);
       await qc.invalidateQueries({ queryKey: ['router', routerId] });
-      setMsg({ tone: 'success', text: 'Paramètres du ticket enregistrés.' });
+      setMsg({ tone: 'success', text: t('ticketSettings.saved') });
     } catch (e) {
       setMsg({ tone: 'danger', text: extractErrorMessage(e) });
     } finally {
@@ -137,18 +139,18 @@ export default function TicketSettingsScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title="Paramètres du ticket" back />
+      <AppHeader title={t('ticketSettings.screenTitle')} back />
       <ScrollView
         contentContainerStyle={{ padding: space.lg, paddingBottom: navHeight }}
       >
-                <Subtitle>Personnalisez le reçu imprimé pour ce routeur</Subtitle>
+                <Subtitle>{t('ticketSettings.subtitle')}</Subtitle>
         <View style={{ height: 12 }} />
 
         {msg ? <Banner tone={msg.tone}>{msg.text}</Banner> : null}
 
         <Card style={{ padding: 0, overflow: 'hidden' }}>
           <View style={{ padding: space.md, paddingBottom: 0 }}>
-            <Label>Aperçu</Label>
+            <Label>{t('ticketSettings.preview')}</Label>
           </View>
           <View style={{ height: 300 }}>
             {previewHtml ? (
@@ -163,38 +165,38 @@ export default function TicketSettingsScreen() {
         <View style={{ height: 12 }} />
 
         <Toggle
-          label="Afficher le nom de l'entreprise (PRO)"
+          label={t('ticketSettings.showCompanyName')}
           value={tpl.showCompanyName}
           onValueChange={(v) => set('showCompanyName', v)}
         />
         {tpl.showCompanyName ? (
           <View style={{ paddingBottom: 14 }}>
             <Field
-              label="Nom de l'entreprise (PRO)"
+              label={t('ticketSettings.companyNameLabel')}
               value={tpl.companyName ?? ''}
               onChangeText={(v) => set('companyName', v)}
-              placeholder="MikroLan2"
+              placeholder={t('ticketSettings.companyNamePlaceholder')}
             />
           </View>
         ) : null}
         <Divider />
 
         <Toggle
-          label="Afficher le nom du Wi-Fi"
+          label={t('ticketSettings.showWifiName')}
           value={tpl.showWifiName}
           onValueChange={(v) => set('showWifiName', v)}
         />
         <Divider />
 
         <Toggle
-          label="Afficher le prix"
+          label={t('ticketSettings.showPrice')}
           value={tpl.showPrice}
           onValueChange={(v) => set('showPrice', v)}
         />
         {tpl.showPrice ? (
           <View style={{ paddingBottom: 14 }}>
             <Field
-              label="Devise"
+              label={t('ticketSettings.currencyLabel')}
               value={tpl.currency}
               onChangeText={(v) => set('currency', v)}
               placeholder="FCFA"
@@ -204,66 +206,66 @@ export default function TicketSettingsScreen() {
         <Divider />
 
         <Toggle
-          label="Afficher le numéro du ticket (#)"
+          label={t('ticketSettings.showTicketNumber')}
           value={tpl.showTicketNumber}
           onValueChange={(v) => set('showTicketNumber', v)}
         />
         <Divider />
 
         <Toggle
-          label="Afficher le code QR"
+          label={t('ticketSettings.showQrCode')}
           value={tpl.showQrCode}
           onValueChange={(v) => set('showQrCode', v)}
         />
         <Divider />
 
         <Toggle
-          label="Afficher le nom du plan"
+          label={t('ticketSettings.showPlanName')}
           value={tpl.showPlanName}
           onValueChange={(v) => set('showPlanName', v)}
         />
         <Divider />
 
         <Toggle
-          label="Afficher la date et l'heure de création"
+          label={t('ticketSettings.showCreatedAt')}
           value={tpl.showCreatedAt}
           onValueChange={(v) => set('showCreatedAt', v)}
         />
         <Divider />
 
         <Toggle
-          label='Montrer "Propulsé par MikroLan2" (PRO)'
+          label={t('ticketSettings.showPoweredBy')}
           value={tpl.showPoweredBy}
           onValueChange={(v) => set('showPoweredBy', v)}
         />
         <Divider />
 
         <Toggle
-          label='Afficher "Note"'
+          label={t('ticketSettings.showNote')}
           value={tpl.showNote}
           onValueChange={(v) => set('showNote', v)}
         />
         {tpl.showNote ? (
           <View style={{ paddingBottom: 14 }}>
             <Field
-              label="Note"
+              label={t('ticketSettings.noteLabel')}
               value={tpl.note ?? ''}
               onChangeText={(v) => set('note', v)}
-              placeholder="Conservez le ticket pendant le service"
+              placeholder={t('ticketSettings.notePlaceholder')}
             />
           </View>
         ) : null}
         <Divider />
 
         <Toggle
-          label="Afficher l'en-tête de page"
+          label={t('ticketSettings.showHeader')}
           value={tpl.showHeader}
           onValueChange={(v) => set('showHeader', v)}
         />
         {tpl.showHeader ? (
           <View style={{ paddingBottom: 14 }}>
             <Field
-              label="En-tête de page"
+              label={t('ticketSettings.headerLabel')}
               value={tpl.header ?? ''}
               onChangeText={(v) => set('header', v)}
             />
@@ -272,14 +274,14 @@ export default function TicketSettingsScreen() {
         <Divider />
 
         <Toggle
-          label="Afficher le pied de page"
+          label={t('ticketSettings.showFooter')}
           value={tpl.showFooter}
           onValueChange={(v) => set('showFooter', v)}
         />
         {tpl.showFooter ? (
           <View style={{ paddingBottom: 14 }}>
             <Field
-              label="Pied de page"
+              label={t('ticketSettings.footerLabel')}
               value={tpl.footer ?? ''}
               onChangeText={(v) => set('footer', v)}
             />
@@ -288,21 +290,21 @@ export default function TicketSettingsScreen() {
         <Divider />
 
         <Toggle
-          label="Afficher le numéro de page"
+          label={t('ticketSettings.showPageNumber')}
           value={tpl.showPageNumber}
           onValueChange={(v) => set('showPageNumber', v)}
         />
         <Divider />
 
         <Toggle
-          label="Afficher le logo sur le ticket"
+          label={t('ticketSettings.showLogo')}
           value={tpl.showLogo}
           onValueChange={(v) => set('showLogo', v)}
         />
         {tpl.showLogo ? (
           <View style={{ paddingBottom: 14 }}>
             <Button
-              title={tpl.logoDataUri ? 'Changer l’image' : 'Sélectionner une image'}
+              title={tpl.logoDataUri ? t('ticketSettings.changeLogo') : t('ticketSettings.selectLogo')}
               variant="ghost"
               onPress={pickLogo}
             />
@@ -310,7 +312,7 @@ export default function TicketSettingsScreen() {
         ) : null}
 
         <View style={{ height: 12 }} />
-        <Button title="Mise à jour" onPress={save} loading={busy} />
+        <Button title={t('ticketSettings.updateButton')} onPress={save} loading={busy} />
       </ScrollView>
       <BottomNav active="index" />
     </View>

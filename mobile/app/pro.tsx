@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ScrollView, View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { router as navRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/src/lib/api';
@@ -43,6 +44,7 @@ function BillingToggle({
   discount: number;
   onChange: (v: boolean) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Row style={{ alignSelf: 'center' }}>
       <View
@@ -62,7 +64,7 @@ function BillingToggle({
             <Press
               key={String(isAnnual)}
               accessibilityRole="tab"
-              accessibilityLabel={isAnnual ? 'Paiement annuel' : 'Paiement mensuel'}
+              accessibilityLabel={isAnnual ? t('pro.annualPayment') : t('pro.monthlyPayment')}
               onPress={() => onChange(isAnnual)}
               scaleTo={0.95}
               style={{
@@ -82,7 +84,7 @@ function BillingToggle({
                   fontSize: type.caption,
                 }}
               >
-                {isAnnual ? 'Annuel' : 'Mensuel'}
+                {isAnnual ? t('pro.annual') : t('pro.monthly')}
               </Text>
               {isAnnual ? (
                 <View
@@ -128,6 +130,7 @@ function TierCard({
   // Une seule chose peut être mise en avant à la fois : l'or dit « c'est la
   // formule retenue pour vous », le violet dit « c'est celle que vous
   // regardez ». Avant, les deux se disputaient la même carte.
+  const { t } = useTranslation();
   const accent = recommended ? theme.gold : selected ? theme.primary : theme.border;
 
   return (
@@ -165,7 +168,7 @@ function TierCard({
               letterSpacing: 0.5,
             }}
           >
-            CONSEILLÉ POUR VOUS
+            {t('pro.recommendedForYou')}
           </Text>
         </View>
       ) : tier.badge ? (
@@ -211,10 +214,10 @@ function TierCard({
           <Text style={{ color: theme.gold, fontSize: type.h2, fontWeight: '800' }}>
             {monthlyPrice(tier, annual).toLocaleString('fr-FR')} F
           </Text>
-          <Text style={{ color: theme.textMuted, fontSize: 10 }}>/ mois</Text>
+          <Text style={{ color: theme.textMuted, fontSize: 10 }}>{t('pro.perMonth')}</Text>
           {annual ? (
             <Text style={{ color: theme.textMuted, fontSize: 10, marginTop: 2 }}>
-              soit {formatXof(periodPrice(tier, true))} / an
+              {t('pro.perYear', { price: formatXof(periodPrice(tier, true)) })}
             </Text>
           ) : null}
         </View>
@@ -254,6 +257,7 @@ function TierCard({
 }
 
 export default function ProScreen() {
+  const { t } = useTranslation();
   const navHeight = useBottomNavHeight();
   const toast = useToast();
 
@@ -302,7 +306,7 @@ export default function ProScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title="Abonnement PRO" back />
+      <AppHeader title={t('pro.title')} back />
       <ScrollView
         style={{ flex: 1, backgroundColor: theme.bg }}
         contentContainerStyle={{
@@ -334,11 +338,11 @@ export default function ProScreen() {
                   textTransform: 'uppercase',
                 }}
               >
-                MikroLan2 Prime
+                {t('pro.prime')}
               </Text>
             </Row>
-            <Title>Passez au niveau supérieur</Title>
-            <Subtitle>Débloquez le multi-routeurs, l’impression A4 et le cloud</Subtitle>
+            <Title>{t('pro.levelUp')}</Title>
+            <Subtitle>{t('pro.unlockFeatures')}</Subtitle>
           </View>
         </FadeIn>
 
@@ -346,7 +350,7 @@ export default function ProScreen() {
             question que se pose le client à cet instant précis. */}
         <FadeIn delay={60}>
           <Press
-            accessibilityLabel="Ouvrir le conseiller d’abonnement"
+            accessibilityLabel={t('pro.openAdvisor')}
             onPress={() => setAdvisorOpen(true)}
             style={{
               flexDirection: 'row',
@@ -362,10 +366,10 @@ export default function ProScreen() {
             <IconChip name="sparkles" color={theme.primary} size="lg" outlined />
             <View style={{ flex: 1 }}>
               <Text style={{ color: theme.text, fontSize: type.bodyLg, fontWeight: '700' }}>
-                Laquelle choisir ?
+                {t('pro.whichOne')}
               </Text>
               <Text style={{ color: theme.textMuted, fontSize: type.caption, marginTop: 2 }}>
-                Trois questions, et je vous dis laquelle correspond à votre activité.
+                {t('pro.advisorSubtitle')}
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color={theme.primary} />
@@ -422,14 +426,13 @@ export default function ProScreen() {
             >
               <Ionicons name="checkmark-circle" size={22} color={theme.success} />
               <Text style={{ color: theme.text, fontSize: type.body, flex: 1 }}>
-                Demande envoyée. Vous serez notifié dans l’application dès que votre
-                abonnement sera activé.
+                {t('pro.requestSent')}
               </Text>
             </Row>
           </FadeIn>
         ) : tier ? (
           <Button
-            title={`Demander l’activation ${tier.name} — ${formatXof(periodPrice(tier, annual))}`}
+            title={t('pro.requestActivation', { name: tier.name, price: formatXof(periodPrice(tier, annual)) })}
             variant="gold"
             onPress={requestActivation}
             loading={busy}
@@ -443,8 +446,7 @@ export default function ProScreen() {
             textAlign: 'center',
           }}
         >
-          Paiement manuel, validé par un administrateur sous 24 h. Sans
-          engagement de durée.
+          {t('pro.manualPayment')}
         </Text>
       </ScrollView>
 
@@ -458,7 +460,7 @@ export default function ProScreen() {
           setAdvisorNote(note);
           setAdvisorOpen(false);
           setRequested(false);
-          toast.show(`Formule ${tiers.find((t) => t.key === key)?.name} retenue.`, 'info');
+          toast.show(t('pro.formulaSelected', { name: tiers.find((ti) => ti.key === key)?.name }), 'info');
         }}
       />
       <BottomNav />
