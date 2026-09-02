@@ -9,6 +9,7 @@ import {
   withApi,
   type SystemResource,
 } from '@/src/services/mikrotik-lan/MikroTikApiClient';
+import { useTranslation } from 'react-i18next';
 import { pushWireGuardConfig } from '@/src/services/mikrotik-lan/pushWireGuard';
 import { detectServicePorts } from '@/src/services/mikrotik-lan/detectServicePorts';
 import {
@@ -160,6 +161,7 @@ function StatSquare({
 
 export default function RouterDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const { t } = useTranslation();
   const router = useRouter();
   const qc = useQueryClient();
   const { isPro } = useAuth();
@@ -281,7 +283,7 @@ export default function RouterDetailScreen() {
       setCredPass('');
       setRemoteMsg({
         tone: 'success',
-        text: 'Identifiants enregistrés. Le serveur peut piloter le routeur via le tunnel.',
+        text: t('routerDetail.credentialsSaved'),
       });
     } catch (e) {
       setRemoteMsg({ tone: 'danger', text: extractErrorMessage(e) });
@@ -299,7 +301,7 @@ export default function RouterDetailScreen() {
       if (!creds) {
         setRemoteMsg({
           tone: 'danger',
-          text: "Identifiants locaux requis : testez d'abord la connexion LAN.",
+          text: t('routerDetail.localCredsRequired'),
         });
         return;
       }
@@ -321,7 +323,7 @@ export default function RouterDetailScreen() {
       await qc.invalidateQueries({ queryKey: ['routers'] });
       setRemoteMsg({
         tone: 'success',
-        text: 'Gestion à distance activée. Le routeur est joignable partout.',
+        text: t('routerDetail.remoteEnabled'),
       });
     } catch (e) {
       setRemoteMsg({ tone: 'danger', text: extractErrorMessage(e) });
@@ -410,9 +412,9 @@ export default function RouterDetailScreen() {
   if (query.isLoading) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
-        <AppHeader title="Maison" />
+        <AppHeader title={t('bottomNav.home')} />
         <Screen>
-          <Subtitle>Chargement…</Subtitle>
+          <Subtitle>{t('common.loading')}</Subtitle>
         </Screen>
       </View>
     );
@@ -420,7 +422,7 @@ export default function RouterDetailScreen() {
   if (query.isError || !query.data) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
-        <AppHeader title="Maison" />
+        <AppHeader title={t('bottomNav.home')} />
         <Screen>
           <Banner tone="danger">{extractErrorMessage(query.error)}</Banner>
         </Screen>
@@ -434,7 +436,7 @@ export default function RouterDetailScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title="Maison" />
+      <AppHeader title={t('bottomNav.home')} />
       <ScrollView
         contentContainerStyle={{
           gap: space.lg,
@@ -446,11 +448,10 @@ export default function RouterDetailScreen() {
           <Banner tone="warning">
             <View style={{ gap: space.sm }}>
               <Text style={{ color: theme.text, fontSize: type.body }}>
-                Ce routeur n'a pas d'identifiants sur ce téléphone — les
-                appareils autorisés et les sessions ne peuvent pas s'afficher.
+                {t('routerDetail.missingCredsBanner')}
               </Text>
               <Button
-                title="Ajouter les identifiants"
+                title={t('routerDetail.addCredentials')}
                 variant="ghost"
                 onPress={() =>
                   router.push({
@@ -492,14 +493,14 @@ export default function RouterDetailScreen() {
               {!isPro ? (
                 <Row style={{ justifyContent: 'flex-start', marginTop: space.xs + 2 }}>
                   <Badge
-                    label={r.mode === 'REMOTE' ? 'À DISTANCE' : 'LOCAL'}
+                    label={r.mode === 'REMOTE' ? t('routerDetail.remote') : t('routerDetail.local')}
                     tone={r.mode === 'REMOTE' ? 'gold' : 'secondary'}
                   />
                 </Row>
               ) : null}
             </View>
             <Press
-              accessibilityLabel="Paramètres du routeur"
+              accessibilityLabel={t('routerDetail.routerSettings')}
               onPress={() =>
                 router.push({
                   pathname: '/router-settings',
@@ -526,7 +527,7 @@ export default function RouterDetailScreen() {
           <Card>
             <Row style={{ gap: space.xs + 2, justifyContent: 'flex-start' }}>
               <Ionicons name="pulse-outline" size={icon.sm} color={theme.secondary} />
-              <Label>Moniteur performance</Label>
+              <Label>{t('routerDetail.performanceMonitor')}</Label>
             </Row>
             <Row style={{ gap: space.sm + 2, alignItems: 'stretch' }}>
               <Gauge
@@ -535,7 +536,7 @@ export default function RouterDetailScreen() {
                 color={theme.secondary}
               />
               <Gauge
-                label="Mémoire"
+                label={t('routerDetail.memory')}
                 value={memPercent(resource)}
                 color={theme.gold}
               />
@@ -549,16 +550,15 @@ export default function RouterDetailScreen() {
             <Row>
               <Row style={{ gap: space.xs + 2, justifyContent: 'flex-start' }}>
                 <Ionicons name="globe-outline" size={icon.sm} color={theme.gold} />
-                <Label>Gestion à distance</Label>
+                <Label>{t('routerDetail.remoteManagement')}</Label>
               </Row>
               <Badge label="PRO" tone="gold" />
             </Row>
             <Subtitle>
-              Piloter ce routeur en dehors de son Wi-Fi nécessite un forfait
-              PRO. Inclus pendant l'essai : la gestion sur place.
+              {t('routerDetail.remoteManagementDesc')}
             </Subtitle>
             <Button
-              title="Découvrir PRO"
+              title={t('routerDetail.discoverPro')}
               variant="ghost"
               onPress={() => router.push('/(tabs)/account')}
             />
@@ -568,18 +568,18 @@ export default function RouterDetailScreen() {
             <Row>
               <Row style={{ gap: space.xs + 2, justifyContent: 'flex-start' }}>
                 <Ionicons name="globe-outline" size={icon.sm} color={theme.gold} />
-                <Label>Gestion à distance</Label>
+                <Label>{t('routerDetail.remoteManagement')}</Label>
               </Row>
               <Badge label="PRO" tone="gold" />
             </Row>
             <Subtitle>
-              Activez un tunnel WireGuard sécurisé pour piloter ce routeur à distance.
+              {t('routerDetail.enableTunnel')}
             </Subtitle>
             {remoteMsg ? (
               <Banner tone={remoteMsg.tone}>{remoteMsg.text}</Banner>
             ) : null}
             <Button
-              title="Activer l'accès à distance"
+              title={t('routerDetail.enableRemote')}
               onPress={enableRemote}
               loading={remoteBusy}
             />
@@ -594,19 +594,18 @@ export default function RouterDetailScreen() {
             ) : null}
             {showCreds ? (
               <Card>
-                <Label>Identifiants routeur</Label>
+                <Label>{t('routerDetail.routerCredentials')}</Label>
                 <Subtitle>
-                  Renseignez les identifiants du routeur pour restaurer le
-                  pilotage à distance, sans être sur son Wi-Fi.
+                  {t('routerDetail.routerCredentialsDesc')}
                 </Subtitle>
                 <Field
-                  label="Utilisateur RouterOS"
+                  label={t('routerDetail.routerosUser')}
                   value={credUser}
                   onChangeText={setCredUser}
                   autoCapitalize="none"
                 />
                 <Field
-                  label="Mot de passe RouterOS"
+                  label={t('routerDetail.routerosPassword')}
                   value={credPass}
                   onChangeText={setCredPass}
                   secureTextEntry
@@ -614,14 +613,14 @@ export default function RouterDetailScreen() {
                 <Row style={{ gap: space.sm }}>
                   <View style={{ flex: 1 }}>
                     <Button
-                      title="Annuler"
+                      title={t('common.cancel')}
                       variant="ghost"
                       onPress={() => setShowCreds(false)}
                     />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Button
-                      title="Enregistrer"
+                      title={t('common.save')}
                       onPress={saveCredentials}
                       loading={credBusy}
                     />
@@ -630,7 +629,7 @@ export default function RouterDetailScreen() {
               </Card>
             ) : (
               <Press
-                accessibilityLabel="Modifier les identifiants du routeur"
+                accessibilityLabel={t('routerDetail.editCredentials')}
                 onPress={() => setShowCreds(true)}
                 style={{ alignSelf: 'flex-start' }}
               >
@@ -641,7 +640,7 @@ export default function RouterDetailScreen() {
                     textDecorationLine: 'underline',
                   }}
                 >
-                  Identifiants routeur
+                  {t('routerDetail.routerCredentials')}
                 </Text>
               </Press>
             )}
@@ -664,7 +663,7 @@ export default function RouterDetailScreen() {
                 ? '—'
                 : `${activeSessionsQuery.data}`
             }
-            label="Actifs"
+            label={t('routerDetail.actifs')}
             onPress={() => {
               if (activeSessionsQuery.isError) {
                 const message = extractErrorMessage(activeSessionsQuery.error);
@@ -697,7 +696,7 @@ export default function RouterDetailScreen() {
             icon="globe"
             color={theme.secondary}
             value={`${salesQuery.data?.ticketsUsed ?? 0}`}
-            label="Utilisés"
+            label={t('routerDetail.used')}
             onPress={() =>
               router.push({ pathname: '/generate-vouchers', params: { routerId: id } })
             }
@@ -711,7 +710,7 @@ export default function RouterDetailScreen() {
               <IconChip name="wifi" size="md" />
               <View style={{ flex: 1 }}>
                 <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
-                  Réseau Wi-Fi
+                  {t('routerDetail.wifiNetwork')}
                 </Text>
                 <Text
                   style={{
@@ -721,7 +720,7 @@ export default function RouterDetailScreen() {
                     marginTop: 1,
                   }}
                 >
-                  Hotspot du routeur
+                  {t('routerDetail.routerHotspot')}
                 </Text>
               </View>
             </Row>
@@ -737,7 +736,7 @@ export default function RouterDetailScreen() {
                   fontWeight: '600',
                 }}
               >
-                Modifier
+                {t('common.modify')}
               </Text>
             </Press>
           </Row>
@@ -763,11 +762,11 @@ export default function RouterDetailScreen() {
                     fontWeight: '700',
                   }}
                 >
-                  PARTAGE BLOQUÉ
+                  {t('routerDetail.sharingBlocked')}
                 </Text>
               </Row>
               <Text style={{ color: theme.text, fontSize: type.caption }}>
-                Empêcher un client de repartager sa connexion.
+                {t('routerDetail.sharingBlockedDesc')}
               </Text>
               <Text
                 style={{
@@ -777,7 +776,7 @@ export default function RouterDetailScreen() {
                   marginTop: 'auto',
                 }}
               >
-                Configurer →
+                {t('routerDetail.configure')}
               </Text>
             </Card>
           </Press>
@@ -801,11 +800,11 @@ export default function RouterDetailScreen() {
                     fontWeight: '700',
                   }}
                 >
-                  ANALYSE VENTES
+                  {t('routerDetail.salesAnalysis')}
                 </Text>
               </Row>
               <Text style={{ color: theme.text, fontSize: type.caption }}>
-                Rapport financier & journal de caisse.
+                {t('routerDetail.salesAnalysisDesc')}
               </Text>
               <Text
                 style={{
@@ -815,14 +814,14 @@ export default function RouterDetailScreen() {
                   marginTop: 'auto',
                 }}
               >
-                Voir le rapport →
+                {t('routerDetail.viewReport')}
               </Text>
             </Card>
           </Press>
         </Row>
 
         <Button
-          title="+ Créer des tickets"
+          title={t('routerDetail.createTickets')}
           onPress={() =>
             router.push({
               pathname: '/generate-vouchers',
@@ -831,7 +830,7 @@ export default function RouterDetailScreen() {
           }
         />
         <Button
-          title="Vérifier un ticket"
+          title={t('routerDetail.verifyTicket')}
           variant="ghost"
           onPress={() =>
             router.push({ pathname: '/verify-ticket', params: { routerId: id } })

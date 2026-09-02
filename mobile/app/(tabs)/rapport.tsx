@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, View, Text } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BarChart, LineChart, PieChart } from 'react-native-gifted-charts';
 import {
@@ -37,10 +38,10 @@ import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
 
-const PERIODS: { label: string; value: MetricsPeriod }[] = [
-  { label: "Aujourd'hui", value: 'today' },
-  { label: 'Cette Semaine', value: '7d' },
-  { label: 'Ce Mois', value: '30d' },
+const PERIOD_KEYS: { key: string; value: MetricsPeriod }[] = [
+  { key: 'rapport.today', value: 'today' },
+  { key: 'rapport.thisWeek', value: '7d' },
+  { key: 'rapport.thisMonth', value: '30d' },
 ];
 
 const PLAN_COLORS = [theme.primary, theme.success, theme.warning, theme.danger, '#38BDF8', '#F472B6'];
@@ -76,10 +77,10 @@ function Kpi({
   );
 }
 
-function MonthlyRevenueChart({ data }: { data: RevenueByPeriodItem[] }) {
+function MonthlyRevenueChart({ data, t }: { data: RevenueByPeriodItem[]; t: (key: string) => string }) {
   const recent = data.slice(-6);
   if (!recent.length) {
-    return <Empty icon="bar-chart-outline" text="Pas encore de ventes à afficher." />;
+    return <Empty icon="bar-chart-outline" text={t('rapport.noSalesData')} />;
   }
   const points = recent.map((d) => ({
     value: d.totalXof,
@@ -115,9 +116,9 @@ function MonthlyRevenueChart({ data }: { data: RevenueByPeriodItem[] }) {
   );
 }
 
-function PlanPieChart({ data }: { data: { planId: string; planName: string; revenueXof: number; sold: number }[] }) {
+function PlanPieChart({ data, t }: { data: { planId: string; planName: string; revenueXof: number; sold: number }[]; t: (key: string) => string }) {
   if (!data.length) {
-    return <Empty icon="pie-chart-outline" text="Aucune vente sur cette période." />;
+    return <Empty icon="pie-chart-outline" text={t('rapport.noPlanSales')} />;
   }
   const total = data.reduce((s, p) => s + p.revenueXof, 0) || 1;
   const slices = data.map((p, idx) => ({
@@ -158,9 +159,9 @@ function PlanPieChart({ data }: { data: { planId: string; planName: string; reve
   );
 }
 
-function RouterRankingChart({ data }: { data: RevenueByRouterItem[] }) {
+function RouterRankingChart({ data, t }: { data: RevenueByRouterItem[]; t: (key: string) => string }) {
   if (!data.length) {
-    return <Empty icon="hardware-chip-outline" text="Aucune donnée par routeur." />;
+    return <Empty icon="hardware-chip-outline" text={t('rapport.noRouterData')} />;
   }
   const top = data.slice(0, 6);
   const bars = top.map((d) => ({
@@ -199,12 +200,14 @@ const ANALYTICS_PERIOD_BY_METRICS_PERIOD: Record<MetricsPeriod, AnalyticsPeriod>
 function RoutersRankingSection({
   data,
   onSelect,
+  t,
 }: {
   data: AnalyticsRouterSummary[];
   onSelect: (routerId: string) => void;
+  t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
   if (!data.length) {
-    return <Empty icon="hardware-chip-outline" text="Aucun routeur avec des ventes sur cette période." />;
+    return <Empty icon="hardware-chip-outline" text={t('rapport.noRouterSales')} />;
   }
   return (
     <View style={{ gap: 8 }}>
@@ -232,8 +235,8 @@ function RoutersRankingSection({
             </Row>
             <Row style={{ justifyContent: 'flex-start', gap: 10 }}>
               <Mono style={{ color: theme.success, fontSize: 13, fontWeight: '800' }}>{fmtXof(r.revenueXof)}</Mono>
-              <Text style={{ color: theme.textMuted, fontSize: 11 }}>{r.salesCount} vente(s)</Text>
-              <Text style={{ color: theme.textMuted, fontSize: 11 }}>{r.contributionPercent.toFixed(0)}% du CA</Text>
+              <Text style={{ color: theme.textMuted, fontSize: 11 }}>{r.salesCount} {t('rapport.sales')}</Text>
+              <Text style={{ color: theme.textMuted, fontSize: 11 }}>{r.contributionPercent.toFixed(0)}{t('rapport.ofRevenue')}</Text>
               {growth ? <Text style={{ color: growthColor, fontSize: 11, fontWeight: '700' }}>{growth}</Text> : null}
             </Row>
           </Press>
@@ -245,9 +248,9 @@ function RoutersRankingSection({
 
 /** Double classement forfaits : par volume et par contribution CA — les deux
  * peuvent diverger (un forfait très vendu mais peu cher pèse peu au final). */
-function PlansDualRankingSection({ data }: { data: AnalyticsPlanPerformance[] }) {
+function PlansDualRankingSection({ data, t }: { data: AnalyticsPlanPerformance[]; t: (key: string, opts?: Record<string, unknown>) => string }) {
   if (!data.length) {
-    return <Empty icon="pricetags-outline" text="Aucune vente de forfait sur cette période." />;
+    return <Empty icon="pricetags-outline" text={t('rapport.noPlanSalesThisPeriod')} />;
   }
   const byRevenue = [...data].sort((a, b) => b.revenueXof - a.revenueXof).slice(0, 5);
   const bySales = [...data].sort((a, b) => b.salesCount - a.salesCount).slice(0, 5);
@@ -256,8 +259,8 @@ function PlansDualRankingSection({ data }: { data: AnalyticsPlanPerformance[] })
     const growth = fmtGrowth(p.growthPercent);
     const sentence =
       metric === 'revenue'
-        ? `Ce forfait représente ${p.revenueContributionPercent.toFixed(0)} % du chiffre d'affaires de la période.`
-        : `Ce forfait représente ${p.salesContributionPercent.toFixed(0)} % des ventes de la période.`;
+        ? t('rapport.revenueContribution', { pct: p.revenueContributionPercent.toFixed(0) })
+        : t('rapport.salesContribution', { pct: p.salesContributionPercent.toFixed(0) });
     return (
       <View key={`${metric}-${p.planId}`} style={{ gap: 2, paddingVertical: 6 }}>
         <Row>
@@ -269,8 +272,7 @@ function PlansDualRankingSection({ data }: { data: AnalyticsPlanPerformance[] })
         <Text style={{ color: theme.textMuted, fontSize: 11 }}>{sentence}</Text>
         {growth ? (
           <Text style={{ color: theme.textMuted, fontSize: 11 }}>
-            Son volume {p.growthPercent! >= 0 ? 'augmente' : 'baisse'} de {Math.abs(p.growthPercent!).toFixed(0)} % par
-            rapport à la période précédente.
+            {t('rapport.volumeChange', { direction: p.growthPercent! >= 0 ? t('rapport.increases') : t('rapport.decreases'), pct: Math.abs(p.growthPercent!).toFixed(0) })}
           </Text>
         ) : null}
       </View>
@@ -281,13 +283,13 @@ function PlansDualRankingSection({ data }: { data: AnalyticsPlanPerformance[] })
     <View style={{ gap: 16 }}>
       <View>
         <Text style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginBottom: 4 }}>
-          TOP PAR CHIFFRE D&apos;AFFAIRES
+          {t('rapport.topByRevenue')}
         </Text>
         {byRevenue.map((p) => renderPlan(p, 'revenue'))}
       </View>
       <View>
         <Text style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginBottom: 4 }}>
-          TOP PAR VOLUME DE VENTES
+          {t('rapport.topByVolume')}
         </Text>
         {bySales.map((p) => renderPlan(p, 'sales'))}
       </View>
@@ -300,9 +302,11 @@ function PlansDualRankingSection({ data }: { data: AnalyticsPlanPerformance[] })
 function AffluenceSection({
   salesHeatmap,
   sessionsHeatmap,
+  t,
 }: {
   salesHeatmap: { dayOfWeek: number; hour: number; count: number }[];
   sessionsHeatmap: { dayOfWeek: number; hour: number; count: number }[];
+  t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
   const busiestSales = busiestCell(salesHeatmap);
   const busiestSessions = busiestCell(sessionsHeatmap);
@@ -311,26 +315,19 @@ function AffluenceSection({
       <Row style={{ justifyContent: 'flex-start', gap: 8 }}>
         <Ionicons name="cart-outline" size={16} color={theme.primary} />
         <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700', flex: 1 }}>
-          Pic de ventes : {describeBusiest(busiestSales)}
+          {t('rapport.salesPeak', { desc: describeBusiest(busiestSales) })}
         </Text>
       </Row>
       <Row style={{ justifyContent: 'flex-start', gap: 8 }}>
         <Ionicons name="wifi-outline" size={16} color={theme.primarySoft} />
         <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700', flex: 1 }}>
-          Pic de sessions réseau : {describeBusiest(busiestSessions)}
+          {t('rapport.sessionsPeak', { desc: describeBusiest(busiestSessions) })}
         </Text>
       </Row>
     </View>
   );
 }
 
-const CONFIDENCE_LABEL: Record<string, string> = {
-  HIGH: 'Fiabilité haute',
-  MEDIUM: 'Fiabilité moyenne',
-  LOW: 'Fiabilité faible',
-  INSUFFICIENT_DATA: 'Données insuffisantes',
-  UNAVAILABLE: 'Non disponible',
-};
 const CONFIDENCE_TONE: Record<string, 'success' | 'warning' | 'muted' | 'danger'> = {
   HIGH: 'success',
   MEDIUM: 'warning',
@@ -339,29 +336,35 @@ const CONFIDENCE_TONE: Record<string, 'success' | 'warning' | 'muted' | 'danger'
   UNAVAILABLE: 'muted',
 };
 
-const INSUFFICIENT_DATA_MESSAGE =
-  "L'historique disponible est encore insuffisant pour produire une prévision fiable.";
+const CONFIDENCE_KEY: Record<string, string> = {
+  HIGH: 'rapport.confidenceHigh',
+  MEDIUM: 'rapport.confidenceMedium',
+  LOW: 'rapport.confidenceLow',
+  INSUFFICIENT_DATA: 'rapport.insufficientData',
+  UNAVAILABLE: 'rapport.confidenceUnavailable',
+};
 
 /** Tendance + modèle retenu + période d'historique — jamais un modèle présenté comme vérité, toujours accompagné de sa confiance. */
 function TrendsSection({ forecast }: { forecast: import('@/src/lib/api').ForecastOverview | undefined }) {
+  const { t } = useTranslation();
   if (!forecast) return <Skeleton height={80} />;
   const { revenueForecast, salesForecast } = forecast;
   if (revenueForecast.confidence === 'INSUFFICIENT_DATA') {
-    return <Empty icon="analytics-outline" text={INSUFFICIENT_DATA_MESSAGE} />;
+    return <Empty icon="analytics-outline" text={t('rapport.insufficientDataMsg')} />;
   }
   return (
     <View style={{ gap: 10 }}>
       <Row style={{ justifyContent: 'flex-start', gap: 8 }}>
-        <Badge label={CONFIDENCE_LABEL[revenueForecast.confidence]} tone={CONFIDENCE_TONE[revenueForecast.confidence]} />
+        <Badge label={t(CONFIDENCE_KEY[revenueForecast.confidence])} tone={CONFIDENCE_TONE[revenueForecast.confidence]} />
         <Text style={{ color: theme.textMuted, fontSize: 11 }}>
-          Modèle : {revenueForecast.model} · Historique : {revenueForecast.historyStart} → {revenueForecast.historyEnd}
+          {t('rapport.modelHistory', { model: revenueForecast.model, start: revenueForecast.historyStart, end: revenueForecast.historyEnd })}
         </Text>
       </Row>
       <Text style={{ color: theme.textMuted, fontSize: 11 }}>
-        Chiffre d'affaires : {revenueForecast.trainingPoints} jour(s) d'historique analysés.
+        {t('rapport.revenueTrainingDays', { count: revenueForecast.trainingPoints })}
       </Text>
       <Text style={{ color: theme.textMuted, fontSize: 11 }}>
-        Ventes : {salesForecast.trainingPoints} jour(s) d'historique analysés, modèle {salesForecast.model}.
+        {t('rapport.salesTrainingDays', { count: salesForecast.trainingPoints, model: salesForecast.model })}
       </Text>
     </View>
   );
@@ -369,7 +372,8 @@ function TrendsSection({ forecast }: { forecast: import('@/src/lib/api').Forecas
 
 /** Prévision des prochains jours — distinction visuelle explicite réel/prévision, jamais présentée comme un fait acquis. */
 function ForecastPointsSection({ points, metricLabel }: { points: { date: string; predicted: number; lowerBound: number; upperBound: number }[]; metricLabel: string }) {
-  if (!points.length) return <Empty icon="calendar-outline" text={INSUFFICIENT_DATA_MESSAGE} />;
+  const { t } = useTranslation();
+  if (!points.length) return <Empty icon="calendar-outline" text={t('rapport.insufficientDataMsg')} />;
   return (
     <View style={{ gap: 8 }}>
       <Text style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 }}>{metricLabel}</Text>
@@ -386,7 +390,7 @@ function ForecastPointsSection({ points, metricLabel }: { points: { date: string
         </Row>
       ))}
       <Text style={{ color: theme.textMuted, fontSize: 10, fontStyle: 'italic' }}>
-        Prévision — pas une donnée réelle. Intervalle basé sur l'erreur historique du modèle.
+        {t('rapport.forecastDisclaimer')}
       </Text>
     </View>
   );
@@ -394,40 +398,42 @@ function ForecastPointsSection({ points, metricLabel }: { points: { date: string
 
 /** Affluence prévue — jours/heures probables, ventes et sessions toujours distinguées. */
 function PredictedTrafficSection({ data }: { data: import('@/src/lib/api').ForecastTraffic | undefined }) {
+  const { t } = useTranslation();
   if (!data) return <Skeleton height={80} />;
   if (data.confidence === 'INSUFFICIENT_DATA') {
-    return <Empty icon="time-outline" text={data.insufficientDataReason ?? INSUFFICIENT_DATA_MESSAGE} />;
+    return <Empty icon="time-outline" text={data.insufficientDataReason ?? t('rapport.insufficientDataMsg')} />;
   }
   const topSalesDay = data.salesPeakDays[0];
   const topSalesHour = data.salesPeakHours[0];
   const topSessionsDay = data.sessionsPeakDays[0];
   const topSessionsHour = data.sessionsPeakHours[0];
+  const salesDesc = (topSalesDay ? DAY_LABELS[topSalesDay.dayOfWeek] : '—') + (topSalesHour ? ` vers ${topSalesHour.hour}h` : '');
+  const sessionsDesc = (topSessionsDay ? DAY_LABELS[topSessionsDay.dayOfWeek] : '—') + (topSessionsHour ? ` vers ${topSessionsHour.hour}h` : '');
   return (
     <View style={{ gap: 10 }}>
       <Row style={{ justifyContent: 'flex-start', gap: 8 }}>
         <Ionicons name="cart-outline" size={16} color={theme.primary} />
         <Text style={{ color: theme.text, fontSize: 12, flex: 1 }}>
-          Ventes probables : {topSalesDay ? DAY_LABELS[topSalesDay.dayOfWeek] : '—'}
-          {topSalesHour ? ` vers ${topSalesHour.hour}h` : ''}
+          {t('rapport.predictedSales', { desc: salesDesc })}
         </Text>
       </Row>
       <Row style={{ justifyContent: 'flex-start', gap: 8 }}>
         <Ionicons name="wifi-outline" size={16} color={theme.primarySoft} />
         <Text style={{ color: theme.text, fontSize: 12, flex: 1 }}>
-          Sessions probables : {topSessionsDay ? DAY_LABELS[topSessionsDay.dayOfWeek] : '—'}
-          {topSessionsHour ? ` vers ${topSessionsHour.hour}h` : ''}
+          {t('rapport.predictedSessions', { desc: sessionsDesc })}
         </Text>
       </Row>
-      <Badge label={CONFIDENCE_LABEL[data.confidence]} tone={CONFIDENCE_TONE[data.confidence]} />
+      <Badge label={t(CONFIDENCE_KEY[data.confidence])} tone={CONFIDENCE_TONE[data.confidence]} />
     </View>
   );
 }
 
 /** Insights métier — cartes concises avec preuve et limite, jamais de causalité ni de jugement. */
 function InsightsSection({ insights }: { insights: import('@/src/lib/api').BusinessInsight[] | undefined }) {
+  const { t } = useTranslation();
   if (!insights) return <Skeleton height={100} />;
   if (!insights.length || (insights.length === 1 && insights[0].type === 'INSUFFICIENT_DATA')) {
-    return <Empty icon="bulb-outline" text={insights[0]?.observation ?? INSUFFICIENT_DATA_MESSAGE} />;
+    return <Empty icon="bulb-outline" text={insights[0]?.observation ?? t('rapport.insufficientDataMsg')} />;
   }
   return (
     <View style={{ gap: 10 }}>
@@ -439,7 +445,7 @@ function InsightsSection({ insights }: { insights: import('@/src/lib/api').Busin
           <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>{ins.title}</Text>
           <Text style={{ color: theme.textMuted, fontSize: 12 }}>{ins.observation}</Text>
           <Row style={{ justifyContent: 'flex-start', gap: 8 }}>
-            <Badge label={CONFIDENCE_LABEL[ins.confidence] ?? ins.confidence} tone={CONFIDENCE_TONE[ins.confidence] ?? 'muted'} />
+            <Badge label={CONFIDENCE_KEY[ins.confidence] ? t(CONFIDENCE_KEY[ins.confidence]) : ins.confidence} tone={CONFIDENCE_TONE[ins.confidence] ?? 'muted'} />
           </Row>
           <Text style={{ color: theme.textMuted, fontSize: 10, fontStyle: 'italic' }}>{ins.limitations}</Text>
         </View>
@@ -449,6 +455,7 @@ function InsightsSection({ insights }: { insights: import('@/src/lib/api').Busin
 }
 
 export default function RapportScreen() {
+  const { t } = useTranslation();
   const { routerId } = useLocalSearchParams<{ routerId?: string }>();
   const { activeRouterId } = useActiveRouter();
   const navHeight = useBottomNavHeight();
@@ -457,6 +464,19 @@ export default function RapportScreen() {
   const [period, setPeriod] = useState<MetricsPeriod>('30d');
   const [refreshing, setRefreshing] = useState(false);
   const analyticsPeriod = ANALYTICS_PERIOD_BY_METRICS_PERIOD[period];
+
+  const PERIODS = PERIOD_KEYS.map((p) => ({ value: p.value, label: t(p.key) }));
+
+  const confidenceLabel = (key: string) => {
+    const map: Record<string, string> = {
+      HIGH: t('rapport.confidenceHigh'),
+      MEDIUM: t('rapport.confidenceMedium'),
+      LOW: t('rapport.confidenceLow'),
+      INSUFFICIENT_DATA: t('rapport.insufficientData'),
+      UNAVAILABLE: t('common.unavailable'),
+    };
+    return map[key] ?? key;
+  };
 
   const metrics = useQuery({
     queryKey: ['metrics', period, routerId],
@@ -538,7 +558,7 @@ export default function RapportScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title="Rapport & performance" back={Boolean(activeRouterId)} />
+      <AppHeader title={t('rapport.title')} back={Boolean(activeRouterId)} />
       <ScrollView
         style={{ flex: 1, backgroundColor: theme.bg }}
         contentContainerStyle={{
@@ -552,8 +572,8 @@ export default function RapportScreen() {
       >
         <Row>
           <View style={{ flex: 1 }}>
-            <Title>Rapport & performance</Title>
-            <Subtitle>Ventes de tickets WiFi, revenu, et santé de votre activité.</Subtitle>
+            <Title>{t('rapport.title')}</Title>
+            <Subtitle>{t('rapport.subtitle')}</Subtitle>
           </View>
           <Press
             onPress={() => {
@@ -578,7 +598,7 @@ export default function RapportScreen() {
         </Row>
 
         {error ? (
-          <ErrorState message="Impossible de charger les données." onRetry={onRefresh} />
+          <ErrorState message={t('rapport.loadError')} onRetry={onRefresh} />
         ) : (
           <>
             {/* Filtre de période — pilote les KPIs court terme (CA, conversion, ARPU). */}
@@ -625,7 +645,7 @@ export default function RapportScreen() {
               <Text
                 style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 }}
               >
-                CHIFFRE D&apos;AFFAIRES
+                {t('rapport.revenue')}
               </Text>
               <Mono style={{ color: theme.success, fontSize: 30, fontWeight: '900' }}>
                 {metrics.isLoading ? '…' : fmtXof(data?.revenueXof ?? 0)}
@@ -639,7 +659,7 @@ export default function RapportScreen() {
                       <Ionicons name={up ? 'trending-up' : 'trending-down'} size={icon.sm} color={trendColor} />
                       <Text style={{ color: trendColor, fontSize: type.caption, flex: 1 }}>
                         {up ? '+' : ''}
-                        {data.trendPct.toFixed(0)}% vs période précédente ({data.ticketsUsed} tickets vendus)
+                        {t('rapport.vsPrevious', { pct: data.trendPct.toFixed(0), count: data.ticketsUsed })}
                       </Text>
                     </Row>
                   );
@@ -652,34 +672,34 @@ export default function RapportScreen() {
                     <Badge
                       label={
                         data.dataQuality === 'ESTIMATED'
-                          ? 'Estimé'
+                          ? t('rapport.dataEstimated')
                           : data.dataQuality === 'MIXED'
-                            ? 'Partiellement estimé'
+                            ? t('rapport.dataMixed')
                             : data.dataQuality === 'INCOMPLETE'
-                              ? 'Incomplet'
-                              : 'Aucune donnée'
+                              ? t('rapport.dataIncomplete')
+                              : t('rapport.dataNoData')
                       }
                       tone={data.dataQuality === 'NO_DATA' ? 'muted' : 'warning'}
                     />
                     {data.exactRevenueXof != null && data.estimatedRevenueXof != null ? (
                       <Text style={{ color: theme.textMuted, fontSize: 11, flex: 1 }}>
-                        Exact : {fmtXof(data.exactRevenueXof)} · Estimé : {fmtXof(data.estimatedRevenueXof)}
+                        {t('rapport.exactLabel')} : {fmtXof(data.exactRevenueXof)} · {t('rapport.estimatedLabel')} : {fmtXof(data.estimatedRevenueXof)}
                       </Text>
                     ) : null}
                   </Row>
                   {data.dataQuality === 'ESTIMATED' || data.dataQuality === 'MIXED' ? (
                     <Text style={{ color: theme.textMuted, fontSize: 11 }}>
-                      Une partie de ce chiffre d&apos;affaires est estimée à partir du prix actuel des forfaits.
+                      {t('rapport.estimatedNote')}
                     </Text>
                   ) : null}
                   {(data.unknownSalesCount ?? 0) > 0 || (data.invalidSourceCount ?? 0) > 0 ? (
                     <Text style={{ color: theme.textMuted, fontSize: 11 }}>
                       {(data.unknownSalesCount ?? 0) > 0
-                        ? `${data.unknownSalesCount} vente(s) de provenance inconnue`
+                        ? t('rapport.unknownSalesCount', { count: data.unknownSalesCount })
                         : ''}
                       {(data.unknownSalesCount ?? 0) > 0 && (data.invalidSourceCount ?? 0) > 0 ? ' · ' : ''}
                       {(data.invalidSourceCount ?? 0) > 0
-                        ? `${data.invalidSourceCount} donnée(s) invalide(s)`
+                        ? t('rapport.invalidSourceCount', { count: data.invalidSourceCount })
                         : ''}
                     </Text>
                   ) : null}
@@ -694,19 +714,19 @@ export default function RapportScreen() {
                 icon="swap-horizontal-outline"
                 iconColor={theme.primary}
                 value={conversionPct != null ? `${conversionPct}%` : '—'}
-                label="Taux de conversion"
+                label={t('rapport.conversionRate')}
               />
               <Kpi
                 icon="pricetag-outline"
                 iconColor={theme.warning}
                 value={arpu != null ? fmtXof(arpu) : '—'}
-                label="Panier moyen"
+                label={t('rapport.avgBasket')}
               />
               <Kpi
                 icon="people-outline"
                 iconColor={theme.success}
                 value={`${data?.activeSessions ?? 0}`}
-                label="En ligne maintenant"
+                label={t('rapport.onlineNow')}
               />
             </Row>
 
@@ -715,13 +735,13 @@ export default function RapportScreen() {
               <Row style={{ gap: 8, justifyContent: 'flex-start' }}>
                 <Ionicons name="trending-up-outline" size={16} color={theme.primary} />
                 <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
-                  Tendance CA (6 derniers mois)
+                  {t('rapport.revenueTrend')}
                 </Text>
               </Row>
               {loading ? (
                 <Skeleton height={140} />
               ) : (
-                <MonthlyRevenueChart data={revenueByPeriod.data ?? []} />
+                <MonthlyRevenueChart data={revenueByPeriod.data ?? []} t={t} />
               )}
             </Card>
 
@@ -730,10 +750,10 @@ export default function RapportScreen() {
               <Row style={{ gap: 8, justifyContent: 'flex-start' }}>
                 <Ionicons name="pie-chart-outline" size={16} color={theme.primary} />
                 <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
-                  Répartition par forfait
+                  {t('rapport.planBreakdown')}
                 </Text>
               </Row>
-              {metrics.isLoading ? <Skeleton height={100} /> : <PlanPieChart data={data?.byPlan ?? []} />}
+              {metrics.isLoading ? <Skeleton height={100} /> : <PlanPieChart data={data?.byPlan ?? []} t={t} />}
             </Card>
 
             {/* CA par routeur — utile dès 2+ points de vente pour repérer le
@@ -743,58 +763,60 @@ export default function RapportScreen() {
                 <Row style={{ gap: 8, justifyContent: 'flex-start' }}>
                   <Ionicons name="hardware-chip-outline" size={16} color={theme.primary} />
                   <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
-                    CA par routeur
+                    {t('rapport.revenueByRouter')}
                   </Text>
                 </Row>
                 {loading ? (
                   <Skeleton height={140} />
                 ) : (
-                  <RouterRankingChart data={revenueByRouter.data ?? []} />
+                  <RouterRankingChart data={revenueByRouter.data ?? []} t={t} />
                 )}
               </Card>
             ) : null}
 
             {/* Classement routeurs (Analytics) — accès au détail par routeur */}
             <View>
-              <SectionTitle>Routeurs</SectionTitle>
+              <SectionTitle>{t('rapport.routersSection')}</SectionTitle>
               {overview.isLoading && analyticsRouters.isLoading ? (
                 <Skeleton height={100} />
               ) : overview.error || analyticsRouters.error ? (
-                <ErrorState message="Impossible de charger le classement des routeurs." onRetry={onRefresh} />
+                <ErrorState message={t('rapport.routersLoadError')} onRetry={onRefresh} />
               ) : (
                 <RoutersRankingSection
                   data={analyticsRouters.data ?? []}
                   onSelect={(id) => router.push(`/analytics-router/${id}?period=${analyticsPeriod}`)}
+                  t={t}
                 />
               )}
             </View>
 
             {/* Forfaits — double classement (volume vs contribution CA) */}
             <View>
-              <SectionTitle>Forfaits</SectionTitle>
+              <SectionTitle>{t('rapport.plansSection')}</SectionTitle>
               {overview.isLoading ? (
                 <Skeleton height={140} />
               ) : overview.error ? (
-                <ErrorState message="Impossible de charger l'analyse des forfaits." onRetry={onRefresh} />
+                <ErrorState message={t('rapport.plansLoadError')} onRetry={onRefresh} />
               ) : (
                 <Card style={{ gap: 8 }}>
-                  <PlansDualRankingSection data={overview.data?.topPlans ?? []} />
+                  <PlansDualRankingSection data={overview.data?.topPlans ?? []} t={t} />
                 </Card>
               )}
             </View>
 
             {/* Affluence : jours/heures d'activité, ventes vs sessions séparées */}
             <View>
-              <SectionTitle>Affluence</SectionTitle>
+              <SectionTitle>{t('rapport.affluence')}</SectionTitle>
               {traffic.isLoading ? (
                 <Skeleton height={80} />
               ) : traffic.error ? (
-                <ErrorState message="Impossible de charger l'affluence." onRetry={onRefresh} />
+                <ErrorState message={t('rapport.affluenceLoadError')} onRetry={onRefresh} />
               ) : (
                 <Card>
                   <AffluenceSection
                     salesHeatmap={traffic.data?.salesHeatmap ?? []}
                     sessionsHeatmap={traffic.data?.sessionsHeatmap ?? []}
+                    t={t}
                   />
                 </Card>
               )}
@@ -802,9 +824,9 @@ export default function RapportScreen() {
 
             {/* Tendances et prévisions BI explicables — audit/73 */}
             <View>
-              <SectionTitle>Tendances</SectionTitle>
+              <SectionTitle>{t('rapport.trends')}</SectionTitle>
               {forecast.error ? (
-                <ErrorState message="Impossible de charger les tendances." onRetry={onRefresh} />
+                <ErrorState message={t('rapport.trendsLoadError')} onRetry={onRefresh} />
               ) : (
                 <Card>
                   <TrendsSection forecast={forecast.data} />
@@ -813,25 +835,25 @@ export default function RapportScreen() {
             </View>
 
             <View>
-              <SectionTitle>Prévisions</SectionTitle>
+              <SectionTitle>{t('rapport.forecasts')}</SectionTitle>
               {forecast.isLoading ? (
                 <Skeleton height={160} />
               ) : forecast.error ? (
-                <ErrorState message="Impossible de charger les prévisions." onRetry={onRefresh} />
+                <ErrorState message={t('rapport.forecastLoadError')} onRetry={onRefresh} />
               ) : forecast.data?.revenueForecast.confidence === 'INSUFFICIENT_DATA' ? (
-                <Empty icon="calendar-outline" text={INSUFFICIENT_DATA_MESSAGE} />
+                <Empty icon="calendar-outline" text={t('rapport.insufficientDataMsg')} />
               ) : (
                 <Card style={{ gap: 16 }}>
-                  <ForecastPointsSection points={forecast.data?.revenueForecast.points ?? []} metricLabel="CHIFFRE D'AFFAIRES PRÉVU (XOF)" />
-                  <ForecastPointsSection points={forecast.data?.salesForecast.points ?? []} metricLabel="VENTES PRÉVUES" />
+                  <ForecastPointsSection points={forecast.data?.revenueForecast.points ?? []} metricLabel={t('rapport.revenueForecastLabel')} />
+                  <ForecastPointsSection points={forecast.data?.salesForecast.points ?? []} metricLabel={t('rapport.salesForecastLabel')} />
                 </Card>
               )}
             </View>
 
             <View>
-              <SectionTitle>Affluence prévue</SectionTitle>
+              <SectionTitle>{t('rapport.predictedTraffic')}</SectionTitle>
               {forecastTraffic.error ? (
-                <ErrorState message="Impossible de charger l'affluence prévue." onRetry={onRefresh} />
+                <ErrorState message={t('rapport.predictedTrafficLoadError')} onRetry={onRefresh} />
               ) : (
                 <Card>
                   <PredictedTrafficSection data={forecastTraffic.data} />
@@ -840,9 +862,9 @@ export default function RapportScreen() {
             </View>
 
             <View>
-              <SectionTitle>Insights</SectionTitle>
+              <SectionTitle>{t('rapport.insights')}</SectionTitle>
               {insights.error ? (
-                <ErrorState message="Impossible de charger les insights." onRetry={onRefresh} />
+                <ErrorState message={t('rapport.insightsLoadError')} onRetry={onRefresh} />
               ) : (
                 <InsightsSection insights={insights.data} />
               )}
@@ -850,9 +872,9 @@ export default function RapportScreen() {
 
             {/* Clients récents */}
             <View>
-              <SectionTitle>Clients récents</SectionTitle>
+              <SectionTitle>{t('rapport.recentClients')}</SectionTitle>
               {!clients.data?.length ? (
-                <Empty icon="people-outline" text="Aucun ticket utilisé pour le moment." />
+                <Empty icon="people-outline" text={t('rapport.noTicketUsed')} />
               ) : (
                 <View style={{ gap: 12 }}>
                   {clients.data.map((c) => (
@@ -860,7 +882,7 @@ export default function RapportScreen() {
                       <Row>
                         <Mono style={{ color: theme.text, fontSize: 15 }}>{c.code}</Mono>
                         <Badge
-                          label={c.online ? 'En ligne' : 'Utilisé'}
+                          label={c.online ? t('rapport.online') : t('rapport.used')}
                           tone={c.online ? 'success' : 'muted'}
                         />
                       </Row>

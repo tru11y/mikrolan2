@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { api, extractErrorMessage } from '@/src/lib/api';
 import {
@@ -92,6 +93,7 @@ function OptionCard({
 }
 
 export default function InternetSharingScreen() {
+  const { t } = useTranslation();
   const navHeight = useBottomNavHeight();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
 
@@ -119,7 +121,7 @@ export default function InternetSharingScreen() {
       await api.routers.setInternetSharing(routerId, selected === 'block');
       setMsg({
         tone: 'success',
-        text: 'Règle anti-tethering mise à jour sur le routeur !',
+        text: t('internetSharing.ruleUpdated'),
       });
     } catch (e) {
       setMsg({ tone: 'danger', text: extractErrorMessage(e) });
@@ -130,13 +132,13 @@ export default function InternetSharingScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title="Blocage du partage" back />
+      <AppHeader title={t('internetSharing.screenTitle')} back />
       <ScrollView
         contentContainerStyle={{ gap: space.lg, padding: space.lg, paddingBottom: navHeight }}
       >
         <View>
                     <Subtitle>
-            Contrôlez la répartition de connexion (anti-tethering) sur MikroTik
+            {t('internetSharing.subtitle')}
           </Subtitle>
         </View>
 
@@ -151,7 +153,7 @@ export default function InternetSharingScreen() {
               textTransform: 'uppercase',
             }}
           >
-            Schéma de blocage anti-tethering (détection TTL)
+            {t('internetSharing.schemaTitle')}
           </Text>
 
           <View
@@ -179,7 +181,7 @@ export default function InternetSharingScreen() {
                 <Ionicons name="phone-portrait" size={26} color={theme.success} />
               </View>
               <Text style={{ color: theme.text, fontSize: 11, fontWeight: '700' }}>
-                Smartphone Client
+                {t('internetSharing.smartphoneClient')}
               </Text>
             </View>
 
@@ -210,7 +212,7 @@ export default function InternetSharingScreen() {
                     textTransform: 'uppercase',
                   }}
                 >
-                  Partage bloqué (TTL décrémenté)
+                  {t('internetSharing.sharingBlocked')}
                 </Text>
               </View>
             </View>
@@ -231,7 +233,7 @@ export default function InternetSharingScreen() {
                 <Ionicons name="laptop" size={26} color={theme.danger} />
               </View>
               <Text style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700' }}>
-                PC Secondaire
+                {t('internetSharing.secondaryPc')}
               </Text>
             </View>
           </View>
@@ -244,14 +246,11 @@ export default function InternetSharingScreen() {
             }}
           >
             <Text style={{ color: theme.textMuted, fontSize: 12, lineHeight: 18 }}>
-              Un appareil qui redistribue votre connexion (partage WiFi, USB)
-              ajoute un saut réseau : son trafic arrive avec un{' '}
+              {t('internetSharing.ttlExplanation')}{' '}
               <Text style={{ color: theme.text, fontWeight: '700' }}>
-                TTL diminué de 1
+                {t('internetSharing.ttlDecreasedBy1')}
               </Text>
-              . Le pare-feu RouterOS détecte cette signature et bloque
-              uniquement ce trafic-là, sans toucher au TTL des vrais clients
-              ni couper leur accès internet.
+              {t('internetSharing.ttlExplanation2')}
             </Text>
           </View>
         </Card>
@@ -265,8 +264,8 @@ export default function InternetSharingScreen() {
             activeColor={theme.primary}
             icon="ban"
             iconColor={theme.success}
-            title="Bloquer le partage internet"
-            subtitle="Les clients ne peuvent plus repartager leur connexion"
+            title={t('internetSharing.blockSharing')}
+            subtitle={t('internetSharing.blockSharingSubtitle')}
             onPress={() => setSelected('block')}
           />
           <OptionCard
@@ -274,8 +273,8 @@ export default function InternetSharingScreen() {
             activeColor={theme.primary}
             icon="flash"
             iconColor={theme.textMuted}
-            title="Autoriser le partage internet"
-            subtitle="Le partage de connexion reste autorisé"
+            title={t('internetSharing.allowSharing')}
+            subtitle={t('internetSharing.allowSharingSubtitle')}
             onPress={() => setSelected('allow')}
           />
         </View>
@@ -302,7 +301,7 @@ export default function InternetSharingScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <Ionicons name="warning-outline" size={18} color={theme.warning} />
               <Text style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}>
-                Configuration du mode Pont (Bridge Mode)
+                {t('internetSharing.bridgeModeTitle')}
               </Text>
             </View>
             <Ionicons
@@ -323,18 +322,16 @@ export default function InternetSharingScreen() {
             >
               <Text style={{ color: theme.textMuted, fontSize: 12, lineHeight: 18 }}>
                 <Text style={{ color: theme.text, fontWeight: '700' }}>
-                  Note importante :{' '}
+                  {t('internetSharing.bridgeModeNote')}{' '}
                 </Text>
-                Si vos interfaces WiFi et Ethernet sont en mode Bridge (pont
-                réseau), vous devez cocher l'option{' '}
+                {t('internetSharing.bridgeModeExplanation')}{' '}
                 <Text style={{ color: theme.secondary, fontFamily: theme.mono }}>
-                  Use IP Firewall
+                  {t('internetSharing.useIpFirewall')}
                 </Text>{' '}
-                dans le menu Bridge Settings de RouterOS pour que le blocage
-                TTL fonctionne correctement.
+                {t('internetSharing.bridgeModeExplanation2')}
               </Text>
               <Text style={{ color: theme.warning, fontSize: 11 }}>
-                Commande Terminal:{' '}
+                {t('internetSharing.terminalCommand')}{' '}
                 <Text style={{ fontFamily: theme.mono, color: theme.text }}>
                   /interface bridge settings set use-ip-firewall=yes
                 </Text>
@@ -344,7 +341,7 @@ export default function InternetSharingScreen() {
         </View>
 
         <Button
-          title="Appliquer la règle Anti-Tethering"
+          title={t('internetSharing.applyAntiTethering')}
           onPress={apply}
           loading={busy}
         />
