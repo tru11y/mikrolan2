@@ -3,6 +3,7 @@ import { Linking, ScrollView, Switch, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import Constants from 'expo-constants';
 import { useAuth } from '@/src/providers/auth-provider';
 import { useAppLock } from '@/src/providers/app-lock-provider';
@@ -75,6 +76,7 @@ function ActionRow({
 }
 
 export default function AccountScreen() {
+  const { t } = useTranslation();
   const navHeight = useBottomNavHeight();
   const router = useRouter();
   const { me, isPro, logout, refreshProfile } = useAuth();
@@ -114,7 +116,7 @@ export default function AccountScreen() {
         country: country.trim() || null,
       });
       await refreshProfile();
-      setProfileMsg({ tone: 'success', text: 'Profil mis à jour.' });
+      setProfileMsg({ tone: 'success', text: t('account.profileUpdated') });
       setEditingProfile(false);
     } catch (e) {
       setProfileMsg({ tone: 'danger', text: extractErrorMessage(e) });
@@ -185,7 +187,7 @@ export default function AccountScreen() {
       setNewPassword('');
       setPasswordMsg({
         tone: 'success',
-        text: 'Mot de passe changé. Reconnexion requise…',
+        text: t('account.passwordChanged'),
       });
       setTimeout(() => void logout(), 1200);
     } catch (e) {
@@ -203,7 +205,7 @@ export default function AccountScreen() {
       setNewPassword('');
       setPasswordMsg({
         tone: 'success',
-        text: 'Mot de passe défini. Vous pouvez maintenant vous connecter par e-mail.',
+        text: t('account.passwordSet'),
       });
       await refreshProfile();
     } catch (e) {
@@ -215,17 +217,17 @@ export default function AccountScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title="Mon compte" />
+      <AppHeader title={t('account.title')} />
       <ScrollView
         style={{ flex: 1, backgroundColor: theme.bg }}
         contentContainerStyle={{ padding: space.lg, paddingBottom: navHeight }}
       >
-        <StaticRow label="E-mail" value={me?.user.email ?? '—'} />
+        <StaticRow label={t('login.email')} value={me?.user.email ?? '—'} />
         <Divider />
 
         <ActionRow
-          title="Nom"
-          subtitle={!editingProfile ? me?.user.name || 'Non renseigné' : undefined}
+          title={t('account.name')}
+          subtitle={!editingProfile ? me?.user.name || t('common.notSpecified') : undefined}
           open={editingProfile}
           onPress={() => setEditingProfile((v) => !v)}
         />
@@ -233,19 +235,19 @@ export default function AccountScreen() {
           <View style={{ gap: 12, paddingBottom: 16 }}>
             {profileMsg ? <Banner tone={profileMsg.tone}>{profileMsg.text}</Banner> : null}
             <Field
-              label="Nom complet"
+              label={t('account.fullName')}
               value={name}
               onChangeText={setName}
-              placeholder="Votre nom"
+              placeholder={t('account.namePlaceholder')}
             />
             <Field
-              label="Pays / Région"
+              label={t('account.countryLabel')}
               value={country}
               onChangeText={setCountry}
-              placeholder="Ex. Côte d’Ivoire"
+              placeholder={t('account.countryPlaceholder')}
             />
             <Button
-              title="Enregistrer les modifications"
+              title={t('account.saveChanges')}
               onPress={saveProfile}
               loading={profileBusy}
             />
@@ -253,7 +255,7 @@ export default function AccountScreen() {
         ) : null}
         <Divider />
 
-        <StaticRow label="Pays" value={me?.user.country || '—'} />
+        <StaticRow label={t('account.country')} value={me?.user.country || '—'} />
         <Divider />
 
         <View
@@ -266,10 +268,10 @@ export default function AccountScreen() {
         >
           <View style={{ flex: 1 }}>
             <Text style={{ color: theme.text, fontSize: type.bodyLg, fontWeight: '600' }}>
-              Notifications
+              {t('account.notifications')}
             </Text>
             <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
-              Alertes déconnexions & activité tickets
+              {t('account.notificationsSubtitle')}
             </Text>
           </View>
           <Switch
@@ -283,34 +285,30 @@ export default function AccountScreen() {
         {pushStatus === 'permission_denied' ? (
           <View style={{ gap: 8 }}>
             <Banner tone="warning">
-              Les notifications sont bloquées dans les réglages du téléphone —
-              ce réglage n'aura aucun effet tant qu'elles n'y sont pas
-              autorisées.
+              {t('account.notificationsBlocked')}
             </Banner>
-            <Press accessibilityLabel="Ouvrir les réglages Android" onPress={() => Linking.openSettings()}>
+            <Press accessibilityLabel={t('account.openPhoneSettings')} onPress={() => Linking.openSettings()}>
               <Text style={{ color: theme.primary, fontWeight: '700', fontSize: type.body }}>
-                Ouvrir les réglages du téléphone
+                {t('account.openPhoneSettings')}
               </Text>
             </Press>
           </View>
         ) : pushStatus === 'missing_config' || pushStatus === 'failed' ? (
           <Banner tone="warning">
-            Les notifications ne peuvent pas être activées sur cette
-            installation de l'app. Contactez le support.
+            {t('account.notificationsUnavailable')}
           </Banner>
         ) : null}
         {battery.available && battery.ignored === false ? (
           <View style={{ gap: 8, paddingVertical: 8 }}>
             <Banner tone="warning">
-              L'économiseur de batterie peut empêcher la réception des
-              notifications quand l'app est fermée.
+              {t('account.batteryWarning')}
             </Banner>
             <Press
-              accessibilityLabel="Désactiver l'économiseur de batterie"
+              accessibilityLabel={t('account.disableBatterySaver')}
               onPress={battery.request}
             >
               <Text style={{ color: theme.primary, fontWeight: '700', fontSize: type.body }}>
-                Désactiver l'économiseur de batterie
+                {t('account.disableBatterySaver')}
               </Text>
             </Press>
           </View>
@@ -329,10 +327,10 @@ export default function AccountScreen() {
             >
               <View style={{ flex: 1 }}>
                 <Text style={{ color: theme.text, fontSize: type.bodyLg, fontWeight: '600' }}>
-                  Verrouillage biométrique
+                  {t('account.biometricLock')}
                 </Text>
                 <Text style={{ color: theme.textMuted, fontSize: 12, marginTop: 2 }}>
-                  Empreinte / Face ID / code après 2 min en arrière-plan
+                  {t('account.biometricSubtitle')}
                 </Text>
               </View>
               <Switch
@@ -348,8 +346,8 @@ export default function AccountScreen() {
         ) : null}
 
         <ActionRow
-          title={me?.user.hasPassword ? 'Changer le mot de passe' : 'Définir un mot de passe'}
-          subtitle={!me?.user.hasPassword ? 'Compte connecté via Google' : undefined}
+          title={me?.user.hasPassword ? t('account.changePassword') : t('account.setPassword')}
+          subtitle={!me?.user.hasPassword ? t('account.oauthAccount') : undefined}
           open={editingPassword}
           onPress={() => setEditingPassword((v) => !v)}
         />
@@ -358,21 +356,21 @@ export default function AccountScreen() {
             {passwordMsg ? <Banner tone={passwordMsg.tone}>{passwordMsg.text}</Banner> : null}
             {me?.user.hasPassword ? (
               <Field
-                label="Mot de passe actuel"
+                label={t('account.currentPassword')}
                 value={currentPassword}
                 onChangeText={setCurrentPassword}
                 secureTextEntry
               />
             ) : null}
             <Field
-              label={me?.user.hasPassword ? 'Nouveau mot de passe' : 'Mot de passe'}
+              label={me?.user.hasPassword ? t('account.newPassword') : t('login.password')}
               value={newPassword}
               onChangeText={setNewPassword}
-              placeholder="10 caractères minimum"
+              placeholder={t('login.passwordMinChars')}
               secureTextEntry
             />
             <Button
-              title={me?.user.hasPassword ? 'Changer le mot de passe' : 'Définir le mot de passe'}
+              title={me?.user.hasPassword ? t('account.changePassword') : t('account.setPassword')}
               variant="ghost"
               onPress={me?.user.hasPassword ? savePassword : setNewPasswordForOAuth}
               loading={passwordBusy}
@@ -389,8 +387,8 @@ export default function AccountScreen() {
         {!isPro ? (
           <>
             <ActionRow
-              title="Passer à PRO"
-              subtitle="Gestion à distance multi-routeurs (WireGuard)"
+              title={t('account.goProTitle')}
+              subtitle={t('account.goProSubtitle')}
               onPress={() => router.push('/pro')}
             />
             <Divider />
@@ -398,8 +396,8 @@ export default function AccountScreen() {
         ) : null}
 
         <ActionRow
-          title="Support / SAV"
-          subtitle="Créer un ticket ou suivre une demande"
+          title={t('account.supportTitle')}
+          subtitle={t('account.supportSubtitle')}
           onPress={() => router.push('/support')}
         />
         <Divider />
@@ -409,8 +407,8 @@ export default function AccountScreen() {
         {me?.user.role === 'SUPER_ADMIN' ? (
           <>
             <ActionRow
-              title="Administration de la plateforme"
-              subtitle="Activer les abonnements, consulter la grille tarifaire"
+              title={t('account.adminTitle')}
+              subtitle={t('account.adminSubtitle')}
               onPress={() => router.push('/admin')}
             />
             <Divider />
@@ -418,15 +416,15 @@ export default function AccountScreen() {
         ) : null}
 
         <ActionRow
-          title="Se déconnecter de toutes les sessions"
-          subtitle={loggingOutAll ? 'Déconnexion en cours…' : undefined}
+          title={t('account.logoutAll')}
+          subtitle={loggingOutAll ? t('account.loggingOut') : undefined}
           onPress={logoutAllSessions}
         />
         <Divider />
 
         <ActionRow
-          title="Supprimer mon compte"
-          subtitle="Supprimer définitivement le compte et l'accès à MikroLan2"
+          title={t('account.deleteAccount')}
+          subtitle={t('account.deleteAccountSubtitle')}
           danger
           open={editingDelete}
           onPress={() => setEditingDelete((v) => !v)}
@@ -437,13 +435,13 @@ export default function AccountScreen() {
             {me?.user.hasPassword ? (
               <>
                 <Field
-                  label="Confirmez avec votre mot de passe"
+                  label={t('account.confirmPassword')}
                   value={deletePassword}
                   onChangeText={setDeletePassword}
                   secureTextEntry
                 />
                 <Button
-                  title="Supprimer définitivement mon compte"
+                  title={t('account.deleteConfirm')}
                   variant="danger"
                   onPress={confirmDeleteAccount}
                   loading={deleteBusy}
@@ -452,7 +450,7 @@ export default function AccountScreen() {
               </>
             ) : (
               <Banner tone="danger">
-                Définissez d'abord un mot de passe ci-dessus pour confirmer la suppression.
+                {t('account.deleteSetPasswordFirst')}
               </Banner>
             )}
           </View>
@@ -461,14 +459,14 @@ export default function AccountScreen() {
         <View style={{ gap: 8, alignItems: 'center', marginTop: 24 }}>
           <View style={{ flexDirection: 'row', gap: 16 }}>
             <Press onPress={() => Linking.openURL('https://api.mikrolan.net/api/legal/terms')}>
-              <Text style={{ color: theme.primary, fontSize: 12 }}>CGU</Text>
+              <Text style={{ color: theme.primary, fontSize: 12 }}>{t('common.cgu')}</Text>
             </Press>
             <Press onPress={() => Linking.openURL('https://api.mikrolan.net/api/legal/privacy')}>
-              <Text style={{ color: theme.primary, fontSize: 12 }}>Politique de confidentialité</Text>
+              <Text style={{ color: theme.primary, fontSize: 12 }}>{t('common.privacyPolicy')}</Text>
             </Press>
           </View>
           <Text style={{ color: theme.textMuted, fontSize: 12 }}>
-            MikroLan2 v{version}
+            {t('common.version', { version })}
           </Text>
         </View>
       </ScrollView>

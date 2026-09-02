@@ -3,6 +3,7 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } fro
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { api, extractErrorMessage } from '@/src/lib/api';
 import {
   Banner,
@@ -18,6 +19,7 @@ import {
 
 /** Header minimal, sans requête `/auth/me` — cet écran est accessible déconnecté. */
 function UnauthHeader({ title }: { title: string }) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   return (
@@ -39,7 +41,7 @@ function UnauthHeader({ title }: { title: string }) {
         }}
       >
         <Pressable
-          accessibilityLabel="Retour"
+          accessibilityLabel={t('common.back')}
           onPress={() => router.back()}
           hitSlop={8}
           style={{
@@ -64,6 +66,7 @@ function UnauthHeader({ title }: { title: string }) {
 }
 
 export default function ForgotPasswordScreen() {
+  const { t } = useTranslation();
   const router = useRouter();
   const [step, setStep] = useState<'request' | 'confirm'>('request');
   const [email, setEmail] = useState('');
@@ -110,13 +113,13 @@ export default function ForgotPasswordScreen() {
   if (done) {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
-        <UnauthHeader title="Mot de passe réinitialisé" />
+        <UnauthHeader title={t('forgotPassword.resetDone')} />
         <Screen>
           <View style={{ padding: space.lg, gap: space.lg }}>
             <Banner tone="success">
-              Ton mot de passe a été mis à jour. Connecte-toi avec le nouveau.
+              {t('forgotPassword.resetSuccess')}
             </Banner>
-            <Button title="Retour à la connexion" onPress={() => router.replace('/login')} />
+            <Button title={t('forgotPassword.backToLogin')} onPress={() => router.replace('/login')} />
           </View>
         </Screen>
       </View>
@@ -125,7 +128,7 @@ export default function ForgotPasswordScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <UnauthHeader title="Mot de passe oublié" />
+      <UnauthHeader title={t('forgotPassword.title')} />
       <Screen>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -140,19 +143,19 @@ export default function ForgotPasswordScreen() {
             {step === 'request' ? (
               <>
                 <Text style={{ color: theme.textMuted, fontSize: type.body }}>
-                  Entre ton e-mail, on t'envoie un code à 6 chiffres.
+                  {t('forgotPassword.enterEmail')}
                 </Text>
                 <OutlinedField
-                  label="E-mail"
+                  label={t('login.email')}
                   value={email}
                   onChangeText={setEmail}
                   keyboardType="email-address"
                   autoComplete="email"
                   autoCapitalize="none"
-                  placeholder="vous@exemple.ci"
+                  placeholder={t('login.emailPlaceholder')}
                 />
                 <Button
-                  title="Envoyer le code"
+                  title={t('forgotPassword.sendCode')}
                   onPress={requestCode}
                   loading={busy}
                   disabled={!canRequest}
@@ -161,31 +164,31 @@ export default function ForgotPasswordScreen() {
             ) : (
               <>
                 <Text style={{ color: theme.textMuted, fontSize: type.body }}>
-                  Code envoyé à {email}. Entre-le avec ton nouveau mot de passe.
+                  {t('forgotPassword.codeSent', { email })}
                 </Text>
                 <OutlinedField
-                  label="Code à 6 chiffres"
+                  label={t('forgotPassword.codeLabel')}
                   value={code}
                   onChangeText={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))}
                   keyboardType="number-pad"
-                  placeholder="123456"
+                  placeholder={t('forgotPassword.codePlaceholder')}
                 />
                 <OutlinedField
-                  label="Nouveau mot de passe"
+                  label={t('forgotPassword.newPassword')}
                   value={newPassword}
                   onChangeText={setNewPassword}
                   secureTextEntry={!showPassword}
                   onToggleSecure={() => setShowPassword((v) => !v)}
-                  placeholder="12 caractères minimum"
+                  placeholder={t('forgotPassword.newPasswordPlaceholder')}
                 />
                 <Button
-                  title="Réinitialiser le mot de passe"
+                  title={t('forgotPassword.resetPassword')}
                   onPress={confirmReset}
                   loading={busy}
                   disabled={!canConfirm}
                 />
                 <Button
-                  title="Renvoyer le code"
+                  title={t('forgotPassword.resendCode')}
                   variant="ghost"
                   onPress={requestCode}
                   loading={busy}

@@ -9,6 +9,7 @@ import {
   Text,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, type SupportTicketSummary, type SupportTicketDetail, type TicketMessage } from '@/src/lib/api';
 import { describeError } from '@/src/lib/errors';
@@ -37,12 +38,13 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 function StatusBadge({ status }: { status: string }) {
+  const { t } = useTranslation();
   const color = STATUS_COLORS[status] ?? theme.textMuted;
   const labels: Record<string, string> = {
-    OPEN: 'Ouvert',
-    IN_PROGRESS: 'En cours',
-    RESOLVED: 'Résolu',
-    CLOSED: 'Fermé',
+    OPEN: t('support.statusOpen'),
+    IN_PROGRESS: t('support.statusInProgress'),
+    RESOLVED: t('support.statusResolved'),
+    CLOSED: t('support.statusClosed'),
   };
   return (
     <View
@@ -161,6 +163,7 @@ function TicketDetail({
   ticketId: string;
   onBack: () => void;
 }) {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const toast = useToast();
   const [body, setBody] = useState('');
@@ -226,7 +229,7 @@ function TicketDetail({
               <TextInput
                 value={body}
                 onChangeText={setBody}
-                placeholder="Votre message..."
+                placeholder={t('support.yourMessage')}
                 placeholderTextColor={theme.textMuted}
                 multiline
                 style={{
@@ -240,7 +243,7 @@ function TicketDetail({
                 }}
               />
               <Press
-                accessibilityLabel="Envoyer"
+                accessibilityLabel={t('common.send')}
                 onPress={() => {
                   if (body.trim()) sendMutation.mutate();
                 }}
@@ -270,6 +273,7 @@ function TicketDetail({
 }
 
 function CreateTicketForm({ onCreated }: { onCreated: (id: string) => void }) {
+  const { t } = useTranslation();
   const toast = useToast();
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
@@ -280,7 +284,7 @@ function CreateTicketForm({ onCreated }: { onCreated: (id: string) => void }) {
     setBusy(true);
     try {
       const ticket = await api.support.createTicket(subject.trim(), body.trim());
-      toast.success('Ticket créé.');
+      toast.success(t('support.ticketCreated'));
       onCreated(ticket.id);
     } catch (e) {
       toast.error(describeError(e).message);
@@ -293,15 +297,15 @@ function CreateTicketForm({ onCreated }: { onCreated: (id: string) => void }) {
     <ScrollView
       contentContainerStyle={{ padding: space.lg, gap: space.lg }}
     >
-      <Title>Nouveau ticket</Title>
+      <Title>{t('support.newTicketTitle')}</Title>
       <View style={{ gap: space.sm }}>
         <Text style={{ color: theme.text, fontWeight: '600', fontSize: type.body }}>
-          Sujet
+          {t('support.subject')}
         </Text>
         <TextInput
           value={subject}
           onChangeText={setSubject}
-          placeholder="Ex: Problème de connexion routeur"
+          placeholder={t('support.subjectPlaceholder')}
           placeholderTextColor={theme.textMuted}
           style={{
             backgroundColor: theme.surface,
@@ -316,12 +320,12 @@ function CreateTicketForm({ onCreated }: { onCreated: (id: string) => void }) {
       </View>
       <View style={{ gap: space.sm }}>
         <Text style={{ color: theme.text, fontWeight: '600', fontSize: type.body }}>
-          Description
+          {t('support.description')}
         </Text>
         <TextInput
           value={body}
           onChangeText={setBody}
-          placeholder="Décrivez votre problème en détail..."
+          placeholder={t('support.descriptionPlaceholder')}
           placeholderTextColor={theme.textMuted}
           multiline
           numberOfLines={5}
@@ -339,7 +343,7 @@ function CreateTicketForm({ onCreated }: { onCreated: (id: string) => void }) {
         />
       </View>
       <Button
-        title="Envoyer"
+        title={t('common.send')}
         variant="primary"
         onPress={submit}
         loading={busy}
@@ -350,6 +354,7 @@ function CreateTicketForm({ onCreated }: { onCreated: (id: string) => void }) {
 }
 
 export default function SupportScreen() {
+  const { t } = useTranslation();
   const navHeight = useBottomNavHeight();
   const qc = useQueryClient();
   const [view, setView] = useState<'list' | 'create' | { id: string }>('list');
@@ -377,7 +382,7 @@ export default function SupportScreen() {
   if (view === 'create') {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
-        <AppHeader title="Support" back />
+        <AppHeader title={t('support.title')} back />
         <CreateTicketForm
           onCreated={(id) => {
             qc.invalidateQueries({ queryKey: ['support-tickets'] });
@@ -391,7 +396,7 @@ export default function SupportScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title="Support / SAV" back />
+      <AppHeader title={t('support.title')} back />
       <FlatList
         data={ticketsQuery.data?.items ?? []}
         keyExtractor={(t) => t.id}
@@ -406,9 +411,9 @@ export default function SupportScreen() {
         ListHeaderComponent={
           <FadeIn>
             <Row style={{ justifyContent: 'space-between', marginBottom: space.md }}>
-              <Title>Mes tickets</Title>
+              <Title>{t('support.myTickets')}</Title>
               <Button
-                title="+ Nouveau"
+                title={t('support.newTicket')}
                 variant="primary"
                 onPress={() => setView('create')}
               />
@@ -433,8 +438,7 @@ export default function SupportScreen() {
               <View style={{ alignItems: 'center', padding: space.xxl, gap: space.md }}>
                 <Ionicons name="chatbubbles-outline" size={48} color={theme.textMuted} />
                 <Text style={{ color: theme.textMuted, fontSize: type.body, textAlign: 'center' }}>
-                  Aucun ticket pour le moment.{'\n'}
-                  Créez-en un si vous avez besoin d'aide.
+                  {t('support.noTicket')}
                 </Text>
               </View>
             </FadeIn>

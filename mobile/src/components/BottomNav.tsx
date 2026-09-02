@@ -2,12 +2,13 @@ import { View, Text, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/src/lib/api';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
 import { icon, space, theme, type, type IoniconName } from './ui';
 
-type Tab = { key: string; label: string; icon: IoniconName; href: Href };
+type Tab = { key: string; labelKey: string; icon: IoniconName; href: Href };
 
 const TAB_ROW = space.sm - 2 + icon.md + 2 + type.micro + 6 + space.sm; // ≈ 50
 const ROUTER_STRIP = space.sm - 2 + type.micro + 6 + space.sm - 2 + 1; // ≈ 27
@@ -25,18 +26,17 @@ export function useBottomNavHeight(): number {
   );
 }
 
-// Global tab set: Maison/Routeurs/Paramètres (Modèles masqué — pas encore backé).
 const GLOBAL_TABS: Tab[] = [
-  { key: 'index', label: 'Maison', icon: 'home-outline', href: '/(tabs)' },
+  { key: 'index', labelKey: 'bottomNav.home', icon: 'home-outline', href: '/(tabs)' },
   {
     key: 'routeurs',
-    label: 'Routeurs',
+    labelKey: 'bottomNav.routers',
     icon: 'hardware-chip-outline',
     href: '/(tabs)/routeurs',
   },
   {
     key: 'account',
-    label: 'Paramètres',
+    labelKey: 'bottomNav.settings',
     icon: 'person-outline',
     href: '/(tabs)/account',
   },
@@ -49,31 +49,31 @@ function routerTabs(routerId: string): Tab[] {
   return [
     {
       key: 'index',
-      label: 'Maison',
+      labelKey: 'bottomNav.home',
       icon: 'home-outline',
       href: `/router/${routerId}` as Href,
     },
     {
       key: 'plans',
-      label: 'Plans',
+      labelKey: 'bottomNav.plans',
       icon: 'layers-outline',
       href: { pathname: '/plans', params: { routerId } } as Href,
     },
     {
       key: 'tickets',
-      label: 'Tickets',
+      labelKey: 'bottomNav.tickets',
       icon: 'ticket-outline',
       href: { pathname: '/generate-vouchers', params: { routerId } } as Href,
     },
     {
       key: 'fichiers',
-      label: 'Fichiers',
+      labelKey: 'bottomNav.files',
       icon: 'folder-outline',
       href: { pathname: '/fichiers', params: { routerId } } as Href,
     },
     {
       key: 'rapport',
-      label: 'Rapport',
+      labelKey: 'bottomNav.report',
       icon: 'bar-chart-outline',
       href: { pathname: '/(tabs)/rapport', params: { routerId } } as Href,
     },
@@ -85,6 +85,7 @@ function routerTabs(routerId: string): Tab[] {
 // ActiveRouterProvider) — global mode vs router-connected mode, mirroring
 // the MikroTicket reference's dual navigation.
 export function BottomNav({ active }: { active?: string }) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { activeRouterId, clearActiveRouter } = useActiveRouter();
@@ -117,7 +118,7 @@ export function BottomNav({ active }: { active?: string }) {
       {activeRouterId ? (
         <Pressable
           onPress={exitRouterMode}
-          accessibilityLabel="Quitter le mode routeur"
+          accessibilityLabel={t('bottomNav.exitRouterMode')}
           style={{
             flexDirection: 'row',
             alignItems: 'center',
@@ -133,13 +134,13 @@ export function BottomNav({ active }: { active?: string }) {
           <Text style={{ color: theme.text, fontSize: type.micro, fontWeight: '700' }}>
             {activeRouterQuery.data?.alias ||
               activeRouterQuery.data?.identity ||
-              'Routeur'}
+              t('bottomNav.router')}
           </Text>
           <Text style={{ color: theme.textMuted, fontSize: type.micro }}>·</Text>
           <Text
             style={{ color: theme.primary, fontSize: type.micro, fontWeight: '700' }}
           >
-            Quitter
+            {t('bottomNav.exit')}
           </Text>
         </Pressable>
       ) : null}
@@ -150,17 +151,18 @@ export function BottomNav({ active }: { active?: string }) {
           flexDirection: 'row',
         }}
       >
-        {tabs.map((t) => {
-          const on = t.key === active;
+        {tabs.map((tab) => {
+          const on = tab.key === active;
+          const label = t(tab.labelKey);
           return (
             <Pressable
-              key={t.key}
-              accessibilityLabel={t.label}
-              onPress={() => router.navigate(t.href)}
+              key={tab.key}
+              accessibilityLabel={label}
+              onPress={() => router.navigate(tab.href)}
               style={{ flex: 1, alignItems: 'center', gap: 2, paddingVertical: 0 }}
             >
               <Ionicons
-                name={t.icon}
+                name={tab.icon}
                 size={icon.md}
                 color={on ? theme.primary : theme.textMuted}
               />
@@ -172,7 +174,7 @@ export function BottomNav({ active }: { active?: string }) {
                   color: on ? theme.primary : theme.textMuted,
                 }}
               >
-                {t.label}
+                {label}
               </Text>
             </Pressable>
           );
