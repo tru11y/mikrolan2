@@ -33,9 +33,9 @@ import {
   SkeletonCard,
   space,
   Subtitle,
-  theme,
   Title,
 } from '@/src/components/ui';
+import { useTheme, darkColors } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
@@ -43,9 +43,9 @@ const MAC_RE = /^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$/;
 const IP_RE = /^(\d{1,3}\.){3}\d{1,3}$/;
 
 const TYPE_META_KEYS: Record<IpBindingType, { color: string; key: string }> = {
-  bypassed: { color: theme.success, key: 'ipBindings.authorized' },
-  blocked: { color: theme.danger, key: 'ipBindings.blocked' },
-  regular: { color: theme.textMuted, key: 'ipBindings.standard' },
+  bypassed: { color: darkColors.success, key: 'ipBindings.authorized' },
+  blocked: { color: darkColors.danger, key: 'ipBindings.blocked' },
+  regular: { color: darkColors.textMuted, key: 'ipBindings.standard' },
 };
 
 function TypeDot({ type }: { type: IpBindingType }) {
@@ -62,6 +62,7 @@ function TypeDot({ type }: { type: IpBindingType }) {
 }
 
 export default function IpBindingsScreen() {
+  const theme = useTheme();
   const { t } = useTranslation();
   const navHeight = useBottomNavHeight();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();

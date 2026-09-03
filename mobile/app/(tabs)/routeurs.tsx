@@ -20,15 +20,16 @@ import {
   Row,
   SkeletonCard,
   space,
-  theme,
   type,
   weight,
 } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 import { RouterStatusDot } from '@/src/components/RouterStatusDot';
 
 export default function RouteursScreen() {
+  const theme = useTheme();
   const { t } = useTranslation();
   const router = useRouter();
   const navHeight = useBottomNavHeight();

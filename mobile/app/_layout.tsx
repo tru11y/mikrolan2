@@ -11,57 +11,70 @@ import { LiveEventsProvider } from '@/src/providers/live-events-provider';
 import { PushNotificationsProvider } from '@/src/providers/push-notifications-provider';
 import { PaywallLock } from '@/src/components/PaywallLock';
 import { ErrorBoundary } from '@/src/components/ErrorBoundary';
-import { theme, ToastProvider } from '@/src/components/ui';
+import { ToastProvider } from '@/src/components/ui';
+import { ThemeProvider, useTheme, useThemeMode } from '@/src/providers/theme-provider';
+
+function AppContent() {
+  const theme = useTheme();
+  const { mode } = useThemeMode();
+  return (
+    <>
+      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: theme.bg },
+          animation: 'slide_from_right',
+          animationDuration: 220,
+          gestureEnabled: true,
+        }}
+      >
+        <Stack.Screen
+          name="login"
+          options={{ gestureEnabled: false, animation: 'none' }}
+        />
+        <Stack.Screen
+          name="add-router"
+          options={{
+            presentation: 'modal',
+            animation: 'slide_from_bottom',
+          }}
+        />
+        <Stack.Screen
+          name="pro"
+          options={{ animation: 'slide_from_bottom' }}
+        />
+        <Stack.Screen
+          name="notifications"
+          options={{ animation: 'slide_from_bottom' }}
+        />
+      </Stack>
+      <PaywallLock />
+    </>
+  );
+}
 
 function RootLayout() {
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
-        <QueryProvider>
-          <ToastProvider>
-            <AuthProvider>
-              <PushNotificationsProvider>
-                <AppLockProvider>
-                  <ActiveRouterProvider>
-                    <LiveEventsProvider>
-                      <StatusBar style="light" />
-                      <Stack
-                        screenOptions={{
-                          headerShown: false,
-                          contentStyle: { backgroundColor: theme.bg },
-                          animation: 'slide_from_right',
-                          animationDuration: 220,
-                          gestureEnabled: true,
-                        }}
-                      >
-                        <Stack.Screen
-                          name="login"
-                          options={{ gestureEnabled: false, animation: 'none' }}
-                        />
-                        <Stack.Screen
-                          name="add-router"
-                          options={{
-                            presentation: 'modal',
-                            animation: 'slide_from_bottom',
-                          }}
-                        />
-                        <Stack.Screen
-                          name="pro"
-                          options={{ animation: 'slide_from_bottom' }}
-                        />
-                        <Stack.Screen
-                          name="notifications"
-                          options={{ animation: 'slide_from_bottom' }}
-                        />
-                      </Stack>
-                      <PaywallLock />
-                    </LiveEventsProvider>
-                  </ActiveRouterProvider>
-                </AppLockProvider>
-              </PushNotificationsProvider>
-            </AuthProvider>
-          </ToastProvider>
-        </QueryProvider>
+        <ThemeProvider>
+          <QueryProvider>
+            <ToastProvider>
+              <AuthProvider>
+                <PushNotificationsProvider>
+                  <AppLockProvider>
+                    <ActiveRouterProvider>
+                      <LiveEventsProvider>
+                        <AppContent />
+                      </LiveEventsProvider>
+                    </ActiveRouterProvider>
+                  </AppLockProvider>
+                </PushNotificationsProvider>
+              </AuthProvider>
+            </ToastProvider>
+          </QueryProvider>
+        </ThemeProvider>
       </ErrorBoundary>
     </SafeAreaProvider>
   );

@@ -27,8 +27,8 @@ import {
   NumberField,
   Press,
   Screen,
-  theme,
 } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 import { AppHeader } from '@/src/components/AppHeader';
 
 type TestState =
@@ -58,6 +58,7 @@ function dedupeIdentity(base: string, taken: Set<string>): string {
 }
 
 export default function AddRouterScreen() {
+  const theme = useTheme();
   const { t } = useTranslation();
   const router = useRouter();
   const qc = useQueryClient();

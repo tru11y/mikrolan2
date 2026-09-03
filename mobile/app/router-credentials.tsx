@@ -15,7 +15,8 @@ import {
   saveLocalCredentials,
   parseAddress,
 } from '@/src/lib/router-credentials';
-import { Banner, Button, Card, Field, NumberField, Screen, theme } from '@/src/components/ui';
+import { Banner, Button, Card, Field, NumberField, Screen } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 import { AppHeader } from '@/src/components/AppHeader';
 
 /**
@@ -35,6 +36,7 @@ type TestState =
   | { kind: 'error'; message: string };
 
 export default function RouterCredentialsScreen() {
+  const theme = useTheme();
   const { t } = useTranslation();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const router = useRouter();

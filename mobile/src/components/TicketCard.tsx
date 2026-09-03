@@ -3,7 +3,7 @@ import * as Clipboard from 'expo-clipboard';
 import { useState } from 'react';
 import QRCode from 'react-native-qrcode-svg';
 import { Ionicons } from '@expo/vector-icons';
-import { theme } from './ui';
+import { useTheme } from '@/src/providers/theme-provider';
 
 // Physical-ticket look (white card) — matches the reference "TicketPreviewModal"
 // format so a printed/screenshotted ticket reads correctly on paper.
@@ -14,6 +14,7 @@ export function TicketCard({
   durationLabel,
   ticketNumber,
   createdAt,
+  wifiName,
   compact = false,
 }: {
   code: string;
@@ -22,8 +23,10 @@ export function TicketCard({
   durationLabel: string;
   ticketNumber?: number;
   createdAt?: Date;
+  wifiName?: string;
   compact?: boolean;
 }) {
+  const theme = useTheme();
   const [copied, setCopied] = useState(false);
   const qrSize = compact ? 84 : 130;
 
@@ -66,7 +69,7 @@ export function TicketCard({
             letterSpacing: 0.6,
           }}
         >
-          PASS WIFI MIKROLAN2
+          {wifiName || 'PASS WIFI'}
         </Text>
       </View>
 

@@ -11,13 +11,14 @@ import {
   Label,
   space,
   Subtitle,
-  theme,
   Title,
 } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
 export default function HotspotSetupScreen() {
+  const theme = useTheme();
   const { t } = useTranslation();
   const navHeight = useBottomNavHeight();
   const router = useRouter();

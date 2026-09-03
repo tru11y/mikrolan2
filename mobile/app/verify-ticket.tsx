@@ -14,13 +14,13 @@ import {
   Row,
   space,
   Subtitle,
-  theme,
   Title,
   type,
   weight,
   withAlpha,
   type IoniconName,
 } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
@@ -32,11 +32,6 @@ type Verdict = {
   result: VoucherVerificationResult;
 };
 
-const TONE_COLOR: Record<Verdict['tone'], string> = {
-  valid: theme.success,
-  used: theme.warning,
-  invalid: theme.danger,
-};
 
 function fmtDuration(min: number): string {
   if (min % 1440 === 0) return `${min / 1440} j`;
@@ -113,6 +108,7 @@ function verdictFor(r: VoucherVerificationResult, t: (key: string, opts?: Record
 }
 
 function InfoRow({ label, value, color }: { label: string; value: string; color?: string }) {
+  const theme = useTheme();
   return (
     <Row>
       <Text style={{ color: theme.textMuted, fontSize: type.caption }}>{label}</Text>
@@ -130,6 +126,7 @@ function InfoRow({ label, value, color }: { label: string; value: string; color?
 }
 
 export default function VerifyTicketScreen() {
+  const theme = useTheme();
   const { t } = useTranslation();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const navHeight = useBottomNavHeight();
@@ -166,7 +163,12 @@ export default function VerifyTicketScreen() {
     }
   }
 
-  const accent = verdict ? TONE_COLOR[verdict.tone] : theme.primary;
+  const toneColor: Record<Verdict['tone'], string> = {
+    valid: theme.success,
+    used: theme.warning,
+    invalid: theme.danger,
+  };
+  const accent = verdict ? toneColor[verdict.tone] : theme.primary;
   const r = verdict?.result;
   const s = r?.session;
 

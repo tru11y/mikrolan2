@@ -6,7 +6,8 @@ import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/src/lib/api';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
-import { icon, space, theme, type, type IoniconName } from './ui';
+import { icon, space, type, type IoniconName } from './ui';
+import { useTheme } from '@/src/providers/theme-provider';
 
 type Tab = { key: string; labelKey: string; icon: IoniconName; href: Href };
 
@@ -85,6 +86,7 @@ function routerTabs(routerId: string): Tab[] {
 // ActiveRouterProvider) — global mode vs router-connected mode, mirroring
 // the MikroTicket reference's dual navigation.
 export function BottomNav({ active }: { active?: string }) {
+  const theme = useTheme();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const router = useRouter();

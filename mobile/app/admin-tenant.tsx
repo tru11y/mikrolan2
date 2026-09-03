@@ -18,21 +18,23 @@ import {
   SkeletonCard,
   space,
   Subtitle,
-  theme,
   Title,
   type,
 } from '@/src/components/ui';
+import { useTheme, type ThemeColors } from '@/src/providers/theme-provider';
 import { AppHeader } from '@/src/components/AppHeader';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 
-const HEALTH_COLORS: Record<string, string> = {
-  ONLINE: theme.success,
-  OFFLINE: theme.danger,
-  ERROR: theme.danger,
-  UNKNOWN: theme.textMuted,
-};
+function healthColor(t: ThemeColors, status: string): string {
+  switch (status) {
+    case 'ONLINE': return t.success;
+    case 'OFFLINE': case 'ERROR': return t.danger;
+    default: return t.textMuted;
+  }
+}
 
 export default function AdminTenantScreen() {
+  const theme = useTheme();
   const { t: tr } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const navHeight = useBottomNavHeight();
@@ -145,7 +147,7 @@ export default function AdminTenantScreen() {
                             width: 10,
                             height: 10,
                             borderRadius: 5,
-                            backgroundColor: HEALTH_COLORS[r.health] ?? theme.textMuted,
+                            backgroundColor: healthColor(theme, r.health),
                           }}
                         />
                       </Row>
