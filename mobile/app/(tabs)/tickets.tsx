@@ -18,6 +18,7 @@ import {
   space,
   Subtitle,
   Title,
+  withAlpha,
 } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
@@ -64,7 +65,7 @@ export default function TicketsScreen() {
             width: 40,
             height: 40,
             borderRadius: 12,
-            backgroundColor: theme.primary + '22',
+            backgroundColor: withAlpha(theme.primary, 0.13),
             alignItems: 'center',
             justifyContent: 'center',
           }}
@@ -121,7 +122,7 @@ export default function TicketsScreen() {
                         width: 40,
                         height: 40,
                         borderRadius: 12,
-                        backgroundColor: theme.primary + '22',
+                        backgroundColor: withAlpha(theme.primary, 0.13),
                         alignItems: 'center',
                         justifyContent: 'center',
                       }}

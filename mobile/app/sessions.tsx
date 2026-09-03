@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Animated, ScrollView, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +20,7 @@ import {
   space,
   Subtitle,
   Title,
+  withAlpha,
 } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
@@ -279,9 +280,9 @@ export default function SessionsScreen() {
                           width: 40,
                           height: 40,
                           borderRadius: 20,
-                          backgroundColor: theme.success + '22',
+                          backgroundColor: withAlpha(theme.success, 0.13),
                           borderWidth: 1,
-                          borderColor: theme.success + '55',
+                          borderColor: withAlpha(theme.success, 0.33),
                           alignItems: 'center',
                           justifyContent: 'center',
                         }}
@@ -317,7 +318,7 @@ export default function SessionsScreen() {
                       borderRadius: 11,
                       borderWidth: 1,
                       borderColor: theme.border,
-                      backgroundColor: theme.danger + '18',
+                      backgroundColor: withAlpha(theme.danger, 0.09),
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}

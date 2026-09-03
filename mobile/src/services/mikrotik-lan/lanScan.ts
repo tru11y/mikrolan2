@@ -10,18 +10,20 @@ const PROBE_TIMEOUT_MS = 1400;
 async function isRouter(host: string, port: number): Promise<boolean> {
   return new Promise((resolve) => {
     let done = false;
+    let socket: ReturnType<typeof TcpSocket.createConnection> | null = null;
     const finish = (v: boolean) => {
       if (done) return;
       done = true;
       try {
-        socket.destroy();
+        socket?.destroy();
       } catch {
         // ignore
       }
+      socket = null;
       resolve(v);
     };
     const timer = setTimeout(() => finish(false), PROBE_TIMEOUT_MS);
-    const socket = TcpSocket.createConnection(
+    socket = TcpSocket.createConnection(
       { host, port, interface: 'wifi' },
       () => {
         clearTimeout(timer);

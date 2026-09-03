@@ -13,6 +13,7 @@ import {
   space,
   Subtitle,
   Title,
+  withAlpha,
 } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
@@ -173,9 +174,9 @@ export default function InternetSharingScreen() {
                   width: 56,
                   height: 56,
                   borderRadius: 16,
-                  backgroundColor: theme.success + '22',
+                  backgroundColor: withAlpha(theme.success, 0.13),
                   borderWidth: 1,
-                  borderColor: theme.success + '55',
+                  borderColor: withAlpha(theme.success, 0.33),
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
@@ -198,9 +199,9 @@ export default function InternetSharingScreen() {
               />
               <View
                 style={{
-                  backgroundColor: theme.danger + '18',
+                  backgroundColor: withAlpha(theme.danger, 0.09),
                   borderWidth: 1,
-                  borderColor: theme.danger + '44',
+                  borderColor: withAlpha(theme.danger, 0.27),
                   borderRadius: 8,
                   paddingHorizontal: 8,
                   paddingVertical: 3,
@@ -225,9 +226,9 @@ export default function InternetSharingScreen() {
                   width: 56,
                   height: 56,
                   borderRadius: 16,
-                  backgroundColor: theme.danger + '22',
+                  backgroundColor: withAlpha(theme.danger, 0.13),
                   borderWidth: 1,
-                  borderColor: theme.danger + '55',
+                  borderColor: withAlpha(theme.danger, 0.33),
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
