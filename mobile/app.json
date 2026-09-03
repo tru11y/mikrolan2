@@ -49,7 +49,9 @@
         {
           "disableAutoUpload": true
         }
-      ]
+      ],
+      "@sentry/react-native",
+      "expo-localization"
     ],
     "extra": {
       "googleWebClientId": "909364359384-57o9ruqp1te770por27p04ekv3q37v3t.apps.googleusercontent.com",

@@ -20,9 +20,9 @@ import {
   Label,
   space,
   Subtitle,
-  theme,
   Title,
 } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
@@ -35,6 +35,7 @@ function Toggle({
   value: boolean;
   onValueChange: (v: boolean) => void;
 }) {
+  const theme = useTheme();
   return (
     <View
       style={{
@@ -58,10 +59,12 @@ function Toggle({
 }
 
 function Divider() {
+  const theme = useTheme();
   return <View style={{ height: 1, backgroundColor: theme.border }} />;
 }
 
 export default function TicketSettingsScreen() {
+  const theme = useTheme();
   const { t } = useTranslation();
   const navHeight = useBottomNavHeight();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
@@ -186,6 +189,16 @@ export default function TicketSettingsScreen() {
           value={tpl.showWifiName}
           onValueChange={(v) => set('showWifiName', v)}
         />
+        {tpl.showWifiName ? (
+          <View style={{ paddingBottom: 14 }}>
+            <Field
+              label={t('ticketSettings.wifiNameLabel')}
+              value={tpl.wifiName ?? ''}
+              onChangeText={(v) => set('wifiName', v)}
+              placeholder={t('ticketSettings.wifiNamePlaceholder')}
+            />
+          </View>
+        ) : null}
         <Divider />
 
         <Toggle

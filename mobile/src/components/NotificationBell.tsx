@@ -5,7 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api } from '@/src/lib/api';
 import { useLiveEvents } from '@/src/providers/live-events-provider';
-import { Press, theme, useReduceMotion } from './ui';
+import { Press, useReduceMotion } from './ui';
+import { useTheme } from '@/src/providers/theme-provider';
 
 /**
  * Cloche + compteur. Le flux est tenu par `LiveEventsProvider` (sondage 5 s au
@@ -13,6 +14,7 @@ import { Press, theme, useReduceMotion } from './ui';
  * évènement tombe pour que le changement de badge ne passe pas inaperçu.
  */
 export function NotificationBell() {
+  const theme = useTheme();
   const router = useRouter();
   const reduced = useReduceMotion();
   const { lastEventAt } = useLiveEvents();

@@ -17,9 +17,9 @@ import {
   FadeIn,
   Press,
   Skeleton,
-  theme,
   useToast,
 } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
@@ -27,6 +27,7 @@ import { AppHeader } from '@/src/components/AppHeader';
 const MAX_QUANTITY = 500;
 
 function FieldLabel({ children }: { children: string }) {
+  const theme = useTheme();
   return (
     <Text
       style={{
@@ -50,6 +51,7 @@ function fmtDuration(min: number): string {
 type OutputFormat = 'screen' | 'pdf';
 
 export default function GenerateVouchersScreen() {
+  const theme = useTheme();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const router = useRouter();
   const { t } = useTranslation();

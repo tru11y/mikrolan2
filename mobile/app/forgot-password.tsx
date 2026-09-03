@@ -13,12 +13,13 @@ import {
   icon,
   radius,
   space,
-  theme,
   type,
 } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 
 /** Header minimal, sans requête `/auth/me` — cet écran est accessible déconnecté. */
 function UnauthHeader({ title }: { title: string }) {
+  const theme = useTheme();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -66,6 +67,7 @@ function UnauthHeader({ title }: { title: string }) {
 }
 
 export default function ForgotPasswordScreen() {
+  const theme = useTheme();
   const { t } = useTranslation();
   const router = useRouter();
   const [step, setStep] = useState<'request' | 'confirm'>('request');
