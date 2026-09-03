@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Linking, ScrollView, Switch, Text, View, Pressable, FlatList } from 'react-native';
+import { Linking, Modal, ScrollView, Switch, Text, View, Pressable, FlatList } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,7 +14,7 @@ import { useBatteryOptimization } from '@/src/hooks/use-battery-optimization';
 import { useTheme } from '@/src/providers/theme-provider';
 import { useThemeMode } from '@/src/providers/theme-provider';
 import { api, extractErrorMessage } from '@/src/lib/api';
-import { Banner, Button, Field, Press, space, type } from '@/src/components/ui';
+import { Banner, Button, Field, Press, radius, space, type, withAlpha } from '@/src/components/ui';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
@@ -302,11 +302,23 @@ export default function AccountScreen() {
           open={showCountryPicker}
           onPress={() => setShowCountryPicker((v) => !v)}
         />
-        {showCountryPicker ? (
-          <View style={{ maxHeight: 300, borderWidth: 1, borderColor: theme.border, borderRadius: 12, marginBottom: 12 }}>
+        <Modal
+          visible={showCountryPicker}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => setShowCountryPicker(false)}
+        >
+          <View style={{ flex: 1, backgroundColor: theme.bg }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: space.lg, paddingTop: space.xl, paddingBottom: space.md, borderBottomWidth: 1, borderBottomColor: theme.border }}>
+              <Text style={{ flex: 1, color: theme.text, fontSize: type.title, fontWeight: '700' }}>{t('account.country')}</Text>
+              <Press accessibilityLabel={t('common.close')} onPress={() => setShowCountryPicker(false)} scaleTo={0.85}>
+                <Ionicons name="close" size={24} color={theme.textMuted} />
+              </Press>
+            </View>
             <FlatList
               data={COUNTRIES}
               keyExtractor={(c) => c.code}
+              contentContainerStyle={{ paddingBottom: space.xxl }}
               renderItem={({ item: c }) => (
                 <Pressable
                   onPress={() => selectCountry(c)}
@@ -314,22 +326,22 @@ export default function AccountScreen() {
                     flexDirection: 'row',
                     alignItems: 'center',
                     gap: 10,
-                    paddingVertical: 12,
-                    paddingHorizontal: 14,
-                    backgroundColor: (country === c.name || me?.user.country === c.name) ? theme.primary + '1A' : 'transparent',
+                    paddingVertical: 14,
+                    paddingHorizontal: space.lg,
+                    backgroundColor: (country === c.name || me?.user.country === c.name) ? withAlpha(theme.primary, 0.1) : 'transparent',
                   }}
                 >
-                  <Text style={{ fontSize: 20 }}>{c.flag}</Text>
-                  <Text style={{ color: theme.text, fontSize: 14, fontWeight: '500', flex: 1 }}>{c.name}</Text>
+                  <Text style={{ fontSize: 22 }}>{c.flag}</Text>
+                  <Text style={{ color: theme.text, fontSize: type.body, fontWeight: '500', flex: 1 }}>{c.name}</Text>
                   {(country === c.name || me?.user.country === c.name) ? (
-                    <Ionicons name="checkmark-circle" size={18} color={theme.primary} />
+                    <Ionicons name="checkmark-circle" size={20} color={theme.primary} />
                   ) : null}
                 </Pressable>
               )}
-              ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: theme.border }} />}
+              ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: theme.border, marginHorizontal: space.lg }} />}
             />
           </View>
-        ) : null}
+        </Modal>
         <Divider />
 
         <Divider />
