@@ -38,6 +38,7 @@ import {
   Title,
   type,
   useToast,
+  withAlpha,
 } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
 import { AppHeader } from '@/src/components/AppHeader';
@@ -203,8 +204,8 @@ function OverviewTab() {
               gap: space.md,
               alignItems: 'flex-start',
               borderWidth: 1,
-              borderColor: theme.gold + '66',
-              backgroundColor: theme.gold + '14',
+              borderColor: withAlpha(theme.gold, 0.4),
+              backgroundColor: withAlpha(theme.gold, 0.08),
               borderRadius: radius.md,
               padding: space.md,
             }}
@@ -465,7 +466,7 @@ function AccountsTab() {
               flex: 1,
               borderWidth: 1,
               borderColor: scope === s ? theme.primary : theme.border,
-              backgroundColor: scope === s ? theme.primary + '1A' : theme.surfaceAlt,
+              backgroundColor: scope === s ? withAlpha(theme.primary, 0.1) : theme.surfaceAlt,
               borderRadius: radius.md,
               paddingVertical: space.md - 2,
               alignItems: 'center',
@@ -961,7 +962,7 @@ export default function AdminScreen() {
                     flex: 1,
                     borderWidth: 1,
                     borderColor: active ? theme.primary : theme.border,
-                    backgroundColor: active ? theme.primary + '1A' : theme.surfaceAlt,
+                    backgroundColor: active ? withAlpha(theme.primary, 0.1) : theme.surfaceAlt,
                     borderRadius: radius.md,
                     paddingVertical: space.sm + 2,
                     alignItems: 'center',

@@ -34,6 +34,7 @@ import {
   space,
   Subtitle,
   Title,
+  withAlpha,
 } from '@/src/components/ui';
 import { useTheme, darkColors } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
@@ -294,7 +295,7 @@ export default function IpBindingsScreen() {
                     style={{
                       padding: 6,
                       borderRadius: 8,
-                      backgroundColor: theme.primary + '18',
+                      backgroundColor: withAlpha(theme.primary, 0.09),
                     }}
                   >
                     <Ionicons name="create-outline" size={16} color={theme.primary} />
@@ -306,7 +307,7 @@ export default function IpBindingsScreen() {
                     style={{
                       padding: 6,
                       borderRadius: 8,
-                      backgroundColor: theme.danger + '18',
+                      backgroundColor: withAlpha(theme.danger, 0.09),
                     }}
                   >
                     <Ionicons name="trash-outline" size={16} color={theme.danger} />

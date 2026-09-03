@@ -18,6 +18,7 @@ import {
   space,
   theme,
   type,
+  withAlpha,
 } from '@/src/components/ui';
 
 type Bubble = { id: number; from: 'bot' | 'me'; text: string };
@@ -179,7 +180,7 @@ export function ProAdvisor({
                 style={{
                   borderWidth: 1,
                   borderColor: c.primary ? theme.primary : theme.border,
-                  backgroundColor: c.primary ? theme.primary + '1A' : theme.surfaceAlt,
+                  backgroundColor: c.primary ? withAlpha(theme.primary, 0.1) : theme.surfaceAlt,
                   borderRadius: radius.md,
                   paddingVertical: space.md,
                   paddingHorizontal: space.lg,

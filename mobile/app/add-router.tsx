@@ -27,6 +27,7 @@ import {
   NumberField,
   Press,
   Screen,
+  withAlpha,
 } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
 import { AppHeader } from '@/src/components/AppHeader';
@@ -194,9 +195,9 @@ export default function AddRouterScreen() {
                   width: 48,
                   height: 48,
                   borderRadius: 14,
-                  backgroundColor: theme.secondary + '22',
+                  backgroundColor: withAlpha(theme.secondary, 0.13),
                   borderWidth: 1,
-                  borderColor: theme.secondary + '55',
+                  borderColor: withAlpha(theme.secondary, 0.33),
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}

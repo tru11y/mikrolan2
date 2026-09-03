@@ -17,6 +17,7 @@ import {
   space,
   type,
   useToast,
+  withAlpha,
 } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
@@ -144,7 +145,7 @@ export default function NotificationsScreen() {
                     borderRadius: radius.lg,
                     backgroundColor: n.read ? theme.surface : theme.surfaceAlt,
                     borderWidth: 1,
-                    borderColor: n.read ? theme.border : theme.primary + '55',
+                    borderColor: n.read ? theme.border : withAlpha(theme.primary, 0.33),
                     alignItems: 'flex-start',
                   }}
                 >
