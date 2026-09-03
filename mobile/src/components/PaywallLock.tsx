@@ -13,6 +13,7 @@ import {
   space,
   theme,
   type,
+  withAlpha,
 } from './ui';
 
 // Écrans qui restent accessibles une fois l'essai terminé : le client doit
@@ -70,9 +71,9 @@ export function PaywallLock() {
               width: 72,
               height: 72,
               borderRadius: radius.xl,
-              backgroundColor: theme.gold + '22',
+              backgroundColor: withAlpha(theme.gold, 0.13),
               borderWidth: 1,
-              borderColor: theme.gold + '55',
+              borderColor: withAlpha(theme.gold, 0.33),
               alignItems: 'center',
               justifyContent: 'center',
             }}

@@ -20,6 +20,7 @@ import {
   Title,
   type,
   useToast,
+  withAlpha,
 } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
 import { AppHeader } from '@/src/components/AppHeader';
@@ -183,7 +184,7 @@ export default function PaymentScreen() {
                   width: 72,
                   height: 72,
                   borderRadius: 36,
-                  backgroundColor: theme.success + '22',
+                  backgroundColor: withAlpha(theme.success, 0.13),
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
