@@ -12,9 +12,9 @@ import {
   Press,
   space,
   Subtitle,
-  theme,
   Title,
 } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
@@ -37,6 +37,7 @@ function OptionCard({
   subtitle: string;
   onPress: () => void;
 }) {
+  const theme = useTheme();
   return (
     <Press onPress={onPress}>
       <View
@@ -93,6 +94,7 @@ function OptionCard({
 }
 
 export default function InternetSharingScreen() {
+  const theme = useTheme();
   const { t } = useTranslation();
   const navHeight = useBottomNavHeight();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();

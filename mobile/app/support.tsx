@@ -22,24 +22,24 @@ import {
   Row,
   space,
   Skeleton,
-  theme,
   Title,
   type,
   useToast,
 } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 import { AppHeader } from '@/src/components/AppHeader';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 
-const STATUS_COLORS: Record<string, string> = {
-  OPEN: theme.primary,
-  IN_PROGRESS: theme.gold,
-  RESOLVED: theme.success,
-  CLOSED: theme.textMuted,
-};
-
 function StatusBadge({ status }: { status: string }) {
+  const theme = useTheme();
   const { t } = useTranslation();
-  const color = STATUS_COLORS[status] ?? theme.textMuted;
+  const statusColors: Record<string, string> = {
+    OPEN: theme.primary,
+    IN_PROGRESS: theme.gold,
+    RESOLVED: theme.success,
+    CLOSED: theme.textMuted,
+  };
+  const color = statusColors[status] ?? theme.textMuted;
   const labels: Record<string, string> = {
     OPEN: t('support.statusOpen'),
     IN_PROGRESS: t('support.statusInProgress'),
@@ -69,6 +69,7 @@ function TicketRow({
   ticket: SupportTicketSummary;
   onPress: () => void;
 }) {
+  const theme = useTheme();
   return (
     <Press
       accessibilityRole="button"
@@ -113,6 +114,7 @@ function TicketRow({
 }
 
 function MessageBubble({ msg }: { msg: TicketMessage }) {
+  const theme = useTheme();
   const isAdmin = msg.isAdmin;
   return (
     <View
@@ -162,7 +164,9 @@ function TicketDetail({
 }: {
   ticketId: string;
   onBack: () => void;
+
 }) {
+  const theme = useTheme();
   const { t } = useTranslation();
   const qc = useQueryClient();
   const toast = useToast();
@@ -273,6 +277,7 @@ function TicketDetail({
 }
 
 function CreateTicketForm({ onCreated }: { onCreated: (id: string) => void }) {
+  const theme = useTheme();
   const { t } = useTranslation();
   const toast = useToast();
   const [subject, setSubject] = useState('');
@@ -354,6 +359,7 @@ function CreateTicketForm({ onCreated }: { onCreated: (id: string) => void }) {
 }
 
 export default function SupportScreen() {
+  const theme = useTheme();
   const { t } = useTranslation();
   const navHeight = useBottomNavHeight();
   const qc = useQueryClient();

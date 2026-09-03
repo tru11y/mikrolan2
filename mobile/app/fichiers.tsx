@@ -11,7 +11,8 @@ import {
 } from '@/src/lib/api';
 import { printTickets, printTicketsDirect } from '@/src/lib/ticketsPdf';
 import { TicketCard } from '@/src/components/TicketCard';
-import { Badge, Banner, Button, ConfirmDialog, Empty, Press, Subtitle, Title, theme } from '@/src/components/ui';
+import { Badge, Banner, Button, ConfirmDialog, Empty, Press, Subtitle, Title } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
@@ -53,6 +54,7 @@ function batchFileName(b: VoucherBatch): string {
 type BatchAction = { batchId: string; kind: 'download' | 'print' } | null;
 
 export default function FichiersScreen() {
+  const theme = useTheme();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const qc = useQueryClient();
   const navHeight = useBottomNavHeight();

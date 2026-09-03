@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Modal, Pressable, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
-import { Button, Mono, theme } from './ui';
+import { Button, Mono } from './ui';
+import { useTheme } from '@/src/providers/theme-provider';
 
 // A voucher code shown with its scannable QR. Tap → full-screen enlarge so a
 // customer can scan it (or the operator can print/screenshot). See
@@ -13,6 +14,7 @@ export function TicketQr({
   code: string;
   size?: number;
 }) {
+  const theme = useTheme();
   const [open, setOpen] = useState(false);
   return (
     <>
