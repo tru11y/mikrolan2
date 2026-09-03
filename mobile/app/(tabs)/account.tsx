@@ -326,13 +326,8 @@ export default function AccountScreen() {
                     flexDirection: 'row',
                     alignItems: 'center',
                     gap: 10,
-<<<<<<< HEAD
                     paddingVertical: 14,
                     paddingHorizontal: space.lg,
-=======
-                    paddingVertical: 12,
-                    paddingHorizontal: 14,
->>>>>>> 64c3467 (fix(mobile): fix Sentry crashes — socket destroy and invalid colors)
                     backgroundColor: (country === c.name || me?.user.country === c.name) ? withAlpha(theme.primary, 0.1) : 'transparent',
                   }}
                 >
