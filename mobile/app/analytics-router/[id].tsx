@@ -18,9 +18,9 @@ import {
   Skeleton,
   space,
   Subtitle,
-  theme,
   Title,
 } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
@@ -34,6 +34,7 @@ const ALLOWED_PERIODS: AnalyticsPeriod[] = [
 ];
 
 export default function AnalyticsRouterDetailScreen() {
+  const theme = useTheme();
   const { t } = useTranslation();
   const { id, period: periodParam } = useLocalSearchParams<{ id: string; period?: string }>();
   const navHeight = useBottomNavHeight();

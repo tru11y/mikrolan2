@@ -15,10 +15,10 @@ import {
   Row,
   Skeleton,
   space,
-  theme,
   type,
   useToast,
 } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
@@ -39,6 +39,7 @@ function iconFor(type: string): keyof typeof Ionicons.glyphMap {
 
 /** Petit voyant : dit si le fil tourne, sans jargon technique. */
 function LiveDot({ live }: { live: boolean }) {
+  const theme = useTheme();
   const { t } = useTranslation();
   return (
     <Row style={{ gap: 6, justifyContent: 'flex-start' }}>
@@ -58,6 +59,7 @@ function LiveDot({ live }: { live: boolean }) {
 }
 
 export default function NotificationsScreen() {
+  const theme = useTheme();
   const { t } = useTranslation();
   const navHeight = useBottomNavHeight();
   const qc = useQueryClient();

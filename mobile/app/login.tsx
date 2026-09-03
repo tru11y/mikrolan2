@@ -23,11 +23,12 @@ import {
   Press,
   radius,
   space,
-  theme,
   type,
 } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 
 export default function LoginScreen() {
+  const theme = useTheme();
   const {
     login,
     signup,

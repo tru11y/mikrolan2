@@ -6,7 +6,8 @@ import { useQuery } from '@tanstack/react-query';
 import { api } from '@/src/lib/api';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
 import { NotificationBell } from './NotificationBell';
-import { icon, radius, routerHealth, space, theme, toneColor, type } from './ui';
+import { icon, radius, routerHealth, space, toneColor, type } from './ui';
+import { useTheme } from '@/src/providers/theme-provider';
 
 export const HEADER_HEIGHT = 56;
 
@@ -19,6 +20,7 @@ export const HEADER_HEIGHT = 56;
  * show underneath, so the router context is never lost.
  */
 export function AppHeader({ title, back }: { title: string; back?: boolean }) {
+  const theme = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { activeRouterId } = useActiveRouter();

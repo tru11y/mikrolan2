@@ -38,9 +38,9 @@ import {
   SkeletonCard,
   Subtitle,
   Title,
-  theme,
   useToast,
 } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
@@ -96,6 +96,7 @@ function Chip({
   color: string;
   label: string;
 }) {
+  const theme = useTheme();
   return (
     <View
       style={{
@@ -120,6 +121,7 @@ function Chip({
 }
 
 export default function PlansScreen() {
+  const theme = useTheme();
   const { routerId, onboarding } = useLocalSearchParams<{
     routerId: string;
     onboarding?: string;

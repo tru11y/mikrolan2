@@ -19,14 +19,15 @@ import {
   Row,
   space,
   Subtitle,
-  theme,
   Title,
 } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
 // Small "device is live" heartbeat — matches the reference's animate-pulse dot.
 function PulseDot({ color }: { color: string }) {
+  const theme = useTheme();
   const scale = useRef(new Animated.Value(1)).current;
   const opacity = useRef(new Animated.Value(1)).current;
 
@@ -122,6 +123,7 @@ function fmtBytes(v: string): string {
 }
 
 export default function SessionsScreen() {
+  const theme = useTheme();
   const { t } = useTranslation();
   const navHeight = useBottomNavHeight();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
