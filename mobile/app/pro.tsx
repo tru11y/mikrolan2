@@ -28,6 +28,7 @@ import {
   Title,
   type,
   useToast,
+  withAlpha,
 } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
 import { ProAdvisor } from '@/src/components/ProAdvisor';
@@ -90,7 +91,7 @@ function BillingToggle({
               {isAnnual ? (
                 <View
                   style={{
-                    backgroundColor: active ? '#00000022' : theme.gold + '22',
+                    backgroundColor: active ? '#00000022' : withAlpha(theme.gold, 0.13),
                     borderRadius: radius.pill,
                     paddingHorizontal: 6,
                     paddingVertical: 1,
@@ -323,9 +324,9 @@ export default function ProScreen() {
             <Row
               style={{
                 gap: 6,
-                backgroundColor: theme.gold + '22',
+                backgroundColor: withAlpha(theme.gold, 0.13),
                 borderWidth: 1,
-                borderColor: theme.gold + '66',
+                borderColor: withAlpha(theme.gold, 0.4),
                 borderRadius: radius.pill,
                 paddingHorizontal: space.md,
                 paddingVertical: 5,
@@ -359,9 +360,9 @@ export default function ProScreen() {
               flexDirection: 'row',
               alignItems: 'center',
               gap: space.md,
-              backgroundColor: theme.primary + '14',
+              backgroundColor: withAlpha(theme.primary, 0.08),
               borderWidth: 1,
-              borderColor: theme.primary + '55',
+              borderColor: withAlpha(theme.primary, 0.33),
               borderRadius: radius.lg,
               padding: space.lg,
             }}
@@ -421,8 +422,8 @@ export default function ProScreen() {
               style={{
                 gap: space.md,
                 borderWidth: 1,
-                borderColor: theme.success + '66',
-                backgroundColor: theme.success + '14',
+                borderColor: withAlpha(theme.success, 0.4),
+                backgroundColor: withAlpha(theme.success, 0.08),
                 borderRadius: radius.md,
                 padding: space.lg,
               }}

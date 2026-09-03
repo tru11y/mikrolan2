@@ -11,7 +11,9 @@ import {
 } from '@/src/lib/api';
 import { printTickets, printTicketsDirect } from '@/src/lib/ticketsPdf';
 import { TicketCard } from '@/src/components/TicketCard';
-import { Badge, Banner, Button, ConfirmDialog, Empty, Press, Subtitle, Title } from '@/src/components/ui';
+import { Badge, Banner, Button, ConfirmDialog, Empty, Press, Subtitle, Title ,
+  withAlpha,
+} from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
@@ -203,7 +205,7 @@ export default function FichiersScreen() {
                       width: 44,
                       height: 44,
                       borderRadius: 12,
-                      backgroundColor: theme.primary + '22',
+                      backgroundColor: withAlpha(theme.primary, 0.13),
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
@@ -230,8 +232,8 @@ export default function FichiersScreen() {
                       height: 38,
                       borderRadius: 10,
                       borderWidth: 1,
-                      borderColor: theme.secondary + '40',
-                      backgroundColor: theme.secondary + '18',
+                      borderColor: withAlpha(theme.secondary, 0.25),
+                      backgroundColor: withAlpha(theme.secondary, 0.09),
                       alignItems: 'center',
                       justifyContent: 'center',
                       opacity: isDownloading ? 0.5 : 1,
@@ -248,8 +250,8 @@ export default function FichiersScreen() {
                       height: 38,
                       borderRadius: 10,
                       borderWidth: 1,
-                      borderColor: theme.primary + '40',
-                      backgroundColor: theme.primary + '18',
+                      borderColor: withAlpha(theme.primary, 0.25),
+                      backgroundColor: withAlpha(theme.primary, 0.09),
                       alignItems: 'center',
                       justifyContent: 'center',
                       opacity: isPrinting ? 0.5 : 1,
@@ -266,8 +268,8 @@ export default function FichiersScreen() {
                       height: 38,
                       borderRadius: 10,
                       borderWidth: 1,
-                      borderColor: theme.danger + '40',
-                      backgroundColor: theme.danger + '18',
+                      borderColor: withAlpha(theme.danger, 0.25),
+                      backgroundColor: withAlpha(theme.danger, 0.09),
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
