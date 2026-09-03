@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { RefreshControl, ScrollView, View, Text } from 'react-native';
+import { RefreshControl, ScrollView, View, Text, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -19,10 +19,13 @@ import { exportMetricsCsv } from '@/src/lib/metricsCsv';
 import { exportMetricsPdf } from '@/src/lib/metricsPdf';
 import { busiestCell, describeBusiest, fmtGrowth, DAY_LABELS } from '@/src/lib/analyticsFormat';
 import {
+  AnimatedNumber,
+  AuroraCard,
   Badge,
   Card,
   Empty,
   ErrorState,
+  FadeIn,
   icon,
   Mono,
   Press,
@@ -31,9 +34,9 @@ import {
   Skeleton,
   space,
   Subtitle,
-  Title,
   type,
   weight,
+  withAlpha,
 } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
@@ -84,21 +87,27 @@ function Kpi({
 }) {
   const theme = useTheme();
   return (
-    <Card style={{ flex: 1, alignItems: 'center', gap: 4, minWidth: 0 }}>
-      <Ionicons name={iconName} size={20} color={iconColor} />
+    <Card style={{ flex: 1, alignItems: 'center', gap: 6, minWidth: 0, paddingVertical: space.lg }}>
+      <View style={{
+        width: 36, height: 36, borderRadius: 12,
+        backgroundColor: withAlpha(iconColor, 0.12),
+        alignItems: 'center', justifyContent: 'center',
+      }}>
+        <Ionicons name={iconName} size={18} color={iconColor} />
+      </View>
       <Text
-        style={{ color: theme.text, fontSize: type.bodyLg, fontWeight: weight.bold }}
+        style={{ color: theme.text, fontSize: type.h2, fontWeight: weight.heavy }}
         numberOfLines={1}
         adjustsFontSizeToFit
       >
         {value}
       </Text>
-      <Text style={{ color: theme.textMuted, fontSize: 11, textAlign: 'center' }}>{label}</Text>
+      <Text style={{ color: theme.textMuted, fontSize: 10, textAlign: 'center', letterSpacing: 0.3 }}>{label}</Text>
     </Card>
   );
 }
 
-function MonthlyRevenueChart({ data, t }: { data: RevenueByPeriodItem[]; t: (key: string) => string }) {
+function MonthlyRevenueChart({ data, t, chartWidth }: { data: RevenueByPeriodItem[]; t: (key: string) => string; chartWidth: number }) {
   const theme = useTheme();
   const recent = data.slice(-6);
   if (!recent.length) {
@@ -113,8 +122,8 @@ function MonthlyRevenueChart({ data, t }: { data: RevenueByPeriodItem[]; t: (key
     <View style={{ alignItems: 'center', paddingTop: space.sm }}>
       <LineChart
         data={points}
-        width={280}
-        height={140}
+        width={chartWidth}
+        height={160}
         color={theme.primary}
         thickness={3}
         dataPointsColor={theme.primary}
@@ -183,7 +192,7 @@ function PlanPieChart({ data, t }: { data: { planId: string; planName: string; r
   );
 }
 
-function RouterRankingChart({ data, t }: { data: RevenueByRouterItem[]; t: (key: string) => string }) {
+function RouterRankingChart({ data, t, chartWidth }: { data: RevenueByRouterItem[]; t: (key: string) => string; chartWidth: number }) {
   const theme = useTheme();
   if (!data.length) {
     return <Empty icon="hardware-chip-outline" text={t('rapport.noRouterData')} />;
@@ -198,8 +207,8 @@ function RouterRankingChart({ data, t }: { data: RevenueByRouterItem[]; t: (key:
     <View style={{ alignItems: 'center', paddingTop: space.sm }}>
       <BarChart
         data={bars}
-        width={280}
-        height={140}
+        width={chartWidth}
+        height={160}
         barWidth={24}
         spacing={20}
         roundedTop
@@ -548,6 +557,8 @@ export default function RapportScreen() {
   const navHeight = useBottomNavHeight();
   const qc = useQueryClient();
   const router = useRouter();
+  const { width: screenWidth } = useWindowDimensions();
+  const chartWidth = screenWidth - space.lg * 2 - space.lg * 2 - 40;
   const [analyticsPeriod, setAnalyticsPeriod] = useState<AnalyticsPeriod>('last30days');
   const [refreshing, setRefreshing] = useState(false);
   const METRICS_BY_ANALYTICS: Record<AnalyticsPeriod, MetricsPeriod> = {
@@ -673,48 +684,55 @@ export default function RapportScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.text} />
         }
       >
-        <Row>
-          <View style={{ flex: 1 }}>
-            <Title>{t('rapport.title')}</Title>
-            <Subtitle>{t('rapport.subtitle')}</Subtitle>
-          </View>
-          <Row style={{ gap: 6 }}>
-            <Press
-              onPress={() => {
-                if (!data) return;
-                const periodLabel = PERIODS.find((p) => p.value === period)!.label;
-                exportMetricsCsv(data, periodLabel, sessionStats.data);
-              }}
-              style={{
-                alignItems: 'center',
-                backgroundColor: theme.surface,
-                borderWidth: 1,
-                borderColor: theme.border,
-                borderRadius: 12,
-                paddingHorizontal: 10,
-                paddingVertical: 10,
-              }}
-            >
-              <Text style={{ color: theme.secondary, fontSize: 10, fontWeight: '700' }}>CSV</Text>
-            </Press>
-            <Press
-              onPress={() => {
-                if (!data) return;
-                const periodLabel = PERIODS.find((p) => p.value === period)!.label;
-                exportMetricsPdf(data, periodLabel, sessionStats.data, overview.data);
-              }}
-              style={{
-                alignItems: 'center',
-                backgroundColor: theme.primary,
-                borderRadius: 12,
-                paddingHorizontal: 10,
-                paddingVertical: 10,
-              }}
-            >
-              <Text style={{ color: theme.primaryText, fontSize: 10, fontWeight: '700' }}>PDF</Text>
-            </Press>
+        <FadeIn>
+          <Row>
+            <View style={{ flex: 1 }}>
+              <Subtitle>{t('rapport.subtitle')}</Subtitle>
+            </View>
+            <Row style={{ gap: 8 }}>
+              <Press
+                onPress={() => {
+                  if (!data) return;
+                  const periodLabel = PERIODS.find((p) => p.value === period)!.label;
+                  exportMetricsCsv(data, periodLabel, sessionStats.data);
+                }}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                  backgroundColor: theme.surface,
+                  borderWidth: 1,
+                  borderColor: theme.border,
+                  borderRadius: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                }}
+              >
+                <Ionicons name="document-text-outline" size={14} color={theme.secondary} />
+                <Text style={{ color: theme.secondary, fontSize: 11, fontWeight: '700' }}>CSV</Text>
+              </Press>
+              <Press
+                onPress={() => {
+                  if (!data) return;
+                  const periodLabel = PERIODS.find((p) => p.value === period)!.label;
+                  exportMetricsPdf(data, periodLabel, sessionStats.data, overview.data);
+                }}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                  backgroundColor: theme.primary,
+                  borderRadius: 12,
+                  paddingHorizontal: 12,
+                  paddingVertical: 8,
+                }}
+              >
+                <Ionicons name="download-outline" size={14} color={theme.primaryText} />
+                <Text style={{ color: theme.primaryText, fontSize: 11, fontWeight: '700' }}>PDF</Text>
+              </Press>
+            </Row>
           </Row>
-        </Row>
+        </FadeIn>
 
         {error ? (
           <ErrorState message={t('rapport.loadError')} onRetry={onRefresh} />
@@ -762,96 +780,109 @@ export default function RapportScreen() {
             </ScrollView>
 
             {/* Chiffre d'affaires + tendance */}
-            <Card style={{ gap: 8 }}>
+            <FadeIn delay={50}>
+            <AuroraCard style={{ gap: 10, padding: space.xl }}>
               <Text
-                style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 }}
+                style={{ color: withAlpha('#FFFFFF', 0.7), fontSize: 12, fontWeight: '700', letterSpacing: 0.5 }}
               >
                 {t('rapport.revenue')}
               </Text>
-              <Mono style={{ color: theme.success, fontSize: 30, fontWeight: '900' }}>
-                {metrics.isLoading ? '…' : fmtXof(data?.revenueXof ?? 0)}
-              </Mono>
+              {metrics.isLoading ? (
+                <Skeleton height={36} width="60%" />
+              ) : (
+                <AnimatedNumber
+                  value={data?.revenueXof ?? 0}
+                  format={(n) => fmtXof(n)}
+                  style={{ color: '#FFFFFF', fontSize: 34, fontWeight: '900', fontFamily: theme.mono }}
+                />
+              )}
               {data?.trendPct != null ? (
                 (() => {
                   const up = data.trendPct >= 0;
-                  const trendColor = up ? theme.success : theme.danger;
                   return (
                     <Row style={{ justifyContent: 'flex-start', gap: space.xs + 2 }}>
-                      <Ionicons name={up ? 'trending-up' : 'trending-down'} size={icon.sm} color={trendColor} />
-                      <Text style={{ color: trendColor, fontSize: type.caption, flex: 1 }}>
-                        {up ? '+' : ''}
+                      <View style={{ backgroundColor: withAlpha('#FFFFFF', 0.2), borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Ionicons name={up ? 'trending-up' : 'trending-down'} size={14} color="#FFFFFF" />
+                        <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>
+                          {up ? '+' : ''}{data.trendPct.toFixed(0)}%
+                        </Text>
+                      </View>
+                      <Text style={{ color: withAlpha('#FFFFFF', 0.7), fontSize: 11, flex: 1 }}>
                         {t('rapport.vsPrevious', { pct: data.trendPct.toFixed(0), count: data.ticketsUsed })}
                       </Text>
                     </Row>
                   );
                 })()
               ) : null}
+            </AuroraCard>
+            </FadeIn>
 
-              {data?.dataQuality && data.dataQuality !== 'EXACT' ? (
-                <View style={{ gap: 6 }}>
-                  <Row style={{ justifyContent: 'flex-start', gap: 6 }}>
-                    <Badge
-                      label={
-                        data.dataQuality === 'ESTIMATED'
-                          ? t('rapport.dataEstimated')
-                          : data.dataQuality === 'MIXED'
-                            ? t('rapport.dataMixed')
-                            : data.dataQuality === 'INCOMPLETE'
-                              ? t('rapport.dataIncomplete')
-                              : t('rapport.dataNoData')
-                      }
-                      tone={data.dataQuality === 'NO_DATA' ? 'muted' : 'warning'}
-                    />
-                    {data.exactRevenueXof != null && data.estimatedRevenueXof != null ? (
-                      <Text style={{ color: theme.textMuted, fontSize: 11, flex: 1 }}>
-                        {t('rapport.exactLabel')} : {fmtXof(data.exactRevenueXof)} · {t('rapport.estimatedLabel')} : {fmtXof(data.estimatedRevenueXof)}
-                      </Text>
-                    ) : null}
-                  </Row>
-                  {data.dataQuality === 'ESTIMATED' || data.dataQuality === 'MIXED' ? (
-                    <Text style={{ color: theme.textMuted, fontSize: 11 }}>
-                      {t('rapport.estimatedNote')}
+            {data?.dataQuality && data.dataQuality !== 'EXACT' ? (
+              <Card style={{ gap: 6 }}>
+                <Row style={{ justifyContent: 'flex-start', gap: 6 }}>
+                  <Badge
+                    label={
+                      data.dataQuality === 'ESTIMATED'
+                        ? t('rapport.dataEstimated')
+                        : data.dataQuality === 'MIXED'
+                          ? t('rapport.dataMixed')
+                          : data.dataQuality === 'INCOMPLETE'
+                            ? t('rapport.dataIncomplete')
+                            : t('rapport.dataNoData')
+                    }
+                    tone={data.dataQuality === 'NO_DATA' ? 'muted' : 'warning'}
+                  />
+                  {data.exactRevenueXof != null && data.estimatedRevenueXof != null ? (
+                    <Text style={{ color: theme.textMuted, fontSize: 11, flex: 1 }}>
+                      {t('rapport.exactLabel')} : {fmtXof(data.exactRevenueXof)} · {t('rapport.estimatedLabel')} : {fmtXof(data.estimatedRevenueXof)}
                     </Text>
                   ) : null}
-                  {(data.unknownSalesCount ?? 0) > 0 || (data.invalidSourceCount ?? 0) > 0 ? (
-                    <Text style={{ color: theme.textMuted, fontSize: 11 }}>
-                      {(data.unknownSalesCount ?? 0) > 0
-                        ? t('rapport.unknownSalesCount', { count: data.unknownSalesCount })
-                        : ''}
-                      {(data.unknownSalesCount ?? 0) > 0 && (data.invalidSourceCount ?? 0) > 0 ? ' · ' : ''}
-                      {(data.invalidSourceCount ?? 0) > 0
-                        ? t('rapport.invalidSourceCount', { count: data.invalidSourceCount })
-                        : ''}
-                    </Text>
-                  ) : null}
-                </View>
-              ) : null}
-            </Card>
+                </Row>
+                {data.dataQuality === 'ESTIMATED' || data.dataQuality === 'MIXED' ? (
+                  <Text style={{ color: theme.textMuted, fontSize: 11 }}>
+                    {t('rapport.estimatedNote')}
+                  </Text>
+                ) : null}
+                {(data.unknownSalesCount ?? 0) > 0 || (data.invalidSourceCount ?? 0) > 0 ? (
+                  <Text style={{ color: theme.textMuted, fontSize: 11 }}>
+                    {(data.unknownSalesCount ?? 0) > 0
+                      ? t('rapport.unknownSalesCount', { count: data.unknownSalesCount })
+                      : ''}
+                    {(data.unknownSalesCount ?? 0) > 0 && (data.invalidSourceCount ?? 0) > 0 ? ' · ' : ''}
+                    {(data.invalidSourceCount ?? 0) > 0
+                      ? t('rapport.invalidSourceCount', { count: data.invalidSourceCount })
+                      : ''}
+                  </Text>
+                ) : null}
+              </Card>
+            ) : null}
 
-            {/* KPIs business : conversion et panier moyen, les deux métriques
-                qu'un opérateur ne peut pas lire ailleurs dans l'app. */}
-            <Row style={{ gap: space.sm }}>
-              <Kpi
-                icon="swap-horizontal-outline"
-                iconColor={theme.primary}
-                value={conversionPct != null ? `${conversionPct}%` : '—'}
-                label={t('rapport.conversionRate')}
-              />
-              <Kpi
-                icon="pricetag-outline"
-                iconColor={theme.warning}
-                value={arpu != null ? fmtXof(arpu) : '—'}
-                label={t('rapport.avgBasket')}
-              />
-              <Kpi
-                icon="people-outline"
-                iconColor={theme.success}
-                value={`${data?.activeSessions ?? 0}`}
-                label={t('rapport.onlineNow')}
-              />
-            </Row>
+            {/* KPIs business */}
+            <FadeIn delay={100}>
+              <Row style={{ gap: space.sm }}>
+                <Kpi
+                  icon="swap-horizontal-outline"
+                  iconColor={theme.primary}
+                  value={conversionPct != null ? `${conversionPct}%` : '—'}
+                  label={t('rapport.conversionRate')}
+                />
+                <Kpi
+                  icon="pricetag-outline"
+                  iconColor={theme.warning}
+                  value={arpu != null ? fmtXof(arpu) : '—'}
+                  label={t('rapport.avgBasket')}
+                />
+                <Kpi
+                  icon="people-outline"
+                  iconColor={theme.success}
+                  value={`${data?.activeSessions ?? 0}`}
+                  label={t('rapport.onlineNow')}
+                />
+              </Row>
+            </FadeIn>
 
             {/* Tendance CA sur 6 mois */}
+            <FadeIn delay={150}>
             <Card style={{ gap: 12 }}>
               <Row style={{ gap: 8, justifyContent: 'flex-start' }}>
                 <Ionicons name="trending-up-outline" size={16} color={theme.primary} />
@@ -860,13 +891,15 @@ export default function RapportScreen() {
                 </Text>
               </Row>
               {loading ? (
-                <Skeleton height={140} />
+                <Skeleton height={160} />
               ) : (
-                <MonthlyRevenueChart data={revenueByPeriod.data ?? []} t={t} />
+                <MonthlyRevenueChart data={revenueByPeriod.data ?? []} t={t} chartWidth={chartWidth} />
               )}
             </Card>
+            </FadeIn>
 
             {/* Répartition par forfait */}
+            <FadeIn delay={200}>
             <Card style={{ gap: 12 }}>
               <Row style={{ gap: 8, justifyContent: 'flex-start' }}>
                 <Ionicons name="pie-chart-outline" size={16} color={theme.primary} />
@@ -876,6 +909,7 @@ export default function RapportScreen() {
               </Row>
               {metrics.isLoading ? <Skeleton height={100} /> : <PlanPieChart data={data?.byPlan ?? []} t={t} />}
             </Card>
+            </FadeIn>
 
             {/* CA par routeur — utile dès 2+ points de vente pour repérer le
                 routeur qui sous-performe. */}
@@ -890,12 +924,13 @@ export default function RapportScreen() {
                 {loading ? (
                   <Skeleton height={140} />
                 ) : (
-                  <RouterRankingChart data={revenueByRouter.data ?? []} t={t} />
+                  <RouterRankingChart data={revenueByRouter.data ?? []} t={t} chartWidth={chartWidth} />
                 )}
               </Card>
             ) : null}
 
             {/* Classement routeurs (Analytics) — accès au détail par routeur */}
+            <FadeIn delay={250}>
             <View>
               <SectionTitle>{t('rapport.routersSection')}</SectionTitle>
               {overview.isLoading && analyticsRouters.isLoading ? (
@@ -911,7 +946,10 @@ export default function RapportScreen() {
               )}
             </View>
 
+            </FadeIn>
+
             {/* Forfaits — double classement (volume vs contribution CA) */}
+            <FadeIn delay={300}>
             <View>
               <SectionTitle>{t('rapport.plansSection')}</SectionTitle>
               {overview.isLoading ? (
@@ -925,7 +963,10 @@ export default function RapportScreen() {
               )}
             </View>
 
+            </FadeIn>
+
             {/* Affluence : jours/heures d'activité, ventes vs sessions séparées */}
+            <FadeIn delay={350}>
             <View>
               <SectionTitle>{t('rapport.affluence')}</SectionTitle>
               {traffic.isLoading ? (
@@ -943,7 +984,10 @@ export default function RapportScreen() {
               )}
             </View>
 
+            </FadeIn>
+
             {/* Sessions et utilisation réseau */}
+            <FadeIn delay={400}>
             <View>
               <SectionTitle>{t('rapport.sessionsSection')}</SectionTitle>
               {sessionStats.error ? (
@@ -953,7 +997,9 @@ export default function RapportScreen() {
               )}
             </View>
 
-            {/* Tendances et prévisions BI explicables — audit/73 */}
+            </FadeIn>
+
+            {/* Tendances et prévisions BI explicables */}
             <View>
               <SectionTitle>{t('rapport.trends')}</SectionTitle>
               {forecast.error ? (
