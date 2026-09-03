@@ -25,11 +25,11 @@ import {
   space,
   Skeleton,
   Subtitle,
-  theme,
   Title,
   type,
   useToast,
 } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 import { ProAdvisor } from '@/src/components/ProAdvisor';
 import { AppHeader } from '@/src/components/AppHeader';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
@@ -44,6 +44,7 @@ function BillingToggle({
   discount: number;
   onChange: (v: boolean) => void;
 }) {
+  const theme = useTheme();
   const { t } = useTranslation();
   return (
     <Row style={{ alignSelf: 'center' }}>
@@ -130,6 +131,7 @@ function TierCard({
   // Une seule chose peut être mise en avant à la fois : l'or dit « c'est la
   // formule retenue pour vous », le violet dit « c'est celle que vous
   // regardez ». Avant, les deux se disputaient la même carte.
+  const theme = useTheme();
   const { t } = useTranslation();
   const accent = recommended ? theme.gold : selected ? theme.primary : theme.border;
 
@@ -257,6 +259,7 @@ function TierCard({
 }
 
 export default function ProScreen() {
+  const theme = useTheme();
   const { t } = useTranslation();
   const navHeight = useBottomNavHeight();
   const toast = useToast();

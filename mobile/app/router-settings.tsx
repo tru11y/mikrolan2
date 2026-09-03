@@ -25,10 +25,10 @@ import {
   Press,
   space,
   Subtitle,
-  theme,
   Title,
   type IoniconName,
 } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
@@ -56,6 +56,7 @@ async function resolveAccessMode(routerId: string) {
 }
 
 export default function RouterSettingsScreen() {
+  const theme = useTheme();
   const { t } = useTranslation();
   const navHeight = useBottomNavHeight();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();

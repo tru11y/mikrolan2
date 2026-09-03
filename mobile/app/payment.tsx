@@ -17,11 +17,11 @@ import {
   space,
   Skeleton,
   Subtitle,
-  theme,
   Title,
   type,
   useToast,
 } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 import { AppHeader } from '@/src/components/AppHeader';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 
@@ -38,6 +38,7 @@ function MethodCard({
   selected: boolean;
   onPress: () => void;
 }) {
+  const theme = useTheme();
   const { t } = useTranslation();
   const isWave = method === 'WAVE';
   const color = isWave ? '#1DC3F7' : '#FF6600';
@@ -99,6 +100,7 @@ function MethodCard({
 }
 
 export default function PaymentScreen() {
+  const theme = useTheme();
   const { t } = useTranslation();
   const { invoiceId } = useLocalSearchParams<{ invoiceId: string }>();
   const navHeight = useBottomNavHeight();

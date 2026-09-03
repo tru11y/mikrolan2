@@ -25,12 +25,12 @@ import {
   Row,
   Skeleton,
   space,
-  theme,
   type,
   weight,
   withAlpha,
   type IoniconName,
 } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
@@ -66,6 +66,7 @@ function StatCard({
   onPress: () => void;
   state?: StatState;
 }) {
+  const theme = useTheme();
   const { t } = useTranslation();
   const subColor = subTone === 'success' ? theme.success : theme.textMuted;
   const a11yValue = state === 'error' ? t('common.unavailable') : `${value}, ${sub}`;
@@ -135,6 +136,7 @@ function StatCard({
 }
 
 export default function MaisonScreen() {
+  const theme = useTheme();
   const { t } = useTranslation();
   const router = useRouter();
   const { isReady, activeRouterId } = useActiveRouter();

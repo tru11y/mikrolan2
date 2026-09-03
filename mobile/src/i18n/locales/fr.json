@@ -103,7 +103,10 @@
     "deleteAccountSubtitle": "Supprimer définitivement le compte et l'accès à MikroLan2",
     "confirmPassword": "Confirmez avec votre mot de passe",
     "deleteConfirm": "Supprimer définitivement mon compte",
-    "deleteSetPasswordFirst": "Définissez d'abord un mot de passe ci-dessus pour confirmer la suppression."
+    "deleteSetPasswordFirst": "Définissez d'abord un mot de passe ci-dessus pour confirmer la suppression.",
+    "darkMode": "Mode sombre",
+    "darkModeOn": "Thème sombre activé",
+    "darkModeOff": "Thème clair activé"
   },
   "home": {
     "title": "Maison",
@@ -767,6 +770,8 @@
     "companyNameLabel": "Nom de l'entreprise (PRO)",
     "companyNamePlaceholder": "MikroLan2",
     "showWifiName": "Afficher le nom du Wi-Fi",
+    "wifiNameLabel": "Nom du WiFi affiché",
+    "wifiNamePlaceholder": "Ex: Mon WiFi",
     "showPrice": "Afficher le prix",
     "currencyLabel": "Devise",
     "showTicketNumber": "Afficher le numéro du ticket (#)",
