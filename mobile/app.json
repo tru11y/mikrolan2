@@ -47,7 +47,8 @@
       [
         "@sentry/react-native/expo",
         {
-          "disableAutoUpload": true
+          "organization": "solqueflo-balley",
+          "project": "react-native"
         }
       ],
       "@sentry/react-native",
