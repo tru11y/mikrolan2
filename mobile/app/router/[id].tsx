@@ -39,6 +39,7 @@ import {
   type,
   useToast,
   type IoniconName,
+  withAlpha,
 } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
@@ -549,7 +550,7 @@ export default function RouterDetailScreen() {
 
         {/* Accès à distance — masqué pour PRO (automatique) */}
         {!isPro ? (
-          <Card style={{ borderColor: theme.gold + '55' }}>
+          <Card style={{ borderColor: withAlpha(theme.gold, 0.33) }}>
             <Row>
               <Row style={{ gap: space.xs + 2, justifyContent: 'flex-start' }}>
                 <Ionicons name="globe-outline" size={icon.sm} color={theme.gold} />
@@ -567,7 +568,7 @@ export default function RouterDetailScreen() {
             />
           </Card>
         ) : remoteQuery.data?.status !== 'ACTIVE' ? (
-          <Card style={{ borderColor: theme.gold + '55' }}>
+          <Card style={{ borderColor: withAlpha(theme.gold, 0.33) }}>
             <Row>
               <Row style={{ gap: space.xs + 2, justifyContent: 'flex-start' }}>
                 <Ionicons name="globe-outline" size={icon.sm} color={theme.gold} />

@@ -5,7 +5,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api } from '@/src/lib/api';
 import { useLiveEvents } from '@/src/providers/live-events-provider';
-import { Press, useReduceMotion } from './ui';
+import { Press, useReduceMotion,
+  withAlpha,
+} from './ui';
 import { useTheme } from '@/src/providers/theme-provider';
 
 /**
@@ -77,8 +79,8 @@ export function NotificationBell() {
         height: 34,
         borderRadius: 11,
         borderWidth: 1,
-        borderColor: count > 0 ? theme.primary + '66' : theme.border,
-        backgroundColor: count > 0 ? theme.primary + '18' : theme.surfaceAlt,
+        borderColor: count > 0 ? withAlpha(theme.primary, 0.4) : theme.border,
+        backgroundColor: count > 0 ? withAlpha(theme.primary, 0.09) : theme.surfaceAlt,
         alignItems: 'center',
         justifyContent: 'center',
       }}

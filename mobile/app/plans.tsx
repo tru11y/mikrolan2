@@ -39,6 +39,7 @@ import {
   Subtitle,
   Title,
   useToast,
+  withAlpha,
 } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav } from '@/src/components/BottomNav';
@@ -635,9 +636,9 @@ export default function PlansScreen() {
                         width: 46,
                         height: 46,
                         borderRadius: 14,
-                        backgroundColor: theme.primary + '22',
+                        backgroundColor: withAlpha(theme.primary, 0.13),
                         borderWidth: 1,
-                        borderColor: theme.primary + '55',
+                        borderColor: withAlpha(theme.primary, 0.33),
                         alignItems: 'center',
                         justifyContent: 'center',
                       }}
@@ -697,9 +698,9 @@ export default function PlansScreen() {
                         paddingVertical: 10,
                         paddingHorizontal: 12,
                         borderRadius: 12,
-                        backgroundColor: theme.primary + '18',
+                        backgroundColor: withAlpha(theme.primary, 0.09),
                         borderWidth: 1,
-                        borderColor: theme.primary + '40',
+                        borderColor: withAlpha(theme.primary, 0.25),
                       }}
                     >
                       <Ionicons name="create-outline" size={16} color={theme.primary} />
@@ -720,9 +721,9 @@ export default function PlansScreen() {
                         paddingVertical: 10,
                         paddingHorizontal: 12,
                         borderRadius: 12,
-                        backgroundColor: theme.danger + '18',
+                        backgroundColor: withAlpha(theme.danger, 0.09),
                         borderWidth: 1,
-                        borderColor: theme.danger + '40',
+                        borderColor: withAlpha(theme.danger, 0.25),
                       }}
                     >
                       <Ionicons name="trash-outline" size={16} color={theme.danger} />
@@ -776,9 +777,9 @@ export default function PlansScreen() {
                         width: 38,
                         height: 38,
                         borderRadius: 12,
-                        backgroundColor: theme.secondary + '22',
+                        backgroundColor: withAlpha(theme.secondary, 0.13),
                         borderWidth: 1,
-                        borderColor: theme.secondary + '55',
+                        borderColor: withAlpha(theme.secondary, 0.33),
                         alignItems: 'center',
                         justifyContent: 'center',
                       }}
@@ -855,9 +856,9 @@ export default function PlansScreen() {
                         paddingVertical: 8,
                         paddingHorizontal: 12,
                         borderRadius: 10,
-                        backgroundColor: theme.primary + '18',
+                        backgroundColor: withAlpha(theme.primary, 0.09),
                         borderWidth: 1,
-                        borderColor: theme.primary + '40',
+                        borderColor: withAlpha(theme.primary, 0.25),
                       }}
                     >
                       <Ionicons name="create-outline" size={15} color={theme.primary} />
@@ -875,9 +876,9 @@ export default function PlansScreen() {
                         paddingVertical: 8,
                         paddingHorizontal: 12,
                         borderRadius: 10,
-                        backgroundColor: theme.danger + '18',
+                        backgroundColor: withAlpha(theme.danger, 0.09),
                         borderWidth: 1,
-                        borderColor: theme.danger + '40',
+                        borderColor: withAlpha(theme.danger, 0.25),
                       }}
                     >
                       <Ionicons name="trash-outline" size={15} color={theme.danger} />
