@@ -57,7 +57,7 @@ export async function buildTicketsHtml(opts: TicketsPdfOpts): Promise<string> {
       return `
         <div class="ticket">
           <div class="head">
-            <span class="brand">${esc(brandLine ?? (tpl.showWifiName ? routerName : ''))}</span>
+            <span class="brand">${esc(brandLine ?? (tpl.showWifiName ? (tpl.wifiName || routerName) : ''))}</span>
             ${tpl.showTicketNumber ? `<span class="num">#${i + 1}</span>` : ''}
           </div>
           ${qr ? `<div class="qr">${qr}</div>` : ''}
@@ -88,22 +88,22 @@ export async function buildTicketsHtml(opts: TicketsPdfOpts): Promise<string> {
     .page-header { text-align: center; font-size: 10px; font-weight: 700; padding: 2mm 0; }
     .grid { display: flex; flex-wrap: wrap; gap: 1.5mm; }
     .ticket {
-      width: 37.4mm; border: 1px dashed #9AA0B4; border-radius: 2mm;
+      width: 38.5mm; height: 27mm; border: 1px dashed #9AA0B4; border-radius: 2mm;
       padding: 1mm; text-align: center; page-break-inside: avoid;
       overflow: hidden; line-height: 1.15;
     }
     .head { display: flex; justify-content: space-between; align-items: center;
-      font-size: 5px; font-weight: 700; margin-bottom: 0.5mm; }
+      font-size: 4.5px; font-weight: 700; margin-bottom: 0.3mm; }
     .brand { color: #7B61FF; text-transform: uppercase; letter-spacing: .3px; }
     .num { color: #9AA0B4; }
     .qr { display: flex; justify-content: center; }
-    .qr svg { width: 13mm; height: 13mm; }
-    .code { font-family: monospace; font-size: 8px; font-weight: 700;
-      letter-spacing: .5px; margin: 1mm 0 0.5mm; word-break: break-all; }
-    .meta { font-size: 5px; color: #444; }
-    .hint { font-size: 4px; color: #9AA0B4; margin-top: 0.5mm; }
-    .note { font-size: 4px; color: #444; font-style: italic; margin-top: 0.5mm; }
-    .powered { font-size: 4px; color: #9AA0B4; margin-top: 0.5mm; }
+    .qr svg { width: 10mm; height: 10mm; }
+    .code { font-family: monospace; font-size: 7px; font-weight: 700;
+      letter-spacing: .5px; margin: 0.5mm 0 0.3mm; word-break: break-all; }
+    .meta { font-size: 4.5px; color: #444; }
+    .hint { font-size: 3.5px; color: #9AA0B4; margin-top: 0.3mm; }
+    .note { font-size: 3.5px; color: #444; font-style: italic; margin-top: 0.3mm; }
+    .powered { font-size: 3.5px; color: #9AA0B4; margin-top: 0.3mm; }
     .page-footer { text-align: center; font-size: 9px; color: #9AA0B4; padding: 2mm 0; }
     @page { counter-increment: page; }
     .page-number:after { content: counter(page); }

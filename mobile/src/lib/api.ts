@@ -91,6 +91,7 @@ export type TicketTemplate = {
   showPageNumber: boolean;
   showLogo: boolean;
   logoDataUri?: string;
+  wifiName?: string;
 };
 
 export const DEFAULT_TICKET_TEMPLATE: TicketTemplate = {
@@ -109,6 +110,7 @@ export const DEFAULT_TICKET_TEMPLATE: TicketTemplate = {
   showFooter: false,
   showPageNumber: false,
   showLogo: false,
+  wifiName: undefined,
 };
 
 export type RouterItem = {

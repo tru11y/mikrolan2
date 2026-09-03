@@ -31,11 +31,11 @@ import {
   Skeleton,
   space,
   Subtitle,
-  theme,
   Title,
   type,
   weight,
 } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
@@ -55,7 +55,7 @@ const ANALYTICS_PERIODS: { key: string; value: AnalyticsPeriod }[] = [
   { key: 'rapport.currentMonth', value: 'currentMonth' },
 ];
 
-const PLAN_COLORS = [theme.primary, theme.success, theme.warning, theme.danger, '#38BDF8', '#F472B6'];
+
 
 function fmtXof(n: number): string {
   return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(n) + ' F';
@@ -82,6 +82,7 @@ function Kpi({
   value: string;
   label: string;
 }) {
+  const theme = useTheme();
   return (
     <Card style={{ flex: 1, alignItems: 'center', gap: 4, minWidth: 0 }}>
       <Ionicons name={iconName} size={20} color={iconColor} />
@@ -98,6 +99,7 @@ function Kpi({
 }
 
 function MonthlyRevenueChart({ data, t }: { data: RevenueByPeriodItem[]; t: (key: string) => string }) {
+  const theme = useTheme();
   const recent = data.slice(-6);
   if (!recent.length) {
     return <Empty icon="bar-chart-outline" text={t('rapport.noSalesData')} />;
@@ -137,13 +139,15 @@ function MonthlyRevenueChart({ data, t }: { data: RevenueByPeriodItem[]; t: (key
 }
 
 function PlanPieChart({ data, t }: { data: { planId: string; planName: string; revenueXof: number; sold: number }[]; t: (key: string) => string }) {
+  const theme = useTheme();
+  const planColors = [theme.primary, theme.success, theme.warning, theme.danger, '#38BDF8', '#F472B6'];
   if (!data.length) {
     return <Empty icon="pie-chart-outline" text={t('rapport.noPlanSales')} />;
   }
   const total = data.reduce((s, p) => s + p.revenueXof, 0) || 1;
   const slices = data.map((p, idx) => ({
     value: p.revenueXof,
-    color: PLAN_COLORS[idx % PLAN_COLORS.length],
+    color: planColors[idx % planColors.length],
     text: `${Math.round((p.revenueXof / total) * 100)}%`,
   }));
 
@@ -165,7 +169,7 @@ function PlanPieChart({ data, t }: { data: { planId: string; planName: string; r
                 width: 8,
                 height: 8,
                 borderRadius: 4,
-                backgroundColor: PLAN_COLORS[idx % PLAN_COLORS.length],
+                backgroundColor: planColors[idx % planColors.length],
               }}
             />
             <Text style={{ color: theme.text, fontSize: 11, flex: 1 }} numberOfLines={1}>
@@ -180,6 +184,7 @@ function PlanPieChart({ data, t }: { data: { planId: string; planName: string; r
 }
 
 function RouterRankingChart({ data, t }: { data: RevenueByRouterItem[]; t: (key: string) => string }) {
+  const theme = useTheme();
   if (!data.length) {
     return <Empty icon="hardware-chip-outline" text={t('rapport.noRouterData')} />;
   }
@@ -226,6 +231,7 @@ function RoutersRankingSection({
   onSelect: (routerId: string) => void;
   t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
+  const theme = useTheme();
   if (!data.length) {
     return <Empty icon="hardware-chip-outline" text={t('rapport.noRouterSales')} />;
   }
@@ -269,6 +275,7 @@ function RoutersRankingSection({
 /** Double classement forfaits : par volume et par contribution CA — les deux
  * peuvent diverger (un forfait très vendu mais peu cher pèse peu au final). */
 function PlansDualRankingSection({ data, t }: { data: AnalyticsPlanPerformance[]; t: (key: string, opts?: Record<string, unknown>) => string }) {
+  const theme = useTheme();
   if (!data.length) {
     return <Empty icon="pricetags-outline" text={t('rapport.noPlanSalesThisPeriod')} />;
   }
@@ -328,6 +335,7 @@ function AffluenceSection({
   sessionsHeatmap: { dayOfWeek: number; hour: number; count: number }[];
   t: (key: string, opts?: Record<string, unknown>) => string;
 }) {
+  const theme = useTheme();
   const busiestSales = busiestCell(salesHeatmap);
   const busiestSessions = busiestCell(sessionsHeatmap);
   return (
@@ -366,6 +374,7 @@ const CONFIDENCE_KEY: Record<string, string> = {
 
 /** Tendance + modèle retenu + période d'historique — jamais un modèle présenté comme vérité, toujours accompagné de sa confiance. */
 function TrendsSection({ forecast }: { forecast: import('@/src/lib/api').ForecastOverview | undefined }) {
+  const theme = useTheme();
   const { t } = useTranslation();
   if (!forecast) return <Skeleton height={80} />;
   const { revenueForecast, salesForecast } = forecast;
@@ -392,6 +401,7 @@ function TrendsSection({ forecast }: { forecast: import('@/src/lib/api').Forecas
 
 /** Prévision des prochains jours — distinction visuelle explicite réel/prévision, jamais présentée comme un fait acquis. */
 function ForecastPointsSection({ points, metricLabel }: { points: { date: string; predicted: number; lowerBound: number; upperBound: number }[]; metricLabel: string }) {
+  const theme = useTheme();
   const { t } = useTranslation();
   if (!points.length) return <Empty icon="calendar-outline" text={t('rapport.insufficientDataMsg')} />;
   return (
@@ -418,6 +428,7 @@ function ForecastPointsSection({ points, metricLabel }: { points: { date: string
 
 /** Affluence prévue — jours/heures probables, ventes et sessions toujours distinguées. */
 function PredictedTrafficSection({ data }: { data: import('@/src/lib/api').ForecastTraffic | undefined }) {
+  const theme = useTheme();
   const { t } = useTranslation();
   if (!data) return <Skeleton height={80} />;
   if (data.confidence === 'INSUFFICIENT_DATA') {
@@ -450,6 +461,7 @@ function PredictedTrafficSection({ data }: { data: import('@/src/lib/api').Forec
 
 /** Insights métier — cartes concises avec preuve et limite, jamais de causalité ni de jugement. */
 function InsightsSection({ insights }: { insights: import('@/src/lib/api').BusinessInsight[] | undefined }) {
+  const theme = useTheme();
   const { t } = useTranslation();
   if (!insights) return <Skeleton height={100} />;
   if (!insights.length || (insights.length === 1 && insights[0].type === 'INSUFFICIENT_DATA')) {
@@ -475,6 +487,7 @@ function InsightsSection({ insights }: { insights: import('@/src/lib/api').Busin
 }
 
 function SessionStatsSection({ data, t }: { data: SessionStats | undefined; t: (key: string, opts?: Record<string, unknown>) => string }) {
+  const theme = useTheme();
   if (!data) return <Skeleton height={120} />;
   if (data.totalSessions === 0) return <Empty icon="wifi-outline" text={t('rapport.noSessionData')} />;
   return (
@@ -528,6 +541,7 @@ function SessionStatsSection({ data, t }: { data: SessionStats | undefined; t: (
 }
 
 export default function RapportScreen() {
+  const theme = useTheme();
   const { t } = useTranslation();
   const { routerId } = useLocalSearchParams<{ routerId?: string }>();
   const { activeRouterId } = useActiveRouter();

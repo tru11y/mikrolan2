@@ -10,13 +10,13 @@ import {
   AppState,
   type AppStateStatus,
   Modal,
-  StyleSheet,
   Text,
   View,
 } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { Ionicons } from '@expo/vector-icons';
-import { Button, theme } from '@/src/components/ui';
+import { Button } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 import { useAuth } from '@/src/providers/auth-provider';
 import { getStoredValue, setStoredValue } from '@/src/lib/storage';
 
@@ -40,6 +40,7 @@ export function useAppLock(): AppLockContextValue {
 }
 
 export function AppLockProvider({ children }: PropsWithChildren) {
+  const theme = useTheme();
   const { isAuthenticated, me } = useAuth();
   const userId = me?.user.id ?? null;
 
@@ -125,10 +126,10 @@ export function AppLockProvider({ children }: PropsWithChildren) {
     <AppLockContext.Provider value={{ supported, enabled, setEnabled }}>
       {children}
       <Modal visible={locked} animationType="fade" statusBarTranslucent>
-        <View style={styles.container}>
+        <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 }}>
           <Ionicons name="lock-closed" size={40} color={theme.primary} />
-          <Text style={styles.title}>MikroLan2 verrouillé</Text>
-          <Text style={styles.subtitle}>
+          <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700' }}>MikroLan2 verrouillé</Text>
+          <Text style={{ color: theme.textMuted, fontSize: 14, textAlign: 'center' }}>
             Authentifiez-vous pour continuer
           </Text>
           <Button title="Déverrouiller" onPress={() => void unlock()} />
@@ -138,15 +139,3 @@ export function AppLockProvider({ children }: PropsWithChildren) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.bg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    padding: 24,
-  },
-  title: { color: theme.text, fontSize: 18, fontWeight: '700' },
-  subtitle: { color: theme.textMuted, fontSize: 14, textAlign: 'center' },
-});

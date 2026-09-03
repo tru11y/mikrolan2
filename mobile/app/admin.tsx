@@ -35,11 +35,11 @@ import {
   space,
   Stat,
   Subtitle,
-  theme,
   Title,
   type,
   useToast,
 } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 import { AppHeader } from '@/src/components/AppHeader';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 
@@ -69,6 +69,7 @@ function shortDate(iso: string | null): string {
 // ─── Aperçu ──────────────────────────────────────────────────────────────────
 
 function OverviewTab() {
+  const theme = useTheme();
   const { t } = useTranslation();
   const query = useQuery({
     queryKey: ['admin', 'metrics'],
@@ -224,6 +225,7 @@ function OverviewTab() {
 // ─── Demandes d'activation ───────────────────────────────────────────────────
 
 function RequestsTab() {
+  const theme = useTheme();
   const { t } = useTranslation();
   const qc = useQueryClient();
   const toast = useToast();
@@ -357,6 +359,7 @@ function TenantRow({
   onToggle: () => void;
   busy: boolean;
 }) {
+  const theme = useTheme();
   const { t } = useTranslation();
   const router = useRouter();
   const suspended = tenant.status === 'SUSPENDED';
@@ -401,6 +404,7 @@ function TenantRow({
 }
 
 function AccountsTab() {
+  const theme = useTheme();
   const { t } = useTranslation();
   const qc = useQueryClient();
   const toast = useToast();
@@ -594,6 +598,7 @@ function AccountsTab() {
 // ─── Formules ────────────────────────────────────────────────────────────────
 
 function TierEditor({ tier, onDone }: { tier: Tier; onDone: () => void }) {
+  const theme = useTheme();
   const { t } = useTranslation();
   const toast = useToast();
   const qc = useQueryClient();
@@ -693,6 +698,7 @@ function TierEditor({ tier, onDone }: { tier: Tier; onDone: () => void }) {
 }
 
 function TiersTab() {
+  const theme = useTheme();
   const [editing, setEditing] = useState<string | null>(null);
   const query = useQuery({ queryKey: ['admin', 'tiers'], queryFn: api.admin.tiers });
 
@@ -780,6 +786,7 @@ function TiersTab() {
  */
 
 function TicketsTab() {
+  const theme = useTheme();
   const { t } = useTranslation();
   const toast = useToast();
   const ticketsQuery = useQuery({
@@ -890,6 +897,7 @@ function ConfigTab() {
 }
 
 export default function AdminScreen() {
+  const theme = useTheme();
   const { t } = useTranslation();
   const navHeight = useBottomNavHeight();
   const router = useRouter();

@@ -103,7 +103,10 @@
     "deleteAccountSubtitle": "Permanently delete account and access to MikroLan2",
     "confirmPassword": "Confirm with your password",
     "deleteConfirm": "Permanently delete my account",
-    "deleteSetPasswordFirst": "Set a password above first to confirm deletion."
+    "deleteSetPasswordFirst": "Set a password above first to confirm deletion.",
+    "darkMode": "Dark mode",
+    "darkModeOn": "Dark theme enabled",
+    "darkModeOff": "Light theme enabled"
   },
   "home": {
     "title": "Home",
@@ -767,6 +770,8 @@
     "companyNameLabel": "Company name (PRO)",
     "companyNamePlaceholder": "MikroLan2",
     "showWifiName": "Show WiFi name",
+    "wifiNameLabel": "Displayed WiFi name",
+    "wifiNamePlaceholder": "E.g.: My WiFi",
     "showPrice": "Show price",
     "currencyLabel": "Currency",
     "showTicketNumber": "Show ticket number (#)",

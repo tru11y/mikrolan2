@@ -36,11 +36,11 @@ import {
   Screen,
   space,
   Subtitle,
-  theme,
   type,
   useToast,
   type IoniconName,
 } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 import { RouterStatusDot } from '@/src/components/RouterStatusDot';
@@ -72,6 +72,7 @@ function Gauge({
   value: number;
   color: string;
 }) {
+  const theme = useTheme();
   const pct = Math.max(0, Math.min(100, value));
   return (
     <View
@@ -130,6 +131,7 @@ function StatSquare({
   // `flex: 1` et non une largeur en pourcentage : quatre tuiles à 23 % dans un
   // Row en space-between laissaient un reliquat réparti dans les gouttières,
   // qui devenaient inégales.
+  const theme = useTheme();
   return (
     <Press
       onPress={onPress}
@@ -160,6 +162,7 @@ function StatSquare({
 }
 
 export default function RouterDetailScreen() {
+  const theme = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { t } = useTranslation();
   const router = useRouter();
