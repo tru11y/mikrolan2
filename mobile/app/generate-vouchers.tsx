@@ -18,6 +18,7 @@ import {
   Press,
   Skeleton,
   useToast,
+  withAlpha,
 } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
@@ -207,7 +208,7 @@ export default function GenerateVouchersScreen() {
               width: 40,
               height: 40,
               borderRadius: 12,
-              backgroundColor: theme.primary + '22',
+              backgroundColor: withAlpha(theme.primary, 0.13),
               alignItems: 'center',
               justifyContent: 'center',
             }}
@@ -265,8 +266,8 @@ export default function GenerateVouchersScreen() {
                 onPress={() => router.push({ pathname: '/plans', params: { routerId } })}
                 style={{
                   borderWidth: 1,
-                  borderColor: theme.primary + '55',
-                  backgroundColor: theme.primary + '14',
+                  borderColor: withAlpha(theme.primary, 0.33),
+                  backgroundColor: withAlpha(theme.primary, 0.08),
                   borderRadius: 12,
                   padding: 14,
                   flexDirection: 'row',
@@ -410,7 +411,7 @@ export default function GenerateVouchersScreen() {
                       style={{
                         borderWidth: 1,
                         borderColor: active ? theme.primary : theme.border,
-                        backgroundColor: active ? theme.primary + '18' : theme.surfaceAlt,
+                        backgroundColor: active ? withAlpha(theme.primary, 0.09) : theme.surfaceAlt,
                         borderRadius: 14,
                         padding: 12,
                         flexDirection: 'row',
@@ -525,7 +526,7 @@ export default function GenerateVouchersScreen() {
                     borderWidth: 1,
                     borderColor: quantity === n ? theme.primary : theme.border,
                     backgroundColor:
-                      quantity === n ? theme.primary + '1A' : 'transparent',
+                      quantity === n ? withAlpha(theme.primary, 0.1) : 'transparent',
                     borderRadius: 10,
                     paddingVertical: 8,
                     alignItems: 'center',

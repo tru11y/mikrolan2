@@ -153,7 +153,7 @@ function makeStyles(t: ThemeColors) {
       color: t.text,
       fontSize: type.bodyLg,
     },
-    inputInvalid: { borderColor: t.danger, backgroundColor: t.danger + '10' },
+    inputInvalid: { borderColor: t.danger, backgroundColor: withAlpha(t.danger, 0.06) },
     toastHost: {
       position: 'absolute',
       top: 0,
@@ -1113,7 +1113,7 @@ export function Pill({
         s.pill,
         {
           borderColor: active ? accent : t.border,
-          backgroundColor: active ? accent + '22' : 'transparent',
+          backgroundColor: active ? withAlpha(accent, 0.13) : 'transparent',
         },
       ]}
     >
@@ -1151,9 +1151,9 @@ export function IconChip({
         width: sz.box,
         height: sz.box,
         borderRadius: sz.radius,
-        backgroundColor: c + '22',
+        backgroundColor: withAlpha(c, 0.13),
         borderWidth: outlined ? 1 : 0,
-        borderColor: c + '44',
+        borderColor: withAlpha(c, 0.27),
         alignItems: 'center',
         justifyContent: 'center',
       }}
@@ -1187,7 +1187,7 @@ export function SegmentedOption({
         flex: 1,
         borderWidth: 1,
         borderColor: active ? t.primary : t.border,
-        backgroundColor: active ? t.primary + '1A' : t.surfaceAlt,
+        backgroundColor: active ? withAlpha(t.primary, 0.1) : t.surfaceAlt,
         borderRadius: radius.md,
         padding: space.md - 2,
         gap: space.xs,
@@ -1274,7 +1274,7 @@ export function ConfirmDialog({
       onRequestClose={onCancel}
     >
       <View style={s.dialogBackdrop}>
-        <View style={[s.dialog, { borderColor: accent + '66' }]}>
+        <View style={[s.dialog, { borderColor: withAlpha(accent, 0.4) }]}>
           <IconChip name={iconName} color={accent} size="lg" outlined />
           <View style={{ alignItems: 'center', gap: space.xs }}>
             <Text style={s.dialogTitle}>{title}</Text>
@@ -1465,7 +1465,7 @@ function ToastItem({ toast, onDone }: { toast: ToastPayload; onDone: () => void 
       style={[
         s.toast,
         {
-          borderColor: toastColor + '66',
+          borderColor: withAlpha(toastColor, 0.4),
           opacity: anim,
           transform: [
             {
