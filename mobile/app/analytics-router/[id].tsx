@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,10 +8,12 @@ import { LineChart } from 'react-native-gifted-charts';
 import { api, type AnalyticsPeriod } from '@/src/lib/api';
 import { busiestCell, describeBusiest, fmtGrowth, fmtXof } from '@/src/lib/analyticsFormat';
 import {
+  AuroraCard,
   Badge,
   Card,
   Empty,
   ErrorState,
+  FadeIn,
   Mono,
   Row,
   SectionTitle,
@@ -19,6 +21,7 @@ import {
   space,
   Subtitle,
   Title,
+  withAlpha,
 } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
@@ -38,6 +41,8 @@ export default function AnalyticsRouterDetailScreen() {
   const { t } = useTranslation();
   const { id, period: periodParam } = useLocalSearchParams<{ id: string; period?: string }>();
   const navHeight = useBottomNavHeight();
+  const { width: screenWidth } = useWindowDimensions();
+  const chartWidth = screenWidth - space.lg * 2 - space.lg * 2 - 40;
   const [period] = useState<AnalyticsPeriod>(
     ALLOWED_PERIODS.includes(periodParam as AnalyticsPeriod) ? (periodParam as AnalyticsPeriod) : 'last30days',
   );
@@ -76,54 +81,53 @@ export default function AnalyticsRouterDetailScreen() {
               <Subtitle>{t('analyticsRouter.periodSubtitle')}</Subtitle>
             </View>
 
-            <Card style={{ gap: 8 }}>
-              <Text style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 }}>
+            <FadeIn>
+            <AuroraCard style={{ gap: 8, padding: space.xl }}>
+              <Text style={{ color: withAlpha('#FFFFFF', 0.7), fontSize: 11, fontWeight: '700', letterSpacing: 0.5 }}>
                 {t('analyticsRouter.revenue')}
               </Text>
-              <Mono style={{ color: theme.success, fontSize: 28, fontWeight: '900' }}>{fmtXof(data.revenueXof)}</Mono>
+              <Mono style={{ color: '#FFFFFF', fontSize: 30, fontWeight: '900' }}>{fmtXof(data.revenueXof)}</Mono>
               <Row style={{ justifyContent: 'flex-start', gap: 10 }}>
-                <Text style={{ color: theme.textMuted, fontSize: 12 }}>{t('analyticsRouter.sales', { count: data.salesCount })}</Text>
-                <Text style={{ color: theme.textMuted, fontSize: 12 }}>
+                <Text style={{ color: withAlpha('#FFFFFF', 0.8), fontSize: 12 }}>{t('analyticsRouter.sales', { count: data.salesCount })}</Text>
+                <Text style={{ color: withAlpha('#FFFFFF', 0.8), fontSize: 12 }}>
                   {t('analyticsRouter.ofGlobalRevenue', { pct: data.contributionPercent.toFixed(0) })}
                 </Text>
                 {fmtGrowth(data.growthPercent) ? (
-                  <Text
-                    style={{
-                      color: data.growthPercent! >= 0 ? theme.success : theme.danger,
-                      fontSize: 12,
-                      fontWeight: '700',
-                    }}
-                  >
-                    {fmtGrowth(data.growthPercent)} {t('analyticsRouter.vsPrevious')}
-                  </Text>
+                  <View style={{ backgroundColor: withAlpha('#FFFFFF', 0.2), borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                    <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>
+                      {fmtGrowth(data.growthPercent)} {t('analyticsRouter.vsPrevious')}
+                    </Text>
+                  </View>
                 ) : null}
               </Row>
-              {data.dataQuality !== 'EXACT' && data.dataQuality !== 'NO_DATA' ? (
-                <View style={{ gap: 4 }}>
-                  <Badge
-                    label={
-                      data.dataQuality === 'ESTIMATED'
-                        ? t('rapport.dataEstimated')
-                        : data.dataQuality === 'MIXED'
-                          ? t('rapport.dataMixed')
-                          : t('rapport.dataIncomplete')
-                    }
-                    tone="warning"
-                  />
-                  {data.dataQuality === 'ESTIMATED' || data.dataQuality === 'MIXED' ? (
-                    <Text style={{ color: theme.textMuted, fontSize: 11 }}>
-                      {t('rapport.estimatedNote')}
-                    </Text>
-                  ) : null}
-                </View>
-              ) : null}
-              <Text style={{ color: theme.textMuted, fontSize: 11 }}>
+              <Text style={{ color: withAlpha('#FFFFFF', 0.7), fontSize: 11 }}>
                 {t('analyticsRouter.tenantAverage', { amount: fmtXof(data.comparisonToTenantAverage.averageRouterRevenueXof) })}
                 {fmtGrowth(data.comparisonToTenantAverage.deltaPercent)
                   ? ` (${fmtGrowth(data.comparisonToTenantAverage.deltaPercent)})`
                   : ''}
               </Text>
-            </Card>
+            </AuroraCard>
+            </FadeIn>
+
+            {data.dataQuality !== 'EXACT' && data.dataQuality !== 'NO_DATA' ? (
+              <Card style={{ gap: 4 }}>
+                <Badge
+                  label={
+                    data.dataQuality === 'ESTIMATED'
+                      ? t('rapport.dataEstimated')
+                      : data.dataQuality === 'MIXED'
+                        ? t('rapport.dataMixed')
+                        : t('rapport.dataIncomplete')
+                  }
+                  tone="warning"
+                />
+                {data.dataQuality === 'ESTIMATED' || data.dataQuality === 'MIXED' ? (
+                  <Text style={{ color: theme.textMuted, fontSize: 11 }}>
+                    {t('rapport.estimatedNote')}
+                  </Text>
+                ) : null}
+              </Card>
+            ) : null}
 
             <View>
               <SectionTitle>{t('analyticsRouter.evolution')}</SectionTitle>
@@ -133,8 +137,8 @@ export default function AnalyticsRouterDetailScreen() {
                 <Card>
                   <LineChart
                     data={data.timeSeries.map((pt) => ({ value: pt.revenueXof, label: pt.date.slice(5) }))}
-                    width={280}
-                    height={140}
+                    width={chartWidth}
+                    height={160}
                     color={theme.primary}
                     thickness={3}
                     dataPointsColor={theme.primary}
