@@ -14,10 +14,10 @@ import { AppModule } from './app.module';
 import type { AppConfig } from './config/configuration';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create<NestFastifyApplication>(
+  const app = await NestFactory.create(
     AppModule,
     new FastifyAdapter(),
-  );
+  ) as NestFastifyApplication;
 
   const config = app.get(ConfigService<AppConfig, true>);
 
