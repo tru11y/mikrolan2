@@ -20,6 +20,7 @@ describe('AnalyticsService', () => {
     jest.clearAllMocks();
     service = new AnalyticsService(mockPrisma as never, revenue);
     mockPrisma.tenant.findUnique.mockResolvedValue({ timezone: 'Africa/Abidjan' });
+    mockPrisma.session.findMany.mockResolvedValue([]);
     jest
       .spyOn(tenantCtx, 'getTenantContext')
       .mockReturnValue({ tenantId: 't1', userId: 'u1', role: 'OWNER' as never });
