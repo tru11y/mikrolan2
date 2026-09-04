@@ -62,6 +62,11 @@ export class RoutersController {
     return this.routers.updateTicketTemplate(id, dto);
   }
 
+  @Get(':id/credentials')
+  getCredentials(@Param('id', ParseUUIDPipe) id: string) {
+    return this.routers.getCredentials(id);
+  }
+
   @Delete(':id')
   @Roles(UserRole.ADMIN)
   @HttpCode(200)
