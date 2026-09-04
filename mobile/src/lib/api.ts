@@ -1225,6 +1225,12 @@ export const api = {
       );
       return unwrap(res);
     },
+    async getCredentials(id: string): Promise<{ username: string; password: string; host: string | null } | null> {
+      const res = await apiClient.get<ApiEnvelope<{ username: string; password: string; host: string | null } | null>>(
+        `/routers/${id}/credentials`,
+      );
+      return unwrap(res);
+    },
     // LOCAL routers: the server can't reach a private LAN, so we report what we
     // read on the router ourselves. This is what turns a used ticket into
     // revenue — without it a free operator's reporting stays at zero.
