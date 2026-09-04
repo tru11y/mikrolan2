@@ -14,6 +14,8 @@ import { pushWireGuardConfig } from '@/src/services/mikrotik-lan/pushWireGuard';
 import { detectServicePorts } from '@/src/services/mikrotik-lan/detectServicePorts';
 import {
   getLocalCredentials,
+  saveLocalCredentials,
+  parseAddress,
 } from '@/src/lib/router-credentials';
 import { listActiveLan } from '@/src/services/mikrotik-lan/hotspotLan';
 import { getWifiInfo, sameSubnet24 } from '@/src/lib/lanBinder';
@@ -220,6 +222,20 @@ export default function RouterDetailScreen() {
     query.data?.mode === 'LOCAL' &&
     localCredsQuery.isSuccess &&
     !localCredsQuery.data;
+
+  useEffect(() => {
+    if (!id || !missingLocalCreds) return;
+    (async () => {
+      try {
+        const remote = await api.routers.getCredentials(id);
+        if (remote?.username && remote?.host) {
+          const { host, port } = parseAddress(remote.host);
+          await saveLocalCredentials(id, { username: remote.username, password: remote.password, host, port });
+          qc.invalidateQueries({ queryKey: ['router-local-creds', id] });
+        }
+      } catch {}
+    })();
+  }, [id, missingLocalCreds, qc]);
 
   const activeSessionsQuery = useQuery({
     queryKey: ['router-active-sessions', id, query.data?.mode],

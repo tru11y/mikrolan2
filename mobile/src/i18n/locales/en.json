@@ -487,7 +487,15 @@
     "disconnect": "Disconnect",
     "time": "Time",
     "readingRouter": "Reading router…",
-    "unreliableWarning": "This router has no credentials on this phone — this list may be outdated. Add them in Router settings → Router credentials."
+    "unreliableWarning": "This router has no credentials on this phone — this list may be outdated. Add them in Router settings → Router credentials.",
+    "activeLabel": "Connected",
+    "totalTraffic": "Total traffic",
+    "avgUptime": "Avg duration",
+    "download": "Download",
+    "upload": "Upload",
+    "sortData": "Data",
+    "sortUptime": "Duration",
+    "sortName": "Name"
   },
   "forgotPassword": {
     "title": "Forgot password",

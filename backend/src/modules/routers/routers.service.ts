@@ -158,6 +158,24 @@ export class RoutersService {
     return this.findOne(id);
   }
 
+  async getCredentials(id: string) {
+    const router = await this.prisma.router.findFirst({
+      where: { id, deletedAt: null },
+      select: { id: true, credEncrypted: true, localAddress: true },
+    });
+    if (!router) throw new NotFoundException('Routeur introuvable.');
+    if (!router.credEncrypted) return null;
+    const creds = JSON.parse(this.crypto.decrypt(router.credEncrypted)) as {
+      username: string;
+      password: string;
+    };
+    return {
+      username: creds.username,
+      password: creds.password,
+      host: router.localAddress ?? null,
+    };
+  }
+
   async remove(id: string) {
     await this.findOne(id);
     await this.hardCleanup(id);
