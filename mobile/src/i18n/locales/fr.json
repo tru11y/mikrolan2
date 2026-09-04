@@ -487,7 +487,15 @@
     "disconnect": "Déconnecter",
     "time": "Temps",
     "readingRouter": "Lecture du routeur…",
-    "unreliableWarning": "Ce routeur n'a pas d'identifiants sur ce téléphone — cette liste peut être obsolète. Ajoutez-les dans Paramètres routeur → Identifiants du routeur."
+    "unreliableWarning": "Ce routeur n'a pas d'identifiants sur ce téléphone — cette liste peut être obsolète. Ajoutez-les dans Paramètres routeur → Identifiants du routeur.",
+    "activeLabel": "Connectés",
+    "totalTraffic": "Trafic total",
+    "avgUptime": "Durée moy.",
+    "download": "Téléchargement",
+    "upload": "Envoi",
+    "sortData": "Données",
+    "sortUptime": "Durée",
+    "sortName": "Nom"
   },
   "forgotPassword": {
     "title": "Mot de passe oublié",
