@@ -31,6 +31,7 @@ import {
   Field,
   FieldError,
   Label,
+  Mono,
   NumberField,
   Press,
   Row,
@@ -38,6 +39,9 @@ import {
   SkeletonCard,
   Subtitle,
   Title,
+  space,
+  type as typeScale,
+  weight,
   useToast,
   withAlpha,
 } from '@/src/components/ui';
@@ -428,6 +432,44 @@ export default function PlansScreen() {
             />
           </Press>
         </Row>
+
+        {/* Summary KPIs */}
+        {(query.data?.length ?? 0) > 0 ? (
+          <FadeIn>
+            <Row style={{ gap: 8 }}>
+              <View style={{
+                flex: 1, alignItems: 'center', gap: 4,
+                backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
+                borderRadius: 14, paddingVertical: 12,
+              }}>
+                <Text style={{ color: theme.text, fontSize: 20, fontWeight: weight.heavy, fontFamily: theme.mono }}>
+                  {query.data!.length}
+                </Text>
+                <Text style={{ color: theme.textMuted, fontSize: 10 }}>{t('plans.totalPlans')}</Text>
+              </View>
+              <View style={{
+                flex: 1, alignItems: 'center', gap: 4,
+                backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
+                borderRadius: 14, paddingVertical: 12,
+              }}>
+                <Text style={{ color: theme.success, fontSize: 20, fontWeight: weight.heavy, fontFamily: theme.mono }}>
+                  {Math.round(query.data!.reduce((s, p) => s + p.priceXof, 0) / query.data!.length).toLocaleString('fr-FR')}
+                </Text>
+                <Text style={{ color: theme.textMuted, fontSize: 10 }}>{t('plans.avgPrice')}</Text>
+              </View>
+              <View style={{
+                flex: 1, alignItems: 'center', gap: 4,
+                backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
+                borderRadius: 14, paddingVertical: 12,
+              }}>
+                <Text style={{ color: theme.primary, fontSize: 20, fontWeight: weight.heavy, fontFamily: theme.mono }}>
+                  {query.data!.reduce((s, p) => s + p.sharedUsers, 0)}
+                </Text>
+                <Text style={{ color: theme.textMuted, fontSize: 10 }}>{t('plans.totalUsers')}</Text>
+              </View>
+            </Row>
+          </FadeIn>
+        ) : null}
 
         {showForm ? (
           <FadeIn>
