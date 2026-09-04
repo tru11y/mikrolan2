@@ -41,6 +41,7 @@
   },
   "login": {
     "welcome": "Bienvenue",
+    "subtitle": "Gérez vos routeurs MikroTik en toute simplicité",
     "createAccount": "Créer un compte",
     "orgName": "Nom de l'organisation",
     "orgPlaceholder": "Mon ISP",
