@@ -125,6 +125,8 @@ export interface OverviewResult {
   salesGrowthPercent: number | null;
   routersSummary: RouterSummaryItem[];
   topPlans: PlanPerformanceItem[];
+  timeSeries: { date: string; revenueXof: number; salesCount: number }[];
+  peakHours: { hour: number; sessions: number; sales: number }[];
   lastCalculatedAt: string;
 }
 
@@ -194,7 +196,7 @@ export class AnalyticsService {
 
     const { bounds, timezone } = await this.resolveBounds(query);
 
-    const [currentLines, previousLines, byPlan, routers] = await Promise.all([
+    const [currentLines, previousLines, byPlan, routers, sessions] = await Promise.all([
       this.revenue.listActivations({
         tenantId: ctx.tenantId,
         from: bounds.from,
@@ -219,6 +221,14 @@ export class AnalyticsService {
       this.prisma.router.findMany({
         where: { tenantId: ctx.tenantId, ...(query.routerId ? { id: query.routerId } : {}) },
         select: { id: true, identity: true, alias: true },
+      }),
+      this.prisma.session.findMany({
+        where: {
+          tenantId: ctx.tenantId,
+          ...(query.routerId ? { routerId: query.routerId } : {}),
+          startedAt: { gte: bounds.from, lt: bounds.to },
+        },
+        select: { startedAt: true },
       }),
     ]);
 
@@ -275,6 +285,37 @@ export class AnalyticsService {
       dataQuality: p.dataQuality,
     }));
 
+    const dailyMap = new Map<string, { revenueXof: number; salesCount: number }>();
+    for (const line of currentLines) {
+      const dateKey = line.usedAt.toISOString().slice(0, 10);
+      const entry = dailyMap.get(dateKey) ?? { revenueXof: 0, salesCount: 0 };
+      entry.revenueXof += line.xof ?? 0;
+      entry.salesCount += 1;
+      dailyMap.set(dateKey, entry);
+    }
+    const timeSeries = [...dailyMap.entries()]
+      .map(([date, v]) => ({ date, revenueXof: v.revenueXof, salesCount: v.salesCount }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const hourlyPeak = new Map<number, { sessions: number; sales: number }>();
+    for (const s of sessions) {
+      const { hour } = localDayOfWeekAndHour(s.startedAt, timezone);
+      const e = hourlyPeak.get(hour) ?? { sessions: 0, sales: 0 };
+      e.sessions++;
+      hourlyPeak.set(hour, e);
+    }
+    for (const line of currentLines) {
+      const { hour } = localDayOfWeekAndHour(line.usedAt, timezone);
+      const e = hourlyPeak.get(hour) ?? { sessions: 0, sales: 0 };
+      e.sales++;
+      hourlyPeak.set(hour, e);
+    }
+    const peakHours = Array.from({ length: 24 }, (_, h) => ({
+      hour: h,
+      sessions: hourlyPeak.get(h)?.sessions ?? 0,
+      sales: hourlyPeak.get(h)?.sales ?? 0,
+    }));
+
     return {
       period: { from: bounds.from.toISOString(), to: bounds.to.toISOString() },
       timezone,
@@ -291,6 +332,8 @@ export class AnalyticsService {
       salesGrowthPercent: growthPercent(current.salesCount, previous.salesCount),
       routersSummary,
       topPlans,
+      timeSeries,
+      peakHours,
       lastCalculatedAt: new Date().toISOString(),
     };
   }

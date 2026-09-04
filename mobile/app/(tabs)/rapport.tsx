@@ -107,6 +107,78 @@ function Kpi({
   );
 }
 
+function DailyRevenueChart({ data, t, chartWidth }: { data: { date: string; revenueXof: number; salesCount: number }[]; t: (key: string) => string; chartWidth: number }) {
+  const theme = useTheme();
+  if (!data.length) return <Empty icon="bar-chart-outline" text={t('rapport.noSalesData')} />;
+  const bars = data.map((d) => ({
+    value: d.revenueXof,
+    label: d.date.slice(8),
+    frontColor: theme.primary,
+  }));
+  return (
+    <View style={{ alignItems: 'center', paddingTop: space.sm }}>
+      <BarChart
+        data={bars}
+        width={chartWidth}
+        height={160}
+        barWidth={Math.min(24, Math.max(8, (chartWidth - 40) / data.length - 4))}
+        spacing={Math.min(12, Math.max(2, (chartWidth - 40) / data.length / 3))}
+        roundedTop
+        frontColor={theme.primary}
+        yAxisTextStyle={{ color: theme.textMuted, fontSize: 10 }}
+        xAxisLabelTextStyle={{ color: theme.textMuted, fontSize: 8 }}
+        rulesColor={theme.border}
+        yAxisColor={theme.border}
+        xAxisColor={theme.border}
+        noOfSections={4}
+      />
+    </View>
+  );
+}
+
+function PeakHoursChart({ data, t, chartWidth }: { data: { hour: number; sessions: number; sales: number }[]; t: (key: string) => string; chartWidth: number }) {
+  const theme = useTheme();
+  if (!data.length) return <Empty icon="time-outline" text={t('rapport.noSessionData')} />;
+  const maxSessions = Math.max(...data.map((d) => d.sessions), 1);
+  const bars = data.map((d) => ({
+    value: d.sessions,
+    label: d.hour % 3 === 0 ? `${d.hour}h` : '',
+    frontColor: d.sessions === maxSessions ? theme.warning : theme.primarySoft,
+  }));
+  const peakHour = data.reduce((max, d) => (d.sessions > max.sessions ? d : max), data[0]);
+  return (
+    <View style={{ gap: space.sm }}>
+      <Row style={{ justifyContent: 'flex-start', gap: space.sm }}>
+        <View style={{ backgroundColor: withAlpha(theme.warning, 0.15), borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Ionicons name="flame" size={14} color={theme.warning} />
+          <Text style={{ color: theme.warning, fontSize: 12, fontWeight: '800' }}>
+            {peakHour.hour}h-{peakHour.hour + 1}h
+          </Text>
+        </View>
+        <Text style={{ color: theme.textMuted, fontSize: 11, flex: 1 }}>
+          {peakHour.sessions} sessions · {peakHour.sales} {t('rapport.sales')}
+        </Text>
+      </Row>
+      <View style={{ alignItems: 'center' }}>
+        <BarChart
+          data={bars}
+          width={chartWidth}
+          height={120}
+          barWidth={Math.max(4, (chartWidth - 40) / 24 - 2)}
+          spacing={2}
+          frontColor={theme.primarySoft}
+          yAxisTextStyle={{ color: theme.textMuted, fontSize: 9 }}
+          xAxisLabelTextStyle={{ color: theme.textMuted, fontSize: 8 }}
+          rulesColor={theme.border}
+          yAxisColor={theme.border}
+          xAxisColor={theme.border}
+          noOfSections={3}
+        />
+      </View>
+    </View>
+  );
+}
+
 function MonthlyRevenueChart({ data, t, chartWidth }: { data: RevenueByPeriodItem[]; t: (key: string) => string; chartWidth: number }) {
   const theme = useTheme();
   const recent = data.slice(-6);
@@ -667,6 +739,18 @@ export default function RapportScreen() {
     return Math.round(data.revenueXof / data.ticketsUsed);
   }, [data]);
 
+  const revenuePerRouter = useMemo(() => {
+    const rs = overview.data?.routersSummary;
+    if (!rs?.length || !overview.data) return null;
+    return Math.round(overview.data.revenueXof / rs.length);
+  }, [overview.data]);
+
+  const revenuePerDay = useMemo(() => {
+    const ts = overview.data?.timeSeries;
+    if (!ts?.length || !overview.data) return null;
+    return Math.round(overview.data.revenueXof / ts.length);
+  }, [overview.data]);
+
   const error = metrics.error || revenueByPeriod.error || revenueByRouter.error;
   const loading = metrics.isLoading || revenueByPeriod.isLoading || revenueByRouter.isLoading;
 
@@ -879,6 +963,57 @@ export default function RapportScreen() {
                   label={t('rapport.onlineNow')}
                 />
               </Row>
+            </FadeIn>
+
+            <FadeIn delay={110}>
+              <Row style={{ gap: space.sm }}>
+                <Kpi
+                  icon="calendar-outline"
+                  iconColor={theme.secondary ?? theme.primary}
+                  value={revenuePerDay != null ? fmtXof(revenuePerDay) : '—'}
+                  label={t('rapport.avgDailyRevenue')}
+                />
+                <Kpi
+                  icon="hardware-chip-outline"
+                  iconColor={theme.primarySoft}
+                  value={revenuePerRouter != null ? fmtXof(revenuePerRouter) : '—'}
+                  label={t('rapport.avgRevenuePerRouter')}
+                />
+              </Row>
+            </FadeIn>
+
+            {/* CA journalier */}
+            <FadeIn delay={120}>
+            <Card style={{ gap: 12 }}>
+              <Row style={{ gap: 8, justifyContent: 'flex-start' }}>
+                <Ionicons name="calendar-outline" size={16} color={theme.primary} />
+                <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
+                  {t('rapport.dailyRevenue')}
+                </Text>
+              </Row>
+              {overview.isLoading ? (
+                <Skeleton height={160} />
+              ) : (
+                <DailyRevenueChart data={overview.data?.timeSeries ?? []} t={t} chartWidth={chartWidth} />
+              )}
+            </Card>
+            </FadeIn>
+
+            {/* Pic de connexions par heure */}
+            <FadeIn delay={135}>
+            <Card style={{ gap: 12 }}>
+              <Row style={{ gap: 8, justifyContent: 'flex-start' }}>
+                <Ionicons name="flame-outline" size={16} color={theme.warning} />
+                <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
+                  {t('rapport.peakHours')}
+                </Text>
+              </Row>
+              {overview.isLoading ? (
+                <Skeleton height={140} />
+              ) : (
+                <PeakHoursChart data={overview.data?.peakHours ?? []} t={t} chartWidth={chartWidth} />
+              )}
+            </Card>
             </FadeIn>
 
             {/* Tendance CA sur 6 mois */}

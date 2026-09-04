@@ -387,6 +387,8 @@ export type AnalyticsOverview = {
   salesGrowthPercent: number | null;
   routersSummary: AnalyticsRouterSummary[];
   topPlans: AnalyticsPlanPerformance[];
+  timeSeries: { date: string; revenueXof: number; salesCount: number }[];
+  peakHours: { hour: number; sessions: number; sales: number }[];
   lastCalculatedAt: string;
 };
 
