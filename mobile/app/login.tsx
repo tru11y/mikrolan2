@@ -24,6 +24,8 @@ import {
   radius,
   space,
   type,
+  weight,
+  withAlpha,
 } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
 
@@ -116,14 +118,23 @@ export default function LoginScreen() {
           }}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={{ alignItems: 'center', gap: space.lg }}>
-            <Image
-              source={require('@/assets/images/logo.png')}
-              style={{ width: 96, height: 96 }}
-              resizeMode="contain"
-            />
-            <Text style={{ color: theme.text, fontSize: type.display, fontWeight: '800' }}>
+          <View style={{ alignItems: 'center', gap: space.md }}>
+            <View style={{
+              width: 88, height: 88, borderRadius: 22,
+              backgroundColor: withAlpha(theme.primary, 0.08),
+              alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Image
+                source={require('@/assets/images/logo.png')}
+                style={{ width: 72, height: 72 }}
+                resizeMode="contain"
+              />
+            </View>
+            <Text style={{ color: theme.text, fontSize: type.display, fontWeight: weight.heavy }}>
               {mode === 'signup' ? t('login.createAccount') : t('login.welcome')}
+            </Text>
+            <Text style={{ color: theme.textMuted, fontSize: type.caption, textAlign: 'center' }}>
+              {t('login.subtitle')}
             </Text>
           </View>
 
