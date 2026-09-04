@@ -30,7 +30,7 @@ import {
   Mono,
   Press,
   Row,
-  SectionTitle,
+
   Skeleton,
   space,
   Subtitle,
@@ -73,7 +73,6 @@ function fmtBytes(bytesStr: string): string {
   return `${val < 10 ? val.toFixed(1) : Math.round(val)} ${units[i]}`;
 }
 
-/** KPI card: value + label, optionally a trend chip. */
 function Kpi({
   icon: iconName,
   iconColor,
@@ -87,23 +86,48 @@ function Kpi({
 }) {
   const theme = useTheme();
   return (
-    <Card style={{ flex: 1, alignItems: 'center', gap: 6, minWidth: 0, paddingVertical: space.lg }}>
+    <View style={{
+      flex: 1, alignItems: 'center', gap: 8, minWidth: 0,
+      paddingVertical: 16, paddingHorizontal: 8,
+      backgroundColor: theme.surface,
+      borderWidth: 1, borderColor: theme.border,
+      borderRadius: 16,
+    }}>
       <View style={{
-        width: 36, height: 36, borderRadius: 12,
-        backgroundColor: withAlpha(iconColor, 0.12),
+        width: 38, height: 38, borderRadius: 12,
+        backgroundColor: withAlpha(iconColor, 0.1),
+        borderWidth: 1, borderColor: withAlpha(iconColor, 0.2),
         alignItems: 'center', justifyContent: 'center',
       }}>
-        <Ionicons name={iconName} size={18} color={iconColor} />
+        <Ionicons name={iconName} size={17} color={iconColor} />
       </View>
       <Text
-        style={{ color: theme.text, fontSize: type.h2, fontWeight: weight.heavy }}
+        style={{ color: theme.text, fontSize: type.h2, fontWeight: weight.heavy, fontFamily: theme.mono }}
         numberOfLines={1}
         adjustsFontSizeToFit
       >
         {value}
       </Text>
-      <Text style={{ color: theme.textMuted, fontSize: 10, textAlign: 'center', letterSpacing: 0.3 }}>{label}</Text>
-    </Card>
+      <Text style={{ color: theme.textMuted, fontSize: 10, textAlign: 'center', letterSpacing: 0.4, lineHeight: 14 }}>{label}</Text>
+    </View>
+  );
+}
+
+function SectionDivider({ icon, label, color }: { icon: keyof typeof Ionicons.glyphMap; label: string; color: string }) {
+  const theme = useTheme();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingTop: 8 }}>
+      <View style={{
+        width: 30, height: 30, borderRadius: 10,
+        backgroundColor: withAlpha(color, 0.1),
+        borderWidth: 1, borderColor: withAlpha(color, 0.2),
+        alignItems: 'center', justifyContent: 'center',
+      }}>
+        <Ionicons name={icon} size={14} color={color} />
+      </View>
+      <Text style={{ color: theme.text, fontSize: 15, fontWeight: weight.bold, flex: 1 }}>{label}</Text>
+      <View style={{ height: 1, flex: 0.3, backgroundColor: withAlpha(theme.border, 0.5) }} />
+    </View>
   );
 }
 
@@ -553,14 +577,25 @@ function InsightsSection({ insights }: { insights: import('@/src/lib/api').Busin
       {insights.slice(0, 6).map((ins, idx) => (
         <View
           key={`${ins.type}-${idx}`}
-          style={{ backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border, borderRadius: 12, padding: 12, gap: 4 }}
+          style={{
+            backgroundColor: theme.surface,
+            borderWidth: 1, borderColor: theme.border,
+            borderRadius: 14, padding: 14, gap: 8,
+            borderLeftWidth: 3,
+            borderLeftColor: CONFIDENCE_TONE[ins.confidence] === 'success' ? theme.success : CONFIDENCE_TONE[ins.confidence] === 'warning' ? theme.warning : theme.border,
+          }}
         >
-          <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>{ins.title}</Text>
-          <Text style={{ color: theme.textMuted, fontSize: 12 }}>{ins.observation}</Text>
+          <Row style={{ gap: 8 }}>
+            <Ionicons name="bulb" size={14} color={theme.warning} />
+            <Text style={{ color: theme.text, fontSize: 13, fontWeight: weight.bold, flex: 1 }}>{ins.title}</Text>
+          </Row>
+          <Text style={{ color: theme.textMuted, fontSize: 12, lineHeight: 18 }}>{ins.observation}</Text>
           <Row style={{ justifyContent: 'flex-start', gap: 8 }}>
             <Badge label={CONFIDENCE_KEY[ins.confidence] ? t(CONFIDENCE_KEY[ins.confidence]) : ins.confidence} tone={CONFIDENCE_TONE[ins.confidence] ?? 'muted'} />
           </Row>
-          <Text style={{ color: theme.textMuted, fontSize: 10, fontStyle: 'italic' }}>{ins.limitations}</Text>
+          {ins.limitations ? (
+            <Text style={{ color: withAlpha(theme.textMuted, 0.6), fontSize: 10, fontStyle: 'italic' }}>{ins.limitations}</Text>
+          ) : null}
         </View>
       ))}
     </View>
@@ -1066,8 +1101,8 @@ export default function RapportScreen() {
 
             {/* Classement routeurs (Analytics) — accès au détail par routeur */}
             <FadeIn delay={250}>
-            <View>
-              <SectionTitle>{t('rapport.routersSection')}</SectionTitle>
+            <View style={{ gap: 10 }}>
+              <SectionDivider icon="hardware-chip-outline" label={t('rapport.routersSection')} color={theme.primary} />
               {overview.isLoading && analyticsRouters.isLoading ? (
                 <Skeleton height={100} />
               ) : overview.error || analyticsRouters.error ? (
@@ -1085,8 +1120,8 @@ export default function RapportScreen() {
 
             {/* Forfaits — double classement (volume vs contribution CA) */}
             <FadeIn delay={300}>
-            <View>
-              <SectionTitle>{t('rapport.plansSection')}</SectionTitle>
+            <View style={{ gap: 10 }}>
+              <SectionDivider icon="pricetags-outline" label={t('rapport.plansSection')} color={theme.warning} />
               {overview.isLoading ? (
                 <Skeleton height={140} />
               ) : overview.error ? (
@@ -1102,8 +1137,8 @@ export default function RapportScreen() {
 
             {/* Affluence : jours/heures d'activité, ventes vs sessions séparées */}
             <FadeIn delay={350}>
-            <View>
-              <SectionTitle>{t('rapport.affluence')}</SectionTitle>
+            <View style={{ gap: 10 }}>
+              <SectionDivider icon="time-outline" label={t('rapport.affluence')} color={theme.success} />
               {traffic.isLoading ? (
                 <Skeleton height={80} />
               ) : traffic.error ? (
@@ -1123,8 +1158,8 @@ export default function RapportScreen() {
 
             {/* Sessions et utilisation réseau */}
             <FadeIn delay={400}>
-            <View>
-              <SectionTitle>{t('rapport.sessionsSection')}</SectionTitle>
+            <View style={{ gap: 10 }}>
+              <SectionDivider icon="wifi-outline" label={t('rapport.sessionsSection')} color={theme.primary} />
               {sessionStats.error ? (
                 <ErrorState message={t('rapport.sessionsLoadError')} onRetry={onRefresh} />
               ) : (
@@ -1135,8 +1170,9 @@ export default function RapportScreen() {
             </FadeIn>
 
             {/* Tendances et prévisions BI explicables */}
-            <View>
-              <SectionTitle>{t('rapport.trends')}</SectionTitle>
+            <FadeIn delay={450}>
+            <View style={{ gap: 10 }}>
+              <SectionDivider icon="analytics-outline" label={t('rapport.trends')} color={theme.secondary ?? theme.primary} />
               {forecast.error ? (
                 <ErrorState message={t('rapport.trendsLoadError')} onRetry={onRefresh} />
               ) : (
@@ -1145,9 +1181,11 @@ export default function RapportScreen() {
                 </Card>
               )}
             </View>
+            </FadeIn>
 
-            <View>
-              <SectionTitle>{t('rapport.forecasts')}</SectionTitle>
+            <FadeIn delay={500}>
+            <View style={{ gap: 10 }}>
+              <SectionDivider icon="sparkles-outline" label={t('rapport.forecasts')} color={theme.warning} />
               {forecast.isLoading ? (
                 <Skeleton height={160} />
               ) : forecast.error ? (
@@ -1161,9 +1199,11 @@ export default function RapportScreen() {
                 </Card>
               )}
             </View>
+            </FadeIn>
 
-            <View>
-              <SectionTitle>{t('rapport.predictedTraffic')}</SectionTitle>
+            <FadeIn delay={550}>
+            <View style={{ gap: 10 }}>
+              <SectionDivider icon="navigate-outline" label={t('rapport.predictedTraffic')} color={theme.success} />
               {forecastTraffic.error ? (
                 <ErrorState message={t('rapport.predictedTrafficLoadError')} onRetry={onRefresh} />
               ) : (
@@ -1172,45 +1212,64 @@ export default function RapportScreen() {
                 </Card>
               )}
             </View>
+            </FadeIn>
 
-            <View>
-              <SectionTitle>{t('rapport.insights')}</SectionTitle>
+            <FadeIn delay={600}>
+            <View style={{ gap: 10 }}>
+              <SectionDivider icon="bulb-outline" label={t('rapport.insights')} color={theme.warning} />
               {insights.error ? (
                 <ErrorState message={t('rapport.insightsLoadError')} onRetry={onRefresh} />
               ) : (
                 <InsightsSection insights={insights.data} />
               )}
             </View>
+            </FadeIn>
 
             {/* Clients récents */}
-            <View>
-              <SectionTitle>{t('rapport.recentClients')}</SectionTitle>
+            <FadeIn delay={650}>
+            <View style={{ gap: 10 }}>
+              <SectionDivider icon="people-outline" label={t('rapport.recentClients')} color={theme.primary} />
               {!clients.data?.length ? (
                 <Empty icon="people-outline" text={t('rapport.noTicketUsed')} />
               ) : (
-                <View style={{ gap: 12 }}>
+                <View style={{ gap: 8 }}>
                   {clients.data.map((c) => (
-                    <Card key={c.voucherId} style={{ gap: 6 }}>
+                    <View key={c.voucherId} style={{
+                      backgroundColor: theme.surface,
+                      borderWidth: 1, borderColor: theme.border,
+                      borderRadius: 14, padding: 12, gap: 6,
+                      borderLeftWidth: 3,
+                      borderLeftColor: c.online ? theme.success : withAlpha(theme.textMuted, 0.3),
+                    }}>
                       <Row>
-                        <Mono style={{ color: theme.text, fontSize: 15 }}>{c.code}</Mono>
+                        <Row style={{ gap: 6, flex: 1, justifyContent: 'flex-start' }}>
+                          <View style={{
+                            width: 8, height: 8, borderRadius: 4,
+                            backgroundColor: c.online ? theme.success : withAlpha(theme.textMuted, 0.3),
+                          }} />
+                          <Mono style={{ color: theme.text, fontSize: 14, fontWeight: weight.bold }}>{c.code}</Mono>
+                        </Row>
                         <Badge
                           label={c.online ? t('rapport.online') : t('rapport.used')}
                           tone={c.online ? 'success' : 'muted'}
                         />
                       </Row>
-                      <Text style={{ color: theme.textMuted, fontSize: 12 }}>
-                        {c.planName} · {fmtXof(c.priceXof)} · {c.routerName}
-                      </Text>
+                      <Row style={{ justifyContent: 'flex-start', gap: 8 }}>
+                        <Text style={{ color: theme.textMuted, fontSize: 11 }}>{c.planName}</Text>
+                        <Mono style={{ color: theme.success, fontSize: 11, fontWeight: '700' }}>{fmtXof(c.priceXof)}</Mono>
+                        <Text style={{ color: theme.textMuted, fontSize: 11 }}>{c.routerName}</Text>
+                      </Row>
                       {c.macAddress || c.ipAddress ? (
-                        <Mono style={{ color: theme.textMuted, fontSize: 11 }}>
+                        <Mono style={{ color: withAlpha(theme.textMuted, 0.6), fontSize: 10 }}>
                           {[c.ipAddress, c.macAddress].filter(Boolean).join(' · ')}
                         </Mono>
                       ) : null}
-                    </Card>
+                    </View>
                   ))}
                 </View>
               )}
             </View>
+            </FadeIn>
           </>
         )}
       </ScrollView>

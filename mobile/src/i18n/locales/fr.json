@@ -619,7 +619,10 @@
     "rateLabel": "Débit (envoi/réception)",
     "ratePlaceholder": "Ex. 5M/10M",
     "deleteProfileTitle": "Supprimer ce profil ?",
-    "deleteProfileMessage": "« {{name}} » sera retiré du routeur. Les clients actuellement connectés avec ce forfait peuvent être déconnectés, et les tickets qui s'y rattachent perdent leur profil. Action irréversible."
+    "deleteProfileMessage": "« {{name}} » sera retiré du routeur. Les clients actuellement connectés avec ce forfait peuvent être déconnectés, et les tickets qui s'y rattachent perdent leur profil. Action irréversible.",
+    "totalPlans": "Forfaits",
+    "avgPrice": "Prix moyen (F)",
+    "totalUsers": "Utilisateurs"
   },
   "routerDetail": {
     "missingCredsBanner": "Ce routeur n'a pas d'identifiants sur ce téléphone — les appareils autorisés et les sessions ne peuvent pas s'afficher.",
@@ -698,7 +701,7 @@
   "routerCredentials": {
     "screenTitle": "Identifiants du routeur",
     "mikrotikApi": "Connexion API MikroTik",
-    "description": "Sans ces identifiants sur ce téléphone, les appareils autorisés et les sessions de ce routeur ne peuvent pas s'afficher.",
+    "description": "Ces identifiants permettent de piloter votre routeur à distance : sessions, appareils autorisés, et configuration.",
     "addressLabel": "Adresse",
     "portLabel": "Port",
     "routerosUser": "Utilisateur RouterOS",
@@ -706,7 +709,15 @@
     "testConnection": "Tester la connexion",
     "connected": "Connecté — identité : {{identity}}",
     "addressRequired": "Renseignez l'adresse du routeur",
-    "saveCredentials": "Enregistrer les identifiants"
+    "saveCredentials": "Enregistrer les identifiants",
+    "stepAddress": "Adresse",
+    "stepAuth": "Auth",
+    "stepTest": "Test",
+    "syncedFromServer": "Identifiants synchronisés depuis le serveur",
+    "connectionSection": "Connexion",
+    "authSection": "Authentification",
+    "connectionSuccess": "Connexion réussie",
+    "securityNote": "Les identifiants sont chiffrés AES-256 et synchronisés de manière sécurisée avec le serveur."
   },
   "ipBindings": {
     "screenTitle": "Appareils autorisés",
@@ -835,5 +846,18 @@
     "affluence": "Affluence",
     "salesPeak": "Pic de ventes : {{desc}}",
     "sessionsPeak": "Pic de sessions réseau ({{count}}) : {{desc}}"
+  },
+  "onboarding": {
+    "skip": "Passer",
+    "next": "Suivant",
+    "getStarted": "Commencer",
+    "step1Title": "Bienvenue sur MikroLan",
+    "step1Desc": "Gérez vos routeurs MikroTik, créez des forfaits WiFi et vendez des tickets — tout depuis votre téléphone.",
+    "step2Title": "Ajoutez vos routeurs",
+    "step2Desc": "Connectez-vous au WiFi de votre routeur et ajoutez-le en un clic. MikroLan configure automatiquement le hotspot.",
+    "step3Title": "Créez et vendez",
+    "step3Desc": "Définissez vos forfaits, générez des tickets et encaissez vos clients avec Mobile Money.",
+    "step4Title": "Suivez votre activité",
+    "step4Desc": "Tableau de bord en temps réel : chiffre d'affaires, sessions connectées, prévisions et insights business."
   }
 }

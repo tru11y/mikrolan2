@@ -619,7 +619,10 @@
     "rateLabel": "Rate (upload/download)",
     "ratePlaceholder": "e.g. 5M/10M",
     "deleteProfileTitle": "Delete this profile?",
-    "deleteProfileMessage": "\"{{name}}\" will be removed from the router. Clients currently connected with this plan may be disconnected, and linked tickets lose their profile. This cannot be undone."
+    "deleteProfileMessage": "\"{{name}}\" will be removed from the router. Clients currently connected with this plan may be disconnected, and linked tickets lose their profile. This cannot be undone.",
+    "totalPlans": "Plans",
+    "avgPrice": "Avg price (F)",
+    "totalUsers": "Users"
   },
   "routerDetail": {
     "missingCredsBanner": "This router has no credentials on this phone — authorized devices and sessions cannot be displayed.",
@@ -698,7 +701,7 @@
   "routerCredentials": {
     "screenTitle": "Router credentials",
     "mikrotikApi": "MikroTik API connection",
-    "description": "Without these credentials on this phone, authorized devices and sessions for this router cannot be displayed.",
+    "description": "These credentials allow remote management of your router: sessions, authorized devices, and configuration.",
     "addressLabel": "Address",
     "portLabel": "Port",
     "routerosUser": "RouterOS user",
@@ -706,7 +709,15 @@
     "testConnection": "Test connection",
     "connected": "Connected — identity: {{identity}}",
     "addressRequired": "Enter the router's address",
-    "saveCredentials": "Save credentials"
+    "saveCredentials": "Save credentials",
+    "stepAddress": "Address",
+    "stepAuth": "Auth",
+    "stepTest": "Test",
+    "syncedFromServer": "Credentials synced from server",
+    "connectionSection": "Connection",
+    "authSection": "Authentication",
+    "connectionSuccess": "Connection successful",
+    "securityNote": "Credentials are AES-256 encrypted and securely synced with the server."
   },
   "ipBindings": {
     "screenTitle": "Authorized devices",
@@ -835,5 +846,18 @@
     "affluence": "Traffic",
     "salesPeak": "Sales peak: {{desc}}",
     "sessionsPeak": "Network session peak ({{count}}): {{desc}}"
+  },
+  "onboarding": {
+    "skip": "Skip",
+    "next": "Next",
+    "getStarted": "Get Started",
+    "step1Title": "Welcome to MikroLan",
+    "step1Desc": "Manage your MikroTik routers, create WiFi plans and sell tickets — all from your phone.",
+    "step2Title": "Add your routers",
+    "step2Desc": "Connect to your router's WiFi and add it with one tap. MikroLan automatically configures the hotspot.",
+    "step3Title": "Create and sell",
+    "step3Desc": "Set up your plans, generate tickets and collect payments with Mobile Money.",
+    "step4Title": "Track your business",
+    "step4Desc": "Real-time dashboard: revenue, connected sessions, forecasts and business insights."
   }
 }
