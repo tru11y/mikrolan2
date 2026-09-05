@@ -114,22 +114,16 @@ export default function LoginScreen() {
             paddingTop: insets.top + space.xxxl + space.lg,
             paddingHorizontal: space.xxl,
             paddingBottom: space.xxl + insets.bottom,
-            gap: space.xxl + space.xs,
+            gap: space.xl,
           }}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={{ alignItems: 'center', gap: space.md }}>
-            <View style={{
-              width: 88, height: 88, borderRadius: 22,
-              backgroundColor: withAlpha(theme.primary, 0.08),
-              alignItems: 'center', justifyContent: 'center',
-            }}>
-              <Image
-                source={require('@/assets/images/logo.png')}
-                style={{ width: 72, height: 72 }}
-                resizeMode="contain"
-              />
-            </View>
+          <View style={{ alignItems: 'center', gap: space.sm }}>
+            <Image
+              source={require('@/assets/images/logo.png')}
+              style={{ width: 80, height: 80 }}
+              resizeMode="contain"
+            />
             <Text style={{ color: theme.text, fontSize: type.display, fontWeight: weight.heavy }}>
               {mode === 'signup' ? t('login.createAccount') : t('login.welcome')}
             </Text>
@@ -246,8 +240,6 @@ export default function LoginScreen() {
                     gap: space.sm,
                     height: 48,
                     borderRadius: radius.lg,
-                    borderWidth: 1,
-                    borderColor: theme.border,
                     backgroundColor: theme.surface,
                     opacity: isBusy ? 0.5 : 1,
                   }}
@@ -271,8 +263,6 @@ export default function LoginScreen() {
                   gap: space.sm,
                   height: 48,
                   borderRadius: radius.lg,
-                  borderWidth: 1,
-                  borderColor: theme.border,
                   backgroundColor: theme.surface,
                   opacity: isBusy ? 0.5 : 1,
                 }}
@@ -319,8 +309,6 @@ export default function LoginScreen() {
                   <View
                     style={{
                       backgroundColor: theme.surface,
-                      borderWidth: 1,
-                      borderColor: theme.border,
                       borderRadius: radius.lg,
                       padding: space.lg,
                       gap: space.sm + 2,
