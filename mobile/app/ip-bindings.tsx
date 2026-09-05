@@ -265,15 +265,13 @@ export default function IpBindingsScreen() {
                 <View
                   style={{
                     backgroundColor: theme.surfaceAlt,
-                    borderWidth: 1,
-                    borderColor: theme.border,
                     borderRadius: 12,
                     padding: 10,
                     gap: 3,
                   }}
                 >
                   <Mono style={{ color: theme.text, fontSize: 13 }}>
-                    MAC: <Mono style={{ color: theme.secondary }}>{b.macAddress}</Mono>
+                    MAC: <Mono style={{ color: theme.primaryMuted }}>{b.macAddress}</Mono>
                   </Mono>
                   {b.ipAddress ? (
                     <Mono style={{ color: theme.textMuted, fontSize: 12 }}>
@@ -336,8 +334,6 @@ export default function IpBindingsScreen() {
               width: '100%',
               maxWidth: 400,
               backgroundColor: theme.surface,
-              borderWidth: 1,
-              borderColor: theme.border,
               borderRadius: 16,
               padding: 20,
               gap: 14,
@@ -482,7 +478,7 @@ export default function IpBindingsScreen() {
             />
             <Row>
               <Row style={{ gap: 8, justifyContent: 'flex-start' }}>
-                <Ionicons name="wifi" size={18} color={theme.secondary} />
+                <Ionicons name="wifi" size={18} color={theme.primaryMuted} />
                 <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>
                   {t('ipBindings.connectedDevices')}
                 </Text>

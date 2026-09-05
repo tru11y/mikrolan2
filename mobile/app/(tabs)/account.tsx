@@ -94,7 +94,6 @@ function SettingRow({
       <View style={{
         width: 34, height: 34, borderRadius: 10,
         backgroundColor: withAlpha(iconColor, 0.1),
-        borderWidth: 1, borderColor: withAlpha(iconColor, 0.2),
         alignItems: 'center', justifyContent: 'center',
       }}>
         <Ionicons name={icon} size={15} color={iconColor} />
@@ -114,8 +113,7 @@ function SectionCard({ children, delay }: { children: React.ReactNode; delay?: n
     <FadeIn delay={delay}>
       <View style={{
         backgroundColor: theme.surface,
-        borderWidth: 1, borderColor: theme.border,
-        borderRadius: 16, overflow: 'hidden',
+        borderRadius: 14, overflow: 'hidden',
       }}>
         {children}
       </View>
@@ -273,7 +271,6 @@ export default function AccountScreen() {
             <View style={{
               width: 64, height: 64, borderRadius: 22,
               backgroundColor: withAlpha(theme.primary, 0.12),
-              borderWidth: 2, borderColor: withAlpha(theme.primary, 0.3),
               alignItems: 'center', justifyContent: 'center',
             }}>
               <Text style={{ color: theme.primary, fontSize: 22, fontWeight: '800' }}>{initials}</Text>
@@ -285,12 +282,11 @@ export default function AccountScreen() {
             {isPro ? (
               <View style={{
                 flexDirection: 'row', alignItems: 'center', gap: 4,
-                backgroundColor: withAlpha(theme.warning, 0.1),
-                borderWidth: 1, borderColor: withAlpha(theme.warning, 0.25),
+                backgroundColor: withAlpha(theme.gold, 0.12),
                 borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4,
               }}>
-                <Ionicons name="diamond" size={12} color={theme.warning} />
-                <Text style={{ color: theme.warning, fontSize: 11, fontWeight: '700' }}>PRO</Text>
+                <Ionicons name="diamond" size={12} color={theme.gold} />
+                <Text style={{ color: theme.gold, fontSize: 11, fontWeight: '700' }}>PRO</Text>
               </View>
             ) : null}
           </Card>
