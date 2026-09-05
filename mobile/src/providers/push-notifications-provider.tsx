@@ -72,7 +72,9 @@ async function registerForPushNotifications(): Promise<
   if (finalStatus !== 'granted') return { status: 'permission_denied' };
 
   const projectId =
-    Constants.expoConfig?.extra?.eas?.projectId ?? Constants.easConfig?.projectId;
+    Constants.expoConfig?.extra?.eas?.projectId
+    ?? Constants.easConfig?.projectId
+    ?? '73cb9269-d193-4456-860f-982803af4a06';
   if (!projectId) return { status: 'missing_config' };
 
   const { data } = await Notifications.getExpoPushTokenAsync({ projectId });
