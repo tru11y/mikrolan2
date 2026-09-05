@@ -89,7 +89,6 @@ export default function OnboardingScreen() {
                 <View style={{
                   width: 100, height: 100, borderRadius: 32,
                   backgroundColor: withAlpha(item.color, 0.1),
-                  borderWidth: 2, borderColor: withAlpha(item.color, 0.25),
                   alignItems: 'center', justifyContent: 'center',
                 }}>
                   <Ionicons name={item.icon} size={44} color={item.color} />

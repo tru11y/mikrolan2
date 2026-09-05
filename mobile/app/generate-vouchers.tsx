@@ -177,8 +177,6 @@ export default function GenerateVouchersScreen() {
               width: 40,
               height: 40,
               borderRadius: 12,
-              borderWidth: 1,
-              borderColor: theme.border,
               backgroundColor: theme.surfaceAlt,
               alignItems: 'center',
               justifyContent: 'center',
@@ -198,8 +196,6 @@ export default function GenerateVouchersScreen() {
             gap: 12,
             backgroundColor: theme.surface,
             borderRadius: 12,
-            borderWidth: 1.5,
-            borderColor: theme.primary,
             padding: 14,
           }}
         >
@@ -231,8 +227,6 @@ export default function GenerateVouchersScreen() {
             <View
               style={{
                 backgroundColor: theme.surfaceAlt,
-                borderWidth: 1,
-                borderColor: theme.border,
                 borderRadius: 12,
                 paddingHorizontal: 14,
                 paddingVertical: 12,
@@ -265,8 +259,6 @@ export default function GenerateVouchersScreen() {
                 accessibilityLabel={t('tickets.createPlan')}
                 onPress={() => router.push({ pathname: '/plans', params: { routerId } })}
                 style={{
-                  borderWidth: 1,
-                  borderColor: withAlpha(theme.primary, 0.33),
                   backgroundColor: withAlpha(theme.primary, 0.08),
                   borderRadius: 12,
                   padding: 14,
@@ -323,8 +315,6 @@ export default function GenerateVouchersScreen() {
             <View
               style={{
                 backgroundColor: theme.surfaceAlt,
-                borderWidth: 1,
-                borderColor: theme.border,
                 borderRadius: 12,
                 padding: 12,
                 gap: 2,
@@ -357,8 +347,6 @@ export default function GenerateVouchersScreen() {
               onPress={() => setFormatOpen((v) => !v)}
               style={{
                 backgroundColor: theme.surfaceAlt,
-                borderWidth: 1,
-                borderColor: theme.border,
                 borderRadius: 12,
                 paddingHorizontal: 14,
                 paddingVertical: 12,
@@ -371,7 +359,7 @@ export default function GenerateVouchersScreen() {
                 <Ionicons
                   name={outputFormat === 'screen' ? 'phone-portrait-outline' : 'document-text-outline'}
                   size={18}
-                  color={outputFormat === 'screen' ? theme.secondary : theme.primary}
+                  color={outputFormat === 'screen' ? theme.primaryMuted : theme.primary}
                 />
                 <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600' }}>
                   {outputFormat === 'screen' ? t('tickets.screenTicket') : t('tickets.pdfFile')}
@@ -387,7 +375,7 @@ export default function GenerateVouchersScreen() {
                     {
                       value: 'screen' as const,
                       icon: 'phone-portrait-outline' as const,
-                      color: theme.secondary,
+                      color: theme.primaryMuted,
                       title: t('tickets.screenTicket'),
                       desc: t('tickets.screenTicketDesc'),
                     },
@@ -450,8 +438,6 @@ export default function GenerateVouchersScreen() {
                 alignItems: 'center',
                 justifyContent: 'space-between',
                 backgroundColor: theme.surfaceAlt,
-                borderWidth: 1,
-                borderColor: theme.border,
                 borderRadius: 12,
                 padding: 6,
               }}

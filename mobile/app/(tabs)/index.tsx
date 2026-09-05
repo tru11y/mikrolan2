@@ -83,8 +83,6 @@ function StatCard({
         onPress={onPress}
         style={{
           backgroundColor: theme.surface,
-          borderWidth: 1,
-          borderColor: theme.border,
           borderRadius: radius.lg,
           padding: space.lg - 2,
           gap: space.xs + 2,
@@ -312,8 +310,6 @@ export default function MaisonScreen() {
               paddingHorizontal: space.lg - 2,
               paddingVertical: space.sm,
               borderRadius: radius.md,
-              borderWidth: 1,
-              borderColor: theme.border,
               backgroundColor: theme.surfaceAlt,
             }}
           >
@@ -443,8 +439,6 @@ export default function MaisonScreen() {
                     <Row
                       style={{
                         backgroundColor: theme.surfaceAlt,
-                        borderWidth: 1,
-                        borderColor: theme.border,
                         borderRadius: radius.md,
                         padding: space.md,
                         gap: space.md,
@@ -523,7 +517,7 @@ export default function MaisonScreen() {
       {/* Abonnement / essai — en dernier : utile, jamais prioritaire sur les
           opérations du jour. */}
       {trial != null ? (
-        <Card style={{ borderColor: theme.warning, borderWidth: 1.5 }}>
+        <Card>
           <Row>
             <Row style={{ gap: space.md, flex: 1, justifyContent: 'flex-start' }}>
               <IconChip name="time-outline" color={theme.warning} size="md" />
@@ -570,7 +564,7 @@ export default function MaisonScreen() {
           accessibilityHint={t('home.proDescription')}
           onPress={() => router.push('/pro')}
         >
-          <Card style={{ borderColor: theme.gold, borderWidth: 1.5 }}>
+          <Card>
             <Row>
               <Row style={{ gap: space.md, flex: 1, justifyContent: 'flex-start' }}>
                 <IconChip name="diamond-outline" color={theme.gold} size="md" />

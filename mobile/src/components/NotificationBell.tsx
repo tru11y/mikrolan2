@@ -78,7 +78,7 @@ export function NotificationBell() {
         width: 34,
         height: 34,
         borderRadius: 11,
-        borderWidth: 1,
+        borderWidth: 0,
         borderColor: count > 0 ? withAlpha(theme.primary, 0.4) : theme.border,
         backgroundColor: count > 0 ? withAlpha(theme.primary, 0.09) : theme.surfaceAlt,
         alignItems: 'center',
