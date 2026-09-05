@@ -190,7 +190,7 @@ export default function AnalyticsRouterDetailScreen() {
                   </Text>
                 </Row>
                 <Row style={{ justifyContent: 'flex-start', gap: 8 }}>
-                  <Ionicons name="wifi-outline" size={16} color={theme.primarySoft} />
+                  <Ionicons name="wifi-outline" size={16} color={theme.primaryMuted} />
                   <Text style={{ color: theme.text, fontSize: 12, fontWeight: '700', flex: 1 }}>
                     {t('analyticsRouter.sessionsPeak', { count: data.sessionsCount, desc: describeBusiest(busiestSessions) })}
                   </Text>

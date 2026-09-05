@@ -54,8 +54,6 @@ function BillingToggle({
           flexDirection: 'row',
           gap: 4,
           backgroundColor: theme.surface,
-          borderWidth: 1,
-          borderColor: theme.border,
           borderRadius: radius.lg,
           padding: 6,
         }}
@@ -144,7 +142,7 @@ function TierCard({
       scaleTo={0.985}
       style={{
         borderRadius: radius.lg,
-        borderWidth: selected || recommended ? 2 : 1,
+        borderWidth: selected || recommended ? 2 : 0,
         borderColor: accent,
         backgroundColor: theme.surface,
         padding: space.xl,
@@ -325,8 +323,6 @@ export default function ProScreen() {
               style={{
                 gap: 6,
                 backgroundColor: withAlpha(theme.gold, 0.13),
-                borderWidth: 1,
-                borderColor: withAlpha(theme.gold, 0.4),
                 borderRadius: radius.pill,
                 paddingHorizontal: space.md,
                 paddingVertical: 5,
@@ -361,8 +357,6 @@ export default function ProScreen() {
               alignItems: 'center',
               gap: space.md,
               backgroundColor: withAlpha(theme.primary, 0.08),
-              borderWidth: 1,
-              borderColor: withAlpha(theme.primary, 0.33),
               borderRadius: radius.lg,
               padding: space.lg,
             }}
@@ -421,8 +415,6 @@ export default function ProScreen() {
             <Row
               style={{
                 gap: space.md,
-                borderWidth: 1,
-                borderColor: withAlpha(theme.success, 0.4),
                 backgroundColor: withAlpha(theme.success, 0.08),
                 borderRadius: radius.md,
                 padding: space.lg,

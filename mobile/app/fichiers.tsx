@@ -194,8 +194,6 @@ export default function FichiersScreen() {
                     alignItems: 'center',
                     gap: 12,
                     backgroundColor: theme.surface,
-                    borderWidth: 1,
-                    borderColor: theme.border,
                     borderRadius: 16,
                     padding: 14,
                   }}
@@ -231,15 +229,13 @@ export default function FichiersScreen() {
                       width: 38,
                       height: 38,
                       borderRadius: 10,
-                      borderWidth: 1,
-                      borderColor: withAlpha(theme.secondary, 0.25),
-                      backgroundColor: withAlpha(theme.secondary, 0.09),
+                      backgroundColor: withAlpha(theme.primaryMuted, 0.09),
                       alignItems: 'center',
                       justifyContent: 'center',
                       opacity: isDownloading ? 0.5 : 1,
                     }}
                   >
-                    <Ionicons name="download-outline" size={17} color={theme.secondary} />
+                    <Ionicons name="download-outline" size={17} color={theme.primaryMuted} />
                   </Press>
                   <Press
                     accessibilityLabel="Imprimer le lot"
@@ -249,8 +245,6 @@ export default function FichiersScreen() {
                       width: 38,
                       height: 38,
                       borderRadius: 10,
-                      borderWidth: 1,
-                      borderColor: withAlpha(theme.primary, 0.25),
                       backgroundColor: withAlpha(theme.primary, 0.09),
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -267,8 +261,6 @@ export default function FichiersScreen() {
                       width: 38,
                       height: 38,
                       borderRadius: 10,
-                      borderWidth: 1,
-                      borderColor: withAlpha(theme.danger, 0.25),
                       backgroundColor: withAlpha(theme.danger, 0.09),
                       alignItems: 'center',
                       justifyContent: 'center',

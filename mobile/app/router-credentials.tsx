@@ -52,8 +52,6 @@ function StepIndicator({ step, current, label, icon }: { step: number; current: 
       <View style={{
         width: 36, height: 36, borderRadius: 18,
         backgroundColor: withAlpha(color, done ? 0.15 : active ? 0.12 : 0.06),
-        borderWidth: 1.5,
-        borderColor: withAlpha(color, done ? 0.4 : active ? 0.3 : 0.1),
         alignItems: 'center', justifyContent: 'center',
       }}>
         <Ionicons name={done ? 'checkmark' : icon} size={16} color={color} />
@@ -210,7 +208,6 @@ export default function RouterCredentialsScreen() {
                 <View style={{
                   flexDirection: 'row', alignItems: 'center', gap: 8,
                   backgroundColor: withAlpha(theme.success, 0.08),
-                  borderWidth: 1, borderColor: withAlpha(theme.success, 0.2),
                   borderRadius: 12, padding: 12,
                 }}>
                   <Ionicons name="cloud-done" size={18} color={theme.success} />
@@ -228,7 +225,6 @@ export default function RouterCredentialsScreen() {
                   <View style={{
                     width: 48, height: 48, borderRadius: 14,
                     backgroundColor: withAlpha(theme.primary, 0.1),
-                    borderWidth: 1, borderColor: withAlpha(theme.primary, 0.25),
                     alignItems: 'center', justifyContent: 'center',
                   }}>
                     <Ionicons name="hardware-chip" size={22} color={theme.primary} />
@@ -288,7 +284,7 @@ export default function RouterCredentialsScreen() {
             <FadeIn delay={150}>
               <Card style={{ gap: 12 }}>
                 <Row style={{ gap: 8, justifyContent: 'flex-start' }}>
-                  <Ionicons name="key-outline" size={15} color={theme.secondary} />
+                  <Ionicons name="key-outline" size={15} color={theme.primaryMuted} />
                   <Text style={{ color: theme.text, fontWeight: weight.bold, fontSize: 13 }}>
                     {t('routerCredentials.authSection')}
                   </Text>
@@ -323,7 +319,6 @@ export default function RouterCredentialsScreen() {
                 <View style={{
                   flexDirection: 'row', alignItems: 'center', gap: 10,
                   backgroundColor: withAlpha(theme.success, 0.08),
-                  borderWidth: 1, borderColor: withAlpha(theme.success, 0.25),
                   borderRadius: 14, padding: 14,
                 }}>
                   <View style={{
