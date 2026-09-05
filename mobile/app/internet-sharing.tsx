@@ -286,8 +286,6 @@ export default function InternetSharingScreen() {
         <View
           style={{
             backgroundColor: theme.surface,
-            borderWidth: 1,
-            borderColor: theme.border,
             borderRadius: 16,
             overflow: 'hidden',
           }}
@@ -328,7 +326,7 @@ export default function InternetSharingScreen() {
                   {t('internetSharing.bridgeModeNote')}{' '}
                 </Text>
                 {t('internetSharing.bridgeModeExplanation')}{' '}
-                <Text style={{ color: theme.secondary, fontFamily: theme.mono }}>
+                <Text style={{ color: theme.primaryMuted, fontFamily: theme.mono }}>
                   {t('internetSharing.useIpFirewall')}
                 </Text>{' '}
                 {t('internetSharing.bridgeModeExplanation2')}

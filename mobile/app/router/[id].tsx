@@ -33,7 +33,6 @@ import {
   Mono,
   Press,
   radius,
-  routerHealth,
   Row,
   Screen,
   space,
@@ -41,7 +40,6 @@ import {
   type,
   useToast,
   type IoniconName,
-  withAlpha,
 } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
@@ -83,8 +81,6 @@ function Gauge({
         flex: 1,
         backgroundColor: theme.surfaceAlt,
         borderRadius: radius.md,
-        borderWidth: 1,
-        borderColor: theme.border,
         padding: space.md,
         gap: space.sm,
       }}
@@ -141,8 +137,6 @@ function StatSquare({
       style={{
         flex: 1,
         backgroundColor: theme.surface,
-        borderWidth: 1,
-        borderColor: theme.border,
         borderRadius: radius.lg,
         paddingVertical: space.md,
         paddingHorizontal: space.xs,
@@ -531,8 +525,6 @@ export default function RouterDetailScreen() {
                 width: 40,
                 height: 40,
                 borderRadius: radius.md,
-                borderWidth: 1,
-                borderColor: theme.border,
                 backgroundColor: theme.surfaceAlt,
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -546,14 +538,14 @@ export default function RouterDetailScreen() {
         {!isOffline && resource ? (
           <Card>
             <Row style={{ gap: space.xs + 2, justifyContent: 'flex-start' }}>
-              <Ionicons name="pulse-outline" size={icon.sm} color={theme.secondary} />
+              <Ionicons name="pulse-outline" size={icon.sm} color={theme.primaryMuted} />
               <Label>{t('routerDetail.performanceMonitor')}</Label>
             </Row>
             <Row style={{ gap: space.sm + 2, alignItems: 'stretch' }}>
               <Gauge
                 label="CPU"
                 value={Number(resource['cpu-load']) || 0}
-                color={theme.secondary}
+                color={theme.primaryMuted}
               />
               <Gauge
                 label={t('routerDetail.memory')}
@@ -566,7 +558,7 @@ export default function RouterDetailScreen() {
 
         {/* Accès à distance — masqué pour PRO (automatique) */}
         {!isPro ? (
-          <Card style={{ borderColor: withAlpha(theme.gold, 0.33) }}>
+          <Card>
             <Row>
               <Row style={{ gap: space.xs + 2, justifyContent: 'flex-start' }}>
                 <Ionicons name="globe-outline" size={icon.sm} color={theme.gold} />
@@ -584,7 +576,7 @@ export default function RouterDetailScreen() {
             />
           </Card>
         ) : remoteQuery.data?.status !== 'ACTIVE' ? (
-          <Card style={{ borderColor: withAlpha(theme.gold, 0.33) }}>
+          <Card>
             <Row>
               <Row style={{ gap: space.xs + 2, justifyContent: 'flex-start' }}>
                 <Ionicons name="globe-outline" size={icon.sm} color={theme.gold} />
@@ -714,7 +706,7 @@ export default function RouterDetailScreen() {
           />
           <StatSquare
             icon="globe"
-            color={theme.secondary}
+            color={theme.primaryMuted}
             value={`${salesQuery.data?.ticketsUsed ?? 0}`}
             label={t('routerDetail.used')}
             onPress={() =>
@@ -751,7 +743,7 @@ export default function RouterDetailScreen() {
             >
               <Text
                 style={{
-                  color: theme.secondary,
+                  color: theme.primaryMuted,
                   fontSize: type.body,
                   fontWeight: '600',
                 }}
@@ -811,11 +803,11 @@ export default function RouterDetailScreen() {
                 <Ionicons
                   name="trending-up-outline"
                   size={icon.sm}
-                  color={theme.secondary}
+                  color={theme.primaryMuted}
                 />
                 <Text
                   style={{
-                    color: theme.secondary,
+                    color: theme.primaryMuted,
                     fontSize: type.micro,
                     fontWeight: '700',
                   }}

@@ -79,8 +79,6 @@ function TicketRow({
         backgroundColor: theme.surface,
         borderRadius: radius.md,
         padding: space.lg,
-        borderWidth: 1,
-        borderColor: theme.border,
       }}
     >
       <Row style={{ justifyContent: 'space-between', marginBottom: 6 }}>
@@ -131,8 +129,6 @@ function MessageBubble({ msg }: { msg: TicketMessage }) {
           borderTopLeftRadius: isAdmin ? 4 : radius.md,
           borderTopRightRadius: isAdmin ? radius.md : 4,
           padding: space.md,
-          borderWidth: isAdmin ? 1 : 0,
-          borderColor: theme.border,
         }}
       >
         {isAdmin ? (

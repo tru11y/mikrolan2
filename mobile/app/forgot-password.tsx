@@ -49,8 +49,6 @@ function UnauthHeader({ title }: { title: string }) {
             width: 34,
             height: 34,
             borderRadius: radius.md,
-            borderWidth: 1,
-            borderColor: theme.border,
             backgroundColor: theme.surfaceAlt,
             alignItems: 'center',
             justifyContent: 'center',

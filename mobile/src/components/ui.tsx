@@ -67,7 +67,7 @@ export const motion = {
 
 // ─── Échelles ────────────────────────────────────────────────────────────────
 
-export const radius = { xs: 4, sm: 10, md: 12, lg: 16, xl: 20, pill: 999 } as const;
+export const radius = { xs: 4, sm: 8, md: 12, lg: 14, xl: 18, pill: 999 } as const;
 
 export const space = {
   xs: 4,
@@ -82,13 +82,13 @@ export const space = {
 export const type = {
   micro: 11,
   caption: 12,
-  body: 13,
+  body: 14,
   bodyLg: 15,
-  title: 17,
+  title: 16,
   h2: 20,
   h1: 24,
-  display: 32,
-  hero: 40,
+  display: 30,
+  hero: 38,
 } as const;
 
 export const weight = {
@@ -117,8 +117,8 @@ export const elevation = {
   }) as ViewStyle,
   floating: Platform.select<ViewStyle>({
     ios: {
-      shadowColor: '#7B61FF',
-      shadowOpacity: 0.5,
+      shadowColor: '#000000',
+      shadowOpacity: 0.35,
       shadowRadius: 12,
       shadowOffset: { width: 0, height: 4 },
     },
@@ -135,7 +135,7 @@ function makeStyles(t: ThemeColors) {
     card: {
       backgroundColor: t.surface,
       borderRadius: radius.lg,
-      borderWidth: 1,
+      borderWidth: 0,
       borderColor: t.border,
       padding: space.lg,
       gap: space.md,
@@ -224,7 +224,7 @@ function makeStyles(t: ThemeColors) {
       flex: 1,
       backgroundColor: t.surface,
       borderRadius: radius.lg,
-      borderWidth: 1,
+      borderWidth: 0,
       borderColor: t.border,
       paddingVertical: space.lg - 2,
       paddingHorizontal: space.md,
@@ -1395,7 +1395,7 @@ export function AuroraCard({
   const s = useStyles();
   return (
     <LinearGradient
-      colors={[t.primary, t.secondary]}
+      colors={[t.primary, t.primaryMuted]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={[s.aurora, style]}
