@@ -202,7 +202,7 @@ export default function RouterSettingsScreen() {
       title: t('routerSettings.lanCredentials'),
       subtitle: t('routerSettings.lanCredentialsSubtitle'),
       icon: 'key-outline',
-      color: theme.secondary,
+      color: theme.primaryMuted,
       onPress: () => go('/router-credentials'),
     },
     {
@@ -218,7 +218,7 @@ export default function RouterSettingsScreen() {
       title: t('routerSettings.loginPage'),
       subtitle: t('routerSettings.loginPageSubtitle'),
       icon: 'globe-outline',
-      color: theme.secondary,
+      color: theme.primaryMuted,
       onPress: () => go('/hotspot-setup'),
     },
     {
@@ -234,7 +234,7 @@ export default function RouterSettingsScreen() {
       title: t('routerSettings.usersAndSessions'),
       subtitle: t('routerSettings.usersAndSessionsSubtitle'),
       icon: 'people-outline',
-      color: theme.secondary,
+      color: theme.primaryMuted,
       onPress: () => go('/sessions'),
     },
     {
@@ -277,7 +277,7 @@ export default function RouterSettingsScreen() {
             title: t('routerSettings.sshAccess'),
             subtitle: t('routerSettings.sshSubtitle'),
             icon: 'terminal-outline' as IoniconName,
-            color: theme.secondary,
+            color: theme.primaryMuted,
             onPress: () => {
               const urls = remoteQuery.data?.accessUrls;
               if (!urls?.ssh) {
@@ -399,8 +399,6 @@ export default function RouterSettingsScreen() {
         <View
           style={{
             backgroundColor: theme.surface,
-            borderWidth: 1,
-            borderColor: theme.border,
             borderRadius: 16,
             overflow: 'hidden',
           }}
@@ -433,8 +431,6 @@ export default function RouterSettingsScreen() {
                     height: 40,
                     borderRadius: 12,
                     backgroundColor: theme.surfaceAlt,
-                    borderWidth: 1,
-                    borderColor: theme.border,
                     alignItems: 'center',
                     justifyContent: 'center',
                   }}
@@ -467,8 +463,6 @@ export default function RouterSettingsScreen() {
         <View
           style={{
             backgroundColor: theme.surface,
-            borderWidth: 1,
-            borderColor: theme.border,
             borderRadius: 16,
             padding: 16,
             flexDirection: 'row',
@@ -483,8 +477,6 @@ export default function RouterSettingsScreen() {
                 height: 40,
                 borderRadius: 12,
                 backgroundColor: theme.surfaceAlt,
-                borderWidth: 1,
-                borderColor: theme.border,
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
@@ -512,8 +504,6 @@ export default function RouterSettingsScreen() {
         <View
           style={{
             backgroundColor: theme.surface,
-            borderWidth: 1,
-            borderColor: theme.border,
             borderRadius: 16,
             padding: 16,
             gap: 12,

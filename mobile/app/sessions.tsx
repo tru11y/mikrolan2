@@ -297,8 +297,6 @@ export default function SessionsScreen() {
                 alignItems: 'center',
                 gap: 8,
                 backgroundColor: theme.surface,
-                borderWidth: 1,
-                borderColor: theme.border,
                 borderRadius: 12,
                 paddingHorizontal: 12,
               }}
@@ -332,8 +330,6 @@ export default function SessionsScreen() {
                       paddingHorizontal: 10,
                       borderRadius: 8,
                       backgroundColor: active ? theme.primary : theme.surface,
-                      borderWidth: 1,
-                      borderColor: active ? theme.primary : theme.border,
                     }}
                   >
                     <Ionicons name={opt.icon} size={12} color={active ? theme.primaryText : theme.textMuted} />
@@ -349,8 +345,6 @@ export default function SessionsScreen() {
                   width: 34,
                   height: 34,
                   borderRadius: 10,
-                  borderWidth: 1,
-                  borderColor: theme.border,
                   backgroundColor: theme.surface,
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -380,8 +374,6 @@ export default function SessionsScreen() {
                     style={{
                       backgroundColor: theme.surface,
                       borderRadius: 14,
-                      borderWidth: 1,
-                      borderColor: theme.border,
                       padding: 14,
                       gap: 10,
                     }}
@@ -396,8 +388,6 @@ export default function SessionsScreen() {
                               height: 36,
                               borderRadius: 18,
                               backgroundColor: withAlpha(theme.success, 0.13),
-                              borderWidth: 1,
-                              borderColor: withAlpha(theme.success, 0.33),
                               alignItems: 'center',
                               justifyContent: 'center',
                             }}
@@ -432,8 +422,6 @@ export default function SessionsScreen() {
                             height: 32,
                             borderRadius: 10,
                             backgroundColor: withAlpha(theme.danger, 0.09),
-                            borderWidth: 1,
-                            borderColor: withAlpha(theme.danger, 0.2),
                             alignItems: 'center',
                             justifyContent: 'center',
                           }}

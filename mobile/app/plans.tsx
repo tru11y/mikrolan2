@@ -108,8 +108,6 @@ function Chip({
         flex: 1,
         backgroundColor: theme.surfaceAlt,
         borderRadius: 12,
-        borderWidth: 1,
-        borderColor: theme.border,
         paddingVertical: 8,
         paddingHorizontal: 8,
         flexDirection: 'row',
@@ -439,7 +437,7 @@ export default function PlansScreen() {
             <Row style={{ gap: 8 }}>
               <View style={{
                 flex: 1, alignItems: 'center', gap: 4,
-                backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
+                backgroundColor: theme.surface,
                 borderRadius: 14, paddingVertical: 12,
               }}>
                 <Text style={{ color: theme.text, fontSize: 20, fontWeight: weight.heavy, fontFamily: theme.mono }}>
@@ -449,7 +447,7 @@ export default function PlansScreen() {
               </View>
               <View style={{
                 flex: 1, alignItems: 'center', gap: 4,
-                backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
+                backgroundColor: theme.surface,
                 borderRadius: 14, paddingVertical: 12,
               }}>
                 <Text style={{ color: theme.success, fontSize: 20, fontWeight: weight.heavy, fontFamily: theme.mono }}>
@@ -459,7 +457,7 @@ export default function PlansScreen() {
               </View>
               <View style={{
                 flex: 1, alignItems: 'center', gap: 4,
-                backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
+                backgroundColor: theme.surface,
                 borderRadius: 14, paddingVertical: 12,
               }}>
                 <Text style={{ color: theme.primary, fontSize: 20, fontWeight: weight.heavy, fontFamily: theme.mono }}>
@@ -679,8 +677,6 @@ export default function PlansScreen() {
                         height: 46,
                         borderRadius: 14,
                         backgroundColor: withAlpha(theme.primary, 0.13),
-                        borderWidth: 1,
-                        borderColor: withAlpha(theme.primary, 0.33),
                         alignItems: 'center',
                         justifyContent: 'center',
                       }}
@@ -741,8 +737,6 @@ export default function PlansScreen() {
                         paddingHorizontal: 12,
                         borderRadius: 12,
                         backgroundColor: withAlpha(theme.primary, 0.09),
-                        borderWidth: 1,
-                        borderColor: withAlpha(theme.primary, 0.25),
                       }}
                     >
                       <Ionicons name="create-outline" size={16} color={theme.primary} />
@@ -764,8 +758,6 @@ export default function PlansScreen() {
                         paddingHorizontal: 12,
                         borderRadius: 12,
                         backgroundColor: withAlpha(theme.danger, 0.09),
-                        borderWidth: 1,
-                        borderColor: withAlpha(theme.danger, 0.25),
                       }}
                     >
                       <Ionicons name="trash-outline" size={16} color={theme.danger} />
@@ -819,14 +811,12 @@ export default function PlansScreen() {
                         width: 38,
                         height: 38,
                         borderRadius: 12,
-                        backgroundColor: withAlpha(theme.secondary, 0.13),
-                        borderWidth: 1,
-                        borderColor: withAlpha(theme.secondary, 0.33),
+                        backgroundColor: withAlpha(theme.primaryMuted, 0.13),
                         alignItems: 'center',
                         justifyContent: 'center',
                       }}
                     >
-                      <Ionicons name="server-outline" size={18} color={theme.secondary} />
+                      <Ionicons name="server-outline" size={18} color={theme.primaryMuted} />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>
@@ -899,8 +889,6 @@ export default function PlansScreen() {
                         paddingHorizontal: 12,
                         borderRadius: 10,
                         backgroundColor: withAlpha(theme.primary, 0.09),
-                        borderWidth: 1,
-                        borderColor: withAlpha(theme.primary, 0.25),
                       }}
                     >
                       <Ionicons name="create-outline" size={15} color={theme.primary} />
@@ -919,8 +907,6 @@ export default function PlansScreen() {
                         paddingHorizontal: 12,
                         borderRadius: 10,
                         backgroundColor: withAlpha(theme.danger, 0.09),
-                        borderWidth: 1,
-                        borderColor: withAlpha(theme.danger, 0.25),
                       }}
                     >
                       <Ionicons name="trash-outline" size={15} color={theme.danger} />

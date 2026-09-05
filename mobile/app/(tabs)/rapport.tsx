@@ -85,13 +85,11 @@ function Kpi({
       flex: 1, alignItems: 'center', gap: 6, minWidth: 0,
       paddingVertical: 14, paddingHorizontal: 6,
       backgroundColor: theme.surface,
-      borderWidth: 1, borderColor: theme.border,
       borderRadius: 16,
     }}>
       <View style={{
         width: 34, height: 34, borderRadius: 11,
         backgroundColor: withAlpha(iconColor, 0.1),
-        borderWidth: 1, borderColor: withAlpha(iconColor, 0.2),
         alignItems: 'center', justifyContent: 'center',
       }}>
         <Ionicons name={iconName} size={16} color={iconColor} />
@@ -116,7 +114,6 @@ function SectionHeader({ icon, label, color }: { icon: keyof typeof Ionicons.gly
       <View style={{
         width: 28, height: 28, borderRadius: 9,
         backgroundColor: withAlpha(color, 0.1),
-        borderWidth: 1, borderColor: withAlpha(color, 0.2),
         alignItems: 'center', justifyContent: 'center',
       }}>
         <Ionicons name={icon} size={13} color={color} />
@@ -180,7 +177,6 @@ function RouterCard({
   return (
     <Press onPress={onPress} style={{
       backgroundColor: theme.surface,
-      borderWidth: 1, borderColor: theme.border,
       borderRadius: 14, padding: 14, gap: 8,
     }}>
       <Row>
@@ -188,7 +184,6 @@ function RouterCard({
           <View style={{
             width: 36, height: 36, borderRadius: 11,
             backgroundColor: withAlpha(theme.primary, 0.08),
-            borderWidth: 1, borderColor: withAlpha(theme.primary, 0.2),
             alignItems: 'center', justifyContent: 'center',
           }}>
             <Ionicons name="hardware-chip" size={16} color={theme.primary} />
@@ -298,12 +293,12 @@ export default function RapportScreen() {
                 }}
                 style={{
                   flexDirection: 'row', alignItems: 'center', gap: 4,
-                  backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
+                  backgroundColor: theme.surface,
                   borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6,
                 }}
               >
-                <Ionicons name="document-text-outline" size={13} color={theme.secondary} />
-                <Text style={{ color: theme.secondary, fontSize: 10, fontWeight: '700' }}>CSV</Text>
+                <Ionicons name="document-text-outline" size={13} color={theme.primaryMuted} />
+                <Text style={{ color: theme.primaryMuted, fontSize: 10, fontWeight: '700' }}>CSV</Text>
               </Press>
               <Press
                 onPress={() => {
@@ -331,7 +326,7 @@ export default function RapportScreen() {
             {/* Period filter */}
             <FadeIn>
               <Row style={{
-                backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
+                backgroundColor: theme.surface,
                 borderRadius: 14, padding: 3, gap: 3,
               }}>
                 {AP.map((p) => {
@@ -489,7 +484,6 @@ export default function RapportScreen() {
                     {clients.data.slice(0, 10).map((c) => (
                       <View key={c.voucherId} style={{
                         backgroundColor: theme.surface,
-                        borderWidth: 1, borderColor: theme.border,
                         borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10,
                         flexDirection: 'row', alignItems: 'center', gap: 10,
                         borderLeftWidth: 3,
