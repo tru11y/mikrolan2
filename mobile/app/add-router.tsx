@@ -195,14 +195,12 @@ export default function AddRouterScreen() {
                   width: 48,
                   height: 48,
                   borderRadius: 14,
-                  backgroundColor: withAlpha(theme.secondary, 0.13),
-                  borderWidth: 1,
-                  borderColor: withAlpha(theme.secondary, 0.33),
+                  backgroundColor: withAlpha(theme.primaryMuted, 0.13),
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}
               >
-                <Ionicons name="hardware-chip-outline" size={24} color={theme.secondary} />
+                <Ionicons name="hardware-chip-outline" size={24} color={theme.primaryMuted} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>
@@ -247,8 +245,8 @@ export default function AddRouterScreen() {
               accessibilityRole="button"
               style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 }}
             >
-              <Ionicons name="search" size={15} color={theme.secondary} />
-              <Text style={{ color: theme.secondary, fontSize: 13.5, fontWeight: '600' }}>
+              <Ionicons name="search" size={15} color={theme.primaryMuted} />
+              <Text style={{ color: theme.primaryMuted, fontSize: 13.5, fontWeight: '600' }}>
                 {scan.kind === 'scanning'
                   ? t('addRouter.scanning', { done: scan.done, total: scan.total })
                   : t('addRouter.scanRouters')}
@@ -272,8 +270,6 @@ export default function AddRouterScreen() {
                       setScan({ kind: 'idle' });
                     }}
                     style={{
-                      borderWidth: 1,
-                      borderColor: theme.border,
                       borderRadius: 10,
                       padding: 11,
                       backgroundColor: theme.surfaceAlt,

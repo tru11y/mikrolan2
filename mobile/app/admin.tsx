@@ -203,8 +203,6 @@ function OverviewTab() {
             style={{
               gap: space.md,
               alignItems: 'flex-start',
-              borderWidth: 1,
-              borderColor: withAlpha(theme.gold, 0.4),
               backgroundColor: withAlpha(theme.gold, 0.08),
               borderRadius: radius.md,
               padding: space.md,
@@ -464,8 +462,6 @@ function AccountsTab() {
             onPress={() => setScope(s)}
             style={{
               flex: 1,
-              borderWidth: 1,
-              borderColor: scope === s ? theme.primary : theme.border,
               backgroundColor: scope === s ? withAlpha(theme.primary, 0.1) : theme.surfaceAlt,
               borderRadius: radius.md,
               paddingVertical: space.md - 2,
@@ -960,8 +956,6 @@ export default function AdminScreen() {
                   scaleTo={0.95}
                   style={{
                     flex: 1,
-                    borderWidth: 1,
-                    borderColor: active ? theme.primary : theme.border,
                     backgroundColor: active ? withAlpha(theme.primary, 0.1) : theme.surfaceAlt,
                     borderRadius: radius.md,
                     paddingVertical: space.sm + 2,

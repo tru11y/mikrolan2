@@ -45,7 +45,7 @@ export function AppHeader({ title, back }: { title: string; back?: boolean }) {
       style={{
         paddingTop: insets.top,
         backgroundColor: theme.surface,
-        borderBottomWidth: 1,
+        borderBottomWidth: 0,
         borderBottomColor: theme.border,
       }}
     >
@@ -67,7 +67,7 @@ export function AppHeader({ title, back }: { title: string; back?: boolean }) {
               width: 34,
               height: 34,
               borderRadius: radius.md,
-              borderWidth: 1,
+              borderWidth: 0,
               borderColor: theme.border,
               backgroundColor: theme.surfaceAlt,
               alignItems: 'center',
@@ -166,7 +166,7 @@ export function AppHeader({ title, back }: { title: string; back?: boolean }) {
               width: 34,
               height: 34,
               borderRadius: radius.md,
-              borderWidth: 1,
+              borderWidth: 0,
               borderColor: theme.border,
               backgroundColor: theme.surfaceAlt,
               alignItems: 'center',

@@ -197,8 +197,6 @@ export default function VerifyTicketScreen() {
               style={{
                 flex: 1,
                 backgroundColor: theme.surfaceAlt,
-                borderWidth: 1,
-                borderColor: theme.border,
                 borderRadius: radius.md,
                 paddingHorizontal: space.md,
                 justifyContent: 'center',
@@ -255,8 +253,6 @@ export default function VerifyTicketScreen() {
                   height: 48,
                   borderRadius: radius.lg,
                   backgroundColor: withAlpha(accent, 0.13),
-                  borderWidth: 1,
-                  borderColor: withAlpha(accent, 0.4),
                   alignItems: 'center',
                   justifyContent: 'center',
                 }}

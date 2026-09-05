@@ -11,10 +11,10 @@ import {
   icon,
   radius,
   space,
-  theme,
   type,
   withAlpha,
 } from './ui';
+import { useTheme } from '@/src/providers/theme-provider';
 
 // Écrans qui restent accessibles une fois l'essai terminé : le client doit
 // pouvoir se connecter, voir son compte et payer.
@@ -36,6 +36,7 @@ const LOCKED_FEATURES: { icon: Parameters<typeof IconChip>[0]['name']; label: st
  * (EntitlementGuard). Contourner cet écran ne donnerait accès à rien.
  */
 export function PaywallLock() {
+  const theme = useTheme();
   const { isAuthenticated, isLocked } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -72,8 +73,7 @@ export function PaywallLock() {
               height: 72,
               borderRadius: radius.xl,
               backgroundColor: withAlpha(theme.gold, 0.13),
-              borderWidth: 1,
-              borderColor: withAlpha(theme.gold, 0.33),
+              borderWidth: 0,
               alignItems: 'center',
               justifyContent: 'center',
             }}

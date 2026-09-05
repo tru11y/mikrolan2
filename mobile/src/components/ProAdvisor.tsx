@@ -16,10 +16,10 @@ import {
   radius,
   Row,
   space,
-  theme,
   type,
   withAlpha,
 } from '@/src/components/ui';
+import { useTheme } from '@/src/providers/theme-provider';
 
 type Bubble = { id: number; from: 'bot' | 'me'; text: string };
 
@@ -45,6 +45,7 @@ export function ProAdvisor({
   /** L'utilisateur retient la formule conseillée : l'écran PRO prend la main. */
   onAccept: (tierKey: string, note: string) => void;
 }) {
+  const theme = useTheme();
   const engineRef = useRef<AdvisorEngine>(new ScriptedAdvisor(tiers));
   const scrollRef = useRef<ScrollView>(null);
   const nextId = useRef(0);
@@ -108,7 +109,7 @@ export function ProAdvisor({
             paddingHorizontal: space.lg,
             paddingTop: space.xl,
             paddingBottom: space.md,
-            borderBottomWidth: 1,
+            borderBottomWidth: 0,
             borderBottomColor: theme.border,
             gap: space.md,
           }}
@@ -139,7 +140,7 @@ export function ProAdvisor({
                   alignSelf: b.from === 'bot' ? 'flex-start' : 'flex-end',
                   maxWidth: '86%',
                   backgroundColor: b.from === 'bot' ? theme.surface : theme.primary,
-                  borderWidth: b.from === 'bot' ? 1 : 0,
+                  borderWidth: 0,
                   borderColor: theme.border,
                   borderRadius: radius.lg,
                   borderBottomLeftRadius: b.from === 'bot' ? radius.xs : radius.lg,
@@ -167,7 +168,7 @@ export function ProAdvisor({
           style={{
             padding: space.lg,
             gap: space.sm,
-            borderTopWidth: 1,
+            borderTopWidth: 0,
             borderTopColor: theme.border,
             backgroundColor: theme.surface,
           }}
@@ -178,8 +179,7 @@ export function ProAdvisor({
                 accessibilityLabel={c.label}
                 onPress={() => pick(c)}
                 style={{
-                  borderWidth: 1,
-                  borderColor: c.primary ? theme.primary : theme.border,
+                  ...(c.primary ? { borderWidth: 1, borderColor: theme.primary } : {}),
                   backgroundColor: c.primary ? withAlpha(theme.primary, 0.1) : theme.surfaceAlt,
                   borderRadius: radius.md,
                   paddingVertical: space.md,
