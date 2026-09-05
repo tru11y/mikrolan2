@@ -15,9 +15,13 @@ export type ThemeColors = {
   border: string;
   text: string;
   textMuted: string;
+  textFaint: string;
   primary: string;
-  primarySoft: string;
+  primaryMuted: string;
   primaryText: string;
+  /** @deprecated Use primary with withAlpha instead. Kept for migration. */
+  primarySoft: string;
+  /** Alias for primaryMuted — used where a secondary accent was needed. */
   secondary: string;
   gold: string;
   goldText: string;
@@ -29,41 +33,45 @@ export type ThemeColors = {
 };
 
 export const darkColors: ThemeColors = {
-  bg: '#0B0B12',
-  surface: '#15151F',
-  surfaceAlt: '#1C1C29',
-  border: '#2A2A3C',
-  text: '#F2F3F8',
-  textMuted: '#9AA0B4',
+  bg: '#09090F',
+  surface: '#111118',
+  surfaceAlt: '#18181F',
+  border: '#222233',
+  text: '#EEEEF2',
+  textMuted: '#888899',
+  textFaint: '#555566',
   primary: '#7B61FF',
-  primarySoft: '#A78BFA',
-  primaryText: '#0B0B12',
-  secondary: '#A78BFA',
-  gold: '#F5B84A',
-  goldText: '#0B0B12',
-  danger: '#F87171',
-  success: '#34D399',
-  warning: '#F5B84A',
+  primaryMuted: '#6550D9',
+  primaryText: '#FFFFFF',
+  primarySoft: '#6550D9',
+  secondary: '#6550D9',
+  gold: '#E8A317',
+  goldText: '#09090F',
+  danger: '#E5484D',
+  success: '#30A46C',
+  warning: '#F5A623',
   mono,
   onStrong: '#FFFFFF',
 };
 
 export const lightColors: ThemeColors = {
-  bg: '#FFFFFF',
-  surface: '#F5F5F8',
-  surfaceAlt: '#EDEDF2',
-  border: '#D8D8E0',
-  text: '#0B0B12',
-  textMuted: '#6B7085',
+  bg: '#FAFAFA',
+  surface: '#FFFFFF',
+  surfaceAlt: '#F2F2F5',
+  border: '#E0E0E6',
+  text: '#111118',
+  textMuted: '#6B6B80',
+  textFaint: '#9999AA',
   primary: '#7B61FF',
-  primarySoft: '#A78BFA',
+  primaryMuted: '#6550D9',
   primaryText: '#FFFFFF',
-  secondary: '#A78BFA',
-  gold: '#D97706',
+  primarySoft: '#6550D9',
+  secondary: '#6550D9',
+  gold: '#C78B00',
   goldText: '#FFFFFF',
-  danger: '#DC2626',
-  success: '#059669',
-  warning: '#D97706',
+  danger: '#CD2B31',
+  success: '#18794E',
+  warning: '#D48D00',
   mono,
   onStrong: '#FFFFFF',
 };

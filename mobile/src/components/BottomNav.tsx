@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/src/lib/api';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
-import { icon, space, type, type IoniconName } from './ui';
+import { icon, radius, space, type, withAlpha, type IoniconName } from './ui';
 import { useTheme } from '@/src/providers/theme-provider';
 
 type Tab = { key: string; labelKey: string; icon: IoniconName; href: Href };
@@ -113,7 +113,7 @@ export function BottomNav({ active }: { active?: string }) {
         right: 0,
         bottom: 0,
         backgroundColor: theme.surface,
-        borderTopWidth: 1,
+        borderTopWidth: 0,
         borderTopColor: theme.border,
       }}
     >
@@ -125,25 +125,24 @@ export function BottomNav({ active }: { active?: string }) {
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: space.xs + 2,
-            paddingVertical: space.sm - 2,
-            borderBottomWidth: 1,
-            borderBottomColor: theme.border,
+            gap: space.sm,
+            paddingVertical: space.md,
+            minHeight: 44,
             backgroundColor: theme.surfaceAlt,
           }}
         >
-          <Ionicons name="hardware-chip" size={type.caption} color={theme.gold} />
-          <Text style={{ color: theme.text, fontSize: type.micro, fontWeight: '700' }}>
+          <Ionicons name="hardware-chip" size={type.caption} color={theme.primary} />
+          <Text numberOfLines={1} style={{ color: theme.text, fontSize: type.micro, fontWeight: '700', flexShrink: 1 }}>
             {activeRouterQuery.data?.alias ||
               activeRouterQuery.data?.identity ||
               t('bottomNav.router')}
           </Text>
-          <Text style={{ color: theme.textMuted, fontSize: type.micro }}>·</Text>
-          <Text
-            style={{ color: theme.primary, fontSize: type.micro, fontWeight: '700' }}
-          >
-            {t('bottomNav.exit')}
-          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: withAlpha(theme.primary, 0.12), paddingHorizontal: space.sm, paddingVertical: 3, borderRadius: radius.sm }}>
+            <Ionicons name="close" size={12} color={theme.primary} />
+            <Text style={{ color: theme.primary, fontSize: type.micro, fontWeight: '700' }}>
+              {t('bottomNav.exit')}
+            </Text>
+          </View>
         </Pressable>
       ) : null}
       <View

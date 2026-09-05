@@ -54,8 +54,8 @@ function MethodCard({
       scaleTo={0.97}
       style={{
         borderRadius: radius.lg,
-        borderWidth: selected ? 2 : 1,
-        borderColor: selected ? color : theme.border,
+        borderWidth: selected ? 2 : 0,
+        borderColor: selected ? color : 'transparent',
         backgroundColor: theme.surface,
         padding: space.xl,
       }}
@@ -247,8 +247,6 @@ export default function PaymentScreen() {
               <FadeIn delay={120}>
                 <View
                   style={{
-                    borderWidth: 1,
-                    borderColor: theme.border,
                     borderRadius: radius.md,
                     backgroundColor: theme.surface,
                     padding: space.lg,

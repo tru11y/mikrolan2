@@ -55,8 +55,6 @@ export default function TicketsScreen() {
           gap: space.md,
           backgroundColor: theme.surface,
           borderRadius: radius.md,
-          borderWidth: 1.5,
-          borderColor: theme.primary,
           padding: space.md,
         }}
       >
@@ -161,8 +159,6 @@ export default function TicketsScreen() {
                         height: 32,
                         borderRadius: radius.sm,
                         backgroundColor: theme.surfaceAlt,
-                        borderWidth: 1,
-                        borderColor: theme.border,
                         alignItems: 'center',
                         justifyContent: 'center',
                       }}

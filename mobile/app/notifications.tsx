@@ -144,8 +144,8 @@ export default function NotificationsScreen() {
                     padding: 14,
                     borderRadius: radius.lg,
                     backgroundColor: n.read ? theme.surface : theme.surfaceAlt,
-                    borderWidth: 1,
-                    borderColor: n.read ? theme.border : withAlpha(theme.primary, 0.33),
+                    borderWidth: n.read ? 0 : 1,
+                    borderColor: n.read ? 'transparent' : withAlpha(theme.primary, 0.25),
                     alignItems: 'flex-start',
                   }}
                 >
