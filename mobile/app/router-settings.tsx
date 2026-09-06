@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Linking, ScrollView, Switch, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import * as IntentLauncher from 'expo-intent-launcher';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -359,16 +360,20 @@ export default function RouterSettingsScreen() {
                     tone: 'primary',
                     onPress: () => {
                       closeSheet();
-                      Linking.openURL(`mikrotik://connect?address=${host}&port=${port}`).catch(
-                        () => {
+                      const pkg = 'com.mikrotik.android.tikapp';
+                      IntentLauncher.startActivityAsync(
+                        IntentLauncher.ActivityAction.MAIN,
+                        { packageName: pkg },
+                      ).catch(() => {
+                        Linking.openURL(`market://details?id=${pkg}`).catch(() => {
                           setSheet({
                             icon: 'cube-outline',
                             title: t('routerSettings.winbox'),
                             message: t('routerSettings.mikrotikNotInstalled'),
                             actions: [{ label: t('common.close'), variant: 'cancel', onPress: closeSheet }],
                           });
-                        },
-                      );
+                        });
+                      });
                     },
                   },
                   { label: t('common.close'), variant: 'cancel', onPress: closeSheet },
