@@ -209,7 +209,11 @@ export class SessionsService {
             role: UserRole.OWNER,
           });
 
-          const active = await this.remote.run(router.id, (c) => listActive(c));
+          const active = await this.remote.run(
+            router.id,
+            (c) => listActive(c),
+            { retries: 1 },
+          );
           await this.reconcileActive(
             router.id,
             router.tenantId,
@@ -249,7 +253,11 @@ export class SessionsService {
   async live(routerId: string): Promise<LiveSession[]> {
     const router = await this.getRouter(routerId);
     if (router.mode === ManagementMode.REMOTE) {
-      const active = await this.remote.run(routerId, (c) => listActive(c));
+      const active = await this.remote.run(
+        routerId,
+        (c) => listActive(c),
+        { retries: 1 },
+      );
       return active.map(mapActive);
     }
     // LOCAL : le serveur ne peut pas interroger le routeur directement.
