@@ -7,6 +7,7 @@ import {
   type AdvisorEngine,
   type AdvisorTurn,
 } from '@/src/lib/proAdvisor';
+import { useTranslation } from 'react-i18next';
 import type { Tier } from '@/src/config/tiers';
 import {
   Button,
@@ -46,6 +47,7 @@ export function ProAdvisor({
   onAccept: (tierKey: string, note: string) => void;
 }) {
   const theme = useTheme();
+  const { t } = useTranslation();
   const engineRef = useRef<AdvisorEngine>(new ScriptedAdvisor(tiers));
   const scrollRef = useRef<ScrollView>(null);
   const nextId = useRef(0);
@@ -117,13 +119,13 @@ export function ProAdvisor({
           <IconChip name="chatbubbles-outline" color={theme.primary} size="md" outlined />
           <View style={{ flex: 1 }}>
             <Text style={{ color: theme.text, fontSize: type.title, fontWeight: '700' }}>
-              Conseiller MikroLan
+              {t('pro.advisorTitle')}
             </Text>
             <Text style={{ color: theme.textMuted, fontSize: type.micro }}>
-              Trouve la formule adaptée à votre activité
+              {t('pro.advisorFindFormula')}
             </Text>
           </View>
-          <Press accessibilityLabel="Fermer le conseiller" onPress={onClose} scaleTo={0.85}>
+          <Press accessibilityLabel={t('pro.closeAdvisor')} onPress={onClose} scaleTo={0.85}>
             <Ionicons name="close" size={24} color={theme.textMuted} />
           </Press>
         </Row>
@@ -202,7 +204,7 @@ export function ProAdvisor({
           {tier && turn?.requestNote ? (
             <FadeIn>
               <Button
-                title={`Choisir la formule ${tier.name}`}
+                title={t('pro.chooseFormula', { name: tier.name })}
                 variant="gold"
                 onPress={() => onAccept(tier.key, turn.requestNote as string)}
               />

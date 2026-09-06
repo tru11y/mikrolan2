@@ -29,6 +29,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { useTheme, type ThemeColors, darkColors } from '@/src/providers/theme-provider';
 
 export type IoniconName = keyof typeof Ionicons.glyphMap;
@@ -1000,6 +1001,7 @@ export function ErrorState({
   compact?: boolean;
 }) {
   const t = useTheme();
+  const { t: tr } = useTranslation();
   return (
     <FadeIn
       style={{
@@ -1021,7 +1023,7 @@ export function ErrorState({
       </Text>
       {onRetry ? (
         <View style={{ minWidth: 200 }}>
-          <Button title="Réessayer" variant="ghost" onPress={onRetry} loading={retrying} />
+          <Button title={tr('common.retry')} variant="ghost" onPress={onRetry} loading={retrying} />
         </View>
       ) : null}
     </FadeIn>

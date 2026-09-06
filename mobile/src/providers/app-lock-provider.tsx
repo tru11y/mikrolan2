@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
 import { useAuth } from '@/src/providers/auth-provider';
@@ -41,6 +42,7 @@ export function useAppLock(): AppLockContextValue {
 
 export function AppLockProvider({ children }: PropsWithChildren) {
   const theme = useTheme();
+  const { t } = useTranslation();
   const { isAuthenticated, me } = useAuth();
   const userId = me?.user.id ?? null;
 
@@ -128,11 +130,11 @@ export function AppLockProvider({ children }: PropsWithChildren) {
       <Modal visible={locked} animationType="fade" statusBarTranslucent>
         <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 }}>
           <Ionicons name="lock-closed" size={40} color={theme.primary} />
-          <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700' }}>MikroLan2 verrouillé</Text>
+          <Text style={{ color: theme.text, fontSize: 18, fontWeight: '700' }}>{t('appLock.locked')}</Text>
           <Text style={{ color: theme.textMuted, fontSize: 14, textAlign: 'center' }}>
-            Authentifiez-vous pour continuer
+            {t('appLock.authenticate')}
           </Text>
-          <Button title="Déverrouiller" onPress={() => void unlock()} />
+          <Button title={t('appLock.unlock')} onPress={() => void unlock()} />
         </View>
       </Modal>
     </AppLockContext.Provider>
