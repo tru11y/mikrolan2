@@ -9,15 +9,12 @@ const deviceLang = getLocales()[0]?.languageCode ?? 'fr';
 
 i18n.use(initReactI18next).init({
   resources: { fr: { translation: fr }, en: { translation: en } },
-  lng: deviceLang === 'fr' ? 'fr' : 'en',
+  lng: 'fr',
   fallbackLng: 'fr',
   interpolation: { escapeValue: false },
 });
 
-AsyncStorage.getItem('mikrolan_language').then((saved: string | null) => {
-  if (saved === 'fr' || saved === 'en') {
-    i18n.changeLanguage(saved);
-  }
-}).catch(() => {});
+// Language override disabled — app is French-only for now.
+// AsyncStorage key 'mikrolan_language' is reserved for future i18n toggle.
 
 export default i18n;

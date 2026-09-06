@@ -110,7 +110,7 @@
     "darkModeOff": "Thème clair activé"
   },
   "home": {
-    "title": "Maison",
+    "title": "Accueil",
     "welcomeUser": "Bienvenue, {{name}}",
     "profile": "Profil",
     "revenueToday": "Revenu du jour",
@@ -552,7 +552,7 @@
     "dataKept": "Vos routeurs et vos tickets sont conservés. Tout revient dès l'activation."
   },
   "bottomNav": {
-    "home": "Maison",
+    "home": "Accueil",
     "routers": "Routeurs",
     "settings": "Paramètres",
     "plans": "Plans",
