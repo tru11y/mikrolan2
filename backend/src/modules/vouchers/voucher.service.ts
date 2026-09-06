@@ -153,34 +153,45 @@ export class VoucherService {
         : null;
 
     if (peer) {
+      let pushedCount = 0;
       try {
-        await this.remote.run(routerId, async (client) => {
-          await ensureUserProfile(client, plan);
-          for (const code of codes) {
-            const mikrotikId = await addHotspotUser(client, {
-              code,
-              password: code,
-              profile: plan.userProfile,
-              limitUptime: push.limitUptime,
-              limitBytesTotal: push.limitBytesTotal,
-              comment: push.comment,
-            });
-            if (mikrotikId) {
-              await this.prisma.voucher.updateMany({
-                where: { batchId: batch.id, code },
-                data: { mikrotikId },
+        await this.remote.run(
+          routerId,
+          async (client) => {
+            await ensureUserProfile(client, plan);
+            for (const code of codes) {
+              const mikrotikId = await addHotspotUser(client, {
+                code,
+                password: code,
+                profile: plan.userProfile,
+                limitUptime: push.limitUptime,
+                limitBytesTotal: push.limitBytesTotal,
+                comment: push.comment,
               });
+              if (mikrotikId) {
+                await this.prisma.voucher.updateMany({
+                  where: { batchId: batch.id, code },
+                  data: { mikrotikId },
+                });
+              }
+              pushedCount++;
             }
-          }
-        });
-      } catch (e) {
-        await this.prisma.voucherBatch.update({
-          where: { id: batch.id },
-          data: { status: VoucherBatchStatus.FAILED },
-        });
-        throw e;
+          },
+          { timeoutMs: Math.max(60_000, codes.length * 3000) },
+        );
+      } catch {
+        if (pushedCount > 0) {
+          await this.completeBatch(batch.id, pushedCount);
+        } else {
+          await this.prisma.voucherBatch.update({
+            where: { id: batch.id },
+            data: { status: VoucherBatchStatus.FAILED },
+          });
+        }
       }
-      await this.completeBatch(batch.id, codes.length);
+      if (pushedCount === codes.length) {
+        await this.completeBatch(batch.id, codes.length);
+      }
     }
 
     const vouchers = await this.prisma.voucher.findMany({
