@@ -1,7 +1,8 @@
-import { View, Text, ScrollView } from 'react-native';
+﻿import { View, Text, ScrollView } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/src/providers/auth-provider';
 import {
   Button,
@@ -20,11 +21,11 @@ import { useTheme } from '@/src/providers/theme-provider';
 // pouvoir se connecter, voir son compte et payer.
 const OPEN_ROUTES = ['/login', '/pro', '/(tabs)/account', '/account'];
 
-const LOCKED_FEATURES: { icon: Parameters<typeof IconChip>[0]['name']; label: string }[] = [
-  { icon: 'hardware-chip-outline', label: 'Vos routeurs' },
-  { icon: 'ticket-outline', label: 'Génération de tickets' },
-  { icon: 'layers-outline', label: 'Forfaits WiFi' },
-  { icon: 'bar-chart-outline', label: 'Rapport financier' },
+const LOCKED_FEATURE_ICONS: { icon: Parameters<typeof IconChip>[0]['name']; key: string }[] = [
+  { icon: 'hardware-chip-outline', key: 'paywall.yourRouters' },
+  { icon: 'ticket-outline', key: 'paywall.ticketGeneration' },
+  { icon: 'layers-outline', key: 'paywall.wifiPlans' },
+  { icon: 'bar-chart-outline', key: 'paywall.financialReport' },
 ];
 
 /**
@@ -37,6 +38,7 @@ const LOCKED_FEATURES: { icon: Parameters<typeof IconChip>[0]['name']; label: st
  */
 export function PaywallLock() {
   const theme = useTheme();
+  const { t } = useTranslation();
   const { isAuthenticated, isLocked } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -88,7 +90,7 @@ export function PaywallLock() {
               textAlign: 'center',
             }}
           >
-            Votre essai est terminé
+            {t('paywall.trialEnded')}
           </Text>
           <Text
             style={{
@@ -97,20 +99,18 @@ export function PaywallLock() {
               textAlign: 'center',
             }}
           >
-            Activez un forfait PRO pour retrouver vos routeurs, vos tickets et
-            votre chiffre d’affaires — et piloter vos routeurs à distance,
-            partout.
+            {t('paywall.trialEndedDetail')}
           </Text>
         </View>
 
         <Card style={{ gap: space.md }}>
-          {LOCKED_FEATURES.map((f) => (
-            <Row key={f.label} style={{ justifyContent: 'flex-start', gap: space.md }}>
+          {LOCKED_FEATURE_ICONS.map((f) => (
+            <Row key={f.key} style={{ justifyContent: 'flex-start', gap: space.md }}>
               <IconChip name={f.icon} color={theme.textMuted} size="sm" />
               <Text
                 style={{ color: theme.textMuted, fontSize: type.body, flex: 1 }}
               >
-                {f.label}
+                {t(f.key)}
               </Text>
               <Ionicons
                 name="lock-closed"
@@ -123,12 +123,12 @@ export function PaywallLock() {
 
         <View style={{ gap: space.md }}>
           <Button
-            title="Activer mon forfait PRO"
+            title={t('paywall.activatePro')}
             variant="gold"
             onPress={() => router.push('/pro')}
           />
           <Button
-            title="Mon compte"
+            title={t('paywall.myAccount')}
             variant="ghost"
             onPress={() => router.push('/(tabs)/account')}
           />
@@ -141,8 +141,7 @@ export function PaywallLock() {
             textAlign: 'center',
           }}
         >
-          Vos routeurs et vos tickets sont conservés. Tout revient dès
-          l’activation.
+          {t('paywall.dataKept')}
         </Text>
       </ScrollView>
     </View>
