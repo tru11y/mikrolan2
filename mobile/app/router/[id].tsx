@@ -543,7 +543,7 @@ export default function RouterDetailScreen() {
             </Row>
             <Row style={{ gap: space.sm + 2, alignItems: 'stretch' }}>
               <Gauge
-                label="CPU"
+                label={t('routerDetail.cpu')}
                 value={Number(resource['cpu-load']) || 0}
                 color={theme.primaryMuted}
               />
@@ -564,7 +564,7 @@ export default function RouterDetailScreen() {
                 <Ionicons name="globe-outline" size={icon.sm} color={theme.gold} />
                 <Label>{t('routerDetail.remoteManagement')}</Label>
               </Row>
-              <Badge label="PRO" tone="gold" />
+              <Badge label={t('routerDetail.proBadge')} tone="gold" />
             </Row>
             <Subtitle>
               {t('routerDetail.remoteManagementDesc')}
@@ -582,7 +582,7 @@ export default function RouterDetailScreen() {
                 <Ionicons name="globe-outline" size={icon.sm} color={theme.gold} />
                 <Label>{t('routerDetail.remoteManagement')}</Label>
               </Row>
-              <Badge label="PRO" tone="gold" />
+              <Badge label={t('routerDetail.proBadge')} tone="gold" />
             </Row>
             <Subtitle>
               {t('routerDetail.enableTunnel')}
@@ -690,7 +690,7 @@ export default function RouterDetailScreen() {
             icon="ticket"
             color={theme.primary}
             value={`${salesQuery.data?.ticketsGenerated ?? 0}`}
-            label="Tickets"
+            label={t('home.tickets')}
             onPress={() =>
               router.push({ pathname: '/generate-vouchers', params: { routerId: id } })
             }
@@ -699,7 +699,7 @@ export default function RouterDetailScreen() {
             icon="layers"
             color={theme.gold}
             value={`${plansQuery.data?.length ?? 0}`}
-            label="Plans"
+            label={t('plans.screenTitle')}
             onPress={() =>
               router.push({ pathname: '/plans', params: { routerId: id } })
             }
