@@ -216,7 +216,10 @@
     "end": "End",
     "lastActivity": "Last activity",
     "downloaded": "Downloaded",
-    "uploaded": "Uploaded"
+    "uploaded": "Uploaded",
+    "mac": "MAC",
+    "ip": "IP",
+    "state": "Status"
   },
   "rapport": {
     "title": "Report & performance",
@@ -623,7 +626,10 @@
     "deleteProfileMessage": "\"{{name}}\" will be removed from the router. Clients currently connected with this plan may be disconnected, and linked tickets lose their profile. This cannot be undone.",
     "totalPlans": "Plans",
     "avgPrice": "Avg price (F)",
-    "totalUsers": "Users"
+    "totalUsers": "Users",
+    "uploadSpeed": "Upload (Mb/s)",
+    "downloadSpeed": "Download (Mb/s)",
+    "routerBadge": "ROUTER"
   },
   "routerDetail": {
     "missingCredsBanner": "This router has no credentials on this phone — authorized devices and sessions cannot be displayed.",
@@ -657,7 +663,9 @@
     "verifyTicket": "Verify a ticket",
     "remote": "REMOTE",
     "local": "LOCAL",
-    "routerSettings": "Router settings"
+    "routerSettings": "Router settings",
+    "cpu": "CPU",
+    "proBadge": "PRO"
   },
   "routerSettings": {
     "screenTitle": "Router settings",
@@ -847,6 +855,15 @@
     "affluence": "Traffic",
     "salesPeak": "Sales peak: {{desc}}",
     "sessionsPeak": "Network session peak ({{count}}): {{desc}}"
+  },
+  "appLock": {
+    "locked": "MikroLan2 locked",
+    "authenticate": "Authenticate to continue",
+    "unlock": "Unlock"
+  },
+  "ticketQr": {
+    "scanToConnect": "Scan this code to connect to WiFi.",
+    "close": "Close"
   },
   "onboarding": {
     "skip": "Skip",

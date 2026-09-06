@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Modal, Pressable, Text, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
+import { useTranslation } from 'react-i18next';
 import { Button, Mono } from './ui';
 import { useTheme } from '@/src/providers/theme-provider';
 
@@ -15,6 +16,7 @@ export function TicketQr({
   size?: number;
 }) {
   const theme = useTheme();
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -60,10 +62,10 @@ export function TicketQr({
             {code}
           </Mono>
           <Text style={{ color: theme.textMuted, textAlign: 'center' }}>
-            Scannez ce code pour vous connecter au WiFi.
+            {t('ticketQr.scanToConnect')}
           </Text>
           <View style={{ width: 220 }}>
-            <Button title="Fermer" variant="ghost" onPress={() => setOpen(false)} />
+            <Button title={t('common.close')} variant="ghost" onPress={() => setOpen(false)} />
           </View>
         </View>
       </Modal>
