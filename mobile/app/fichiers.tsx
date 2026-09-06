@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ScrollView, Share, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   api,
@@ -57,6 +58,7 @@ type BatchAction = { batchId: string; kind: 'download' | 'print' } | null;
 
 export default function FichiersScreen() {
   const theme = useTheme();
+  const { t } = useTranslation();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const qc = useQueryClient();
   const navHeight = useBottomNavHeight();
@@ -122,7 +124,7 @@ export default function FichiersScreen() {
 
   async function shareCodes(codes: VoucherItem[]) {
     const text = codes.map((v) => v.code).join('\n');
-    await Share.share({ message: `Codes WiFi :\n${text}` });
+    await Share.share({ message: `${t('fichiers.wifiCodes')}\n${text}` });
   }
 
   async function revoke(id: string) {
@@ -167,12 +169,12 @@ export default function FichiersScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title="Fichiers" back />
+      <AppHeader title={t('fichiers.screenTitle')} back />
       <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: navHeight }}>
         <View>
-          <Title>Fichiers &amp; Impression</Title>
+          <Title>{t('fichiers.titleFull')}</Title>
           <Subtitle>
-            Historique des lots PDF générés et file d&rsquo;impression thermique
+            {t('fichiers.subtitle')}
           </Subtitle>
         </View>
 
@@ -180,7 +182,7 @@ export default function FichiersScreen() {
 
         <View style={{ gap: 10 }}>
           {!batchesQuery.data?.length ? (
-            <Empty icon="folder-open-outline" text="Aucun lot généré pour ce routeur." />
+            <Empty icon="folder-open-outline" text={t('fichiers.noBatch')} />
           ) : (
             batchesQuery.data.map((b) => {
               const isDownloading =
@@ -222,7 +224,7 @@ export default function FichiersScreen() {
                     </Text>
                   </View>
                   <Press
-                    accessibilityLabel="Télécharger le lot"
+                    accessibilityLabel={t('fichiers.downloadBatch')}
                     onPress={() => batchAction(b, 'download')}
                     disabled={busy !== null}
                     style={{
@@ -238,7 +240,7 @@ export default function FichiersScreen() {
                     <Ionicons name="download-outline" size={17} color={theme.primaryMuted} />
                   </Press>
                   <Press
-                    accessibilityLabel="Imprimer le lot"
+                    accessibilityLabel={t('fichiers.printBatch')}
                     onPress={() => batchAction(b, 'print')}
                     disabled={busy !== null}
                     style={{
@@ -254,7 +256,7 @@ export default function FichiersScreen() {
                     <Ionicons name="print-outline" size={17} color={theme.primary} />
                   </Press>
                   <Press
-                    accessibilityLabel="Supprimer le lot"
+                    accessibilityLabel={t('fichiers.deleteBatch')}
                     onPress={() => setConfirmBatch(b)}
                     disabled={busy !== null}
                     style={{
@@ -275,12 +277,12 @@ export default function FichiersScreen() {
         </View>
 
         <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
-          Codes existants
+          {t('fichiers.existingCodes')}
         </Text>
         {vouchersQuery.isLoading ? (
           <Text style={{ color: theme.textMuted, fontSize: 13 }}>Chargement…</Text>
         ) : !vouchersQuery.data?.length ? (
-          <Empty icon="key-outline" text="Aucun code pour ce routeur." />
+          <Empty icon="key-outline" text={t('fichiers.noCode')} />
         ) : (
           <View style={{ gap: 12 }}>
             {vouchersQuery.data.map((v) => {
@@ -298,7 +300,7 @@ export default function FichiersScreen() {
                     <Badge label={v.status} tone={STATUS_TONE[v.status]} />
                     <View style={{ flex: 1 }}>
                       <Button
-                        title="Partager"
+                        title={t('common.share')}
                         variant="ghost"
                         onPress={() => shareCodes([v])}
                       />
@@ -306,7 +308,7 @@ export default function FichiersScreen() {
                     {v.status !== 'REVOKED' ? (
                       <View style={{ flex: 1 }}>
                         <Button
-                          title="Révoquer"
+                          title={t('common.revoke')}
                           variant="danger"
                           onPress={() => revoke(v.id)}
                         />
@@ -314,7 +316,7 @@ export default function FichiersScreen() {
                     ) : null}
                     <View style={{ flex: 1 }}>
                       <Button
-                        title="Supprimer"
+                        title={t('common.delete')}
                         variant="danger"
                         onPress={() => setConfirmVoucher(v)}
                       />
@@ -331,9 +333,9 @@ export default function FichiersScreen() {
       <ConfirmDialog
         visible={confirmVoucher !== null}
         icon="trash-outline"
-        title="Supprimer ce ticket ?"
-        message={`Le code ${confirmVoucher?.code ?? ''} sera supprimé définitivement — impossible à annuler.`}
-        confirmLabel="Supprimer"
+        title={t('fichiers.deleteTicketTitle')}
+        message={t('fichiers.deleteTicketMessage', { code: confirmVoucher?.code ?? '' })}
+        confirmLabel={t('common.delete')}
         tone="danger"
         busy={deleteBusy}
         onConfirm={deleteVoucherConfirmed}
@@ -343,9 +345,9 @@ export default function FichiersScreen() {
       <ConfirmDialog
         visible={confirmBatch !== null}
         icon="trash-outline"
-        title="Supprimer ce lot ?"
-        message={`${confirmBatch?.generated ?? 0} ticket(s) de ce lot seront supprimés définitivement — impossible à annuler.`}
-        confirmLabel="Supprimer"
+        title={t('fichiers.deleteBatchTitle')}
+        message={t('fichiers.deleteBatchMessage', { count: confirmBatch?.generated ?? 0 })}
+        confirmLabel={t('common.delete')}
         tone="danger"
         busy={deleteBusy}
         onConfirm={deleteBatchConfirmed}
