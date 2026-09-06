@@ -362,7 +362,7 @@ export default function RouterSettingsScreen() {
                       closeSheet();
                       const pkg = 'com.mikrotik.android.tikapp';
                       IntentLauncher.startActivityAsync(
-                        IntentLauncher.ActivityAction.MAIN,
+                        'android.intent.action.MAIN',
                         { packageName: pkg },
                       ).catch(() => {
                         Linking.openURL(`market://details?id=${pkg}`).catch(() => {
