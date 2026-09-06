@@ -511,7 +511,7 @@ export default function PlansScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <NumberField
-                  label="Upload (Mb/s)"
+                  label={t('plans.uploadSpeed')}
                   value={upMbps}
                   onChangeValue={setUpMbps}
                   min={1}
@@ -522,7 +522,7 @@ export default function PlansScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <NumberField
-                  label="Download (Mb/s)"
+                  label={t('plans.downloadSpeed')}
                   value={downMbps}
                   onChangeValue={setDownMbps}
                   min={1}
@@ -834,7 +834,7 @@ export default function PlansScreen() {
                       </Row>
                     </View>
                   </Row>
-                  <Badge label="ROUTEUR" tone="secondary" />
+                  <Badge label={t('plans.routerBadge')} tone="secondary" />
                 </Row>
 
                 {deviceEditing?.id === p.id ? (
