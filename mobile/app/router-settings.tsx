@@ -219,7 +219,7 @@ export default function RouterSettingsScreen() {
       subtitle: t('routerSettings.loginPageSubtitle'),
       icon: 'globe-outline',
       color: theme.primaryMuted,
-      onPress: () => go('/hotspot-setup'),
+      onPress: () => go('/login-page'),
     },
     {
       id: 'ip_bindings',

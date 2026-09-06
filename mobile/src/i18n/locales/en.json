@@ -569,6 +569,18 @@
     "unknown": "Unknown",
     "error": "Error"
   },
+  "loginPage": {
+    "screenTitle": "Login page",
+    "subtitle": "Configure the captive portal address and hotspot idle timeout.",
+    "dnsNameLabel": "Domain name (DNS)",
+    "dnsNameHelp": "The address shown in the client's browser when they connect to the hotspot. Example: wifi.mynetwork.com. Leave empty to use the router's IP.",
+    "dnsNamePlaceholder": "wifi.mynetwork.com",
+    "idleTimeoutLabel": "Idle timeout",
+    "idleTimeoutHelp": "How long a client can be idle before automatic disconnection. Leave empty for no limit.",
+    "minutes": "minutes",
+    "save": "Save",
+    "saved": "Portal configuration saved."
+  },
   "errorBoundary": {
     "title": "An error occurred"
   },

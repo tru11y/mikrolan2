@@ -569,6 +569,18 @@
     "unknown": "Inconnu",
     "error": "Erreur"
   },
+  "loginPage": {
+    "screenTitle": "Page de connexion",
+    "subtitle": "Configurez l'adresse du portail captif et le délai d'inactivité du hotspot.",
+    "dnsNameLabel": "Nom de domaine (DNS)",
+    "dnsNameHelp": "L'adresse affichée dans le navigateur du client quand il se connecte au hotspot. Exemple : wifi.monreseau.ci. Laissez vide pour utiliser l'IP du routeur.",
+    "dnsNamePlaceholder": "wifi.monreseau.ci",
+    "idleTimeoutLabel": "Délai d'inactivité",
+    "idleTimeoutHelp": "Durée d'inactivité avant déconnexion automatique du client. Laissez vide pour aucune limite.",
+    "minutes": "minutes",
+    "save": "Enregistrer",
+    "saved": "Configuration du portail enregistrée."
+  },
   "errorBoundary": {
     "title": "Une erreur est survenue"
   },
