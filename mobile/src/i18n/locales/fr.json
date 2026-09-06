@@ -216,7 +216,10 @@
     "end": "Fin",
     "lastActivity": "Dernière activité",
     "downloaded": "Téléchargé",
-    "uploaded": "Envoyé"
+    "uploaded": "Envoyé",
+    "mac": "MAC",
+    "ip": "IP",
+    "state": "État"
   },
   "rapport": {
     "title": "Rapport & performance",
@@ -623,7 +626,10 @@
     "deleteProfileMessage": "« {{name}} » sera retiré du routeur. Les clients actuellement connectés avec ce forfait peuvent être déconnectés, et les tickets qui s'y rattachent perdent leur profil. Action irréversible.",
     "totalPlans": "Forfaits",
     "avgPrice": "Prix moyen (F)",
-    "totalUsers": "Utilisateurs"
+    "totalUsers": "Utilisateurs",
+    "uploadSpeed": "Upload (Mb/s)",
+    "downloadSpeed": "Download (Mb/s)",
+    "routerBadge": "ROUTEUR"
   },
   "routerDetail": {
     "missingCredsBanner": "Ce routeur n'a pas d'identifiants sur ce téléphone — les appareils autorisés et les sessions ne peuvent pas s'afficher.",
@@ -657,7 +663,9 @@
     "verifyTicket": "Vérifier un ticket",
     "remote": "À DISTANCE",
     "local": "LOCAL",
-    "routerSettings": "Paramètres du routeur"
+    "routerSettings": "Paramètres du routeur",
+    "cpu": "CPU",
+    "proBadge": "PRO"
   },
   "routerSettings": {
     "screenTitle": "Paramètres routeur",
@@ -847,6 +855,15 @@
     "affluence": "Affluence",
     "salesPeak": "Pic de ventes : {{desc}}",
     "sessionsPeak": "Pic de sessions réseau ({{count}}) : {{desc}}"
+  },
+  "appLock": {
+    "locked": "MikroLan2 verrouillé",
+    "authenticate": "Authentifiez-vous pour continuer",
+    "unlock": "Déverrouiller"
+  },
+  "ticketQr": {
+    "scanToConnect": "Scannez ce code pour vous connecter au WiFi.",
+    "close": "Fermer"
   },
   "onboarding": {
     "skip": "Passer",
