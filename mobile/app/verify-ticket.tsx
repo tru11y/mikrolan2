@@ -226,7 +226,7 @@ export default function VerifyTicketScreen() {
             </View>
           </Row>
           <Button
-            title="Vérifier"
+            title={t('verifyTicket.verify')}
             onPress={verify}
             loading={busy}
             disabled={!code.trim()}
@@ -290,26 +290,26 @@ export default function VerifyTicketScreen() {
                   borderTopColor: theme.border,
                 }}
               >
-                <InfoRow label="Code" value={r.code} />
-                <InfoRow label="Forfait" value={r.planName} />
-                <InfoRow label="Durée" value={fmtDuration(r.durationMinutes)} />
+                <InfoRow label={t('verifyTicket.code')} value={r.code} />
+                <InfoRow label={t('verifyTicket.plan')} value={r.planName} />
+                <InfoRow label={t('tickets.duration', { duration: fmtDuration(r.durationMinutes) })} value={fmtDuration(r.durationMinutes)} />
                 <InfoRow
-                  label="Prix"
+                  label={t('verifyTicket.price')}
                   value={`${r.priceXof.toLocaleString('fr-FR')} FCFA`}
                   color={theme.success}
                 />
-                {r.routerName ? <InfoRow label="Routeur" value={r.routerName} /> : null}
+                {r.routerName ? <InfoRow label={t('verifyTicket.router')} value={r.routerName} /> : null}
                 {r.source === 'LEGACY' ? (
-                  <InfoRow label="Source" value="Legacy (routeur)" color={theme.warning} />
+                  <InfoRow label={t('verifyTicket.source')} value={t('verifyTicket.sourceLegacy')} color={theme.warning} />
                 ) : null}
                 {r.deliveredAt ? (
-                  <InfoRow label="Livré le" value={fmtDate(r.deliveredAt)} />
+                  <InfoRow label={t('verifyTicket.deliveredAt')} value={fmtDate(r.deliveredAt)} />
                 ) : null}
                 {r.activatedAt ? (
-                  <InfoRow label="1re connexion" value={fmtDate(r.activatedAt)} />
+                  <InfoRow label={t('verifyTicket.firstConnection')} value={fmtDate(r.activatedAt)} />
                 ) : null}
                 {r.expiresAt ? (
-                  <InfoRow label="Expire le" value={fmtDate(r.expiresAt)} />
+                  <InfoRow label={t('verifyTicket.expiresAt')} value={fmtDate(r.expiresAt)} />
                 ) : null}
               </View>
             ) : null}
@@ -331,30 +331,30 @@ export default function VerifyTicketScreen() {
                     marginBottom: 2,
                   }}
                 >
-                  Session
+                  {t('verifyTicket.session')}
                 </Text>
                 <InfoRow
-                  label="État"
+                  label={t('verifyTicket.state')}
                   value={
                     s.status === 'ACTIVE'
-                      ? 'En cours'
+                      ? t('verifyTicket.statusActive')
                       : s.status === 'TERMINATED'
-                        ? 'Terminée'
-                        : 'Expirée'
+                        ? t('verifyTicket.statusTerminated')
+                        : t('verifyTicket.statusExpired')
                   }
                   color={s.status === 'ACTIVE' ? theme.success : theme.textMuted}
                 />
-                <InfoRow label="Début" value={fmtDate(s.startedAt)} />
+                <InfoRow label={t('verifyTicket.start')} value={fmtDate(s.startedAt)} />
                 {s.terminatedAt ? (
-                  <InfoRow label="Fin" value={fmtDate(s.terminatedAt)} />
+                  <InfoRow label={t('verifyTicket.end')} value={fmtDate(s.terminatedAt)} />
                 ) : null}
                 {s.lastSeenAt ? (
-                  <InfoRow label="Dernière activité" value={fmtDate(s.lastSeenAt)} />
+                  <InfoRow label={t('verifyTicket.lastActivity')} value={fmtDate(s.lastSeenAt)} />
                 ) : null}
-                <InfoRow label="Téléchargé" value={fmtBytes(s.bytesIn)} />
-                <InfoRow label="Envoyé" value={fmtBytes(s.bytesOut)} />
-                {s.macAddress ? <InfoRow label="MAC" value={s.macAddress} /> : null}
-                {s.ipAddress ? <InfoRow label="IP" value={s.ipAddress} /> : null}
+                <InfoRow label={t('verifyTicket.downloaded')} value={fmtBytes(s.bytesIn)} />
+                <InfoRow label={t('verifyTicket.uploaded')} value={fmtBytes(s.bytesOut)} />
+                {s.macAddress ? <InfoRow label={t('verifyTicket.mac')} value={s.macAddress} /> : null}
+                {s.ipAddress ? <InfoRow label={t('verifyTicket.ip')} value={s.ipAddress} /> : null}
               </View>
             ) : null}
 

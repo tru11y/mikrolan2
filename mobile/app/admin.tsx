@@ -642,7 +642,7 @@ function TierEditor({ tier, onDone }: { tier: Tier; onDone: () => void }) {
         </View>
         <View style={{ flex: 1 }}>
           <NumberField
-            label="Remise annuelle (%)"
+            label={t('admin.annualDiscount')}
             value={discount}
             onChangeValue={setDiscount}
             min={0}
@@ -651,39 +651,38 @@ function TierEditor({ tier, onDone }: { tier: Tier; onDone: () => void }) {
         </View>
       </Row>
       <NumberField
-        label="Routeurs inclus"
+        label={t('admin.routersIncluded')}
         value={routers}
         onChangeValue={setRouters}
         min={1}
         max={10_000}
         optional
-        placeholder="Illimité"
-        hint="Laisser vide pour illimité."
+        placeholder={t('admin.unlimitedPlaceholder')}
+        hint={t('admin.leaveEmptyForUnlimited')}
       />
       {priceValid && discountValid ? (
         <Text style={{ color: theme.textMuted, fontSize: type.micro }}>
-          Annuel :{' '}
-          {formatXof(
-            Math.round(
-              Number.parseInt(price, 10) * (1 - Number.parseInt(discount, 10) / 100),
+          {t('admin.annualPrice', {
+            monthly: formatXof(
+              Math.round(
+                Number.parseInt(price, 10) * (1 - Number.parseInt(discount, 10) / 100),
+              ),
             ),
-          )}{' '}
-          / mois, soit{' '}
-          {formatXof(
-            Math.round(
-              Number.parseInt(price, 10) * (1 - Number.parseInt(discount, 10) / 100),
-            ) * 12,
-          )}{' '}
-          / an.
+            yearly: formatXof(
+              Math.round(
+                Number.parseInt(price, 10) * (1 - Number.parseInt(discount, 10) / 100),
+              ) * 12,
+            ),
+          })}
         </Text>
       ) : null}
       <Row style={{ gap: space.sm }}>
         <View style={{ flex: 1 }}>
-          <Button title="Annuler" variant="ghost" onPress={onDone} />
+          <Button title={t('common.cancel')} variant="ghost" onPress={onDone} />
         </View>
         <View style={{ flex: 1 }}>
           <Button
-            title="Enregistrer"
+            title={t('common.save')}
             onPress={() => save.mutate()}
             loading={save.isPending}
             disabled={!name.trim() || !priceValid || !discountValid}
@@ -696,6 +695,7 @@ function TierEditor({ tier, onDone }: { tier: Tier; onDone: () => void }) {
 
 function TiersTab() {
   const theme = useTheme();
+  const { t } = useTranslation();
   const [editing, setEditing] = useState<string | null>(null);
   const query = useQuery({ queryKey: ['admin', 'tiers'], queryFn: api.admin.tiers });
 
@@ -712,18 +712,17 @@ function TiersTab() {
 
   const tiers = query.data ?? [];
   if (!tiers.length) {
-    return <Empty icon="pricetags-outline" text="Aucune formule publiée." />;
+    return <Empty icon="pricetags-outline" text={t('admin.noFormulas')} />;
   }
 
   return (
     <View style={{ gap: space.md }}>
       <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
-        Les prix modifiés ici s'appliquent aux nouvelles demandes. Les factures déjà
-        émises gardent leur montant.
+        {t('admin.priceNote')}
       </Text>
 
-      {tiers.map((t, i) => (
-        <FadeIn key={t.id} delay={i * 50}>
+      {tiers.map((tier, i) => (
+        <FadeIn key={tier.id} delay={i * 50}>
           <Card>
             <Row style={{ alignItems: 'flex-start' }}>
               <View style={{ flex: 1, paddingRight: space.md }}>
@@ -731,38 +730,38 @@ function TiersTab() {
                   <Text
                     style={{ color: theme.text, fontSize: type.bodyLg, fontWeight: '700' }}
                   >
-                    {t.name}
+                    {tier.name}
                   </Text>
-                  {t.active ? null : <Badge label="Archivée" tone="muted" />}
+                  {tier.active ? null : <Badge label={t('admin.archived')} tone="muted" />}
                 </Row>
                 <Text style={{ color: theme.textMuted, fontSize: type.micro }}>
-                  {t.routerLimit === null
-                    ? 'Routeurs illimités'
-                    : `${t.routerLimit} routeurs`}
-                  {t.remoteAccess ? ' · accès distant' : ' · local seul'}
+                  {tier.routerLimit === null
+                    ? t('admin.unlimitedRouters')
+                    : t('admin.routerCount', { count: tier.routerLimit })}
+                  {tier.remoteAccess ? ` · ${t('admin.remoteAccess')}` : ` · ${t('admin.localOnly')}`}
                 </Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
                 <Text
                   style={{ color: theme.gold, fontSize: type.bodyLg, fontWeight: '800' }}
                 >
-                  {formatXof(t.monthlyXof)}
+                  {formatXof(tier.monthlyXof)}
                 </Text>
                 <Text style={{ color: theme.textMuted, fontSize: type.micro }}>
-                  annuel : {formatXof(t.annualMonthlyXof)} / mois
+                  {t('admin.annualBilling')} : {formatXof(tier.annualMonthlyXof)} / {t('pro.perMonth')}
                 </Text>
               </View>
             </Row>
 
-            {editing === t.id ? (
+            {editing === tier.id ? (
               <FadeIn from={-6}>
-                <TierEditor tier={t} onDone={() => setEditing(null)} />
+                <TierEditor tier={tier} onDone={() => setEditing(null)} />
               </FadeIn>
             ) : (
               <Button
-                title="Modifier le tarif"
+                title={t('admin.modifyPrice')}
                 variant="ghost"
-                onPress={() => setEditing(t.id)}
+                onPress={() => setEditing(tier.id)}
               />
             )}
           </Card>
@@ -807,11 +806,11 @@ function TicketsTab() {
 
   const tickets = ticketsQuery.data?.items ?? [];
 
-  if (!tickets.length) return <Empty icon="chatbubbles-outline" text="Aucun ticket SAV." />;
+  if (!tickets.length) return <Empty icon="chatbubbles-outline" text={t('admin.noSavTickets')} />;
 
   return (
     <View style={{ gap: space.md }}>
-      <SectionTitle>Tickets SAV</SectionTitle>
+      <SectionTitle>{t('admin.savTickets')}</SectionTitle>
       {tickets.map((t: any) => (
         <Card key={t.id}>
           <Row style={{ justifyContent: 'space-between', marginBottom: 6 }}>
@@ -846,6 +845,7 @@ function TicketsTab() {
 }
 
 function ConfigTab() {
+  const { t } = useTranslation();
   const toast = useToast();
   const qc = useQueryClient();
   const configQuery = useQuery({
@@ -884,11 +884,11 @@ function ConfigTab() {
 
   return (
     <View style={{ gap: space.lg }}>
-      <SectionTitle>Numéros de paiement</SectionTitle>
-      <Field label="Numéro Wave" value={waveNumber} onChangeText={setWaveNumber} placeholder="Ex: 77 123 45 67" />
-      <Field label="Numéro Orange Money" value={omNumber} onChangeText={setOmNumber} placeholder="Ex: 78 987 65 43" />
-      <Field label="Instructions de paiement" value={instructions} onChangeText={setInstructions} placeholder="Texte affiché au client lors du paiement" multiline />
-      <Button title="Sauvegarder" variant="primary" onPress={() => saveMutation.mutate()} loading={saveMutation.isPending} />
+      <SectionTitle>{t('admin.paymentNumbers')}</SectionTitle>
+      <Field label={t('admin.waveNumber')} value={waveNumber} onChangeText={setWaveNumber} placeholder={t('admin.wavePlaceholder')} />
+      <Field label={t('admin.omNumber')} value={omNumber} onChangeText={setOmNumber} placeholder={t('admin.omPlaceholder')} />
+      <Field label={t('admin.paymentInstructions')} value={instructions} onChangeText={setInstructions} placeholder={t('admin.paymentInstructionsPlaceholder')} multiline />
+      <Button title={t('admin.saveConfig')} variant="primary" onPress={() => saveMutation.mutate()} loading={saveMutation.isPending} />
     </View>
   );
 }
@@ -914,9 +914,9 @@ export default function AdminScreen() {
   if (me && me.user.role !== 'SUPER_ADMIN') {
     return (
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
-        <AppHeader title="Administration" back />
+        <AppHeader title={t('admin.title')} back />
         <ErrorState
-          message="Cette section est réservée à l'administration de la plateforme."
+          message={t('admin.accessRestricted')}
           onRetry={() => router.back()}
         />
       </View>
@@ -925,7 +925,7 @@ export default function AdminScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
-      <AppHeader title="Administration" back />
+      <AppHeader title={t('admin.title')} back />
       <ScrollView
         contentContainerStyle={{
           padding: space.lg,
