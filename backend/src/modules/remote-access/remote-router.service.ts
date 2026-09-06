@@ -21,7 +21,8 @@ import {
 
 // RouterOS binary API — enabled by default (no `www`/REST service needed).
 const ROUTEROS_API_PORT = 8728;
-const REQUEST_TIMEOUT_MS = 8000;
+const REQUEST_TIMEOUT_MS = 12_000;
+const BATCH_TIMEOUT_MS = 60_000;
 
 /**
  * Drives a router from the backend over the WireGuard tunnel using the RouterOS
@@ -46,6 +47,7 @@ export class RemoteRouterService {
   async run<T>(
     routerId: string,
     fn: (client: RouterOsApiClient) => Promise<T>,
+    opts?: { timeoutMs?: number; retries?: number },
   ): Promise<T> {
     const tenantId = getTenantContext()?.tenantId;
     if (!tenantId || !(await this.subscriptions.isRemoteAllowed(tenantId))) {
@@ -74,27 +76,42 @@ export class RemoteRouterService {
       password: string;
     };
 
-    try {
-      return await withRouterOsApi(
-        {
-          host: peer.wgIp,
-          port: ROUTEROS_API_PORT,
-          username: creds.username,
-          password: creds.password,
-          timeoutMs: REQUEST_TIMEOUT_MS,
-        },
-        fn,
-      );
-    } catch (e) {
-      if (e instanceof RouterOsAuthError) {
-        throw new BadRequestException('Identifiants RouterOS incorrects');
+    const timeoutMs = opts?.timeoutMs ?? REQUEST_TIMEOUT_MS;
+    const maxRetries = opts?.retries ?? 0;
+
+    let lastError: Error | undefined;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await withRouterOsApi(
+          {
+            host: peer.wgIp,
+            port: ROUTEROS_API_PORT,
+            username: creds.username,
+            password: creds.password,
+            timeoutMs,
+          },
+          fn,
+        );
+      } catch (e) {
+        if (e instanceof RouterOsAuthError) {
+          throw new BadRequestException('Identifiants RouterOS incorrects');
+        }
+        if (e instanceof RouterOsApiError) {
+          this.logger.warn(`RouterOS refused command on ${routerId}: ${e.message}`);
+          throw new ServiceUnavailableException('Le routeur a refusé la commande.');
+        }
+        lastError = e as Error;
+        if (attempt < maxRetries) {
+          this.logger.warn(
+            `Router ${routerId} unreachable (attempt ${attempt + 1}/${maxRetries + 1}), retrying...`,
+          );
+          await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+        }
       }
-      if (e instanceof RouterOsApiError) {
-        this.logger.warn(`RouterOS refused command on ${routerId}: ${e.message}`);
-        throw new ServiceUnavailableException('Le routeur a refusé la commande.');
-      }
-      throw new ServiceUnavailableException('Routeur injoignable via le tunnel');
     }
+    throw new ServiceUnavailableException(
+      `Routeur injoignable via le tunnel${lastError ? `: ${lastError.message}` : ''}`,
+    );
   }
 
   async systemResource(routerId: string): Promise<ApiRow> {
