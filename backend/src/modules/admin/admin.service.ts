@@ -418,6 +418,31 @@ export class AdminService {
       }),
     ]);
 
+    const [
+      routersOffline,
+      routersDegraded,
+      openTickets,
+      overdueTickets,
+      activeSessions,
+    ] = await Promise.all([
+      this.prisma.router.count({
+        where: { deletedAt: null, health: RouterHealth.OFFLINE },
+      }),
+      this.prisma.router.count({
+        where: { deletedAt: null, health: 'DEGRADED' as RouterHealth },
+      }),
+      this.prisma.supportTicket.count({
+        where: { status: { in: ['OPEN', 'IN_PROGRESS'] } },
+      }),
+      this.prisma.supportTicket.count({
+        where: {
+          status: { in: ['OPEN', 'IN_PROGRESS'] },
+          slaDeadlineAt: { lt: now },
+        },
+      }),
+      this.prisma.session.count({ where: { status: 'ACTIVE' } }),
+    ]);
+
     const mrrXof = activeSubs.reduce((sum, sub) => {
       if (!sub.tier) return sum;
       return sum + monthlyPrice(sub.tier, sub.billingPeriod ?? BillingPeriod.MONTHLY);
@@ -438,8 +463,15 @@ export class AdminService {
       revenue: { mrrXof, currency: 'XOF', untieredActive },
       trialsExpiringIn7Days: trialsExpiring,
       pendingInvoices,
-      routers: { total: routersTotal, online: routersOnline },
+      routers: {
+        total: routersTotal,
+        online: routersOnline,
+        offline: routersOffline,
+        degraded: routersDegraded,
+      },
       vouchers30d: { generated: vouchersGenerated, activated: vouchersActivated },
+      sessions: { active: activeSessions },
+      support: { open: openTickets, overdue: overdueTickets },
       generatedAt: now.toISOString(),
     };
   }
@@ -741,6 +773,55 @@ export class AdminService {
           : {}),
       },
     });
+  }
+
+  // ── Audit sécurité ────────────────────────────────────
+
+  async securityAudit() {
+    const now = new Date();
+    const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    const [
+      superAdminCount,
+      recentLogins,
+      suspendedUsers,
+      routersWithoutCreds,
+      sensitiveActions,
+    ] = await Promise.all([
+      this.prisma.user.count({ where: { role: 'SUPER_ADMIN', status: 'ACTIVE' } }),
+      this.prisma.auditLog.count({
+        where: { action: 'LOGIN', createdAt: { gte: last24h } },
+      }),
+      this.prisma.user.count({ where: { status: 'SUSPENDED' } }),
+      this.prisma.router.count({
+        where: { deletedAt: null, mode: 'REMOTE', credEncrypted: null },
+      }),
+      this.prisma.auditLog.findMany({
+        where: {
+          action: { in: ['DELETE', 'SUSPEND', 'REVOKE'] },
+          createdAt: { gte: last24h },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 20,
+        select: {
+          action: true,
+          entityType: true,
+          entityId: true,
+          userId: true,
+          ip: true,
+          createdAt: true,
+        },
+      }),
+    ]);
+
+    return {
+      superAdmins: superAdminCount,
+      loginsLast24h: recentLogins,
+      suspendedUsers,
+      routersRemoteWithoutCreds: routersWithoutCreds,
+      sensitiveActionsLast24h: sensitiveActions,
+      generatedAt: now.toISOString(),
+    };
   }
 
   // ── Config plateforme ─────────────────────────────────
