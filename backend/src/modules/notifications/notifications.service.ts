@@ -1,7 +1,10 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { NotificationType } from '@prisma/client';
 import type { ListNotificationsQueryDto } from './dto/notifications.schemas';
+import type { PushJobData } from './notification.processor';
 
 export interface NotificationDto {
   id: string;
@@ -18,7 +21,10 @@ export interface NotificationDto {
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @InjectQueue('notifications') private readonly pushQueue: Queue<PushJobData>,
+  ) {}
 
   async createAndPush(
     tenantId: string,
@@ -28,10 +34,25 @@ export class NotificationsService {
     routerId?: string | null,
     voucherId?: string | null,
   ): Promise<void> {
-    await this.prisma.notification.create({
+    const notification = await this.prisma.notification.create({
       data: { tenantId, type, title, body, routerId, voucherId },
     });
-    await this.sendPushToTenant(tenantId, title, body, routerId);
+
+    const tokens = await this.collectPushTokens(tenantId, routerId);
+    if (!tokens.length) return;
+
+    try {
+      await this.pushQueue.add('push', {
+        notificationId: notification.id,
+        tokens,
+        title,
+        body,
+        data: routerId ? { routerId } : undefined,
+      });
+    } catch (e) {
+      this.logger.warn(`BullMQ enqueue failed, sending directly: ${e instanceof Error ? e.message : e}`);
+      await this.sendPushDirect(tokens, title, body, routerId ? { routerId } : undefined);
+    }
   }
 
   async sendPushToTenant(
@@ -41,13 +62,21 @@ export class NotificationsService {
     routerId?: string | null,
     extraData?: Record<string, unknown>,
   ): Promise<void> {
+    const tokens = await this.collectPushTokens(tenantId, routerId);
+    if (!tokens.length) return;
+
+    const data = { ...(routerId ? { routerId } : {}), ...extraData };
+    await this.sendPushDirect(tokens, title, body, Object.keys(data).length ? data : undefined);
+  }
+
+  private async collectPushTokens(tenantId: string, routerId?: string | null): Promise<string[]> {
     try {
       if (routerId) {
         const router = await this.prisma.router.findFirst({
           where: { id: routerId, tenantId, deletedAt: null },
           select: { pushNotifications: true },
         });
-        if (router && !router.pushNotifications) return;
+        if (router && !router.pushNotifications) return [];
       }
 
       const users = await this.prisma.user.findMany({
@@ -59,17 +88,29 @@ export class NotificationsService {
         },
         select: { id: true, pushToken: true },
       });
-      if (!users.length) return;
 
-      const data = { ...(routerId ? { routerId } : {}), ...extraData };
-      const messages = users.map((u) => ({
-        to: u.pushToken as string,
+      return users.map((u) => u.pushToken as string);
+    } catch (e) {
+      this.logger.warn(`Token collection failed: ${e instanceof Error ? e.message : e}`);
+      return [];
+    }
+  }
+
+  private async sendPushDirect(
+    tokens: string[],
+    title: string,
+    body: string,
+    data?: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      const messages = tokens.map((to) => ({
+        to,
         title,
         body,
         sound: 'default' as const,
         channelId: 'default',
         priority: 'high' as const,
-        ...(Object.keys(data).length ? { data } : {}),
+        ...(data ? { data } : {}),
       }));
 
       const res = await fetch('https://exp.host/--/api/v2/push/send', {
@@ -77,6 +118,7 @@ export class NotificationsService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(messages),
       });
+
       if (!res.ok) {
         this.logger.warn(`Expo push failed: ${res.status}`);
         return;
@@ -87,19 +129,20 @@ export class NotificationsService {
       };
       if (!tickets) return;
 
-      const deadUserIds = tickets
+      const deadTokens = tickets
         .map((ticket, i) =>
           ticket.status === 'error' && ticket.details?.error === 'DeviceNotRegistered'
-            ? users[i]?.id
+            ? tokens[i]
             : null,
         )
-        .filter((id): id is string => Boolean(id));
+        .filter((t): t is string => Boolean(t));
 
-      await Promise.all(
-        deadUserIds.map((id) =>
-          this.prisma.user.update({ where: { id }, data: { pushToken: null } }),
-        ),
-      );
+      if (deadTokens.length) {
+        await this.prisma.user.updateMany({
+          where: { pushToken: { in: deadTokens } },
+          data: { pushToken: null },
+        });
+      }
     } catch (e) {
       this.logger.warn(`Push error: ${e instanceof Error ? e.message : e}`);
     }
