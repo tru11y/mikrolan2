@@ -240,6 +240,13 @@ export class AdminController {
     return this.admin.setTicketStatus(id, dto);
   }
 
+  // ── Sécurité ──────────────────────────────────────────
+
+  @Get('security-audit')
+  securityAudit() {
+    return this.admin.securityAudit();
+  }
+
   // ── Config plateforme ─────────────────────────────────
 
   @Get('config')
