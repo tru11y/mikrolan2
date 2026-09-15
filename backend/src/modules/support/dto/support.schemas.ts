@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const createTicketSchema = z.object({
   subject: z.string().trim().min(3).max(200),
   body: z.string().trim().min(3).max(2000),
+  priority: z.enum(['LOW', 'MEDIUM', 'HIGH']).optional(),
 });
 export type CreateTicketDto = z.infer<typeof createTicketSchema>;
 

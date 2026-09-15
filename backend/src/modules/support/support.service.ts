@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SupportSlaCron } from './support-sla.cron';
 import type { CreateTicketDto, ListMyTicketsDto } from './dto/support.schemas';
 
 export interface Page<T> {
@@ -12,11 +13,15 @@ export class SupportService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(tenantId: string, userId: string, dto: CreateTicketDto) {
+    const now = new Date();
+    const priority = dto.priority ?? 'MEDIUM';
     const ticket = await this.prisma.supportTicket.create({
       data: {
         tenantId,
         userId,
         subject: dto.subject,
+        priority,
+        slaDeadlineAt: SupportSlaCron.computeDeadline(priority, now),
         messages: {
           create: { userId, body: dto.body },
         },

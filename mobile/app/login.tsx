@@ -1,3 +1,4 @@
+export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
 import { useMemo, useState } from 'react';
 import {
   Image,

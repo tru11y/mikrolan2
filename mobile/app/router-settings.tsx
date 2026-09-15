@@ -1,3 +1,4 @@
+export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
 import { useEffect, useState } from 'react';
 import { Linking, ScrollView, Switch, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
