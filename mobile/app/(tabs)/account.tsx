@@ -1,3 +1,4 @@
+export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
 import { useCallback, useState } from 'react';
 import { Linking, Modal, ScrollView, Switch, Text, View, Pressable, FlatList } from 'react-native';
 import { useRouter } from 'expo-router';

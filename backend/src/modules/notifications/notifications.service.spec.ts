@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException } from '@nestjs/common';
+import { getQueueToken } from '@nestjs/bullmq';
 import { NotificationsService } from './notifications.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -7,31 +8,36 @@ describe('NotificationsService', () => {
   let service: NotificationsService;
   let prisma: {
     router: { findFirst: jest.Mock };
-    user: { findMany: jest.Mock; update: jest.Mock };
+    user: { findMany: jest.Mock; update: jest.Mock; updateMany: jest.Mock };
     notification: {
       findMany: jest.Mock;
       count: jest.Mock;
       updateMany: jest.Mock;
+      create: jest.Mock;
     };
   };
+  let pushQueue: { add: jest.Mock };
 
   const mockTenantId = 'tenant-123';
 
   beforeEach(async () => {
     prisma = {
       router: { findFirst: jest.fn() },
-      user: { findMany: jest.fn(), update: jest.fn() },
+      user: { findMany: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
       notification: {
         findMany: jest.fn(),
         count: jest.fn(),
         updateMany: jest.fn(),
+        create: jest.fn().mockResolvedValue({ id: 'notif-new' }),
       },
     };
+    pushQueue = { add: jest.fn().mockResolvedValue({}) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         NotificationsService,
         { provide: PrismaService, useValue: prisma },
+        { provide: getQueueToken('notifications'), useValue: pushQueue },
       ],
     }).compile();
 
@@ -111,7 +117,7 @@ describe('NotificationsService', () => {
       prisma.user.findMany.mockResolvedValue([
         { id: 'user-unregistered', pushToken: 'ExponentPushToken[dead_token]' },
       ]);
-      prisma.user.update.mockResolvedValue({});
+      prisma.user.updateMany.mockResolvedValue({ count: 1 });
 
       const mockFetch = jest.fn().mockResolvedValue({
         ok: true,
@@ -129,8 +135,8 @@ describe('NotificationsService', () => {
 
       await service.sendPushToTenant(mockTenantId, 'Titre', 'Corps');
 
-      expect(prisma.user.update).toHaveBeenCalledWith({
-        where: { id: 'user-unregistered' },
+      expect(prisma.user.updateMany).toHaveBeenCalledWith({
+        where: { pushToken: { in: ['ExponentPushToken[dead_token]'] } },
         data: { pushToken: null },
       });
     });
