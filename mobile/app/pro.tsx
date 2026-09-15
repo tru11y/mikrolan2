@@ -1,3 +1,4 @@
+export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
 import { useMemo, useState } from 'react';
 import { ScrollView, View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
