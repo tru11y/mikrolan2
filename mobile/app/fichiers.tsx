@@ -1,3 +1,4 @@
+export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
 import { useState } from 'react';
 import { ScrollView, Share, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
