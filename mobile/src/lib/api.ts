@@ -1351,6 +1351,12 @@ export const api = {
       );
       return unwrap(res);
     },
+    async invoiceHistory(): Promise<InvoiceHistoryItem[]> {
+      const res = await apiClient.get<ApiEnvelope<InvoiceHistoryItem[]>>(
+        '/subscriptions/invoices',
+      );
+      return unwrap(res);
+    },
     async uploadProof(
       invoiceId: string,
       method: 'WAVE' | 'ORANGE_MONEY',
@@ -1856,6 +1862,18 @@ export type PaymentInfo = {
   wave: string | null;
   orangeMoney: string | null;
   instructions: string | null;
+};
+
+export type InvoiceHistoryItem = {
+  id: string;
+  amount: number;
+  currency: string;
+  billingPeriod: 'MONTHLY' | 'ANNUAL';
+  status: 'PENDING' | 'PAID' | 'FAILED' | 'REFUNDED';
+  paidAt: string | null;
+  expiresAt: string | null;
+  createdAt: string;
+  tier: { name: string; key: string } | null;
 };
 
 export type PaymentProof = {

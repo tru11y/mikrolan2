@@ -1,5 +1,6 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import type { NotificationType } from '@prisma/client';
 import type { ListNotificationsQueryDto } from './dto/notifications.schemas';
 
 export interface NotificationDto {
@@ -18,6 +19,20 @@ export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  async createAndPush(
+    tenantId: string,
+    type: NotificationType,
+    title: string,
+    body: string,
+    routerId?: string | null,
+    voucherId?: string | null,
+  ): Promise<void> {
+    await this.prisma.notification.create({
+      data: { tenantId, type, title, body, routerId, voucherId },
+    });
+    await this.sendPushToTenant(tenantId, title, body, routerId);
+  }
 
   async sendPushToTenant(
     tenantId: string,

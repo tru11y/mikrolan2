@@ -71,6 +71,11 @@ export class SubscriptionsController {
     return this.subs.getPaymentInfo();
   }
 
+  @Get('invoices')
+  invoiceHistory(@CurrentUser() user: TenantContext) {
+    return this.subs.getInvoiceHistory(user.tenantId);
+  }
+
   @Post('upload-proof')
   @Roles(UserRole.OWNER)
   @HttpCode(200)

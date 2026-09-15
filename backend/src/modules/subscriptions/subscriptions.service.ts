@@ -357,6 +357,25 @@ export class SubscriptionsService {
     return this.getForTenant(tenantId);
   }
 
+  async getInvoiceHistory(tenantId: string) {
+    return this.prisma.invoice.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: {
+        id: true,
+        amount: true,
+        currency: true,
+        billingPeriod: true,
+        status: true,
+        paidAt: true,
+        expiresAt: true,
+        createdAt: true,
+        tier: { select: { name: true, key: true } },
+      },
+    });
+  }
+
   async getPaymentInfo() {
     const rows = await this.prisma.platformConfig.findMany({
       where: { key: { in: ['wave_number', 'om_number', 'payment_instructions'] } },
