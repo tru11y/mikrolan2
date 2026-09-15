@@ -9,8 +9,10 @@ import { JwtModule } from '@nestjs/jwt';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { validateEnv } from './config/configuration';
+import { BullModule } from '@nestjs/bullmq';
 import { PrismaModule } from './prisma/prisma.module';
 import { CryptoModule } from './common/crypto/crypto.module';
+import { RedisModule } from './common/redis/redis.module';
 import { HealthModule } from './modules/health/health.module';
 import { LegalModule } from './modules/legal/legal.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -41,9 +43,18 @@ import { TenantContextMiddleware } from './common/context/tenant-context.middlew
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
+    BullModule.forRootAsync({
+      useFactory: () => ({
+        connection: {
+          host: process.env['REDIS_HOST'] || 'localhost',
+          port: parseInt(process.env['REDIS_PORT'] || '6380', 10),
+        },
+      }),
+    }),
     JwtModule.register({}),
     PrismaModule,
     CryptoModule,
+    RedisModule,
     EventsModule,
     AuthModule,
     AdminModule,

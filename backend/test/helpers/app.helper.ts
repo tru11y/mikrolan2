@@ -4,14 +4,25 @@ import {
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import { ThrottlerGuard, ThrottlerStorage } from '@nestjs/throttler';
+import { getQueueToken } from '@nestjs/bullmq';
 import multipart from '@fastify/multipart';
 import { AppModule } from '../../src/app.module';
 import { MailService } from '../../src/modules/mail/mail.service';
+import { REDIS_CLIENT } from '../../src/common/redis/redis.module';
+import { CacheService } from '../../src/common/redis/cache.service';
+import { NotificationProcessor } from '../../src/modules/notifications/notification.processor';
+
+const noopRedis = {
+  get: jest.fn().mockResolvedValue(null),
+  set: jest.fn().mockResolvedValue('OK'),
+  del: jest.fn().mockResolvedValue(1),
+  keys: jest.fn().mockResolvedValue([]),
+  ping: jest.fn().mockResolvedValue('PONG'),
+  disconnect: jest.fn(),
+  quit: jest.fn(),
+};
 
 export async function createTestApp(): Promise<NestFastifyApplication> {
-  // Env vars are set by test/setup/env-setup.ts (a Jest setupFiles entry),
-  // which runs before this module — and its AppModule import that validates
-  // env at load time — is even required.
   const moduleRef = await Test.createTestingModule({
     imports: [AppModule],
   })
@@ -29,6 +40,19 @@ export async function createTestApp(): Promise<NestFastifyApplication> {
         timeToBlockExpire: 0,
       }),
     })
+    .overrideProvider(REDIS_CLIENT)
+    .useValue(noopRedis)
+    .overrideProvider(CacheService)
+    .useValue({
+      get: jest.fn().mockResolvedValue(null),
+      set: jest.fn().mockResolvedValue(undefined),
+      del: jest.fn().mockResolvedValue(undefined),
+      invalidatePrefix: jest.fn().mockResolvedValue(undefined),
+    })
+    .overrideProvider(getQueueToken('notifications'))
+    .useValue({ add: jest.fn().mockResolvedValue({}) })
+    .overrideProvider(NotificationProcessor)
+    .useValue({ process: jest.fn().mockResolvedValue(undefined) })
     .compile();
 
   const app = moduleRef.createNestApplication<NestFastifyApplication>(
