@@ -25,6 +25,7 @@ export const createTierSchema = z.object({
   monthlyXof: z.number().int().min(0).max(10_000_000),
   annualDiscount: z.number().int().min(0).max(90).optional(),
   routerLimit: z.number().int().min(1).max(10_000).nullable().optional(),
+  userLimit: z.number().int().min(1).max(10_000).nullable().optional(),
   remoteAccess: z.boolean().optional(),
   a4Printing: z.boolean().optional(),
   cloudBackup: z.boolean().optional(),
