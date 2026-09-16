@@ -1,6 +1,6 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
 import { useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { FlatList, Modal, ScrollView, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -38,7 +38,9 @@ import {
   Subtitle,
   Title,
   type,
+  OutlinedField,
   useToast,
+  weight,
   withAlpha,
 } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
@@ -218,7 +220,54 @@ function OverviewTab() {
           </Row>
         </FadeIn>
       ) : null}
+
+      <FadeIn delay={300}>
+        <RevenueHistoryChart />
+      </FadeIn>
     </View>
+  );
+}
+
+function RevenueHistoryChart() {
+  const theme = useTheme();
+  const { t } = useTranslation();
+  const query = useQuery({
+    queryKey: ['admin-revenue-history'],
+    queryFn: () => api.admin.revenueHistory(6),
+  });
+
+  if (query.isLoading) return <SkeletonCard />;
+  if (query.isError || !query.data?.length) return null;
+
+  const data = query.data;
+  const maxTotal = Math.max(...data.map((d) => d.total), 1);
+
+  return (
+    <Card>
+      <SectionTitle>{t('admin.revenueHistory')}</SectionTitle>
+      <View style={{ gap: space.sm, marginTop: space.md }}>
+        {data.map((d) => (
+          <View key={d.month} style={{ gap: 2 }}>
+            <Row style={{ justifyContent: 'space-between' }}>
+              <Text style={{ color: theme.textMuted, fontSize: type.micro }}>{d.month}</Text>
+              <Text style={{ color: theme.text, fontSize: type.micro, fontWeight: '600' }}>
+                {formatXof(d.total)} ({d.count})
+              </Text>
+            </Row>
+            <View style={{ height: 6, backgroundColor: theme.surface, borderRadius: 3 }}>
+              <View
+                style={{
+                  height: 6,
+                  width: `${(d.total / maxTotal) * 100}%`,
+                  backgroundColor: theme.primary,
+                  borderRadius: 3,
+                }}
+              />
+            </View>
+          </View>
+        ))}
+      </View>
+    </Card>
   );
 }
 
@@ -786,10 +835,19 @@ function TicketsTab() {
   const theme = useTheme();
   const { t } = useTranslation();
   const toast = useToast();
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState('');
+
   const ticketsQuery = useQuery({
     queryKey: ['admin-tickets'],
     queryFn: () => api.admin.listTickets(),
     placeholderData: keepPreviousData,
+  });
+
+  const ticketDetailQuery = useQuery({
+    queryKey: ['admin-ticket', selectedTicketId],
+    queryFn: () => api.admin.getTicket(selectedTicketId!),
+    enabled: !!selectedTicketId,
   });
 
   const statusMutation = useMutation({
@@ -797,7 +855,18 @@ function TicketsTab() {
       api.admin.setTicketStatus(id, status),
     onSuccess: () => {
       ticketsQuery.refetch();
+      if (selectedTicketId) ticketDetailQuery.refetch();
       toast.success(t('admin.statusUpdated'));
+    },
+    onError: (e) => toast.error(describeError(e).message),
+  });
+
+  const replyMutation = useMutation({
+    mutationFn: (body: string) => api.admin.replyToTicket(selectedTicketId!, body),
+    onSuccess: () => {
+      setReplyText('');
+      ticketDetailQuery.refetch();
+      ticketsQuery.refetch();
     },
     onError: (e) => toast.error(describeError(e).message),
   });
@@ -812,35 +881,110 @@ function TicketsTab() {
   return (
     <View style={{ gap: space.md }}>
       <SectionTitle>{t('admin.savTickets')}</SectionTitle>
-      {tickets.map((t: any) => (
-        <Card key={t.id}>
-          <Row style={{ justifyContent: 'space-between', marginBottom: 6 }}>
-            <Text numberOfLines={1} style={{ color: theme.text, fontWeight: '700', fontSize: type.body, flex: 1, marginRight: space.sm }}>
-              {t.subject}
+      {tickets.map((tk: any) => (
+        <Press key={tk.id} onPress={() => { setSelectedTicketId(tk.id); setReplyText(''); }}>
+          <Card>
+            <Row style={{ justifyContent: 'space-between', marginBottom: 6 }}>
+              <Text numberOfLines={1} style={{ color: theme.text, fontWeight: '700', fontSize: type.body, flex: 1, marginRight: space.sm }}>
+                {tk.subject}
+              </Text>
+              <Badge label={tk.status} tone={tk.status === 'OPEN' ? 'primary' : tk.status === 'RESOLVED' ? 'success' : 'muted'} />
+            </Row>
+            <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
+              {tk.tenantName} — {shortDate(tk.createdAt)} — {tk._count?.messages ?? 0} msg
             </Text>
-            <Badge label={t.status} tone={t.status === 'OPEN' ? 'primary' : t.status === 'RESOLVED' ? 'success' : 'muted'} />
-          </Row>
-          <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
-            {t.tenantName} — {shortDate(t.createdAt)} — {t._count?.messages ?? 0} msg
-          </Text>
-          <Row style={{ gap: space.sm, marginTop: space.sm, flexWrap: 'wrap' }}>
-            {['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'].filter((s) => s !== t.status).map((s) => (
-              <Press
-                key={s}
-                onPress={() => statusMutation.mutate({ id: t.id, status: s as any })}
-                style={{
-                  paddingHorizontal: 10,
-                  paddingVertical: 4,
-                  borderRadius: radius.pill,
-                  backgroundColor: theme.surfaceAlt,
-                }}
-              >
-                <Text style={{ color: theme.textMuted, fontSize: 10, fontWeight: '600' }}>{s}</Text>
-              </Press>
-            ))}
-          </Row>
-        </Card>
+            <Row style={{ gap: space.sm, marginTop: space.sm, flexWrap: 'wrap' }}>
+              {['OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'].filter((s) => s !== tk.status).map((s) => (
+                <Press
+                  key={s}
+                  onPress={() => statusMutation.mutate({ id: tk.id, status: s as any })}
+                  style={{
+                    paddingHorizontal: 10,
+                    paddingVertical: 4,
+                    borderRadius: radius.pill,
+                    backgroundColor: theme.surfaceAlt,
+                  }}
+                >
+                  <Text style={{ color: theme.textMuted, fontSize: 10, fontWeight: '600' }}>{s}</Text>
+                </Press>
+              ))}
+            </Row>
+          </Card>
+        </Press>
       ))}
+
+      <Modal visible={!!selectedTicketId} animationType="slide" transparent>
+        <View style={{ flex: 1, backgroundColor: withAlpha(theme.bg, 0.98), paddingTop: space.xxl }}>
+          <Row style={{ justifyContent: 'space-between', paddingHorizontal: space.lg, paddingVertical: space.md }}>
+            <Title>{ticketDetailQuery.data?.subject ?? t('admin.savTickets')}</Title>
+            <Press onPress={() => setSelectedTicketId(null)}>
+              <Ionicons name="close" size={24} color={theme.text} />
+            </Press>
+          </Row>
+
+          {ticketDetailQuery.isLoading ? (
+            <SkeletonCard />
+          ) : ticketDetailQuery.data ? (
+            <FlatList
+              data={ticketDetailQuery.data.messages}
+              keyExtractor={(m) => m.id}
+              contentContainerStyle={{ padding: space.lg, gap: space.sm }}
+              renderItem={({ item: msg }) => (
+                <View
+                  style={{
+                    alignSelf: msg.isAdmin ? 'flex-end' : 'flex-start',
+                    maxWidth: '80%',
+                    backgroundColor: msg.isAdmin ? theme.primary : theme.surface,
+                    borderRadius: radius.lg,
+                    padding: space.md,
+                  }}
+                >
+                  <Text style={{ color: msg.isAdmin ? '#fff' : theme.text, fontSize: type.body }}>
+                    {msg.body}
+                  </Text>
+                  <Text style={{ color: msg.isAdmin ? 'rgba(255,255,255,0.6)' : theme.textMuted, fontSize: type.micro, marginTop: 2 }}>
+                    {msg.user?.name ?? 'Admin'} — {shortDate(msg.createdAt)}
+                  </Text>
+                </View>
+              )}
+            />
+          ) : null}
+
+          <View style={{ flexDirection: 'row', gap: space.sm, padding: space.lg, alignItems: 'flex-end' }}>
+            <TextInput
+              value={replyText}
+              onChangeText={setReplyText}
+              placeholder={t('admin.replyPlaceholder')}
+              placeholderTextColor={theme.textMuted}
+              multiline
+              style={{
+                flex: 1,
+                backgroundColor: theme.surface,
+                borderRadius: radius.lg,
+                padding: space.md,
+                color: theme.text,
+                fontSize: type.body,
+                maxHeight: 120,
+              }}
+            />
+            <Press
+              onPress={() => { if (replyText.trim()) replyMutation.mutate(replyText.trim()); }}
+              disabled={!replyText.trim() || replyMutation.isPending}
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 22,
+                backgroundColor: theme.primary,
+                alignItems: 'center',
+                justifyContent: 'center',
+                opacity: replyText.trim() ? 1 : 0.4,
+              }}
+            >
+              <Ionicons name="send" size={20} color="#fff" />
+            </Press>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
