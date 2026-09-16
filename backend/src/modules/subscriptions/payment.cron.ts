@@ -62,4 +62,34 @@ export class PaymentCron {
       }
     }
   }
+
+  @Cron('0 2 * * *')
+  async expireOverdueSubscriptions(): Promise<void> {
+    const now = new Date();
+    const expired = await this.prisma.subscription.findMany({
+      where: {
+        plan: 'PRO',
+        status: 'ACTIVE',
+        currentPeriodEnd: { lt: now },
+      },
+      select: { tenantId: true, tenant: { select: { name: true } } },
+    });
+
+    for (const sub of expired) {
+      await this.prisma.subscription.update({
+        where: { tenantId: sub.tenantId },
+        data: { plan: 'FREE', status: 'ACTIVE', tierId: null },
+      });
+      await this.notifications.createAndPush(
+        sub.tenantId,
+        'SUBSCRIPTION_ACTIVATED',
+        'Abonnement expiré',
+        'Votre abonnement PRO a expiré. Renouvelez pour conserver l\'accès distant.',
+      );
+      this.logger.log(`Downgraded expired PRO → FREE: ${sub.tenant.name}`);
+    }
+    if (expired.length > 0) {
+      this.logger.log(`Expired ${expired.length} overdue PRO subscriptions`);
+    }
+  }
 }
