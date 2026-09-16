@@ -1,6 +1,7 @@
 import {
   Injectable,
   BadRequestException,
+  ForbiddenException,
   NotFoundException,
   StreamableFile,
 } from '@nestjs/common';
@@ -146,6 +147,19 @@ export class SubscriptionsService {
   /** True when the tenant may use remote (cloud + WireGuard) management. */
   async isRemoteAllowed(tenantId: string): Promise<boolean> {
     return (await this.getEntitlement(tenantId)).remoteAllowed;
+  }
+
+  async assertUserLimit(tenantId: string): Promise<void> {
+    const entitlement = await this.getEntitlement(tenantId);
+    if (entitlement.userLimit === null) return;
+    const count = await this.prisma.user.count({
+      where: { tenantId, status: 'ACTIVE' },
+    });
+    if (count >= entitlement.userLimit) {
+      throw new ForbiddenException(
+        `Votre formule autorise ${entitlement.userLimit} utilisateur${entitlement.userLimit > 1 ? 's' : ''}. Passez à une formule supérieure pour en ajouter.`,
+      );
+    }
   }
 
   /**
