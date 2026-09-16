@@ -45,6 +45,8 @@ export interface Entitlement {
   tierKey: string | null;
   /** Routeurs autorisés par la formule ; `null` = illimité. */
   routerLimit: number | null;
+  /** Utilisateurs autorisés par la formule ; `null` = illimité. */
+  userLimit: number | null;
 }
 
 function daysUntil(end: Date | null): number {
@@ -90,7 +92,9 @@ export class SubscriptionsService {
         plan: true,
         status: true,
         currentPeriodEnd: true,
-        tier: { select: { key: true, routerLimit: true } },
+        routerLimitOverride: true,
+        userLimitOverride: true,
+        tier: { select: { key: true, routerLimit: true, userLimit: true } },
       },
     });
 
@@ -109,7 +113,8 @@ export class SubscriptionsService {
         endsAt: sub.currentPeriodEnd,
         daysLeft: daysUntil(sub.currentPeriodEnd),
         tierKey: sub.tier?.key ?? null,
-        routerLimit: sub.tier?.routerLimit ?? null,
+        routerLimit: sub.routerLimitOverride ?? sub.tier?.routerLimit ?? null,
+        userLimit: sub.userLimitOverride ?? sub.tier?.userLimit ?? null,
       };
     }
 
@@ -122,6 +127,7 @@ export class SubscriptionsService {
         daysLeft: daysUntil(sub.currentPeriodEnd),
         tierKey: null,
         routerLimit: null,
+        userLimit: null,
       };
     }
 
@@ -133,6 +139,7 @@ export class SubscriptionsService {
       daysLeft: 0,
       tierKey: null,
       routerLimit: null,
+      userLimit: null,
     };
   }
 
@@ -272,6 +279,20 @@ export class SubscriptionsService {
     const end = new Date(from.getTime() + days * 86_400_000);
 
     const notification = await this.prisma.$transaction(async (tx) => {
+      if (invoice) {
+        const claimed = await tx.invoice.updateMany({
+          where: { id: invoice.id, status: PaymentStatus.PENDING },
+          data: { status: PaymentStatus.PAID, paidAt: now },
+        });
+        if (claimed.count === 0) {
+          throw new BadRequestException('Cette facture a déjà été traitée.');
+        }
+      } else {
+        await tx.invoice.updateMany({
+          where: { tenantId, status: PaymentStatus.PENDING },
+          data: { status: PaymentStatus.PAID, paidAt: now },
+        });
+      }
       await tx.subscription.update({
         where: { tenantId },
         data: {
@@ -282,12 +303,6 @@ export class SubscriptionsService {
           currentPeriodStart: now,
           currentPeriodEnd: end,
         },
-      });
-      await tx.invoice.updateMany({
-        where: invoice
-          ? { id: invoice.id }
-          : { tenantId, status: PaymentStatus.PENDING },
-        data: { status: PaymentStatus.PAID, paidAt: now },
       });
       return tx.notification.create({
         data: {

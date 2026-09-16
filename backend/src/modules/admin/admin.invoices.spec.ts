@@ -9,12 +9,14 @@ import {
 import { AdminService } from './admin.service';
 
 const mockPrisma: Record<string, any> = {
-  invoice: { findUnique: jest.fn(), update: jest.fn() },
+  invoice: { findUnique: jest.fn(), update: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
   subscription: { update: jest.fn() },
   tenant: { update: jest.fn() },
   notification: { create: jest.fn().mockResolvedValue({ id: 'notif-1' }) },
   auditLog: { create: jest.fn() },
-  $transaction: jest.fn((ops: unknown[]) => Promise.all(ops)),
+  $transaction: jest.fn((arg: unknown) =>
+    typeof arg === 'function' ? (arg as (tx: typeof mockPrisma) => Promise<unknown>)(mockPrisma) : Promise.all(arg as unknown[]),
+  ),
 };
 
 const mockNotifications = { sendPushToTenant: jest.fn().mockResolvedValue(undefined) };
@@ -43,9 +45,9 @@ describe('AdminService.validateInvoice', () => {
     const result = await service.validateInvoice('inv-1', actor, {});
 
     expect(result).toEqual({ validated: true });
-    expect(mockPrisma.invoice.update).toHaveBeenCalledWith(
+    expect(mockPrisma.invoice.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { id: 'inv-1' },
+        where: { id: 'inv-1', status: 'PENDING' },
         data: expect.objectContaining({ status: 'PAID', periodDays: 30 }),
       }),
     );
@@ -97,7 +99,7 @@ describe('AdminService.validateInvoice', () => {
     const service = buildService();
     await service.validateInvoice('inv-1', actor, { periodDays: 90 });
 
-    expect(mockPrisma.invoice.update).toHaveBeenCalledWith(
+    expect(mockPrisma.invoice.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ periodDays: 90 }),
       }),
@@ -145,8 +147,8 @@ describe('AdminService.rejectInvoice', () => {
     });
 
     expect(result).toEqual({ rejected: true });
-    expect(mockPrisma.invoice.update).toHaveBeenCalledWith({
-      where: { id: 'inv-1' },
+    expect(mockPrisma.invoice.updateMany).toHaveBeenCalledWith({
+      where: { id: 'inv-1', status: 'PENDING' },
       data: { status: 'FAILED' },
     });
     expect(mockPrisma.notification.create).toHaveBeenCalledWith(
