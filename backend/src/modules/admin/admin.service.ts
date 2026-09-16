@@ -27,6 +27,7 @@ import type {
   ListTicketsQueryDto,
   ListUsersQueryDto,
   RejectInvoiceDto,
+  PatchSubscriptionDto,
   SetTenantStatusDto,
   SetTicketStatusDto,
   SetUserStatusDto,
@@ -554,42 +555,50 @@ export class AdminService {
       throw new BadRequestException('Cette facture n\'est pas en attente.');
     }
 
-    const periodDays = dto.periodDays ?? invoice.periodDays;
+    const periodDays = dto.months
+      ? dto.months * 30
+      : dto.periodDays ?? invoice.periodDays;
+    const tierId = dto.tierId ?? invoice.tierId;
 
     const now = new Date();
-    const [, , , notification] = await this.prisma.$transaction([
-      this.prisma.invoice.update({
-        where: { id: invoiceId },
+    const notification = await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.invoice.updateMany({
+        where: { id: invoiceId, status: 'PENDING' },
         data: {
           status: 'PAID',
           paidAt: now,
           periodDays,
+          ...(dto.provider && { provider: dto.provider }),
+          ...(dto.providerRef && { note: dto.providerRef }),
         },
-      }),
-      this.prisma.subscription.update({
+      });
+      if (claimed.count === 0) {
+        throw new BadRequestException('Cette facture a déjà été traitée (validation concurrente).');
+      }
+      await tx.subscription.update({
         where: { tenantId: invoice.tenantId },
         data: {
           plan: SubscriptionPlan.PRO,
           status: SubscriptionStatus.ACTIVE,
-          tierId: invoice.tierId,
+          tierId,
           billingPeriod: invoice.billingPeriod,
           currentPeriodStart: now,
           currentPeriodEnd: new Date(now.getTime() + periodDays * DAY_MS),
         },
-      }),
-      this.prisma.tenant.update({
+      });
+      await tx.tenant.update({
         where: { id: invoice.tenantId },
         data: { status: TenantStatus.ACTIVE },
-      }),
-      this.prisma.notification.create({
+      });
+      return tx.notification.create({
         data: {
           tenantId: invoice.tenantId,
           type: 'SUBSCRIPTION_ACTIVATED',
           title: 'Paiement validé',
           body: 'Votre abonnement PRO est maintenant actif.',
         },
-      }),
-    ]);
+      });
+    });
     this.notifications.sendPushToTenant(
       invoice.tenantId,
       'Paiement validé',
@@ -623,20 +632,23 @@ export class AdminService {
       throw new BadRequestException('Cette facture n\'est pas en attente.');
     }
 
-    const [, notification] = await this.prisma.$transaction([
-      this.prisma.invoice.update({
-        where: { id: invoiceId },
+    const notification = await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.invoice.updateMany({
+        where: { id: invoiceId, status: 'PENDING' },
         data: { status: 'FAILED' },
-      }),
-      this.prisma.notification.create({
+      });
+      if (claimed.count === 0) {
+        throw new BadRequestException('Cette facture a déjà été traitée (validation concurrente).');
+      }
+      return tx.notification.create({
         data: {
           tenantId: invoice.tenantId,
           type: 'PAYMENT_REJECTED',
           title: 'Paiement refusé',
           body: dto.reason,
         },
-      }),
-    ]);
+      });
+    });
     this.notifications.sendPushToTenant(
       invoice.tenantId,
       'Paiement refusé',
@@ -655,6 +667,50 @@ export class AdminService {
     );
 
     return { rejected: true };
+  }
+
+  // ── Subscription override (P0-04 / P0-08) ─────────────
+
+  async patchSubscription(
+    tenantId: string,
+    actor: { userId: string },
+    dto: PatchSubscriptionDto,
+  ) {
+    const sub = await this.prisma.subscription.findUnique({
+      where: { tenantId },
+    });
+    if (!sub) throw new NotFoundException('Abonnement introuvable');
+
+    if (dto.tierId) {
+      const tier = await this.prisma.subscriptionTier.findUnique({
+        where: { id: dto.tierId },
+      });
+      if (!tier) throw new BadRequestException('Formule introuvable');
+    }
+
+    const updated = await this.prisma.subscription.update({
+      where: { tenantId },
+      data: {
+        ...(dto.plan !== undefined && { plan: dto.plan }),
+        ...(dto.status !== undefined && { status: dto.status }),
+        ...(dto.tierId !== undefined && { tierId: dto.tierId }),
+        ...(dto.billingPeriod !== undefined && { billingPeriod: dto.billingPeriod }),
+        ...(dto.currentPeriodEnd !== undefined && { currentPeriodEnd: dto.currentPeriodEnd }),
+        ...(dto.routerLimitOverride !== undefined && { routerLimitOverride: dto.routerLimitOverride }),
+        ...(dto.userLimitOverride !== undefined && { userLimitOverride: dto.userLimitOverride }),
+      },
+    });
+
+    await this.audit(
+      tenantId,
+      actor.userId,
+      AuditAction.UPDATE,
+      'Subscription',
+      sub.id,
+      dto as unknown as Prisma.InputJsonValue,
+    );
+
+    return updated;
   }
 
   async getInvoiceProofs(invoiceId: string) {
@@ -857,6 +913,65 @@ export class AdminService {
       items: page.map(project),
       nextCursor: hasMore ? (page[page.length - 1]?.id ?? null) : null,
     };
+  }
+
+  // ── Revenue history (P0-05) ─────────────────────────────
+
+  async revenueHistory(months: number) {
+    const since = new Date();
+    since.setMonth(since.getMonth() - Math.min(months, 120));
+
+    const invoices = await this.prisma.invoice.findMany({
+      where: { status: 'PAID', paidAt: { gte: since } },
+      select: { amount: true, paidAt: true, currency: true },
+      orderBy: { paidAt: 'asc' },
+    });
+
+    const byMonth: Record<string, { total: number; count: number }> = {};
+    for (const inv of invoices) {
+      if (!inv.paidAt) continue;
+      const key = `${inv.paidAt.getFullYear()}-${String(inv.paidAt.getMonth() + 1).padStart(2, '0')}`;
+      const entry = byMonth[key] ??= { total: 0, count: 0 };
+      entry.total += inv.amount;
+      entry.count += 1;
+    }
+
+    return Object.entries(byMonth).map(([month, data]) => ({
+      month,
+      ...data,
+    }));
+  }
+
+  // ── Billing Audit (P0-07) ─────────────────────────────
+
+  async billingAudit() {
+    const now = new Date();
+    const ninetyDaysAgo = new Date(now.getTime() - 90 * DAY_MS);
+
+    const [expiredButActive, paidWithoutPro, stalePending] = await Promise.all([
+      this.prisma.subscription.findMany({
+        where: {
+          plan: SubscriptionPlan.PRO,
+          status: SubscriptionStatus.ACTIVE,
+          currentPeriodEnd: { lt: now },
+        },
+        select: { id: true, tenantId: true, currentPeriodEnd: true, tenant: { select: { name: true } } },
+      }),
+      this.prisma.$queryRaw<Array<{ id: string; tenantId: string; amount: number; paidAt: Date }>>`
+        SELECT i.id, i."tenantId", i.amount, i."paidAt"
+        FROM "Invoice" i
+        JOIN "Subscription" s ON s."tenantId" = i."tenantId"
+        WHERE i.status = 'PAID'
+          AND i."paidAt" > ${ninetyDaysAgo}
+          AND s.plan != 'PRO'
+      `,
+      this.prisma.invoice.findMany({
+        where: { status: 'PENDING', createdAt: { lt: ninetyDaysAgo } },
+        select: { id: true, tenantId: true, amount: true, createdAt: true, tenant: { select: { name: true } } },
+      }),
+    ]);
+
+    return { expiredButActive, paidWithoutPro, stalePending };
   }
 
   private async audit(

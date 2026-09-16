@@ -4,6 +4,7 @@ export const signupSchema = z.object({
   tenantName: z.string().min(2).max(80),
   email: z.string().email().max(160),
   password: z.string().min(10).max(128),
+  country: z.string().trim().min(1).max(80).optional(),
 });
 export type SignupDto = z.infer<typeof signupSchema>;
 
