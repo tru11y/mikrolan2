@@ -1,7 +1,11 @@
 import { z } from 'zod';
 import {
   AuditAction,
+  BillingPeriod,
+  PaymentProvider,
   PaymentStatus,
+  SubscriptionPlan,
+  SubscriptionStatus,
   TenantStatus,
   TicketStatus,
   UserStatus,
@@ -70,8 +74,23 @@ export type ListTenantRoutersQueryDto = z.infer<typeof listTenantRoutersQuerySch
 
 export const validateInvoiceSchema = z.object({
   periodDays: z.coerce.number().int().min(1).max(3650).optional(),
+  tierId: z.string().uuid().optional(),
+  months: z.coerce.number().int().min(1).max(120).optional(),
+  provider: z.nativeEnum(PaymentProvider).optional(),
+  providerRef: z.string().trim().max(120).optional(),
 });
 export type ValidateInvoiceDto = z.infer<typeof validateInvoiceSchema>;
+
+export const patchSubscriptionSchema = z.object({
+  tierId: z.string().uuid().optional(),
+  plan: z.nativeEnum(SubscriptionPlan).optional(),
+  status: z.nativeEnum(SubscriptionStatus).optional(),
+  billingPeriod: z.nativeEnum(BillingPeriod).nullable().optional(),
+  currentPeriodEnd: z.coerce.date().optional(),
+  routerLimitOverride: z.number().int().min(1).max(10_000).nullable().optional(),
+  userLimitOverride: z.number().int().min(1).max(10_000).nullable().optional(),
+});
+export type PatchSubscriptionDto = z.infer<typeof patchSubscriptionSchema>;
 
 export const rejectInvoiceSchema = z.object({
   reason: z.string().trim().min(1).max(280),

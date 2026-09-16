@@ -114,6 +114,7 @@ export class AuthService {
             hasPassword: true,
             role: UserRole.OWNER,
             status: UserStatus.ACTIVE,
+            ...(dto.country && { country: dto.country }),
           },
         });
       });

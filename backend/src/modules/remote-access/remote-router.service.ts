@@ -124,4 +124,59 @@ export class RemoteRouterService {
   async reboot(routerId: string): Promise<void> {
     await this.run(routerId, (c) => c.command(['/system/reboot']));
   }
+
+  async adminSystemResource(tenantId: string, routerId: string): Promise<ApiRow> {
+    const router = await this.prisma.router.findFirst({
+      where: { id: routerId, tenantId, deletedAt: null },
+      select: { id: true, credEncrypted: true },
+    });
+    if (!router) throw new NotFoundException('Routeur introuvable');
+    if (!router.credEncrypted) {
+      throw new BadRequestException('Identifiants RouterOS non configurés');
+    }
+
+    const peer = await this.prisma.remotePeer.findFirst({
+      where: { routerId, status: RemotePeerStatus.ACTIVE },
+      select: { wgIp: true },
+    });
+    if (!peer) throw new BadRequestException('Tunnel non provisionné');
+
+    const creds = JSON.parse(this.crypto.decrypt(router.credEncrypted)) as {
+      username: string;
+      password: string;
+    };
+
+    const rows = await withRouterOsApi(
+      { host: peer.wgIp, port: ROUTEROS_API_PORT, username: creds.username, password: creds.password, timeoutMs: REQUEST_TIMEOUT_MS },
+      (c) => c.command(['/system/resource/print']),
+    );
+    return rows[0] ?? {};
+  }
+
+  async adminReboot(tenantId: string, routerId: string): Promise<void> {
+    const router = await this.prisma.router.findFirst({
+      where: { id: routerId, tenantId, deletedAt: null },
+      select: { id: true, credEncrypted: true },
+    });
+    if (!router) throw new NotFoundException('Routeur introuvable');
+    if (!router.credEncrypted) {
+      throw new BadRequestException('Identifiants RouterOS non configurés');
+    }
+
+    const peer = await this.prisma.remotePeer.findFirst({
+      where: { routerId, status: RemotePeerStatus.ACTIVE },
+      select: { wgIp: true },
+    });
+    if (!peer) throw new BadRequestException('Tunnel non provisionné');
+
+    const creds = JSON.parse(this.crypto.decrypt(router.credEncrypted)) as {
+      username: string;
+      password: string;
+    };
+
+    await withRouterOsApi(
+      { host: peer.wgIp, port: ROUTEROS_API_PORT, username: creds.username, password: creds.password, timeoutMs: REQUEST_TIMEOUT_MS },
+      (c) => c.command(['/system/reboot']),
+    );
+  }
 }

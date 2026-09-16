@@ -301,6 +301,7 @@ model SubscriptionTier {
   monthlyXof      Int
   annualDiscount  Int            @default(20) // en %, appliqué au paiement annuel
   routerLimit     Int? // null = illimité
+  userLimit       Int? // null = illimité
   remoteAccess    Boolean        @default(false)
   a4Printing      Boolean        @default(false)
   cloudBackup     Boolean        @default(false)
@@ -330,6 +331,8 @@ model Subscription {
   billingPeriod      BillingPeriod?
   currentPeriodStart DateTime?
   currentPeriodEnd   DateTime?
+  routerLimitOverride Int?
+  userLimitOverride   Int?
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 

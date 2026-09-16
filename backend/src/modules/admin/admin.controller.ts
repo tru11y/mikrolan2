@@ -18,6 +18,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { TenantContext } from '../../common/context/tenant-context';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { TiersService } from '../subscriptions/tiers.service';
+import { RemoteRouterService } from '../remote-access/remote-router.service';
 import {
   createTierSchema,
   updateTierSchema,
@@ -51,8 +52,10 @@ import {
   type SetTenantStatusDto,
   type SetTicketStatusDto,
   type SetUserStatusDto,
+  type PatchSubscriptionDto,
   type UpdateConfigDto,
   type ValidateInvoiceDto,
+  patchSubscriptionSchema,
 } from './dto/admin.schemas';
 
 /**
@@ -71,6 +74,7 @@ export class AdminController {
   constructor(
     private readonly admin: AdminService,
     private readonly tiers: TiersService,
+    private readonly remoteRouter: RemoteRouterService,
   ) {}
 
   // ── Comptes clients ────────────────────────────────────
@@ -95,6 +99,16 @@ export class AdminController {
     @Body(new ZodValidationPipe(setTenantStatusSchema)) dto: SetTenantStatusDto,
   ) {
     return this.admin.setTenantStatus(id, actor, dto);
+  }
+
+  @Patch('tenants/:id/subscription')
+  @HttpCode(200)
+  patchSubscription(
+    @CurrentUser() actor: TenantContext,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(patchSubscriptionSchema)) dto: PatchSubscriptionDto,
+  ) {
+    return this.admin.patchSubscription(id, actor, dto);
   }
 
   // ── Utilisateurs ───────────────────────────────────────
@@ -260,5 +274,38 @@ export class AdminController {
     @Body(new ZodValidationPipe(updateConfigSchema)) dto: UpdateConfigDto,
   ) {
     return this.admin.updateConfig(dto);
+  }
+
+  // ── Router diagnostics (P0-05/P0-06) ──────────────────
+
+  @Get('tenants/:tenantId/routers/:routerId/diagnostics')
+  routerDiagnostics(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @Param('routerId', ParseUUIDPipe) routerId: string,
+  ) {
+    return this.remoteRouter.adminSystemResource(tenantId, routerId);
+  }
+
+  @Post('tenants/:tenantId/routers/:routerId/reboot')
+  @HttpCode(200)
+  routerReboot(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @Param('routerId', ParseUUIDPipe) routerId: string,
+  ) {
+    return this.remoteRouter.adminReboot(tenantId, routerId);
+  }
+
+  // ── Revenue history (P0-05) ────────────────────────────
+
+  @Get('revenue-history')
+  revenueHistory(@Query('months') months?: string) {
+    return this.admin.revenueHistory(parseInt(months || '12', 10) || 12);
+  }
+
+  // ── Billing audit (P0-07) ─────────────────────────────
+
+  @Get('billing-audit')
+  billingAudit() {
+    return this.admin.billingAudit();
   }
 }
