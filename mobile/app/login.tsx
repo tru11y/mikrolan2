@@ -1,14 +1,18 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
 import { useMemo, useState } from 'react';
 import {
+  FlatList,
   Image,
   KeyboardAvoidingView,
   Linking,
+  Modal,
   Platform,
   ScrollView,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
+import { COUNTRIES } from '@/src/lib/countries';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import * as Crypto from 'expo-crypto';
@@ -52,6 +56,8 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [country, setCountry] = useState('');
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [baseUrl, setBaseUrl] = useState(apiBaseUrl);
 
@@ -89,7 +95,7 @@ export default function LoginScreen() {
     clearError();
     try {
       if (mode === 'signup') {
-        await signup(tenantName.trim(), email.trim(), password);
+        await signup(tenantName.trim(), email.trim(), password, country || undefined);
       } else {
         await login(email.trim(), password);
       }
@@ -137,13 +143,36 @@ export default function LoginScreen() {
 
           <View style={{ gap: space.xl }}>
             {mode === 'signup' ? (
-              <OutlinedField
-                label={t('login.orgName')}
-                value={tenantName}
-                onChangeText={setTenantName}
-                autoCapitalize="words"
-                placeholder={t('login.orgPlaceholder')}
-              />
+              <>
+                <OutlinedField
+                  label={t('login.orgName')}
+                  value={tenantName}
+                  onChangeText={setTenantName}
+                  autoCapitalize="words"
+                  placeholder={t('login.orgPlaceholder')}
+                />
+                <TouchableOpacity
+                  onPress={() => setShowCountryPicker(true)}
+                  activeOpacity={0.7}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: theme.border,
+                    borderRadius: radius.lg,
+                    paddingHorizontal: space.lg,
+                    paddingVertical: space.md + 2,
+                    backgroundColor: theme.surface,
+                  }}
+                >
+                  <Text style={{ color: theme.textMuted, fontSize: type.micro, marginBottom: 2 }}>
+                    {t('login.country')}
+                  </Text>
+                  <Text style={{ color: country ? theme.text : theme.textMuted, fontSize: type.body }}>
+                    {country
+                      ? `${COUNTRIES.find((c) => c.name === country)?.flag ?? ''} ${country}`
+                      : t('login.countryPlaceholder')}
+                  </Text>
+                </TouchableOpacity>
+              </>
             ) : null}
             <OutlinedField
               label={t('login.email')}
@@ -338,6 +367,41 @@ export default function LoginScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal visible={showCountryPicker} animationType="slide" transparent>
+        <View style={{ flex: 1, backgroundColor: withAlpha(theme.bg, 0.95), paddingTop: insets.top }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.xxl, paddingVertical: space.lg }}>
+            <Text style={{ color: theme.text, fontSize: type.title, fontWeight: weight.heavy }}>
+              {t('login.country')}
+            </Text>
+            <Press onPress={() => setShowCountryPicker(false)}>
+              <Ionicons name="close" size={24} color={theme.text} />
+            </Press>
+          </View>
+          <FlatList
+            data={COUNTRIES}
+            keyExtractor={(c) => c.code}
+            contentContainerStyle={{ paddingBottom: space.xxl }}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                onPress={() => { setCountry(item.name); setShowCountryPicker(false); }}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: space.md,
+                  paddingHorizontal: space.xxl,
+                  paddingVertical: space.md,
+                  backgroundColor: country === item.name ? withAlpha(theme.primary, 0.1) : 'transparent',
+                }}
+              >
+                <Text style={{ fontSize: 24 }}>{item.flag}</Text>
+                <Text style={{ color: theme.text, fontSize: type.body, flex: 1 }}>{item.name}</Text>
+                {country === item.name ? <Ionicons name="checkmark" size={20} color={theme.primary} /> : null}
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      </Modal>
     </View>
   );
 }

@@ -60,6 +60,7 @@ type AuthContextValue = {
     tenantName: string,
     email: string,
     password: string,
+    country?: string,
   ) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   googleLogin: (idToken: string, nonce?: string) => Promise<void>;
@@ -152,11 +153,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
     tenantName: string,
     email: string,
     password: string,
+    country?: string,
   ): Promise<void> {
     setIsBusy(true);
     setError(null);
     try {
-      await setAuthTokens(await api.auth.signup(tenantName, email, password));
+      await setAuthTokens(await api.auth.signup(tenantName, email, password, country));
       await afterAuth();
     } catch (e) {
       setError(extractErrorMessage(e));
