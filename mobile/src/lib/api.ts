@@ -851,11 +851,13 @@ export const api = {
       tenantName: string,
       email: string,
       password: string,
+      country?: string,
     ): Promise<AuthTokens> {
       const res = await apiClient.post<ApiEnvelope<AuthTokens>>('/auth/signup', {
         tenantName,
         email,
         password,
+        ...(country && { country }),
       });
       return unwrap(res);
     },
@@ -1479,6 +1481,44 @@ export const api = {
         { params },
       );
       return unwrap(res);
+    },
+    async revenueHistory(
+      months = 6,
+    ): Promise<{ month: string; total: number; count: number }[]> {
+      const res = await apiClient.get<ApiEnvelope<{ month: string; total: number; count: number }[]>>(
+        '/admin/revenue-history',
+        { params: { months } },
+      );
+      return unwrap(res);
+    },
+    async routerDiagnostics(
+      tenantId: string,
+      routerId: string,
+    ): Promise<Record<string, string>> {
+      const res = await apiClient.get<ApiEnvelope<Record<string, string>>>(
+        `/admin/tenants/${tenantId}/routers/${routerId}/diagnostics`,
+      );
+      return unwrap(res);
+    },
+    async rebootRouter(
+      tenantId: string,
+      routerId: string,
+    ): Promise<void> {
+      await apiClient.post(`/admin/tenants/${tenantId}/routers/${routerId}/reboot`);
+    },
+    async patchSubscription(
+      tenantId: string,
+      patch: {
+        plan?: 'FREE' | 'PRO';
+        status?: 'ACTIVE' | 'PAST_DUE' | 'CANCELED';
+        tierId?: string | null;
+        billingPeriod?: 'MONTHLY' | 'ANNUAL';
+        currentPeriodEnd?: string | null;
+        routerLimitOverride?: number | null;
+        userLimitOverride?: number | null;
+      },
+    ): Promise<void> {
+      await apiClient.patch(`/admin/tenants/${tenantId}/subscription`, patch);
     },
     async validateInvoice(
       invoiceId: string,
