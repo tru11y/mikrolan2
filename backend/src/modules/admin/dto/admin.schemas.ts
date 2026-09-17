@@ -89,6 +89,7 @@ export const patchSubscriptionSchema = z.object({
   currentPeriodEnd: z.coerce.date().optional(),
   routerLimitOverride: z.number().int().min(1).max(10_000).nullable().optional(),
   userLimitOverride: z.number().int().min(1).max(10_000).nullable().optional(),
+  voucherLimitOverride: z.number().int().min(1).max(1_000_000).nullable().optional(),
 });
 export type PatchSubscriptionDto = z.infer<typeof patchSubscriptionSchema>;
 

@@ -5,7 +5,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { api, type AdminTenantDetail } from '@/src/lib/api';
+import { api, extractErrorMessage, type AdminTenantDetail } from '@/src/lib/api';
 import { describeError } from '@/src/lib/errors';
 import { formatXof } from '@/src/config/tiers';
 import {
@@ -269,7 +269,7 @@ export default function AdminTenantScreen() {
                               onPress={() => {
                                 api.admin.validateInvoice(inv.id).then(() =>
                                   queryClient.invalidateQueries({ queryKey: ['admin-tenant', id] }),
-                                );
+                                ).catch((e) => Alert.alert('Erreur', extractErrorMessage(e)));
                               }}
                             />
                           </View>
@@ -280,7 +280,7 @@ export default function AdminTenantScreen() {
                               onPress={() => {
                                 api.admin.rejectInvoice(inv.id, 'Refusé').then(() =>
                                   queryClient.invalidateQueries({ queryKey: ['admin-tenant', id] }),
-                                );
+                                ).catch((e) => Alert.alert('Erreur', extractErrorMessage(e)));
                               }}
                             />
                           </View>

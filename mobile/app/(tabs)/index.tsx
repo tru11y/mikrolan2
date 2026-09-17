@@ -1,13 +1,14 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
 import { useCallback, useState } from 'react';
-import { RefreshControl, ScrollView, View, Text } from 'react-native';
+import { RefreshControl, ScrollView, View, Text, Pressable } from 'react-native';
 import { Link, Redirect, useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { api, extractErrorMessage, type RouterHealth, type RouterItem } from '@/src/lib/api';
+import { api, extractErrorMessage, type Me, type RouterHealth, type RouterItem } from '@/src/lib/api';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
 import { useAuth } from '@/src/providers/auth-provider';
+import { useSseLive } from '@/src/providers/live-events-provider';
 import { getLocalCredentials } from '@/src/lib/router-credentials';
 import { getWifiInfo, sameSubnet24 } from '@/src/lib/lanBinder';
 import { withApi } from '@/src/services/mikrotik-lan/MikroTikApiClient';
@@ -141,11 +142,12 @@ export default function MaisonScreen() {
   const { isReady, activeRouterId } = useActiveRouter();
   const navHeight = useBottomNavHeight();
   const { entitlement } = useAuth();
+  const sseLive = useSseLive();
   const me = useQuery({ queryKey: ['me'], queryFn: api.auth.me, placeholderData: keepPreviousData });
   const routers = useQuery({
     queryKey: ['routers'],
     queryFn: api.routers.list,
-    refetchInterval: 15_000,
+    refetchInterval: sseLive ? false : 15_000,
     placeholderData: keepPreviousData,
   });
   const metrics = useQuery({
@@ -227,6 +229,22 @@ export default function MaisonScreen() {
 
   const anyStale = routersStale || metricsStale;
 
+  const COUNTRY_REMINDER_DAYS = 15;
+  const showCountryReminder = (() => {
+    const tenant = me.data?.tenant;
+    if (!tenant || tenant.country) return false;
+    if (!tenant.lastCountryReminderAt) return true;
+    const elapsed = Date.now() - new Date(tenant.lastCountryReminderAt).getTime();
+    return elapsed > COUNTRY_REMINDER_DAYS * 86_400_000;
+  })();
+
+  async function dismissCountryReminder() {
+    try {
+      await api.auth.dismissCountryReminder();
+      me.refetch();
+    } catch { /* best-effort */ }
+  }
+
   function refreshAll() {
     routers.refetch();
     metrics.refetch();
@@ -262,6 +280,22 @@ export default function MaisonScreen() {
       {anyStale ? (
         <Banner tone="danger">
           {t('home.staleWarning')}
+        </Banner>
+      ) : null}
+
+      {showCountryReminder ? (
+        <Banner tone="warning">
+          <Text style={{ color: theme.warning, marginBottom: 8 }}>
+            {t('home.countryReminder')}
+          </Text>
+          <View style={{ flexDirection: 'row', gap: space.sm }}>
+            <Pressable onPress={() => router.push('/(tabs)/account')} style={{ paddingVertical: 4, paddingHorizontal: 12, backgroundColor: theme.warning, borderRadius: radius.sm }}>
+              <Text style={{ color: '#fff', fontWeight: '600', fontSize: 13 }}>{t('home.countryReminderAction')}</Text>
+            </Pressable>
+            <Pressable onPress={dismissCountryReminder} style={{ paddingVertical: 4, paddingHorizontal: 12 }}>
+              <Text style={{ color: theme.textMuted, fontSize: 13 }}>{t('home.countryReminderDismiss')}</Text>
+            </Pressable>
+          </View>
         </Banner>
       ) : null}
 

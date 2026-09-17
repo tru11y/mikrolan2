@@ -9,6 +9,7 @@ import {
 import {
   AppState,
   type AppStateStatus,
+  BackHandler,
   Modal,
   Text,
   View,
@@ -122,6 +123,16 @@ export function AppLockProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     if (locked) void unlock();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locked]);
+
+  // Back Android pendant le lock : relancer l'auth plutôt que quitter l'app.
+  useEffect(() => {
+    if (!locked) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      void unlock();
+      return true;
+    });
+    return () => sub.remove();
   }, [locked]);
 
   return (
