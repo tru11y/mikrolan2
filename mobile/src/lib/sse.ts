@@ -9,6 +9,10 @@
  * Elle apporte en plus ce qu'`EventSource` ne sait pas faire : envoyer un
  * en-tête `Authorization`, indispensable ici puisque l'API est protégée par
  * un jeton porteur.
+ *
+ * IMPORTANT : `responseText` ne peut pas être tronqué — XHR accumule tout le
+ * texte reçu tant que la requête est ouverte. Pour éviter un memory leak
+ * linéaire, la connexion est recyclée périodiquement (RECYCLE_AFTER_BYTES).
  */
 
 export interface SseMessage {
@@ -36,13 +40,15 @@ export interface SseConnection {
 const BASE_RETRY_MS = 2_000;
 const MAX_RETRY_MS = 30_000;
 
+/** Recycle la connexion XHR après ~512 KB de responseText accumulé. */
+const RECYCLE_AFTER_BYTES = 512 * 1024;
+
 function parseChunk(raw: string): SseMessage | null {
   let id: string | null = null;
   let event = 'message';
   const dataLines: string[] = [];
 
   for (const line of raw.split('\n')) {
-    // Une ligne commençant par ':' est un commentaire (battement de cœur).
     if (line.startsWith(':')) continue;
     const sep = line.indexOf(':');
     const field = sep === -1 ? line : line.slice(0, sep);
@@ -66,6 +72,7 @@ export function openSse(options: SseOptions): SseConnection {
   let attempt = 0;
   let xhr: XMLHttpRequest | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
+  let recycleTimer: ReturnType<typeof setTimeout> | null = null;
 
   function scheduleReconnect() {
     if (closed) return;
@@ -79,8 +86,6 @@ export function openSse(options: SseOptions): SseConnection {
     if (closed) return;
 
     const lastId = options.lastEventId?.() ?? null;
-    // Le paramètre de requête double l'en-tête : certains proxys filtrent les
-    // en-têtes non standard, et perdre la reprise passerait inaperçu.
     const url = lastId
       ? `${options.url}${options.url.includes('?') ? '&' : '?'}lastEventId=${encodeURIComponent(lastId)}`
       : options.url;
@@ -98,17 +103,11 @@ export function openSse(options: SseOptions): SseConnection {
       request.setRequestHeader(key, value);
     }
 
-    // `addEventListener`, surtout pas `request.onreadystatechange = …` :
-    // React Native n'active la livraison incrémentale (`_incrementalEvents`)
-    // que dans `addEventListener('readystatechange'|'progress')`. L'affectation
-    // directe passe par l'attribut d'évènement du shim et laisse le drapeau à
-    // faux — le natif attend alors le corps complet, qui n'arrive jamais sur un
-    // flux SSE, et la requête finit annulée sans qu'un seul octet remonte.
     request.addEventListener('readystatechange', () => {
       if (closed) return;
 
       if (request.readyState === 2 /* HEADERS_RECEIVED */) {
-        if (request.status !== 200) return; // traité à la fermeture
+        if (request.status !== 200) return;
         opened = true;
         attempt = 0;
         options.onOpen?.();
@@ -118,8 +117,6 @@ export function openSse(options: SseOptions): SseConnection {
       if (request.readyState === 3 /* LOADING */) {
         if (!opened) return;
         const text = request.responseText;
-        // Un évènement se termine par une ligne vide ; tout ce qui suit le
-        // dernier séparateur est incomplet et doit attendre le prochain octet.
         const boundary = text.lastIndexOf('\n\n');
         if (boundary < consumed) return;
         const pending = text.slice(consumed, boundary);
@@ -129,11 +126,20 @@ export function openSse(options: SseOptions): SseConnection {
           const message = parseChunk(chunk);
           if (message) options.onMessage(message);
         }
+
+        // Recycle: responseText ne peut pas être libéré tant que le XHR est
+        // ouvert. On ferme et on rouvre proprement pour relâcher la mémoire.
+        if (text.length > RECYCLE_AFTER_BYTES) {
+          request.abort();
+          xhr = null;
+          // Petit délai pour ne pas boucler si le serveur renvoie un gros
+          // payload d'un coup.
+          recycleTimer = setTimeout(connect, 100);
+        }
         return;
       }
 
       if (request.readyState === 4 /* DONE */) {
-        // Le serveur a fermé (redémarrage, proxy, perte réseau) : on relance.
         scheduleReconnect();
       }
     });
@@ -151,7 +157,7 @@ export function openSse(options: SseOptions): SseConnection {
     close() {
       closed = true;
       if (retryTimer) clearTimeout(retryTimer);
-      // `abort()` déclenche readyState 4 : `closed` empêche la reconnexion.
+      if (recycleTimer) clearTimeout(recycleTimer);
       xhr?.abort();
       xhr = null;
     },

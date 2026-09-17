@@ -14,6 +14,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RemoteRouterService } from '../remote-access/remote-router.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import {
   addHotspotUser,
   ensureUserProfile,
@@ -66,6 +67,7 @@ export class VoucherService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly remote: RemoteRouterService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   async generate(routerId: string, dto: GenerateVouchersDto) {
@@ -95,6 +97,8 @@ export class VoucherService {
     const ctx = getTenantContext();
     const tenantId = ctx?.tenantId;
     if (!tenantId) throw new BadRequestException('Contexte tenant manquant');
+
+    await this.subscriptions.assertVoucherLimit(tenantId);
 
     const codes = await this.uniqueCodes(dto.quantity, {
       codePrefix: plan.codePrefix,

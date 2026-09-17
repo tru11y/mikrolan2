@@ -1,4 +1,5 @@
-﻿import { View, Text, ScrollView } from 'react-native';
+﻿import { useEffect } from 'react';
+import { View, Text, ScrollView, BackHandler } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -44,8 +45,20 @@ export function PaywallLock() {
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
 
-  if (!isAuthenticated || !isLocked) return null;
-  if (OPEN_ROUTES.some((r) => pathname.startsWith(r))) return null;
+  const visible = isAuthenticated && isLocked && !OPEN_ROUTES.some((r) => pathname.startsWith(r));
+
+  // Intercepter Back Android : le paywall est un overlay plein écran, le retour
+  // natif naviguerait sous l'overlay sans le fermer. On redirige vers /pro.
+  useEffect(() => {
+    if (!visible) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      router.push('/pro');
+      return true;
+    });
+    return () => sub.remove();
+  }, [visible, router]);
+
+  if (!visible) return null;
 
   return (
     <View

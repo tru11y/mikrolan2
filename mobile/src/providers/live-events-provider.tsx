@@ -154,13 +154,21 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
       return;
     }
 
-    const connections: SseConnection[] = [];
+    let connections: SseConnection[] = [];
     const authHeaders = (): Record<string, string> => {
       const tokens = getAuthTokens();
       return tokens ? { Authorization: `Bearer ${tokens.accessToken}` } : {};
     };
 
+    function closeAll() {
+      for (const c of connections) c.close();
+      connections = [];
+      setLive(false);
+    }
+
     function connect() {
+      closeAll();
+
       connections.push(
         openSse({
           url: `${getApiBaseUrl()}/events/stream`,
@@ -173,17 +181,12 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
           onMessage: (message) => {
             try {
               const event = JSON.parse(message.data) as LiveEvent;
-              // Le curseur de reprise vient de la charge utile, pas de la
-              // ligne `id:` du flux : NestJS y écrit son propre compteur de
-              // messages, qui n'a rien à voir avec la numérotation du canal
-              // (un battement de cœur sans id ressort quand même en « id: 1 »).
               if (typeof event.id === 'number' && event.id >= 0) {
                 lastEventId.current = String(event.id);
               }
               handleEventRef.current(event);
             } catch {
-              // Charge utile illisible : on ignore plutôt que de faire tomber
-              // le flux entier pour un message malformé.
+              // Charge utile illisible — ignorer.
             }
           },
           onError: (attempt) => {
@@ -193,8 +196,6 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
         }),
       );
 
-      // Le canal plateforme n'existe que pour l'administration : c'est là
-      // qu'arrivent les demandes d'activation, pas sur le canal du compte.
       if (isSuperAdmin) {
         connections.push(
           openSse({
@@ -212,15 +213,8 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
       }
     }
 
-    function closeAll() {
-      for (const c of connections.splice(0)) c.close();
-      setLive(false);
-    }
-
     connect();
 
-    // Écran éteint : on ferme. Garder un socket ouvert en arrière-plan vide la
-    // batterie et le système finit par le couper de toute façon.
     const sub = AppState.addEventListener('change', (state: AppStateStatus) => {
       if (state === 'active') {
         if (connections.length === 0) connect();
@@ -236,24 +230,37 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
   }, [isAuthenticated, isSuperAdmin]);
 
   // ── Filet de sécurité ───────────────────────────────────
-  // N'entre en jeu que si le flux ne tient pas : réseau qui coupe les
-  // connexions longues, proxy trop zélé.
+  // N'entre en jeu que si le flux ne tient pas.
+  const fallbackSeen = useRef(new Map<string, number>());
+  const fallbackPrimed = useRef(false);
+
   useEffect(() => {
-    if (!isAuthenticated || !degraded) return;
-    const seen = new Set<string>();
-    let primed = false;
+    if (!isAuthenticated || !degraded) {
+      fallbackSeen.current.clear();
+      fallbackPrimed.current = false;
+      return;
+    }
+    const SEEN_MAX = 200;
 
     async function tick() {
       if (AppState.currentState !== 'active') return;
       try {
         const list = await api.notifications.list(false, 20);
-        if (!primed) {
-          for (const n of list) seen.add(n.id);
-          primed = true;
+        const seen = fallbackSeen.current;
+        const now = Date.now();
+        if (!fallbackPrimed.current) {
+          for (const n of list) seen.set(n.id, now);
+          fallbackPrimed.current = true;
           return;
         }
         const fresh = list.filter((n) => !seen.has(n.id));
-        for (const n of list) seen.add(n.id);
+        for (const n of list) seen.set(n.id, now);
+        if (seen.size > SEEN_MAX) {
+          const sorted = [...seen.entries()].sort((a, b) => a[1] - b[1]);
+          for (let i = 0; i < sorted.length - SEEN_MAX; i++) {
+            seen.delete(sorted[i][0]);
+          }
+        }
         if (!fresh.length) return;
         setLastEventAt(new Date());
         Vibration.vibrate(40);
@@ -305,4 +312,9 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
 
 export function useLiveEvents(): LiveEventsValue {
   return useContext(LiveEventsContext);
+}
+
+/** True quand le flux SSE est actif — les écrans peuvent couper leur polling. */
+export function useSseLive(): boolean {
+  return useContext(LiveEventsContext).live;
 }

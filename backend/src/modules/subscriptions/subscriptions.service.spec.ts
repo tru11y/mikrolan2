@@ -17,7 +17,7 @@ const mockPrisma: Record<string, any> = {
     update: jest.fn(),
     updateMany: jest.fn(),
   },
-  tenant: { findUnique: jest.fn().mockResolvedValue({ name: 'TestCo' }) },
+  tenant: { findUnique: jest.fn().mockResolvedValue({ name: 'TestCo' }), update: jest.fn() },
   notification: { create: jest.fn() },
   remotePeer: { updateMany: jest.fn() },
   router: { updateMany: jest.fn() },

@@ -81,7 +81,13 @@ export class AuthController {
     @CurrentUser() user: TenantContext,
     @Body(new ZodValidationPipe(updateProfileSchema)) dto: UpdateProfileDto,
   ) {
-    return this.auth.updateProfile(user.userId, dto);
+    return this.auth.updateProfile(user.userId, user.tenantId, dto);
+  }
+
+  @Post('dismiss-country-reminder')
+  @HttpCode(200)
+  dismissCountryReminder(@CurrentUser() user: TenantContext) {
+    return this.auth.dismissCountryReminder(user.tenantId);
   }
 
   @Post('change-password')

@@ -2,9 +2,6 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import {
   AuditAction,
   BillingPeriod,
-  SubscriptionPlan,
-  SubscriptionStatus,
-  TenantStatus,
 } from '@prisma/client';
 import { AdminService } from './admin.service';
 
@@ -20,17 +17,20 @@ const mockPrisma: Record<string, any> = {
 };
 
 const mockNotifications = { sendPushToTenant: jest.fn().mockResolvedValue(undefined) };
+const mockSubscriptions = {
+  activate: jest.fn().mockResolvedValue({ plan: 'PRO', status: 'ACTIVE' }),
+};
 
 const actor = { userId: 'admin-1', tenantId: 'platform' };
 
 function buildService() {
-  return new AdminService(mockPrisma as any, mockNotifications as any);
+  return new AdminService(mockPrisma as any, mockNotifications as any, mockSubscriptions as any);
 }
 
 beforeEach(() => jest.clearAllMocks());
 
 describe('AdminService.validateInvoice', () => {
-  it('active la souscription et journalise quand la facture est PENDING', async () => {
+  it('délègue à SubscriptionsService.activate et active le tenant', async () => {
     mockPrisma.invoice.findUnique.mockResolvedValue({
       id: 'inv-1',
       tenantId: 'tenant-1',
@@ -38,71 +38,56 @@ describe('AdminService.validateInvoice', () => {
       periodDays: 30,
       tierId: 'tier-1',
       billingPeriod: BillingPeriod.MONTHLY,
-      tenant: { id: 'tenant-1' },
     });
 
     const service = buildService();
     const result = await service.validateInvoice('inv-1', actor, {});
 
     expect(result).toEqual({ validated: true });
-    expect(mockPrisma.invoice.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: 'inv-1', status: 'PENDING' },
-        data: expect.objectContaining({ status: 'PAID', periodDays: 30 }),
-      }),
-    );
-    expect(mockPrisma.subscription.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { tenantId: 'tenant-1' },
-        data: expect.objectContaining({
-          plan: SubscriptionPlan.PRO,
-          status: SubscriptionStatus.ACTIVE,
-        }),
-      }),
-    );
-    expect(mockPrisma.tenant.update).toHaveBeenCalledWith({
-      where: { id: 'tenant-1' },
-      data: { status: TenantStatus.ACTIVE },
-    });
-    expect(mockPrisma.notification.create).toHaveBeenCalled();
-    expect(mockPrisma.auditLog.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          tenantId: 'tenant-1',
-          userId: 'admin-1',
-          action: AuditAction.ACTIVATE,
-          entityType: 'Invoice',
-          entityId: 'inv-1',
-        }),
-      }),
-    );
-    expect(mockNotifications.sendPushToTenant).toHaveBeenCalledWith(
+    expect(mockSubscriptions.activate).toHaveBeenCalledWith(
       'tenant-1',
-      'Paiement validé',
-      'Votre abonnement PRO est maintenant actif.',
-      null,
-      expect.objectContaining({ type: 'SUBSCRIPTION_ACTIVATED' }),
+      'admin-1',
+      30,
+      'inv-1',
     );
+    // tenant.status = ACTIVE is now handled atomically inside activate()
   });
 
-  it("utilise le périodDays fourni au lieu de celui de la facture s'il est passé", async () => {
+  it('utilise le periodDays du DTO quand fourni', async () => {
     mockPrisma.invoice.findUnique.mockResolvedValue({
       id: 'inv-1',
       tenantId: 'tenant-1',
       status: 'PENDING',
       periodDays: 30,
-      tierId: 'tier-1',
-      billingPeriod: BillingPeriod.MONTHLY,
-      tenant: { id: 'tenant-1' },
     });
 
     const service = buildService();
     await service.validateInvoice('inv-1', actor, { periodDays: 90 });
 
-    expect(mockPrisma.invoice.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ periodDays: 90 }),
-      }),
+    expect(mockSubscriptions.activate).toHaveBeenCalledWith(
+      'tenant-1',
+      'admin-1',
+      90,
+      'inv-1',
+    );
+  });
+
+  it('convertit months en periodDays', async () => {
+    mockPrisma.invoice.findUnique.mockResolvedValue({
+      id: 'inv-1',
+      tenantId: 'tenant-1',
+      status: 'PENDING',
+      periodDays: 30,
+    });
+
+    const service = buildService();
+    await service.validateInvoice('inv-1', actor, { months: 3 });
+
+    expect(mockSubscriptions.activate).toHaveBeenCalledWith(
+      'tenant-1',
+      'admin-1',
+      90,
+      'inv-1',
     );
   });
 
@@ -113,7 +98,7 @@ describe('AdminService.validateInvoice', () => {
     await expect(service.validateInvoice('missing', actor, {})).rejects.toThrow(
       NotFoundException,
     );
-    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    expect(mockSubscriptions.activate).not.toHaveBeenCalled();
   });
 
   it('rejette une facture déjà traitée (non PENDING) avec BadRequestException', async () => {
@@ -122,14 +107,13 @@ describe('AdminService.validateInvoice', () => {
       tenantId: 'tenant-1',
       status: 'PAID',
       periodDays: 30,
-      tenant: { id: 'tenant-1' },
     });
     const service = buildService();
 
     await expect(service.validateInvoice('inv-1', actor, {})).rejects.toThrow(
       BadRequestException,
     );
-    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    expect(mockSubscriptions.activate).not.toHaveBeenCalled();
   });
 });
 
@@ -177,9 +161,7 @@ describe('AdminService.rejectInvoice', () => {
       null,
       expect.objectContaining({ type: 'PAYMENT_REJECTED' }),
     );
-    // Le rejet ne doit jamais toucher subscription/tenant — seule la facture change d'état.
     expect(mockPrisma.subscription.update).not.toHaveBeenCalled();
-    expect(mockPrisma.tenant.update).not.toHaveBeenCalled();
   });
 
   it('rejette une facture introuvable avec NotFoundException', async () => {
