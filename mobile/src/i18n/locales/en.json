@@ -137,6 +137,9 @@
     "proUnlimited": "PRO UNLIMITED PASS",
     "proDescription": "Multi-router, cloud backup & thermal printing.",
     "staleWarning": "Some information may be outdated. Pull down to retry.",
+    "countryReminder": "Set your country to improve your MikroLan experience.",
+    "countryReminderAction": "Choose my country",
+    "countryReminderDismiss": "Later",
     "viewProfile": "View my profile",
     "fcfa": "FCFA"
   },

@@ -26,6 +26,7 @@ import {
   type Me,
 } from '@/src/lib/api';
 import { deleteLocalCredentials } from '@/src/lib/router-credentials';
+import { clearSeenNotifications } from '@/src/providers/push-notifications-provider';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -92,7 +93,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, nonceRef.current).then(
       setNonceHash,
-    );
+    ).catch(() => {});
   }, []);
 
   const [, googleResponse, promptGoogle] = Google.useIdTokenAuthRequest({
@@ -105,7 +106,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     if (googleResponse?.type === 'success') {
       const idToken = googleResponse.params.id_token;
       if (idToken) {
-        googleLogin(idToken, nonceRef.current).catch(() => {});
+        googleLogin(idToken, nonceRef.current).catch((e) => setError(extractErrorMessage(e)));
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -222,6 +223,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     } catch {
       // best-effort
     } finally {
+      clearSeenNotifications();
       await clearAuthTokens();
       setMe(null);
       setIsBusy(false);
@@ -247,6 +249,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     daysLeft: 0,
     tierKey: null,
     routerLimit: null,
+    voucherMonthlyLimit: null,
   };
 
   const contextValue = useMemo<AuthContextValue>(

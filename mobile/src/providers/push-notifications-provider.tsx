@@ -99,12 +99,22 @@ function routeForNotification(data: Record<string, unknown> | undefined): string
 
 // Dédup process-wide : un même notificationId ne doit jamais être traité deux
 // fois (reçu au premier plan puis re-livré par un relance de app state, etc).
+// Taille plafonnée pour éviter un memory leak sur les longues sessions.
+const SEEN_MAX = 500;
 const seenNotificationIds = new Set<string>();
+
+export function clearSeenNotifications(): void {
+  seenNotificationIds.clear();
+}
 
 export function markSeen(data: Record<string, unknown> | undefined): boolean {
   const id = data?.notificationId;
   if (typeof id !== 'string') return false;
   if (seenNotificationIds.has(id)) return true;
+  if (seenNotificationIds.size >= SEEN_MAX) {
+    const first = seenNotificationIds.values().next().value;
+    if (first !== undefined) seenNotificationIds.delete(first);
+  }
   seenNotificationIds.add(id);
   return false;
 }

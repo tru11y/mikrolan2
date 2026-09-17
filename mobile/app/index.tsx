@@ -13,7 +13,7 @@ export default function Index() {
   const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
 
   useEffect(() => {
-    AsyncStorage.getItem(ONBOARDING_KEY).then((v) => setOnboardingDone(v === '1'));
+    AsyncStorage.getItem(ONBOARDING_KEY).then((v) => setOnboardingDone(v === '1')).catch(() => setOnboardingDone(false));
   }, []);
 
   if (!isReady || onboardingDone === null) {

@@ -94,6 +94,7 @@ export class AuthService {
           data: {
             name: dto.tenantName,
             slug: slugify(dto.tenantName),
+            ...(dto.country && { country: dto.country, countryUpdatedAt: now }),
             subscription: {
               create: {
                 plan: SubscriptionPlan.FREE,
@@ -185,7 +186,7 @@ export class AuthService {
       }),
       this.prisma.tenant.findUnique({
         where: { id: tenantId },
-        select: { id: true, name: true, slug: true, status: true },
+        select: { id: true, name: true, slug: true, status: true, country: true, lastCountryReminderAt: true },
       }),
       this.prisma.subscription.findUnique({
         where: { tenantId },
@@ -201,12 +202,21 @@ export class AuthService {
     return { user, tenant, subscription, entitlement };
   }
 
-  async updateProfile(userId: string, dto: UpdateProfileDto) {
+  async updateProfile(userId: string, tenantId: string, dto: UpdateProfileDto) {
     const data: Prisma.UserUpdateInput = {};
     if (dto.name !== undefined) data.name = dto.name;
     if (dto.country !== undefined) data.country = dto.country;
 
-    await this.prisma.user.update({ where: { id: userId }, data });
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({ where: { id: userId }, data });
+      if (dto.country !== undefined) {
+        await tx.tenant.update({
+          where: { id: tenantId },
+          data: { country: dto.country, countryUpdatedAt: now },
+        });
+      }
+    });
     const user = await this.prisma.user.findFirst({
       where: { id: userId },
       select: {
@@ -222,6 +232,14 @@ export class AuthService {
       },
     });
     return user;
+  }
+
+  async dismissCountryReminder(tenantId: string) {
+    await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { lastCountryReminderAt: new Date() },
+    });
+    return { dismissed: true };
   }
 
   async changePassword(userId: string, dto: ChangePasswordDto): Promise<void> {

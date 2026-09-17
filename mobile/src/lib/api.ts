@@ -46,7 +46,7 @@ export type Me = {
     hasPassword: boolean;
     googleId: string | null;
   };
-  tenant: { id: string; name: string; slug: string; status: string };
+  tenant: { id: string; name: string; slug: string; status: string; country: string | null; lastCountryReminderAt: string | null };
   subscription: {
     plan: SubscriptionPlan;
     status: string;
@@ -69,6 +69,8 @@ export type Entitlement = {
   tierKey: string | null;
   /** Routeurs autorisés par la formule ; `null` = illimité. */
   routerLimit: number | null;
+  /** Tickets générés/mois autorisés ; `null` = illimité. */
+  voucherMonthlyLimit: number | null;
 };
 
 export type TicketTemplate = {
@@ -899,6 +901,10 @@ export const api = {
         '/auth/me',
         payload,
       );
+      return unwrap(res);
+    },
+    async dismissCountryReminder(): Promise<{ dismissed: boolean }> {
+      const res = await apiClient.post<ApiEnvelope<{ dismissed: boolean }>>('/auth/dismiss-country-reminder');
       return unwrap(res);
     },
     async changePassword(
@@ -1748,6 +1754,7 @@ export type Tier = {
   annualMonthlyXof: number;
   annualDiscount: number;
   routerLimit: number | null;
+  voucherMonthlyLimit: number | null;
   remoteAccess: boolean;
   a4Printing: boolean;
   cloudBackup: boolean;

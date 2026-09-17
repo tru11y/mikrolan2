@@ -152,6 +152,9 @@ model Tenant {
   name           String
   slug           String         @unique
   status         TenantStatus   @default(ACTIVE)
+  country              String?
+  countryUpdatedAt     DateTime?
+  lastCountryReminderAt DateTime?
   timezone       String?        @default("Africa/Abidjan")
   users          User[]
   routers        Router[]
@@ -300,8 +303,9 @@ model SubscriptionTier {
   name            String
   monthlyXof      Int
   annualDiscount  Int            @default(20) // en %, appliqué au paiement annuel
-  routerLimit     Int? // null = illimité
-  userLimit       Int? // null = illimité
+  routerLimit          Int? // null = illimité
+  userLimit            Int? // null = illimité
+  voucherMonthlyLimit  Int? // null = illimité. Tickets générés/mois par tenant.
   remoteAccess    Boolean        @default(false)
   a4Printing      Boolean        @default(false)
   cloudBackup     Boolean        @default(false)
@@ -331,8 +335,9 @@ model Subscription {
   billingPeriod      BillingPeriod?
   currentPeriodStart DateTime?
   currentPeriodEnd   DateTime?
-  routerLimitOverride Int?
-  userLimitOverride   Int?
+  routerLimitOverride  Int?
+  userLimitOverride    Int?
+  voucherLimitOverride Int?
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
