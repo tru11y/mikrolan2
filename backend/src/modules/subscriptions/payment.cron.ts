@@ -2,6 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { SubscriptionsService } from './subscriptions.service';
+
+const SYSTEM_ACTOR = 'SYSTEM';
 
 @Injectable()
 export class PaymentCron {
@@ -10,6 +13,7 @@ export class PaymentCron {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   @Cron(CronExpression.EVERY_HOUR)
@@ -30,7 +34,6 @@ export class PaymentCron {
   async sendPaymentReminders(): Promise<void> {
     const now = new Date();
     const d7 = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-    const d1 = new Date(now.getTime() + 1 * 24 * 60 * 60 * 1000);
 
     const subscriptions = await this.prisma.subscription.findMany({
       where: {
@@ -76,17 +79,18 @@ export class PaymentCron {
     });
 
     for (const sub of expired) {
-      await this.prisma.subscription.update({
-        where: { tenantId: sub.tenantId },
-        data: { plan: 'FREE', status: 'ACTIVE', tierId: null },
-      });
-      await this.notifications.createAndPush(
-        sub.tenantId,
-        'SUBSCRIPTION_ACTIVATED',
-        'Abonnement expiré',
-        'Votre abonnement PRO a expiré. Renouvelez pour conserver l\'accès distant.',
-      );
-      this.logger.log(`Downgraded expired PRO → FREE: ${sub.tenant.name}`);
+      try {
+        await this.subscriptions.deactivate(sub.tenantId, SYSTEM_ACTOR);
+        await this.notifications.createAndPush(
+          sub.tenantId,
+          'SUBSCRIPTION_ACTIVATED',
+          'Abonnement expiré',
+          'Votre abonnement PRO a expiré. Renouvelez pour conserver l\'accès distant.',
+        );
+        this.logger.log(`Downgraded expired PRO → FREE (via deactivate): ${sub.tenant.name}`);
+      } catch (e) {
+        this.logger.error(`Failed to deactivate ${sub.tenant.name}: ${e}`);
+      }
     }
     if (expired.length > 0) {
       this.logger.log(`Expired ${expired.length} overdue PRO subscriptions`);

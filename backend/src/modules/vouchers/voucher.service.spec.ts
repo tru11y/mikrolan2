@@ -41,10 +41,15 @@ function makeRemote() {
   return { run: jest.fn() } as unknown;
 }
 
-function makeService(prisma?: unknown, remote?: unknown) {
+function makeSubscriptions() {
+  return { assertVoucherLimit: jest.fn().mockResolvedValue(undefined) } as unknown;
+}
+
+function makeService(prisma?: unknown, remote?: unknown, subs?: unknown) {
   const p = prisma ?? makePrisma();
   const r = remote ?? makeRemote();
-  return { service: new VoucherService(p as any, r as any), prisma: p as any };
+  const s = subs ?? makeSubscriptions();
+  return { service: new VoucherService(p as any, r as any, s as any), prisma: p as any };
 }
 
 const VOUCHER_ROW = {

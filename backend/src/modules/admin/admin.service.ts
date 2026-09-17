@@ -18,6 +18,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { monthlyPrice } from '../subscriptions/tiers.service';
 import type {
   ListAuditQueryDto,
@@ -59,6 +60,7 @@ export class AdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   // ── Comptes clients ────────────────────────────────────
@@ -132,7 +134,10 @@ export class AdminService {
             billingPeriod: true,
             currentPeriodStart: true,
             currentPeriodEnd: true,
-            tier: { select: { key: true, name: true, monthlyXof: true } },
+            routerLimitOverride: true,
+            userLimitOverride: true,
+            voucherLimitOverride: true,
+            tier: { select: { key: true, name: true, monthlyXof: true, routerLimit: true, userLimit: true, voucherMonthlyLimit: true } },
           },
         },
         users: {
@@ -548,7 +553,6 @@ export class AdminService {
   ) {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
-      include: { tenant: true },
     });
     if (!invoice) throw new NotFoundException('Facture introuvable');
     if (invoice.status !== 'PENDING') {
@@ -558,62 +562,12 @@ export class AdminService {
     const periodDays = dto.months
       ? dto.months * 30
       : dto.periodDays ?? invoice.periodDays;
-    const tierId = dto.tierId ?? invoice.tierId;
 
-    const now = new Date();
-    const notification = await this.prisma.$transaction(async (tx) => {
-      const claimed = await tx.invoice.updateMany({
-        where: { id: invoiceId, status: 'PENDING' },
-        data: {
-          status: 'PAID',
-          paidAt: now,
-          periodDays,
-          ...(dto.provider && { provider: dto.provider }),
-          ...(dto.providerRef && { note: dto.providerRef }),
-        },
-      });
-      if (claimed.count === 0) {
-        throw new BadRequestException('Cette facture a déjà été traitée (validation concurrente).');
-      }
-      await tx.subscription.update({
-        where: { tenantId: invoice.tenantId },
-        data: {
-          plan: SubscriptionPlan.PRO,
-          status: SubscriptionStatus.ACTIVE,
-          tierId,
-          billingPeriod: invoice.billingPeriod,
-          currentPeriodStart: now,
-          currentPeriodEnd: new Date(now.getTime() + periodDays * DAY_MS),
-        },
-      });
-      await tx.tenant.update({
-        where: { id: invoice.tenantId },
-        data: { status: TenantStatus.ACTIVE },
-      });
-      return tx.notification.create({
-        data: {
-          tenantId: invoice.tenantId,
-          type: 'SUBSCRIPTION_ACTIVATED',
-          title: 'Paiement validé',
-          body: 'Votre abonnement PRO est maintenant actif.',
-        },
-      });
-    });
-    this.notifications.sendPushToTenant(
-      invoice.tenantId,
-      'Paiement validé',
-      'Votre abonnement PRO est maintenant actif.',
-      null,
-      { notificationId: notification.id, type: 'SUBSCRIPTION_ACTIVATED' },
-    );
-
-    await this.audit(
+    await this.subscriptions.activate(
       invoice.tenantId,
       actor.userId,
-      AuditAction.ACTIVATE,
-      'Invoice',
+      periodDays,
       invoiceId,
-      { periodDays },
     );
 
     return { validated: true };
@@ -698,6 +652,7 @@ export class AdminService {
         ...(dto.currentPeriodEnd !== undefined && { currentPeriodEnd: dto.currentPeriodEnd }),
         ...(dto.routerLimitOverride !== undefined && { routerLimitOverride: dto.routerLimitOverride }),
         ...(dto.userLimitOverride !== undefined && { userLimitOverride: dto.userLimitOverride }),
+        ...(dto.voucherLimitOverride !== undefined && { voucherLimitOverride: dto.voucherLimitOverride }),
       },
     });
 
