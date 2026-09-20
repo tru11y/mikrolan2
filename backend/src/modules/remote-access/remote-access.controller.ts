@@ -3,17 +3,20 @@ import {
   Controller,
   Get,
   HttpCode,
+  Logger,
   Optional,
   Param,
   ParseUUIDPipe,
   Post,
 } from '@nestjs/common';
-import { UserRole } from '@prisma/client';
+import { AuditAction, UserRole } from '@prisma/client';
 import { z } from 'zod';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { TenantContext } from '../../common/context/tenant-context';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
+import { PrismaService } from '../../prisma/prisma.service';
+import { ErrorCode } from '../../common/error-codes';
 import { RemoteAccessService } from './remote-access.service';
 import { RemoteRouterService } from './remote-router.service';
 
@@ -32,9 +35,12 @@ type ProvisionDto = z.infer<typeof provisionSchema>;
 
 @Controller('routers/:id/remote')
 export class RemoteAccessController {
+  private readonly logger = new Logger(RemoteAccessController.name);
+
   constructor(
     private readonly remote: RemoteAccessService,
     private readonly remoteRouter: RemoteRouterService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Get()
@@ -73,8 +79,44 @@ export class RemoteAccessController {
   @Post('reboot')
   @Roles(UserRole.ADMIN)
   @HttpCode(200)
-  async reboot(@Param('id', ParseUUIDPipe) id: string) {
-    await this.remoteRouter.reboot(id);
+  async reboot(
+    @CurrentUser() user: TenantContext,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    try {
+      await this.remoteRouter.reboot(id);
+    } catch (err) {
+      this.logger.warn(`Router ${id} reboot failed: ${err instanceof Error ? err.message : err}`);
+      try {
+        await this.prisma.auditLog.create({
+          data: {
+            tenantId: user.tenantId,
+            userId: user.userId,
+            action: AuditAction.REBOOT,
+            entityType: 'Router',
+            entityId: id,
+            metadata: { source: 'diagnostic', errorCode: ErrorCode.ROUTER_REBOOT_FAILED, error: err instanceof Error ? err.message : String(err) },
+          },
+        });
+      } catch (auditErr) {
+        this.logger.warn(`Audit log write failed: ${auditErr instanceof Error ? auditErr.message : auditErr}`);
+      }
+      throw err;
+    }
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          tenantId: user.tenantId,
+          userId: user.userId,
+          action: AuditAction.REBOOT,
+          entityType: 'Router',
+          entityId: id,
+          metadata: { source: 'diagnostic' },
+        },
+      });
+    } catch (err) {
+      this.logger.warn(`Audit log write failed: ${err instanceof Error ? err.message : err}`);
+    }
     return { rebooted: true };
   }
 }

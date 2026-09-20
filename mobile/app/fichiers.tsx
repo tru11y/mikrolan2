@@ -13,23 +13,12 @@ import {
 } from '@/src/lib/api';
 import { printTickets, printTicketsDirect } from '@/src/lib/ticketsPdf';
 import { TicketCard } from '@/src/components/TicketCard';
-import { Badge, Banner, Button, ConfirmDialog, Empty, Press, Subtitle, Title ,
+import { Badge, Banner, Button, ConfirmDialog, Empty, Press, Subtitle, Title,
   withAlpha,
 } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
-
-// U+0300-U+036F = plage des diacritiques combinants (issus de normalize('NFD'))
-const DIACRITICS_RE = new RegExp('[̀-ͯ]', 'g');
-
-function slug(s: string): string {
-  return s
-    .normalize('NFD')
-    .replace(DIACRITICS_RE, '')
-    .replace(/[^a-zA-Z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '');
-}
 
 const STATUS_TONE: Record<
   VoucherItem['status'],
@@ -48,14 +37,55 @@ function fmtDuration(min: number): string {
   return `${min}min`;
 }
 
-function batchFileName(b: VoucherBatch): string {
-  const d = new Date(b.createdAt);
+function fmtDateFull(iso: string): string {
+  const d = new Date(iso);
   const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  return `Batch_Tickets_${slug(b.plan.name)}_${dd}${mm}${d.getFullYear()}.pdf`;
+  const MM = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${dd}/${MM}/${yyyy} ${hh}:${mm}:${ss}`;
 }
 
-type BatchAction = { batchId: string; kind: 'download' | 'print' } | null;
+type BatchAction = { batchId: string; kind: 'download' | 'print' | 'share' } | null;
+
+function ActionButton({
+  icon,
+  label,
+  color,
+  onPress,
+  disabled,
+  loading,
+}: {
+  icon: string;
+  label: string;
+  color: string;
+  onPress: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+}) {
+  const theme = useTheme();
+  return (
+    <Press
+      accessibilityLabel={label}
+      onPress={onPress}
+      disabled={disabled}
+      style={{
+        flex: 1,
+        alignItems: 'center',
+        gap: 4,
+        paddingVertical: 10,
+        borderRadius: 10,
+        backgroundColor: withAlpha(color, 0.08),
+        opacity: loading ? 0.5 : 1,
+      }}
+    >
+      <Ionicons name={icon as any} size={18} color={color} />
+      <Text style={{ color, fontSize: 11, fontWeight: '600' }}>{label}</Text>
+    </Press>
+  );
+}
 
 export default function FichiersScreen() {
   const theme = useTheme();
@@ -90,7 +120,22 @@ export default function FichiersScreen() {
     enabled: Boolean(routerId),
   });
 
-  async function batchAction(batch: VoucherBatch, kind: 'download' | 'print') {
+  function buildPdfOpts(batch: VoucherBatch, codes: { code: string }[]) {
+    const plan = plansQuery.data?.find((p) => p.id === batch.planId);
+    const r = routerQuery.data;
+    return {
+      routerName: r?.alias || r?.identity || 'WiFi',
+      planName: batch.plan.name,
+      durationMinutes: plan?.durationMinutes ?? 0,
+      priceXof: batch.plan.priceXof,
+      tickets: codes,
+      template: r?.ticketTemplate,
+      batchSeq: batch.seq,
+      batchDate: batch.createdAt,
+    };
+  }
+
+  async function batchAction(batch: VoucherBatch, kind: 'download' | 'print' | 'share') {
     setError(null);
     setBusy({ batchId: batch.id, kind });
     try {
@@ -101,17 +146,13 @@ export default function FichiersScreen() {
         setError('Ce lot ne contient aucun code.');
         return;
       }
-      const plan = plansQuery.data?.find((p) => p.id === batch.planId);
-      const r = routerQuery.data;
-      const opts = {
-        routerName: r?.alias || r?.identity || 'WiFi',
-        planName: batch.plan.name,
-        durationMinutes: plan?.durationMinutes ?? 0,
-        priceXof: batch.plan.priceXof,
-        tickets: codes.map((v) => ({ code: v.code })),
-        template: r?.ticketTemplate,
-      };
-      if (kind === 'download') {
+      const opts = buildPdfOpts(batch, codes.map((v) => ({ code: v.code })));
+      if (kind === 'share') {
+        const text = codes.map((v) => v.code).join('\n');
+        await Share.share({
+          message: `Lot #${batch.seq} — ${batch.generated} tickets\n\n${text}`,
+        });
+      } else if (kind === 'download') {
         await printTickets(opts);
       } else {
         await printTicketsDirect(opts);
@@ -168,6 +209,8 @@ export default function FichiersScreen() {
     }
   }
 
+  const routerName = routerQuery.data?.alias || routerQuery.data?.identity || '';
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <AppHeader title={t('fichiers.screenTitle')} back />
@@ -181,96 +224,96 @@ export default function FichiersScreen() {
 
         {error ? <Banner tone="danger">{error}</Banner> : null}
 
-        <View style={{ gap: 10 }}>
+        <View style={{ gap: 12 }}>
           {!batchesQuery.data?.length ? (
             <Empty icon="folder-open-outline" text={t('fichiers.noBatch')} />
           ) : (
             batchesQuery.data.map((b) => {
-              const isDownloading =
-                busy?.batchId === b.id && busy.kind === 'download';
-              const isPrinting = busy?.batchId === b.id && busy.kind === 'print';
+              const isActive = busy?.batchId === b.id;
               return (
                 <View
                   key={b.id}
                   style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    gap: 12,
                     backgroundColor: theme.surface,
                     borderRadius: 16,
-                    padding: 14,
+                    padding: 16,
+                    gap: 12,
                   }}
                 >
-                  <View
-                    style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: 12,
-                      backgroundColor: withAlpha(theme.primary, 0.13),
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Ionicons name="document-text" size={22} color={theme.primary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text
-                      numberOfLines={1}
-                      style={{ color: theme.text, fontWeight: '700', fontSize: 13 }}
+                  {/* Header — Wallet style */}
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+                    <View
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 12,
+                        backgroundColor: withAlpha(theme.primary, 0.12),
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
                     >
-                      {batchFileName(b)}
-                    </Text>
-                    <Text style={{ color: theme.textMuted, fontSize: 11, marginTop: 2 }}>
-                      {b.generated} tickets · {new Date(b.createdAt).toLocaleDateString('fr-FR')}
-                    </Text>
+                      <Ionicons name="document-text" size={22} color={theme.primary} />
+                    </View>
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text style={{ color: theme.text, fontSize: 16, fontWeight: '700' }}>
+                        Lot #{b.seq}
+                      </Text>
+                      {routerName ? (
+                        <Text style={{ color: theme.textMuted, fontSize: 13 }}>
+                          {routerName}
+                        </Text>
+                      ) : null}
+                      <Text style={{ color: theme.textMuted, fontSize: 13 }}>
+                        {b.generated} tickets
+                      </Text>
+                      <Text style={{ color: theme.textMuted, fontSize: 12 }}>
+                        {fmtDateFull(b.createdAt)}
+                      </Text>
+                    </View>
+                    <Press
+                      accessibilityLabel={t('fichiers.deleteBatch')}
+                      onPress={() => setConfirmBatch(b)}
+                      disabled={busy !== null}
+                      style={{
+                        width: 34,
+                        height: 34,
+                        borderRadius: 8,
+                        backgroundColor: withAlpha(theme.danger, 0.08),
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Ionicons name="trash-outline" size={15} color={theme.danger} />
+                    </Press>
                   </View>
-                  <Press
-                    accessibilityLabel={t('fichiers.downloadBatch')}
-                    onPress={() => batchAction(b, 'download')}
-                    disabled={busy !== null}
-                    style={{
-                      width: 38,
-                      height: 38,
-                      borderRadius: 10,
-                      backgroundColor: withAlpha(theme.primaryMuted, 0.09),
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      opacity: isDownloading ? 0.5 : 1,
-                    }}
-                  >
-                    <Ionicons name="download-outline" size={17} color={theme.primaryMuted} />
-                  </Press>
-                  <Press
-                    accessibilityLabel={t('fichiers.printBatch')}
-                    onPress={() => batchAction(b, 'print')}
-                    disabled={busy !== null}
-                    style={{
-                      width: 38,
-                      height: 38,
-                      borderRadius: 10,
-                      backgroundColor: withAlpha(theme.primary, 0.09),
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      opacity: isPrinting ? 0.5 : 1,
-                    }}
-                  >
-                    <Ionicons name="print-outline" size={17} color={theme.primary} />
-                  </Press>
-                  <Press
-                    accessibilityLabel={t('fichiers.deleteBatch')}
-                    onPress={() => setConfirmBatch(b)}
-                    disabled={busy !== null}
-                    style={{
-                      width: 38,
-                      height: 38,
-                      borderRadius: 10,
-                      backgroundColor: withAlpha(theme.danger, 0.09),
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                  >
-                    <Ionicons name="trash-outline" size={17} color={theme.danger} />
-                  </Press>
+
+                  {/* Actions row */}
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <ActionButton
+                      icon="share-outline"
+                      label={t('common.share')}
+                      color={theme.primary}
+                      onPress={() => batchAction(b, 'share')}
+                      disabled={isActive}
+                      loading={isActive && busy?.kind === 'share'}
+                    />
+                    <ActionButton
+                      icon="print-outline"
+                      label={t('common.print')}
+                      color={theme.primaryMuted}
+                      onPress={() => batchAction(b, 'print')}
+                      disabled={isActive}
+                      loading={isActive && busy?.kind === 'print'}
+                    />
+                    <ActionButton
+                      icon="download-outline"
+                      label={t('common.download')}
+                      color={theme.primaryMuted}
+                      onPress={() => batchAction(b, 'download')}
+                      disabled={isActive}
+                      loading={isActive && busy?.kind === 'download'}
+                    />
+                  </View>
                 </View>
               );
             })

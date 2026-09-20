@@ -7,6 +7,10 @@ if (dsn) {
     dsn,
     tracesSampleRate: 0.2,
     environment: __DEV__ ? 'development' : 'production',
+    enableAutoSessionTracking: true,
+    sessionTrackingIntervalMillis: 30_000,
+    attachStacktrace: true,
+    maxBreadcrumbs: 50,
   });
 }
 

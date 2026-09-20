@@ -212,9 +212,7 @@ describe('NotificationsService', () => {
     it('lève NotFoundException si notification introuvable', async () => {
       prisma.notification.updateMany.mockResolvedValue({ count: 0 });
 
-      await expect(service.markRead('notif-none')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.markRead('notif-none')).rejects.toMatchObject({ status: 404 });
     });
   });
 

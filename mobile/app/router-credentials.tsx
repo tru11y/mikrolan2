@@ -116,7 +116,9 @@ export default function RouterCredentialsScreen() {
           setLoaded(true);
           return;
         }
-      } catch {}
+      } catch (err) {
+        console.warn('Failed to load router credentials from server:', err);
+      }
       setSyncState('not_found');
       if (routerQuery.data?.localAddress) {
         const parsed = parseAddress(routerQuery.data.localAddress);
@@ -171,7 +173,9 @@ export default function RouterCredentialsScreen() {
           credentials: { username, password },
           localAddress: `${address.trim()}:${portNum}`,
         });
-      } catch {}
+      } catch (err) {
+        console.warn('Failed to sync credentials to server:', err);
+      }
       qc.invalidateQueries({ queryKey: ['router-local-creds'] });
       router.back();
     } catch (e) {

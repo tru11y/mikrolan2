@@ -7,6 +7,7 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import { useTranslation } from 'react-i18next';
 import { api, extractErrorMessage, type LiveSession } from '@/src/lib/api';
 import { getLocalCredentials, saveLocalCredentials, parseAddress } from '@/src/lib/router-credentials';
+import { useSseLive } from '@/src/providers/live-events-provider';
 import { reportLanSessions } from '@/src/lib/sessionSync';
 import { getWifiInfo, sameSubnet24 } from '@/src/lib/lanBinder';
 import {
@@ -115,6 +116,7 @@ export default function SessionsScreen() {
   const navHeight = useBottomNavHeight();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
   const qc = useQueryClient();
+  const sseLive = useSseLive();
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<SortKey>('data');
@@ -122,7 +124,7 @@ export default function SessionsScreen() {
   const query = useQuery({
     queryKey: ['sessions', routerId],
     enabled: Boolean(routerId),
-    refetchInterval: POLL_MS,
+    refetchInterval: sseLive ? 30_000 : POLL_MS,
     placeholderData: keepPreviousData,
     queryFn: async (): Promise<LiveSession[]> => {
       const creds = await lanCredentials(routerId);
@@ -152,7 +154,9 @@ export default function SessionsScreen() {
           await saveLocalCredentials(routerId, { username: remote.username, password: remote.password, host, port });
           qc.invalidateQueries({ queryKey: ['router-local-creds', routerId] });
         }
-      } catch {}
+      } catch (err) {
+        console.warn('Failed to sync credentials from server:', err);
+      }
     })();
   }, [routerId, localCredsPresentQuery.isSuccess, localCredsPresentQuery.data, qc]);
 

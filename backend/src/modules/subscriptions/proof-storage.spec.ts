@@ -1,3 +1,4 @@
+import { BusinessException } from '../../common/exceptions/business.exception';
 import { NotFoundException } from '@nestjs/common';
 import {
   extensionForMimetype,
@@ -109,19 +110,19 @@ describe('resolveProofFile (FIND-004/FIND-005: path traversal + legacy compatibi
   });
 
   it('rejects a double extension disguising an HTML payload (proof.jpg.html)', () => {
-    expect(() => resolveProofFile('/uploads/proofs/proof.jpg.html')).toThrow(NotFoundException);
+    expect(() => resolveProofFile('/uploads/proofs/proof.jpg.html')).toThrow(BusinessException);
   });
 
   it('rejects an .html extension outright', () => {
-    expect(() => resolveProofFile('/uploads/proofs/shell.html')).toThrow(NotFoundException);
+    expect(() => resolveProofFile('/uploads/proofs/shell.html')).toThrow(BusinessException);
   });
 
   it('rejects an .svg extension outright', () => {
-    expect(() => resolveProofFile('/uploads/proofs/image.svg')).toThrow(NotFoundException);
+    expect(() => resolveProofFile('/uploads/proofs/image.svg')).toThrow(BusinessException);
   });
 
   it('rejects a filename with unexpected separators/characters', () => {
-    expect(() => resolveProofFile('/uploads/proofs/weird;name|here.jpg')).toThrow(NotFoundException);
+    expect(() => resolveProofFile('/uploads/proofs/weird;name|here.jpg')).toThrow(BusinessException);
   });
 
   it('neutralizes a Windows-style traversal attempt (basename() semantics are platform-dependent: win32 strips backslashes like separators and yields a safe bare filename; POSIX instead fails the character whitelist and throws — both outcomes prevent traversal)', () => {
@@ -129,7 +130,7 @@ describe('resolveProofFile (FIND-004/FIND-005: path traversal + legacy compatibi
     try {
       path = resolveProofFile('/uploads/proofs/..\\..\\windows\\win.ini.jpg').path;
     } catch (err) {
-      expect(err).toBeInstanceOf(NotFoundException);
+      expect(err).toBeInstanceOf(BusinessException);
       return;
     }
     expect(path).not.toMatch(/windows[\\/]win\.ini/);

@@ -1,10 +1,14 @@
 import {
   Injectable,
+  Logger,
   BadRequestException,
   ForbiddenException,
+  HttpStatus,
   NotFoundException,
   StreamableFile,
 } from '@nestjs/common';
+import { BusinessException } from '../../common/exceptions/business.exception';
+import { ErrorCode } from '../../common/error-codes';
 import {
   AuditAction,
   BillingPeriod,
@@ -27,10 +31,10 @@ import { EventsService } from '../events/events.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PERIOD_DAYS, TiersService, periodAmount } from './tiers.service';
 
-/** Free trial granted at signup. Local management only — remote is PRO. */
+/** Initial discover period for new accounts. FREE remains usable after it expires. */
 export const TRIAL_DAYS = 15;
 
-export type EntitlementTier = 'TRIAL' | 'PRO' | 'LOCKED';
+export type EntitlementTier = 'FREE' | 'PRO' | 'LOCKED';
 
 export interface Entitlement {
   tier: EntitlementTier;
@@ -59,6 +63,8 @@ function daysUntil(end: Date | null): number {
 
 @Injectable()
 export class SubscriptionsService {
+  private readonly logger = new Logger(SubscriptionsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly tiers: TiersService,
@@ -84,9 +90,11 @@ export class SubscriptionsService {
   /**
    * What a tenant is allowed to do right now.
    *
-   * A new account gets TRIAL_DAYS of full local management. Once that runs out
-   * without a paid plan, everything locks until PRO is activated — the padlock
-   * shown in the app is only a mirror of this, the API is the authority.
+   * FREE = permanent local version (LAN management, tickets, plans).
+   * PRO  = paid plan with remote access (WireGuard, diagnostics, support).
+   * LOCKED = PRO expired, must renew — local still works via FREE fallback.
+   *
+   * A FREE tenant is NEVER locked out. Only an expired PRO reverts to FREE.
    */
   async getEntitlement(tenantId: string): Promise<Entitlement> {
     const sub = await this.prisma.subscription.findUnique({
@@ -105,6 +113,7 @@ export class SubscriptionsService {
     const expired =
       !sub?.currentPeriodEnd || sub.currentPeriodEnd.getTime() < Date.now();
 
+    // Active PRO subscription → full access (local + remote).
     if (
       sub?.plan === SubscriptionPlan.PRO &&
       sub.status === SubscriptionStatus.ACTIVE &&
@@ -123,30 +132,17 @@ export class SubscriptionsService {
       };
     }
 
-    if (sub?.status === SubscriptionStatus.TRIALING && !expired) {
-      return {
-        tier: 'TRIAL',
-        localAllowed: true,
-        remoteAllowed: false,
-        endsAt: sub.currentPeriodEnd,
-        daysLeft: daysUntil(sub.currentPeriodEnd),
-        tierKey: null,
-        routerLimit: null,
-        userLimit: null,
-        voucherMonthlyLimit: null,
-      };
-    }
-
+    // FREE plan (or expired PRO fallback) → permanent local access, no remote.
     return {
-      tier: 'LOCKED',
-      localAllowed: false,
+      tier: 'FREE',
+      localAllowed: true,
       remoteAllowed: false,
       endsAt: sub?.currentPeriodEnd ?? null,
-      daysLeft: 0,
-      tierKey: null,
-      routerLimit: null,
-      userLimit: null,
-      voucherMonthlyLimit: null,
+      daysLeft: daysUntil(sub?.currentPeriodEnd ?? null),
+      tierKey: sub?.tier?.key ?? null,
+      routerLimit: sub?.routerLimitOverride ?? sub?.tier?.routerLimit ?? null,
+      userLimit: sub?.userLimitOverride ?? sub?.tier?.userLimit ?? null,
+      voucherMonthlyLimit: sub?.voucherLimitOverride ?? sub?.tier?.voucherMonthlyLimit ?? null,
     };
   }
 
@@ -165,8 +161,11 @@ export class SubscriptionsService {
       where: { tenantId, createdAt: { gte: startOfMonth } },
     });
     if (count >= entitlement.voucherMonthlyLimit) {
-      throw new ForbiddenException(
+      throw new BusinessException(
+        HttpStatus.FORBIDDEN,
+        ErrorCode.VOUCHER_LIMIT_REACHED,
         `Limite de ${entitlement.voucherMonthlyLimit} tickets/mois atteinte. Passez à une formule supérieure.`,
+        { limit: entitlement.voucherMonthlyLimit, used: count },
       );
     }
   }
@@ -178,8 +177,11 @@ export class SubscriptionsService {
       where: { tenantId, status: 'ACTIVE' },
     });
     if (count >= entitlement.userLimit) {
-      throw new ForbiddenException(
+      throw new BusinessException(
+        HttpStatus.FORBIDDEN,
+        ErrorCode.USER_LIMIT_REACHED,
         `Votre formule autorise ${entitlement.userLimit} utilisateur${entitlement.userLimit > 1 ? 's' : ''}. Passez à une formule supérieure pour en ajouter.`,
+        { limit: entitlement.userLimit, used: count },
       );
     }
   }
@@ -253,7 +255,7 @@ export class SubscriptionsService {
     // La plateforme apprend la demande immédiatement : c'est sa file de travail.
     this.events.publishPlatform({
       type: NotificationType.UPGRADE_REQUESTED,
-      title: 'Demande d’activation',
+      title: 'Demande d\'activation',
       body: `${tenant?.name ?? 'Un compte'} demande la formule ${tier.name}.`,
       data: {
         tenantId,
@@ -294,7 +296,7 @@ export class SubscriptionsService {
     invoiceId?: string,
   ) {
     const sub = await this.prisma.subscription.findUnique({ where: { tenantId } });
-    if (!sub) throw new NotFoundException('Abonnement introuvable.');
+    if (!sub) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.SUBSCRIPTION_NOT_FOUND, 'Abonnement introuvable.');
 
     const invoice = await this.prisma.invoice.findFirst({
       where: invoiceId
@@ -321,7 +323,7 @@ export class SubscriptionsService {
           data: { status: PaymentStatus.PAID, paidAt: now },
         });
         if (claimed.count === 0) {
-          throw new BadRequestException('Cette facture a déjà été traitée.');
+          throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.INVOICE_ALREADY_PROCESSED, 'Cette facture a déjà été traitée.');
         }
       } else {
         await tx.invoice.updateMany({
@@ -350,8 +352,8 @@ export class SubscriptionsService {
           type: NotificationType.SUBSCRIPTION_ACTIVATED,
           title: 'Abonnement activé',
           body: invoice?.tier
-            ? `Votre formule ${invoice.tier.name} est active jusqu’au ${end.toLocaleDateString('fr-FR')}.`
-            : `Votre abonnement PRO est actif jusqu’au ${end.toLocaleDateString('fr-FR')}.`,
+            ? `Votre formule ${invoice.tier.name} est active jusqu'au ${end.toLocaleDateString('fr-FR')}.`
+            : `Votre abonnement PRO est actif jusqu'au ${end.toLocaleDateString('fr-FR')}.`,
         },
       });
     });
@@ -383,7 +385,7 @@ export class SubscriptionsService {
   /** Downgrade to FREE and revoke any remote access (paywall re-enforced). */
   async deactivate(tenantId: string, actorId: string) {
     const sub = await this.prisma.subscription.findUnique({ where: { tenantId } });
-    if (!sub) throw new NotFoundException('Abonnement introuvable.');
+    if (!sub) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.SUBSCRIPTION_NOT_FOUND, 'Abonnement introuvable.');
 
     await this.prisma.$transaction(async (tx) => {
       await tx.subscription.update({
@@ -454,16 +456,16 @@ export class SubscriptionsService {
     const invoice = await this.prisma.invoice.findFirst({
       where: { id: invoiceId, tenantId },
     });
-    if (!invoice) throw new BadRequestException('Facture introuvable.');
+    if (!invoice) throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.INVOICE_NOT_FOUND, 'Facture introuvable.');
 
     // FIND-005: the stored extension is derived exclusively from the
     // server-validated mimetype — never from the client-supplied filename,
     // which cannot be trusted (originalname/mimetype are independently
     // controlled by the caller and were previously never cross-checked).
     const ext = extensionForMimetype(file.mimetype);
-    if (!ext) throw new BadRequestException('Type de fichier non supporté.');
+    if (!ext) throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.FILE_TYPE_UNSUPPORTED, 'Type de fichier non supporté.');
     if (!hasValidImageSignature(file.buffer, file.mimetype)) {
-      throw new BadRequestException('Fichier image invalide.');
+      throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.FILE_INVALID, 'Fichier image invalide.');
     }
 
     const dir = join(process.cwd(), PROOFS_PRIVATE_DIR);
@@ -516,11 +518,11 @@ export class SubscriptionsService {
       where: { id: proofId },
       include: { invoice: { select: { tenantId: true } } },
     });
-    if (!proof) throw new NotFoundException('Preuve introuvable.');
+    if (!proof) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.PROOF_NOT_FOUND, 'Preuve introuvable.');
 
     const isOwner = proof.invoice.tenantId === actor.tenantId;
     if (actor.role !== UserRole.SUPER_ADMIN && !isOwner) {
-      throw new NotFoundException('Preuve introuvable.');
+      throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.PROOF_NOT_FOUND, 'Preuve introuvable.');
     }
 
     const { path, ext } = resolveProofFile(proof.imageUrl);
@@ -528,7 +530,7 @@ export class SubscriptionsService {
     try {
       buffer = await readFile(path);
     } catch {
-      throw new NotFoundException('Fichier de preuve introuvable.');
+      throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.PROOF_FILE_NOT_FOUND, 'Fichier de preuve introuvable.');
     }
 
     const stream = new StreamableFile(buffer, {
@@ -551,8 +553,8 @@ export class SubscriptionsService {
       await this.prisma.auditLog.create({
         data: { tenantId, userId, action, entityType, entityId, metadata },
       });
-    } catch {
-      // swallow
+    } catch (err) {
+      this.logger.warn(`Audit log write failed: ${err instanceof Error ? err.message : err}`);
     }
   }
 }
@@ -640,12 +642,12 @@ export function resolveProofFile(imageUrl: string): { path: string; ext: string 
 
   const safeName = basename(imageUrl);
   if (!FILENAME_PATTERN.test(safeName)) {
-    throw new NotFoundException('Preuve introuvable.');
+    throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.PROOF_NOT_FOUND, 'Preuve introuvable.');
   }
 
   const fullPath = resolve(root, safeName);
   if (fullPath !== join(root, safeName) || !fullPath.startsWith(root + sep)) {
-    throw new NotFoundException('Preuve introuvable.');
+    throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.PROOF_NOT_FOUND, 'Preuve introuvable.');
   }
 
   const ext = safeName.split('.').pop()!.toLowerCase();

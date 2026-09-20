@@ -1,5 +1,5 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { FlatList, Modal, ScrollView, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,11 +10,14 @@ import {
   type AdminInvoice,
   type AdminTenant,
   type AdminUser,
+  type AuditEntry,
+  type FleetRouter,
   type Tier,
 } from '@/src/lib/api';
 import { describeError } from '@/src/lib/errors';
 import { formatXof } from '@/src/config/tiers';
 import { useAuth } from '@/src/providers/auth-provider';
+import { useSseLive } from '@/src/providers/live-events-provider';
 import {
   Badge,
   Button,
@@ -35,6 +38,7 @@ import {
   SkeletonCard,
   space,
   Stat,
+  Mono,
   Subtitle,
   Title,
   type,
@@ -47,13 +51,16 @@ import { useTheme } from '@/src/providers/theme-provider';
 import { AppHeader } from '@/src/components/AppHeader';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 
-type Tab = 'apercu' | 'demandes' | 'comptes' | 'formules' | 'tickets' | 'config';
+const tabSetterRef = { current: null as ((t: Tab) => void) | null };
+
+type Tab = 'apercu' | 'demandes' | 'fleet' | 'audit' | 'comptes' | 'formules' | 'tickets' | 'config';
 
 function useTabs(): { key: Tab; label: string; icon: any }[] {
   const { t } = useTranslation();
   return [
-    { key: 'apercu', label: t('admin.overview'), icon: 'speedometer-outline' },
+    { key: 'apercu', label: 'Dashboard', icon: 'speedometer-outline' },
     { key: 'demandes', label: t('admin.requests'), icon: 'mail-unread-outline' },
+    { key: 'fleet', label: 'Fleet', icon: 'hardware-chip-outline' },
     { key: 'comptes', label: t('admin.accounts'), icon: 'people-outline' },
     { key: 'tickets', label: t('admin.sav'), icon: 'chatbubbles-outline' },
     { key: 'formules', label: t('admin.formulas'), icon: 'pricetags-outline' },
@@ -72,15 +79,99 @@ function shortDate(iso: string | null): string {
 
 // ─── Aperçu ──────────────────────────────────────────────────────────────────
 
+function AlertBanner({
+  icon,
+  color,
+  text,
+  onPress,
+}: {
+  icon: string;
+  color: string;
+  text: string;
+  onPress?: () => void;
+}) {
+  const theme = useTheme();
+  const Wrapper = onPress ? Press : View;
+  return (
+    <Wrapper
+      onPress={onPress}
+      style={{
+        flexDirection: 'row',
+        gap: space.sm,
+        alignItems: 'center',
+        backgroundColor: withAlpha(color, 0.1),
+        borderRadius: radius.md,
+        padding: space.md,
+        borderLeftWidth: 3,
+        borderLeftColor: color,
+      }}
+    >
+      <Ionicons name={icon as any} size={18} color={color} />
+      <Text style={{ color: theme.text, fontSize: type.body, flex: 1, fontWeight: '600' }}>
+        {text}
+      </Text>
+      {onPress ? <Ionicons name="chevron-forward" size={16} color={theme.textMuted} /> : null}
+    </Wrapper>
+  );
+}
+
+function QuickAction({
+  icon,
+  label,
+  value,
+  tone,
+  onPress,
+}: {
+  icon: string;
+  label: string;
+  value: string;
+  tone?: string;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  const toneColor = tone === 'danger' ? theme.danger : tone === 'gold' ? theme.gold : tone === 'success' ? theme.success : theme.primary;
+  return (
+    <Press
+      onPress={onPress}
+      style={{
+        flex: 1,
+        backgroundColor: theme.surface,
+        borderRadius: radius.lg,
+        padding: space.md,
+        alignItems: 'center',
+        gap: 4,
+      }}
+    >
+      <View
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 18,
+          backgroundColor: withAlpha(toneColor, 0.12),
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Ionicons name={icon as any} size={18} color={toneColor} />
+      </View>
+      <Text style={{ color: theme.text, fontSize: type.bodyLg, fontWeight: '800' }}>{value}</Text>
+      <Text style={{ color: theme.textMuted, fontSize: type.micro - 1, textAlign: 'center' }}>{label}</Text>
+    </Press>
+  );
+}
+
 function OverviewTab() {
   const theme = useTheme();
   const { t } = useTranslation();
+  const sseLive = useSseLive();
   const query = useQuery({
     queryKey: ['admin', 'metrics'],
     queryFn: api.admin.metrics,
-    refetchInterval: 60_000,
+    refetchInterval: sseLive ? false : 60_000,
     placeholderData: keepPreviousData,
   });
+
+  const setParentTab = tabSetterRef.current;
 
   if (query.isLoading) {
     return (
@@ -104,124 +195,158 @@ function OverviewTab() {
   }
 
   const m = query.data;
+  const alerts: { icon: string; color: string; text: string; tab?: Tab }[] = [];
+
+  if (m.routers.offline > 0) {
+    alerts.push({
+      icon: 'warning-outline',
+      color: theme.danger,
+      text: `${m.routers.offline} routeur${m.routers.offline > 1 ? 's' : ''} hors ligne`,
+      tab: 'fleet',
+    });
+  }
+  if (m.routers.degraded > 0) {
+    alerts.push({
+      icon: 'alert-circle-outline',
+      color: theme.gold,
+      text: `${m.routers.degraded} routeur${m.routers.degraded > 1 ? 's' : ''} dégradé${m.routers.degraded > 1 ? 's' : ''}`,
+      tab: 'fleet',
+    });
+  }
+  if (m.pendingInvoices > 0) {
+    alerts.push({
+      icon: 'mail-unread-outline',
+      color: theme.primary,
+      text: `${m.pendingInvoices} paiement${m.pendingInvoices > 1 ? 's' : ''} en attente`,
+      tab: 'demandes',
+    });
+  }
+  if (m.support.overdue > 0) {
+    alerts.push({
+      icon: 'time-outline',
+      color: theme.danger,
+      text: `${m.support.overdue} ticket${m.support.overdue > 1 ? 's' : ''} SAV en retard`,
+      tab: 'tickets',
+    });
+  }
+  if (m.trialsExpiringIn7Days > 0) {
+    alerts.push({
+      icon: 'hourglass-outline',
+      color: theme.gold,
+      text: `${m.trialsExpiringIn7Days} essai${m.trialsExpiringIn7Days > 1 ? 's' : ''} expire${m.trialsExpiringIn7Days > 1 ? 'nt' : ''} sous 7j`,
+      tab: 'comptes',
+    });
+  }
+  if (m.revenue.untieredActive > 0) {
+    alerts.push({
+      icon: 'alert-circle-outline',
+      color: theme.gold,
+      text: `${m.revenue.untieredActive} abonnement${m.revenue.untieredActive > 1 ? 's' : ''} sans formule`,
+      tab: 'comptes',
+    });
+  }
 
   return (
     <View style={{ gap: space.lg }}>
-      <FadeIn>
-        <Row style={{ gap: space.md, alignItems: 'stretch' }}>
+      {/* Alertes critiques */}
+      {alerts.length > 0 ? (
+        <FadeIn>
+          <View style={{ gap: space.sm }}>
+            {alerts.map((a, i) => (
+              <AlertBanner
+                key={i}
+                icon={a.icon}
+                color={a.color}
+                text={a.text}
+                onPress={a.tab && setParentTab ? () => setParentTab(a.tab!) : undefined}
+              />
+            ))}
+          </View>
+        </FadeIn>
+      ) : (
+        <FadeIn>
+          <AlertBanner icon="checkmark-circle-outline" color={theme.success} text="Aucune alerte — tout est opérationnel" />
+        </FadeIn>
+      )}
+
+      {/* KPIs principaux */}
+      <FadeIn delay={60}>
+        <Row style={{ gap: space.sm, alignItems: 'stretch' }}>
           <Stat
             icon="cash-outline"
             tone="gold"
             value={formatXof(m.revenue.mrrXof)}
-            label={t('admin.mrr')}
-          />
-          <Stat
-            icon="mail-unread-outline"
-            tone={m.pendingInvoices > 0 ? 'primary' : 'text'}
-            value={String(m.pendingInvoices)}
-            label={t('admin.pendingRequests')}
-          />
-        </Row>
-      </FadeIn>
-
-      <FadeIn delay={60}>
-        <Row style={{ gap: space.md, alignItems: 'stretch' }}>
-          <Stat
-            icon="business-outline"
-            value={String(m.tenants.total)}
-            label={t('admin.clientAccounts')}
+            label="MRR"
           />
           <Stat
             icon="ribbon-outline"
             tone="success"
             value={String(m.tenants.pro)}
-            label={t('admin.proSubscribers')}
+            label="Clients PRO"
           />
         </Row>
       </FadeIn>
 
+      {/* Accès rapides */}
       <FadeIn delay={120}>
-        <Row style={{ gap: space.md, alignItems: 'stretch' }}>
-          <Stat
-            icon="hourglass-outline"
-            value={String(m.tenants.trialing)}
-            label={t('admin.trialing')}
+        <SectionTitle>Accès rapides</SectionTitle>
+        <Row style={{ gap: space.sm, alignItems: 'stretch', marginTop: space.sm }}>
+          <QuickAction
+            icon="hardware-chip-outline"
+            label="Routeurs"
+            value={`${m.routers.online}/${m.routers.total}`}
+            tone={m.routers.offline > 0 ? 'danger' : 'success'}
+            onPress={() => setParentTab?.('fleet')}
           />
-          <Stat
-            icon="lock-closed-outline"
-            tone={m.tenants.locked > 0 ? 'danger' : 'text'}
-            value={String(m.tenants.locked)}
-            label={t('admin.locked')}
+          <QuickAction
+            icon="mail-unread-outline"
+            label="Paiements"
+            value={String(m.pendingInvoices)}
+            tone={m.pendingInvoices > 0 ? 'gold' : undefined}
+            onPress={() => setParentTab?.('demandes')}
+          />
+          <QuickAction
+            icon="chatbubbles-outline"
+            label="SAV"
+            value={String(m.support.open)}
+            tone={m.support.overdue > 0 ? 'danger' : undefined}
+            onPress={() => setParentTab?.('tickets')}
           />
         </Row>
       </FadeIn>
 
+      {/* Opérations */}
       <FadeIn delay={180}>
         <Card>
-          <SectionTitle>{t('admin.operations')}</SectionTitle>
+          <SectionTitle>Opérations (30j)</SectionTitle>
           <Row>
-            <Text style={{ color: theme.textMuted, fontSize: type.body }}>
-              {t('admin.routersOnline')}
-            </Text>
-            <Text style={{ color: theme.text, fontSize: type.body, fontWeight: '700' }}>
-              {m.routers.online} / {m.routers.total}
-            </Text>
-          </Row>
-          <Row>
-            <Text style={{ color: theme.textMuted, fontSize: type.body }}>
-              {t('admin.ticketsGenerated30d')}
-            </Text>
+            <Text style={{ color: theme.textMuted, fontSize: type.body }}>Tickets générés</Text>
             <Text style={{ color: theme.text, fontSize: type.body, fontWeight: '700' }}>
               {m.vouchers30d.generated.toLocaleString('fr-FR')}
             </Text>
           </Row>
           <Row>
-            <Text style={{ color: theme.textMuted, fontSize: type.body }}>
-              {t('admin.ticketsUsed30d')}
-            </Text>
+            <Text style={{ color: theme.textMuted, fontSize: type.body }}>Tickets utilisés</Text>
             <Text style={{ color: theme.text, fontSize: type.body, fontWeight: '700' }}>
               {m.vouchers30d.activated.toLocaleString('fr-FR')}
             </Text>
           </Row>
           <Row>
-            <Text style={{ color: theme.textMuted, fontSize: type.body }}>
-              {t('admin.trialsExpiring7d')}
+            <Text style={{ color: theme.textMuted, fontSize: type.body }}>Sessions actives</Text>
+            <Text style={{ color: theme.text, fontSize: type.body, fontWeight: '700' }}>
+              {m.sessions?.active ?? 0}
             </Text>
-            <Text
-              style={{
-                color: m.trialsExpiringIn7Days > 0 ? theme.gold : theme.text,
-                fontSize: type.body,
-                fontWeight: '700',
-              }}
-            >
-              {m.trialsExpiringIn7Days}
+          </Row>
+          <Row>
+            <Text style={{ color: theme.textMuted, fontSize: type.body }}>Comptes</Text>
+            <Text style={{ color: theme.text, fontSize: type.body, fontWeight: '700' }}>
+              {m.tenants.total} ({m.tenants.trialing} essais)
             </Text>
           </Row>
         </Card>
       </FadeIn>
 
-      {m.revenue.untieredActive > 0 ? (
-        <FadeIn delay={240}>
-          <Row
-            style={{
-              gap: space.md,
-              alignItems: 'flex-start',
-              backgroundColor: withAlpha(theme.gold, 0.08),
-              borderRadius: radius.md,
-              padding: space.md,
-            }}
-          >
-            <Ionicons name="alert-circle-outline" size={18} color={theme.gold} />
-            <Text
-              style={{ color: theme.text, fontSize: type.micro, flex: 1, lineHeight: 16 }}
-            >
-              {t('admin.untieredWarning', { count: m.revenue.untieredActive })}
-            </Text>
-          </Row>
-        </FadeIn>
-      ) : null}
-
-      <FadeIn delay={300}>
+      <FadeIn delay={240}>
         <RevenueHistoryChart />
       </FadeIn>
     </View>
@@ -271,6 +396,188 @@ function RevenueHistoryChart() {
   );
 }
 
+// ─── Fleet ──────────────────────────────────────────────────────────────────
+
+function healthColor(health: string, theme: any): string {
+  if (health === 'ONLINE') return theme.success;
+  if (health === 'OFFLINE') return theme.danger;
+  return theme.gold;
+}
+
+function FleetTab() {
+  const theme = useTheme();
+  const toast = useToast();
+  const [filter, setFilter] = useState<string | undefined>(undefined);
+  const [search, setSearch] = useState('');
+  const [diagRouter, setDiagRouter] = useState<FleetRouter | null>(null);
+  const [confirmToken, setConfirmToken] = useState<string | null>(null);
+
+  const q = search.trim().length >= 3 ? search.trim() : undefined;
+
+  const query = useQuery({
+    queryKey: ['admin', 'fleet', filter, q],
+    queryFn: () => api.admin.fleet({ health: filter, q, limit: 50 }),
+    placeholderData: keepPreviousData,
+  });
+
+  const enterDiag = useMutation({
+    mutationFn: (r: FleetRouter) => api.admin.enterDiagnostic(r.tenant.id, r.id),
+    onSuccess: (data) => {
+      setConfirmToken(data.confirmToken);
+      toast.success(`Mode diagnostic activé (${data.expiresInSeconds}s)`);
+    },
+    onError: (e) => toast.error(describeError(e).message),
+  });
+
+  const reboot = useMutation({
+    mutationFn: () => {
+      if (!diagRouter || !confirmToken) throw new Error('Missing context');
+      return api.admin.confirmedReboot(diagRouter.tenant.id, diagRouter.id, confirmToken);
+    },
+    onSuccess: () => {
+      toast.success('Routeur redémarré');
+      setDiagRouter(null);
+      setConfirmToken(null);
+      query.refetch();
+    },
+    onError: (e) => toast.error(describeError(e).message),
+  });
+
+  if (query.isLoading) return <View style={{ gap: space.md }}><SkeletonCard /><SkeletonCard /></View>;
+  if (query.isError) return <ErrorState message={describeError(query.error).message} onRetry={() => query.refetch()} retrying={query.isFetching} />;
+
+  const items = query.data?.items ?? [];
+
+  return (
+    <View style={{ gap: space.md }}>
+      <Row style={{ gap: space.sm }}>
+        {[
+          { key: undefined, label: 'Tous' },
+          { key: 'ONLINE', label: 'En ligne' },
+          { key: 'OFFLINE', label: 'Hors ligne' },
+          { key: 'DEGRADED', label: 'Dégradé' },
+        ].map((f) => (
+          <Press
+            key={f.key ?? 'all'}
+            onPress={() => setFilter(f.key)}
+            style={{
+              flex: 1,
+              backgroundColor: filter === f.key ? withAlpha(theme.primary, 0.1) : theme.surfaceAlt,
+              borderRadius: radius.md,
+              paddingVertical: space.sm,
+              alignItems: 'center',
+            }}
+          >
+            <Text style={{
+              color: filter === f.key ? theme.primary : theme.textMuted,
+              fontSize: type.micro,
+              fontWeight: '700',
+            }}>
+              {f.label}
+            </Text>
+          </Press>
+        ))}
+      </Row>
+
+      <Field
+        label="Rechercher"
+        value={search}
+        onChangeText={setSearch}
+        placeholder="Routeur, client..."
+        autoCapitalize="none"
+        autoCorrect={false}
+        hint={search.length > 0 && search.trim().length < 3 ? '3 caractères minimum' : undefined}
+      />
+
+      {!items.length ? (
+        <Empty icon="hardware-chip-outline" text="Aucun routeur trouvé" />
+      ) : (
+        items.map((r, i) => {
+          const telem = r.telemetry?.[0];
+          return (
+            <FadeIn key={r.id} delay={i * 30}>
+              <Card>
+                <Row style={{ alignItems: 'flex-start' }}>
+                  <View style={{ flex: 1, paddingRight: space.sm }}>
+                    <Row style={{ justifyContent: 'flex-start', gap: space.sm }}>
+                      <View style={{
+                        width: 8, height: 8, borderRadius: 4,
+                        backgroundColor: healthColor(r.health, theme),
+                        marginTop: 5,
+                      }} />
+                      <Text style={{ color: theme.text, fontSize: type.bodyLg, fontWeight: '700' }}>
+                        {r.alias || r.identity}
+                      </Text>
+                    </Row>
+                    <Text style={{ color: theme.textMuted, fontSize: type.micro, marginLeft: space.lg }}>
+                      {r.tenant.name} · {r.model ?? 'MikroTik'} · {r.mode}
+                    </Text>
+                  </View>
+                  <Badge label={r.health} tone={r.health === 'ONLINE' ? 'success' : r.health === 'OFFLINE' ? 'danger' : 'gold'} />
+                </Row>
+
+                {telem ? (
+                  <Row style={{ marginTop: space.sm, gap: space.md }}>
+                    <Text style={{ color: theme.textMuted, fontSize: type.micro }}>
+                      CPU {telem.cpuPercent}%
+                    </Text>
+                    <Text style={{ color: theme.textMuted, fontSize: type.micro }}>
+                      RAM {telem.memoryPercent}%
+                    </Text>
+                    <Text style={{ color: theme.textMuted, fontSize: type.micro }}>
+                      Up {Math.floor(telem.uptimeSeconds / 3600)}h
+                    </Text>
+                  </Row>
+                ) : null}
+
+                {r.lastSyncError ? (
+                  <Text style={{ color: theme.danger, fontSize: type.micro, marginTop: 4 }}>
+                    {r.lastSyncError} ({r.syncFailCount}x)
+                  </Text>
+                ) : null}
+
+                <Row style={{ gap: space.sm, marginTop: space.sm }}>
+                  <View style={{ flex: 1 }}>
+                    <Button
+                      title="Diagnostic"
+                      variant="ghost"
+                      onPress={() => { setDiagRouter(r); setConfirmToken(null); }}
+                    />
+                  </View>
+                </Row>
+              </Card>
+            </FadeIn>
+          );
+        })
+      )}
+
+      <ConfirmDialog
+        visible={diagRouter !== null && confirmToken === null}
+        icon="medical-outline"
+        tone="primary"
+        title="Mode diagnostic"
+        message={`Entrer en mode diagnostic pour ${diagRouter?.alias || diagRouter?.identity} ?\nCette session expire après 5 minutes.`}
+        confirmLabel="Activer"
+        busy={enterDiag.isPending}
+        onConfirm={() => diagRouter && enterDiag.mutate(diagRouter)}
+        onCancel={() => setDiagRouter(null)}
+      />
+
+      <ConfirmDialog
+        visible={diagRouter !== null && confirmToken !== null}
+        icon="reload-outline"
+        tone="danger"
+        title="Confirmer le redémarrage"
+        message={`Redémarrer ${diagRouter?.alias || diagRouter?.identity} ?\nLe routeur sera indisponible ~30 secondes.`}
+        confirmLabel="Redémarrer"
+        busy={reboot.isPending}
+        onConfirm={() => reboot.mutate()}
+        onCancel={() => { setDiagRouter(null); setConfirmToken(null); }}
+      />
+    </View>
+  );
+}
+
 // ─── Demandes d'activation ───────────────────────────────────────────────────
 
 function RequestsTab() {
@@ -278,12 +585,13 @@ function RequestsTab() {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const toast = useToast();
+  const sseLive = useSseLive();
   const [confirming, setConfirming] = useState<AdminInvoice | null>(null);
 
   const query = useQuery({
     queryKey: ['admin', 'invoices', 'PENDING'],
     queryFn: () => api.admin.invoices({ status: 'PENDING', limit: 50 }),
-    refetchInterval: 30_000,
+    refetchInterval: sseLive ? false : 30_000,
     placeholderData: keepPreviousData,
   });
 
@@ -989,6 +1297,171 @@ function TicketsTab() {
   );
 }
 
+// ─── Audit Center ────────────────────────────────────────────────────────────
+
+const AUDIT_ACTION_COLORS: Record<string, string> = {
+  CREATE: '#22c55e', ACTIVATE: '#22c55e', RESTORE: '#22c55e',
+  UPDATE: '#3b82f6', SYNC: '#3b82f6', PUSH: '#3b82f6',
+  DELETE: '#ef4444', SUSPEND: '#ef4444', REJECT: '#ef4444',
+  REBOOT: '#f59e0b', GENERATE: '#8b5cf6',
+};
+
+const ENTITY_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  Router: 'hardware-chip-outline',
+  Voucher: 'ticket-outline',
+  VoucherBatch: 'layers-outline',
+  Plan: 'pricetags-outline',
+  Tenant: 'business-outline',
+  Invoice: 'receipt-outline',
+  Subscription: 'card-outline',
+};
+
+function AuditTab() {
+  const theme = useTheme();
+  const [entityFilter, setEntityFilter] = useState<string | null>(null);
+
+  const ENTITY_TYPES = ['Router', 'Voucher', 'VoucherBatch', 'Plan', 'Tenant', 'Invoice', 'Subscription'];
+
+  const auditQuery = useQuery({
+    queryKey: ['admin-audit', entityFilter],
+    queryFn: () => api.admin.audit({ limit: 50 }),
+    placeholderData: keepPreviousData,
+  });
+
+  function fmtTime(iso: string): string {
+    const d = new Date(iso);
+    const now = new Date();
+    const diff = now.getTime() - d.getTime();
+    if (diff < 60_000) return 'À l\'instant';
+    if (diff < 3600_000) return `Il y a ${Math.floor(diff / 60_000)} min`;
+    if (diff < 86400_000) return `Il y a ${Math.floor(diff / 3600_000)}h`;
+    return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  }
+
+  function extractErrorCode(meta: unknown): string | null {
+    if (meta && typeof meta === 'object' && 'errorCode' in meta) {
+      return (meta as Record<string, string>).errorCode;
+    }
+    return null;
+  }
+
+  return (
+    <View style={{ gap: 14 }}>
+      <SectionTitle>Audit</SectionTitle>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -space.lg }}>
+        <View style={{ flexDirection: 'row', gap: 6, paddingHorizontal: space.lg }}>
+          <Press
+            onPress={() => setEntityFilter(null)}
+            style={{
+              paddingVertical: 6, paddingHorizontal: 12, borderRadius: 10,
+              backgroundColor: !entityFilter ? theme.primary : theme.surface,
+            }}
+          >
+            <Text style={{ color: !entityFilter ? theme.primaryText : theme.textMuted, fontSize: 11, fontWeight: '700' }}>
+              Tout
+            </Text>
+          </Press>
+          {ENTITY_TYPES.map((et) => (
+            <Press
+              key={et}
+              onPress={() => setEntityFilter(entityFilter === et ? null : et)}
+              style={{
+                paddingVertical: 6, paddingHorizontal: 12, borderRadius: 10,
+                backgroundColor: entityFilter === et ? theme.primary : theme.surface,
+                flexDirection: 'row', alignItems: 'center', gap: 4,
+              }}
+            >
+              <Ionicons
+                name={ENTITY_ICONS[et] ?? 'ellipse-outline'}
+                size={12}
+                color={entityFilter === et ? theme.primaryText : theme.textMuted}
+              />
+              <Text style={{ color: entityFilter === et ? theme.primaryText : theme.textMuted, fontSize: 11, fontWeight: '700' }}>
+                {et}
+              </Text>
+            </Press>
+          ))}
+        </View>
+      </ScrollView>
+
+      {auditQuery.isLoading ? (
+        <View style={{ gap: 8 }}>
+          {[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} height={60} radius={12} />)}
+        </View>
+      ) : auditQuery.isError ? (
+        <ErrorState message={describeError(auditQuery.error).message} onRetry={() => auditQuery.refetch()} />
+      ) : !auditQuery.data?.items.length ? (
+        <Empty icon="receipt-outline" text="Aucun événement." />
+      ) : (
+        <View style={{ gap: 6 }}>
+          {auditQuery.data.items
+            .filter((e: AuditEntry) => !entityFilter || e.entityType === entityFilter)
+            .map((entry: AuditEntry) => {
+              const errCode = extractErrorCode(entry.metadata);
+              const actionColor = AUDIT_ACTION_COLORS[entry.action] ?? theme.textMuted;
+              return (
+                <Card key={entry.id} style={{ gap: 6, paddingVertical: 10, paddingHorizontal: 12 }}>
+                  <Row>
+                    <Row style={{ gap: 8, flex: 1, justifyContent: 'flex-start' }}>
+                      <View style={{
+                        width: 30, height: 30, borderRadius: 9,
+                        backgroundColor: withAlpha(actionColor, 0.1),
+                        alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        <Ionicons
+                          name={ENTITY_ICONS[entry.entityType] ?? 'ellipse-outline'}
+                          size={14}
+                          color={actionColor}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Row style={{ gap: 6, justifyContent: 'flex-start' }}>
+                          <Badge label={entry.action} tone={
+                            entry.action === 'DELETE' || entry.action === 'SUSPEND' || entry.action === 'REJECT'
+                              ? 'danger'
+                              : entry.action === 'CREATE' || entry.action === 'ACTIVATE' || entry.action === 'RESTORE'
+                                ? 'success'
+                                : 'secondary'
+                          } />
+                          <Text style={{ color: theme.textMuted, fontSize: 10 }}>
+                            {entry.entityType}
+                          </Text>
+                        </Row>
+                        <Text style={{ color: theme.text, fontSize: 12, fontWeight: '600', marginTop: 2 }} numberOfLines={1}>
+                          {entry.tenantName}
+                          {entry.userName ? ` · ${entry.userName}` : ''}
+                        </Text>
+                      </View>
+                    </Row>
+                    <Text style={{ color: theme.textMuted, fontSize: 10 }}>
+                      {fmtTime(entry.createdAt)}
+                    </Text>
+                  </Row>
+
+                  {errCode ? (
+                    <Row style={{ gap: 6, justifyContent: 'flex-start', marginTop: 2 }}>
+                      <Ionicons name="warning-outline" size={12} color={theme.danger} />
+                      <Text style={{ color: theme.danger, fontSize: 10, fontWeight: '700', fontFamily: 'monospace' }}>
+                        {errCode}
+                      </Text>
+                    </Row>
+                  ) : null}
+
+                  {entry.entityId ? (
+                    <Text style={{ color: theme.textMuted, fontSize: 9, fontFamily: 'monospace' }} numberOfLines={1}>
+                      {entry.entityId}
+                    </Text>
+                  ) : null}
+                </Card>
+              );
+            })}
+        </View>
+      )}
+    </View>
+  );
+}
+
 function ConfigTab() {
   const { t } = useTranslation();
   const toast = useToast();
@@ -1044,14 +1517,16 @@ export default function AdminScreen() {
   const navHeight = useBottomNavHeight();
   const router = useRouter();
   const { me } = useAuth();
+  const sseLive = useSseLive();
   const TABS = useTabs();
   const [tab, setTab] = useState<Tab>('apercu');
+  tabSetterRef.current = setTab;
 
   const pending = useQuery({
     queryKey: ['admin', 'invoices', 'PENDING'],
     queryFn: () => api.admin.invoices({ status: 'PENDING', limit: 50 }),
     enabled: me?.user.role === 'SUPER_ADMIN',
-    refetchInterval: 30_000,
+    refetchInterval: sseLive ? false : 30_000,
     placeholderData: keepPreviousData,
   });
   const pendingCount = pending.data?.items.length ?? 0;
@@ -1152,6 +1627,7 @@ export default function AdminScreen() {
 
         {tab === 'apercu' ? <OverviewTab /> : null}
         {tab === 'demandes' ? <RequestsTab /> : null}
+        {tab === 'fleet' ? <FleetTab /> : null}
         {tab === 'comptes' ? <AccountsTab /> : null}
         {tab === 'tickets' ? <TicketsTab /> : null}
         {tab === 'formules' ? <TiersTab /> : null}

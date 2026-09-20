@@ -5,7 +5,7 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import { useTranslation } from 'react-i18next';
 import { api, type AppNotification } from '@/src/lib/api';
 import { describeError } from '@/src/lib/errors';
-import { useLiveEvents } from '@/src/providers/live-events-provider';
+import { useLiveEvents, useSseLive } from '@/src/providers/live-events-provider';
 import {
   Empty,
   ErrorState,
@@ -67,11 +67,12 @@ export default function NotificationsScreen() {
   const qc = useQueryClient();
   const toast = useToast();
   const { live } = useLiveEvents();
+  const sseLive = useSseLive();
 
   const query = useQuery({
     queryKey: ['notifications', 'list'],
     queryFn: () => api.notifications.list(false, 50),
-    refetchInterval: 10_000,
+    refetchInterval: sseLive ? false : 10_000,
     placeholderData: keepPreviousData,
   });
 

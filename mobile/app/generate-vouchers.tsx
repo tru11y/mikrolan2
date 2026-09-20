@@ -4,7 +4,7 @@ import { ScrollView, Share, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type Plan, type VoucherItem } from '@/src/lib/api';
+import { api, type Plan, type VoucherItem, type GenerateResult } from '@/src/lib/api';
 import { useTranslation } from 'react-i18next';
 import { describeError } from '@/src/lib/errors';
 import { getLocalCredentials } from '@/src/lib/router-credentials';
@@ -13,6 +13,7 @@ import { TicketCard } from '@/src/components/TicketCard';
 import { printTickets } from '@/src/lib/ticketsPdf';
 import {
   Badge,
+  Banner,
   Button,
   ErrorState,
   FadeIn,
@@ -77,7 +78,10 @@ export default function GenerateVouchersScreen() {
   const [formatOpen, setFormatOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [justGenerated, setJustGenerated] = useState<VoucherItem[] | null>(null);
+  const [lastBatchSeq, setLastBatchSeq] = useState<number | null>(null);
   const [printBusy, setPrintBusy] = useState(false);
+  type GenOutcome = 'SUCCESS' | 'PARTIAL_SUCCESS' | 'FAILED';
+  const [lastOutcome, setLastOutcome] = useState<GenOutcome | null>(null);
 
   const selectedPlan = plansQuery.data?.find((p) => p.id === planId) ?? null;
 
@@ -92,6 +96,7 @@ export default function GenerateVouchersScreen() {
         priceXof: plan.priceXof,
         tickets: codes.map((v) => ({ code: v.code })),
         template: r?.ticketTemplate,
+        batchSeq: lastBatchSeq ?? undefined,
       });
     } catch (e) {
       toast.error(describeError(e).message);
@@ -110,37 +115,65 @@ export default function GenerateVouchersScreen() {
       return;
     }
     setBusy(true);
+    setLastOutcome(null);
+    let res: GenerateResult | null = null;
     try {
-      const res = await api.routers.generateVouchers(routerId, {
+      res = await api.routers.generateVouchers(routerId, {
         planId,
         quantity,
       });
-      // LOCAL (free) router: the backend recorded the codes but the app must
-      // push them to the router over the LAN, then confirm the RouterOS ids.
-      if (!res.pushedByServer && res.push) {
+    } catch (e) {
+      setLastOutcome('FAILED');
+      toast.error(describeError(e).message);
+      setBusy(false);
+      return;
+    }
+
+    setLastBatchSeq(res.batchSeq);
+    let outcome: GenOutcome =
+      res.batchStatus === 'COMPLETED' ? 'SUCCESS'
+      : res.batchStatus === 'PARTIAL_SUCCESS' ? 'PARTIAL_SUCCESS'
+      : 'FAILED';
+
+    if (outcome === 'SUCCESS' && !res.pushedByServer && res.push) {
+      try {
         const creds = await getLocalCredentials(routerId);
         if (!creds) {
-          toast.error(t('tickets.localCredsRequired'));
-          return;
+          outcome = 'PARTIAL_SUCCESS';
+        } else {
+          const items = await pushVouchersLan(creds, res.vouchers, res.push);
+          await api.routers.confirmVouchers(routerId, {
+            batchId: res.batchId,
+            items,
+          });
         }
-        const items = await pushVouchersLan(creds, res.vouchers, res.push);
-        await api.routers.confirmVouchers(routerId, {
-          batchId: res.batchId,
-          items,
-        });
+      } catch {
+        outcome = 'PARTIAL_SUCCESS';
       }
-      setJustGenerated(res.vouchers);
-      await qc.invalidateQueries({ queryKey: ['vouchers', routerId] });
-      await qc.invalidateQueries({ queryKey: ['batches', routerId] });
-      toast.success(t('tickets.generated', { count: res.vouchers.length }));
-      if (outputFormat === 'pdf' && selectedPlan) {
-        await printBatch(res.vouchers, selectedPlan);
-      }
-    } catch (e) {
-      toast.error(describeError(e).message);
-    } finally {
-      setBusy(false);
     }
+
+    setLastOutcome(outcome);
+    setJustGenerated(res.vouchers);
+    await qc.invalidateQueries({ queryKey: ['vouchers', routerId] });
+    await qc.invalidateQueries({ queryKey: ['batches', routerId] });
+
+    if (outcome === 'SUCCESS') {
+      toast.success(t('tickets.generated', { count: res.vouchers.length }));
+    } else if (outcome === 'PARTIAL_SUCCESS') {
+      toast.show(
+        t('tickets.generatedPartialDetail', {
+          pushed: res.pushedCount,
+          total: res.totalCount,
+        }),
+        'info',
+      );
+    } else {
+      toast.error(t('tickets.generatedFailed'));
+    }
+    if (outputFormat === 'pdf' && selectedPlan) {
+      await printBatch(res.vouchers, selectedPlan);
+    }
+    setBusy(false);
   }
 
   async function shareCodes(codes: VoucherItem[]) {
@@ -552,8 +585,14 @@ export default function GenerateVouchersScreen() {
               <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
                 {t('tickets.generated', { count: justGenerated.length })}
               </Text>
-              <Badge label={t('tickets.new')} tone="success" />
+              <Badge
+                label={lastOutcome === 'PARTIAL_SUCCESS' ? t('tickets.partialBadge') : t('tickets.new')}
+                tone={lastOutcome === 'PARTIAL_SUCCESS' ? 'warning' : 'success'}
+              />
             </View>
+            {lastOutcome === 'PARTIAL_SUCCESS' ? (
+              <Banner tone="warning">{t('tickets.partialMessage')}</Banner>
+            ) : null}
             {justGenerated.map((v, i) => (
               <TicketCard
                 key={v.id}

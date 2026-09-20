@@ -1,4 +1,6 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { BusinessException } from '../../common/exceptions/business.exception';
+import { ErrorCode } from '../../common/error-codes';
 import { Interval } from '@nestjs/schedule';
 import {
   ManagementMode,
@@ -237,9 +239,7 @@ export class SessionsService {
   async syncFromLan(routerId: string, active: LiveSession[]) {
     const router = await this.getRouter(routerId);
     if (router.mode === ManagementMode.REMOTE) {
-      throw new BadRequestException(
-        'Routeur distant : les sessions sont synchronisées par le serveur',
-      );
+      throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.SESSION_DISCONNECT_FAILED, 'Routeur distant : les sessions sont synchronisées par le serveur');
     }
     await this.reconcileActive(routerId, router.tenantId, active);
     return { synced: active.length };
@@ -290,9 +290,7 @@ export class SessionsService {
   async terminate(routerId: string, mikrotikId: string) {
     const router = await this.getRouter(routerId);
     if (router.mode !== ManagementMode.REMOTE) {
-      throw new BadRequestException(
-        'Routeur local : déconnexion via le LAN',
-      );
+      throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.SESSION_DISCONNECT_FAILED, 'Routeur local : déconnexion via le LAN');
     }
     await this.remote.run(routerId, (c) => removeActive(c, mikrotikId));
 
@@ -310,7 +308,7 @@ export class SessionsService {
       where: { id: routerId, deletedAt: null },
       select: { id: true, mode: true, tenantId: true },
     });
-    if (!router) throw new NotFoundException('Routeur introuvable — il a peut-être été supprimé.');
+    if (!router) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.ROUTER_NOT_FOUND, 'Routeur introuvable — il a peut-être été supprimé.');
     return router;
   }
 }

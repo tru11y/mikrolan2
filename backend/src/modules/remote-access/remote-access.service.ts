@@ -1,10 +1,10 @@
 import {
-  ConflictException,
-  ForbiddenException,
+  HttpStatus,
   Injectable,
-  NotFoundException,
-  ServiceUnavailableException,
+  Logger,
 } from '@nestjs/common';
+import { BusinessException } from '../../common/exceptions/business.exception';
+import { ErrorCode } from '../../common/error-codes';
 import { ConfigService } from '@nestjs/config';
 import {
   AuditAction,
@@ -46,6 +46,7 @@ export interface ProvisionBundle {
 
 @Injectable()
 export class RemoteAccessService {
+  private readonly logger = new Logger(RemoteAccessService.name);
   constructor(
     private readonly prisma: PrismaService,
     private readonly subscriptions: SubscriptionsService,
@@ -64,22 +65,20 @@ export class RemoteAccessService {
   ): Promise<ProvisionBundle> {
     const tenantId = getTenantContext()?.tenantId;
     if (!tenantId || !(await this.subscriptions.isRemoteAllowed(tenantId))) {
-      throw new ForbiddenException(
-        'La gestion à distance nécessite un abonnement PRO actif',
-      );
+      throw new BusinessException(HttpStatus.FORBIDDEN, ErrorCode.SUBSCRIPTION_TIER_INSUFFICIENT, 'La gestion à distance nécessite un abonnement payant actif.');
     }
 
     const router = await this.prisma.router.findFirst({
       where: { id: routerId, deletedAt: null },
       select: { id: true },
     });
-    if (!router) throw new NotFoundException('Routeur introuvable — il a peut-être été supprimé.');
+    if (!router) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.ROUTER_NOT_FOUND, 'Routeur introuvable — il a peut-être été supprimé.');
 
     const existing = await this.prisma.remotePeer.findFirst({
       where: { routerId },
     });
     if (existing && existing.status === RemotePeerStatus.ACTIVE) {
-      throw new ConflictException('La gestion à distance est déjà activée pour ce routeur.');
+      throw new BusinessException(HttpStatus.CONFLICT, ErrorCode.REMOTE_ACCESS_ALREADY_ACTIVE, 'La gestion à distance est déjà activée pour ce routeur.');
     }
 
     // Reuse the router's existing tunnel IP/port on re-provision (previously
@@ -106,10 +105,13 @@ export class RemoteAccessService {
         sshPort,
         winboxPort,
       });
-    } catch {
-      throw new ServiceUnavailableException(
-        "Impossible d'activer la gestion à distance pour le moment. Réessayez plus tard.",
-      );
+    } catch (err) {
+      this.logger.warn(`WireGuard provision failed for router ${routerId}: ${err instanceof Error ? err.message : err}`);
+      await this.audit(tenantId, actorId, AuditAction.PROVISION, routerId, {
+        errorCode: ErrorCode.ROUTER_PROVISION_FAILED,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, ErrorCode.ROUTER_PROVISION_FAILED, "Impossible d'activer la gestion à distance pour le moment. Réessayez plus tard.");
     }
 
     const data = {
@@ -160,7 +162,7 @@ export class RemoteAccessService {
   async revoke(routerId: string, actorId: string) {
     const tenantId = getTenantContext()?.tenantId;
     const peer = await this.prisma.remotePeer.findFirst({ where: { routerId } });
-    if (!peer) throw new NotFoundException('Aucun accès à distance actif pour ce routeur.');
+    if (!peer) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.REMOTE_ACCESS_NOT_FOUND, 'Aucun accès à distance actif pour ce routeur.');
 
     try {
       await this.wg.removePeer(peer.wgPublicKey);
@@ -169,8 +171,14 @@ export class RemoteAccessService {
         sshPort: peer.sshPort,
         winboxPort: peer.winboxPort,
       });
-    } catch {
-      // proceed with DB revocation even if the peer removal call fails
+    } catch (err) {
+      this.logger.warn(`WireGuard peer removal failed (proceeding with DB revocation): ${err instanceof Error ? err.message : err}`);
+      if (tenantId) {
+        await this.audit(tenantId, actorId, AuditAction.REVOKE, routerId, {
+          errorCode: ErrorCode.WG_PEER_REMOVAL_FAILED,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     await this.prisma.$transaction(async (tx) => {
@@ -249,9 +257,7 @@ export class RemoteAccessService {
     let host = 2; // .1 reserved for the server
     while (host <= maxHost && usedHosts.has(host)) host += 1;
     if (host > maxHost) {
-      throw new ServiceUnavailableException(
-        "Impossible d'activer la gestion à distance pour le moment. Réessayez plus tard.",
-      );
+      throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, ErrorCode.ROUTER_PROVISION_FAILED, "Impossible d'activer la gestion à distance pour le moment. Réessayez plus tard.");
     }
     const wgIp = intToIp((baseInt + host) >>> 0);
 
@@ -261,9 +267,7 @@ export class RemoteAccessService {
     let port = portMin;
     while (port <= portMax && usedPorts.has(port)) port += 1;
     if (port > portMax) {
-      throw new ServiceUnavailableException(
-        "Impossible d'activer la gestion à distance pour le moment. Réessayez plus tard.",
-      );
+      throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, ErrorCode.ROUTER_PROVISION_FAILED, "Impossible d'activer la gestion à distance pour le moment. Réessayez plus tard.");
     }
 
     return { wgIp, allocatedPort: port };
@@ -287,8 +291,8 @@ export class RemoteAccessService {
           metadata,
         },
       });
-    } catch {
-      // append-only, best-effort
+    } catch (err) {
+      this.logger.warn(`Audit log write failed: ${err instanceof Error ? err.message : err}`);
     }
   }
 }

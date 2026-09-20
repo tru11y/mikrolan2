@@ -80,43 +80,44 @@ describe('SubscriptionsService', () => {
       expect(e.routerLimit).toBe(3);
     });
 
-    it('TRIALING + not expired → tier TRIAL', async () => {
+    it('FREE plan → tier FREE, permanent local access', async () => {
       const service = buildService();
-      const future = new Date(Date.now() + 10 * 86_400_000);
       mockPrisma.subscription.findUnique.mockResolvedValue({
         plan: SubscriptionPlan.FREE,
-        status: SubscriptionStatus.TRIALING,
-        currentPeriodEnd: future,
+        status: SubscriptionStatus.ACTIVE,
+        currentPeriodEnd: null,
         tier: null,
       });
 
       const e = await service.getEntitlement('t1');
-      expect(e.tier).toBe('TRIAL');
+      expect(e.tier).toBe('FREE');
       expect(e.localAllowed).toBe(true);
       expect(e.remoteAllowed).toBe(false);
     });
 
-    it('expired → tier LOCKED', async () => {
+    it('expired PRO → falls back to FREE (local still works)', async () => {
       const service = buildService();
       const past = new Date(Date.now() - 86_400_000);
       mockPrisma.subscription.findUnique.mockResolvedValue({
         plan: SubscriptionPlan.PRO,
         status: SubscriptionStatus.ACTIVE,
         currentPeriodEnd: past,
-        tier: null,
+        tier: { key: 'essentiel', routerLimit: 3, userLimit: null, voucherMonthlyLimit: null },
       });
 
       const e = await service.getEntitlement('t1');
-      expect(e.tier).toBe('LOCKED');
-      expect(e.localAllowed).toBe(false);
+      expect(e.tier).toBe('FREE');
+      expect(e.localAllowed).toBe(true);
+      expect(e.remoteAllowed).toBe(false);
     });
 
-    it('no subscription → tier LOCKED', async () => {
+    it('no subscription → tier FREE', async () => {
       const service = buildService();
       mockPrisma.subscription.findUnique.mockResolvedValue(null);
 
       const e = await service.getEntitlement('t1');
-      expect(e.tier).toBe('LOCKED');
+      expect(e.tier).toBe('FREE');
+      expect(e.localAllowed).toBe(true);
     });
   });
 

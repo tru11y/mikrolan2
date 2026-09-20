@@ -1,9 +1,9 @@
 import {
-  BadRequestException,
-  ConflictException,
+  HttpStatus,
   Injectable,
-  NotFoundException,
 } from '@nestjs/common';
+import { BusinessException } from '../../common/exceptions/business.exception';
+import { ErrorCode } from '../../common/error-codes';
 import { BillingPeriod, Prisma, SubscriptionTier } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
@@ -113,8 +113,8 @@ export class TiersService {
 
   async getByKeyOrThrow(key: string): Promise<SubscriptionTier> {
     const tier = await this.prisma.subscriptionTier.findUnique({ where: { key } });
-    if (!tier) throw new NotFoundException(`Formule inconnue : ${key}`);
-    if (!tier.active) throw new BadRequestException(`Formule archivée : ${key}`);
+    if (!tier) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.TIER_NOT_FOUND, `Formule inconnue : ${key}`);
+    if (!tier.active) throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.TIER_ARCHIVED, `Formule archivée : ${key}`);
     return tier;
   }
 
@@ -129,9 +129,7 @@ export class TiersService {
       orderBy: { monthlyXof: 'asc' },
     });
     if (!tier) {
-      throw new BadRequestException(
-        'Aucune formule payante n’est publiée. Contactez l’administrateur.',
-      );
+      throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.TIER_NOT_FOUND, 'Aucune formule payante n\'est publiée. Contactez l\'administrateur.');
     }
     return tier;
   }
@@ -140,7 +138,7 @@ export class TiersService {
     const existing = await this.prisma.subscriptionTier.findUnique({
       where: { key: dto.key },
     });
-    if (existing) throw new ConflictException(`La formule ${dto.key} existe déjà.`);
+    if (existing) throw new BusinessException(HttpStatus.CONFLICT, ErrorCode.TIER_ALREADY_EXISTS, `La formule ${dto.key} existe déjà.`);
 
     const tier = await this.prisma.subscriptionTier.create({
       data: { ...dto, features: dto.features },
@@ -172,7 +170,7 @@ export class TiersService {
 
   private async getByIdOrThrow(id: string): Promise<SubscriptionTier> {
     const tier = await this.prisma.subscriptionTier.findUnique({ where: { id } });
-    if (!tier) throw new NotFoundException('Formule introuvable');
+    if (!tier) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.TIER_NOT_FOUND, 'Formule introuvable');
     return tier;
   }
 }

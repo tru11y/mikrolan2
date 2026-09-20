@@ -72,9 +72,19 @@ export default function AdminTenantScreen() {
     enabled: !!id && !!diagRouterId,
   });
 
+  const [rebootToken, setRebootToken] = useState<string | null>(null);
+
+  const enterDiagMutation = useMutation({
+    mutationFn: (routerId: string) => api.admin.enterDiagnostic(id!, routerId),
+    onSuccess: (data) => setRebootToken(data.confirmToken),
+  });
+
   const rebootMutation = useMutation({
-    mutationFn: (routerId: string) => api.admin.rebootRouter(id!, routerId),
-    onSuccess: () => setDiagRouterId(null),
+    mutationFn: (routerId: string) => {
+      if (!rebootToken) throw new Error('Token manquant');
+      return api.admin.confirmedReboot(id!, routerId, rebootToken);
+    },
+    onSuccess: () => { setDiagRouterId(null); setRebootToken(null); },
   });
 
   const [showEditSub, setShowEditSub] = useState(false);
@@ -321,12 +331,21 @@ export default function AdminTenantScreen() {
                 ))}
               </View>
             ) : null}
-            <Button
-              title={tr('adminTenant.reboot')}
-              variant="danger"
-              onPress={() => { if (diagRouterId) rebootMutation.mutate(diagRouterId); }}
-              loading={rebootMutation.isPending}
-            />
+            {rebootToken ? (
+              <Button
+                title="Confirmer le redémarrage"
+                variant="danger"
+                onPress={() => { if (diagRouterId) rebootMutation.mutate(diagRouterId); }}
+                loading={rebootMutation.isPending}
+              />
+            ) : (
+              <Button
+                title={tr('adminTenant.reboot')}
+                variant="danger"
+                onPress={() => { if (diagRouterId) enterDiagMutation.mutate(diagRouterId); }}
+                loading={enterDiagMutation.isPending}
+              />
+            )}
           </Card>
         </View>
       </Modal>

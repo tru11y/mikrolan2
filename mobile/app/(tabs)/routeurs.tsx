@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api, extractErrorMessage, type RouterItem } from '@/src/lib/api';
 import { useAuth } from '@/src/providers/auth-provider';
+import { useSseLive } from '@/src/providers/live-events-provider';
 import {
   Banner,
   Card,
@@ -28,17 +29,20 @@ import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 import { RouterStatusDot } from '@/src/components/RouterStatusDot';
+import { useBackToDashboard } from '@/src/hooks/use-back-to-dashboard';
 
 export default function RouteursScreen() {
+  useBackToDashboard();
   const theme = useTheme();
   const { t } = useTranslation();
   const router = useRouter();
   const navHeight = useBottomNavHeight();
   const { isPro } = useAuth();
+  const sseLive = useSseLive();
   const query = useQuery({
     queryKey: ['routers'],
     queryFn: api.routers.list,
-    refetchInterval: 15_000,
+    refetchInterval: sseLive ? false : 30_000,
     placeholderData: keepPreviousData,
   });
 

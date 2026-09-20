@@ -30,6 +30,7 @@ import { AdminService } from './admin.service';
 import {
   adminTicketMessageSchema,
   listAuditQuerySchema,
+  listFleetQuerySchema,
   listInvoicesQuerySchema,
   listTenantsQuerySchema,
   listTenantRoutersQuerySchema,
@@ -43,6 +44,7 @@ import {
   validateInvoiceSchema,
   type AdminTicketMessageDto,
   type ListAuditQueryDto,
+  type ListFleetQueryDto,
   type ListInvoicesQueryDto,
   type ListTenantsQueryDto,
   type ListTenantRoutersQueryDto,
@@ -56,6 +58,8 @@ import {
   type UpdateConfigDto,
   type ValidateInvoiceDto,
   patchSubscriptionSchema,
+  rebootConfirmSchema,
+  type RebootConfirmDto,
 } from './dto/admin.schemas';
 
 /**
@@ -276,6 +280,15 @@ export class AdminController {
     return this.admin.updateConfig(dto);
   }
 
+  // ── Fleet (vue cross-tenant routeurs payants) ─────────
+
+  @Get('fleet')
+  listFleet(
+    @Query(new ZodValidationPipe(listFleetQuerySchema)) query: ListFleetQueryDto,
+  ) {
+    return this.admin.listFleet(query);
+  }
+
   // ── Router diagnostics (P0-05/P0-06) ──────────────────
 
   @Get('tenants/:tenantId/routers/:routerId/diagnostics')
@@ -286,13 +299,25 @@ export class AdminController {
     return this.remoteRouter.adminSystemResource(tenantId, routerId);
   }
 
+  @Post('tenants/:tenantId/routers/:routerId/enter-diagnostic')
+  @HttpCode(200)
+  enterDiagnostic(
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @Param('routerId', ParseUUIDPipe) routerId: string,
+    @CurrentUser() actor: TenantContext,
+  ) {
+    return this.admin.enterDiagnosticMode(tenantId, routerId, actor);
+  }
+
   @Post('tenants/:tenantId/routers/:routerId/reboot')
   @HttpCode(200)
   routerReboot(
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Param('routerId', ParseUUIDPipe) routerId: string,
+    @Body(new ZodValidationPipe(rebootConfirmSchema)) body: RebootConfirmDto,
+    @CurrentUser() actor: TenantContext,
   ) {
-    return this.remoteRouter.adminReboot(tenantId, routerId);
+    return this.admin.confirmedReboot(tenantId, routerId, body.confirmToken, actor);
   }
 
   // ── Revenue history (P0-05) ────────────────────────────

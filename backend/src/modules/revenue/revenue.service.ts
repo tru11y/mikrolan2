@@ -1,4 +1,6 @@
-import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { BusinessException } from '../../common/exceptions/business.exception';
+import { ErrorCode } from '../../common/error-codes';
 import { UserRole, VoucherStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getTenantContext } from '../../common/context/tenant-context';
@@ -127,11 +129,11 @@ export class RevenueService {
    */
   private assertTenantAccess(tenantId: string): void {
     if (!tenantId) {
-      throw new ForbiddenException('RevenueService: tenantId requis.');
+      throw new BusinessException(HttpStatus.FORBIDDEN, ErrorCode.TENANT_CONTEXT_MISSING, 'RevenueService: tenantId requis.');
     }
     const ctx = getTenantContext();
     if (!ctx) {
-      throw new ForbiddenException('RevenueService: aucun contexte tenant ouvert.');
+      throw new BusinessException(HttpStatus.FORBIDDEN, ErrorCode.TENANT_CONTEXT_MISSING, 'RevenueService: aucun contexte tenant ouvert.');
     }
     if (ctx.role === UserRole.SUPER_ADMIN) {
       // SUPER_ADMIN n'a pas de tenant propre — le tenantId explicite EST la
@@ -144,7 +146,7 @@ export class RevenueService {
       logger.warn(
         'RevenueService: tenantId demandé différent du contexte actif — requête refusée.',
       );
-      throw new ForbiddenException('RevenueService: tenantId incohérent avec le contexte.');
+      throw new BusinessException(HttpStatus.FORBIDDEN, ErrorCode.TENANT_CONTEXT_MISMATCH, 'RevenueService: tenantId incohérent avec le contexte.');
     }
   }
 

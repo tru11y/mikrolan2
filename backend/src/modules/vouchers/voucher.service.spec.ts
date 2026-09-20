@@ -122,7 +122,7 @@ describe('VoucherService', () => {
 
       await expect(
         service.verifyVoucherForOperator({ ticket: 'FAKE-CODE' }),
-      ).rejects.toThrow(UnauthorizedException);
+      ).rejects.toMatchObject({ status: 401 });
     });
 
     it('returns canLogin: false for REVOKED voucher', async () => {
@@ -157,7 +157,7 @@ describe('VoucherService', () => {
 
       await expect(
         service.lookupByCode('router-1', 'UNKNOWN'),
-      ).rejects.toThrow(NotFoundException);
+      ).rejects.toMatchObject({ status: 404 });
     });
   });
 
@@ -172,16 +172,14 @@ describe('VoucherService', () => {
         router: { mode: ManagementMode.LOCAL },
       });
 
-      await expect(service.revoke('v-1')).rejects.toThrow(BadRequestException);
+      await expect(service.revoke('v-1')).rejects.toMatchObject({ status: 400 });
     });
 
     it('throws NotFoundException if voucher does not exist', async () => {
       const { service, prisma } = makeService();
       prisma.voucher.findFirst.mockResolvedValue(null);
 
-      await expect(service.revoke('nonexistent')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(service.revoke('nonexistent')).rejects.toMatchObject({ status: 404 });
     });
 
     it('revokes a GENERATED voucher successfully', async () => {

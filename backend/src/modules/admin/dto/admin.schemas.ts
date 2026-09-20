@@ -4,6 +4,7 @@ import {
   BillingPeriod,
   PaymentProvider,
   PaymentStatus,
+  RouterHealth,
   SubscriptionPlan,
   SubscriptionStatus,
   TenantStatus,
@@ -50,6 +51,8 @@ export type ListInvoicesQueryDto = z.infer<typeof listInvoicesQuerySchema>;
 export const listAuditQuerySchema = z.object({
   tenantId: z.string().uuid().optional(),
   action: z.nativeEnum(AuditAction).optional(),
+  entityType: z.string().max(50).optional(),
+  errorCode: z.string().max(50).optional(),
   cursor,
   limit,
 });
@@ -121,3 +124,16 @@ export const adminTicketMessageSchema = z.object({
   body: z.string().trim().min(1).max(2000),
 });
 export type AdminTicketMessageDto = z.infer<typeof adminTicketMessageSchema>;
+
+export const listFleetQuerySchema = z.object({
+  health: z.nativeEnum(RouterHealth).optional(),
+  q: search,
+  cursor,
+  limit,
+});
+export type ListFleetQueryDto = z.infer<typeof listFleetQuerySchema>;
+
+export const rebootConfirmSchema = z.object({
+  confirmToken: z.string().uuid(),
+});
+export type RebootConfirmDto = z.infer<typeof rebootConfirmSchema>;
