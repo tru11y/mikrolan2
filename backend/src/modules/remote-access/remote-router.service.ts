@@ -1,11 +1,10 @@
 import {
-  BadRequestException,
-  ForbiddenException,
+  HttpStatus,
   Injectable,
   Logger,
-  NotFoundException,
-  ServiceUnavailableException,
 } from '@nestjs/common';
+import { BusinessException } from '../../common/exceptions/business.exception';
+import { ErrorCode } from '../../common/error-codes';
 import { RemotePeerStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CryptoService } from '../../common/crypto/crypto.service';
@@ -51,25 +50,23 @@ export class RemoteRouterService {
   ): Promise<T> {
     const tenantId = getTenantContext()?.tenantId;
     if (!tenantId || !(await this.subscriptions.isRemoteAllowed(tenantId))) {
-      throw new ForbiddenException('Abonnement PRO actif requis');
+      throw new BusinessException(HttpStatus.FORBIDDEN, ErrorCode.SUBSCRIPTION_INACTIVE, 'Abonnement payant actif requis.');
     }
 
     const router = await this.prisma.router.findFirst({
       where: { id: routerId, deletedAt: null },
       select: { id: true, credEncrypted: true },
     });
-    if (!router) throw new NotFoundException('Routeur introuvable — il a peut-être été supprimé.');
+    if (!router) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.ROUTER_NOT_FOUND, 'Routeur introuvable — il a peut-être été supprimé.');
     if (!router.credEncrypted) {
-      throw new BadRequestException(
-        'Identifiants RouterOS non configurés pour ce routeur',
-      );
+      throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.ROUTER_CREDS_MISSING, 'Identifiants RouterOS non configurés pour ce routeur');
     }
 
     const peer = await this.prisma.remotePeer.findFirst({
       where: { routerId, status: RemotePeerStatus.ACTIVE },
       select: { wgIp: true },
     });
-    if (!peer) throw new BadRequestException('Tunnel non provisionné');
+    if (!peer) throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.TUNNEL_NOT_PROVISIONED, 'Tunnel non provisionné');
 
     const creds = JSON.parse(this.crypto.decrypt(router.credEncrypted)) as {
       username: string;
@@ -94,11 +91,11 @@ export class RemoteRouterService {
         );
       } catch (e) {
         if (e instanceof RouterOsAuthError) {
-          throw new BadRequestException('Identifiants RouterOS incorrects');
+          throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.ROUTER_CREDS_INVALID, 'Identifiants RouterOS incorrects');
         }
         if (e instanceof RouterOsApiError) {
           this.logger.warn(`RouterOS refused command on ${routerId}: ${e.message}`);
-          throw new ServiceUnavailableException('Le routeur a refusé la commande.');
+          throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, ErrorCode.ROUTER_COMMAND_REFUSED, 'Le routeur a refusé la commande.');
         }
         lastError = e as Error;
         if (attempt < maxRetries) {
@@ -109,9 +106,7 @@ export class RemoteRouterService {
         }
       }
     }
-    throw new ServiceUnavailableException(
-      `Routeur injoignable via le tunnel${lastError ? `: ${lastError.message}` : ''}`,
-    );
+    throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, ErrorCode.ROUTER_UNREACHABLE, `Routeur injoignable via le tunnel${lastError ? `: ${lastError.message}` : ''}`);
   }
 
   async systemResource(routerId: string): Promise<ApiRow> {
@@ -130,16 +125,16 @@ export class RemoteRouterService {
       where: { id: routerId, tenantId, deletedAt: null },
       select: { id: true, credEncrypted: true },
     });
-    if (!router) throw new NotFoundException('Routeur introuvable');
+    if (!router) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.ROUTER_NOT_FOUND, 'Routeur introuvable');
     if (!router.credEncrypted) {
-      throw new BadRequestException('Identifiants RouterOS non configurés');
+      throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.ROUTER_CREDS_MISSING, 'Identifiants RouterOS non configurés');
     }
 
     const peer = await this.prisma.remotePeer.findFirst({
       where: { routerId, status: RemotePeerStatus.ACTIVE },
       select: { wgIp: true },
     });
-    if (!peer) throw new BadRequestException('Tunnel non provisionné');
+    if (!peer) throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.TUNNEL_NOT_PROVISIONED, 'Tunnel non provisionné');
 
     const creds = JSON.parse(this.crypto.decrypt(router.credEncrypted)) as {
       username: string;
@@ -158,25 +153,38 @@ export class RemoteRouterService {
       where: { id: routerId, tenantId, deletedAt: null },
       select: { id: true, credEncrypted: true },
     });
-    if (!router) throw new NotFoundException('Routeur introuvable');
+    if (!router) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.ROUTER_NOT_FOUND, 'Routeur introuvable');
     if (!router.credEncrypted) {
-      throw new BadRequestException('Identifiants RouterOS non configurés');
+      throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.ROUTER_CREDS_MISSING, 'Identifiants RouterOS non configurés');
     }
 
     const peer = await this.prisma.remotePeer.findFirst({
       where: { routerId, status: RemotePeerStatus.ACTIVE },
       select: { wgIp: true },
     });
-    if (!peer) throw new BadRequestException('Tunnel non provisionné');
+    if (!peer) throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.TUNNEL_NOT_PROVISIONED, 'Tunnel non provisionné');
 
     const creds = JSON.parse(this.crypto.decrypt(router.credEncrypted)) as {
       username: string;
       password: string;
     };
 
-    await withRouterOsApi(
-      { host: peer.wgIp, port: ROUTEROS_API_PORT, username: creds.username, password: creds.password, timeoutMs: REQUEST_TIMEOUT_MS },
-      (c) => c.command(['/system/reboot']),
-    );
+    try {
+      await withRouterOsApi(
+        { host: peer.wgIp, port: ROUTEROS_API_PORT, username: creds.username, password: creds.password, timeoutMs: REQUEST_TIMEOUT_MS },
+        (c) => c.command(['/system/reboot']),
+      );
+    } catch (err) {
+      this.logger.error({
+        errorCode: 'ROUTER_REBOOT_FAILED',
+        routerId,
+        tenantId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      if (err instanceof RouterOsAuthError) {
+        throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, ErrorCode.ROUTER_CREDS_INVALID, 'Authentification RouterOS échouée. Vérifiez les identifiants.', { routerId });
+      }
+      throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, ErrorCode.ROUTER_UNREACHABLE, 'Routeur injoignable. Vérifiez la connexion WireGuard.', { routerId });
+    }
   }
 }

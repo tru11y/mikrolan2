@@ -23,6 +23,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     let message = 'Le serveur a rencontré un problème. Réessayez.';
     let error: unknown = null;
+    let errorCode: string | null = null;
+    let context: Record<string, unknown> | undefined;
 
     if (exception instanceof HttpException) {
       const body = exception.getResponse();
@@ -32,6 +34,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
         const b = body as Record<string, unknown>;
         message = (b.message as string) ?? exception.message;
         error = b.issues ?? b.error ?? null;
+        errorCode = (b.errorCode as string) ?? null;
+        context = b.context as Record<string, unknown> | undefined;
       }
     } else {
       this.logger.error(exception);
@@ -43,6 +47,8 @@ export class HttpExceptionFilter implements ExceptionFilter {
       data: null,
       message,
       error,
+      ...(errorCode ? { errorCode } : {}),
+      ...(context ? { context } : {}),
     });
   }
 }

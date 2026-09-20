@@ -7,20 +7,36 @@ import {
   QueryClientProvider,
 } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
+import { Sentry } from '@/src/lib/sentry';
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: 1,
+      retry: 2,
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 15_000),
       staleTime: 15_000,
+      gcTime: 5 * 60 * 1000,
       refetchOnWindowFocus: true,
+      refetchOnReconnect: 'always',
+    },
+    mutations: {
+      retry: 1,
+      retryDelay: 1000,
     },
   },
 });
 
 onlineManager.setEventListener((setOnline) => {
   return NetInfo.addEventListener((state) => {
-    setOnline(!!state.isConnected);
+    const online = !!state.isConnected;
+    setOnline(online);
+    Sentry.addBreadcrumb({
+      category: 'network',
+      message: online
+        ? `Online (${state.type})`
+        : 'Offline',
+      level: online ? 'info' : 'warning',
+    });
   });
 });
 
@@ -30,6 +46,11 @@ function useFocusRefetch() {
       if (Platform.OS !== 'web') {
         focusManager.setFocused(status === 'active');
       }
+      Sentry.addBreadcrumb({
+        category: 'app.lifecycle',
+        message: `AppState → ${status}`,
+        level: 'info',
+      });
     });
     return () => sub.remove();
   }, []);

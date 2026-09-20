@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api } from '@/src/lib/api';
-import { useLiveEvents } from '@/src/providers/live-events-provider';
+import { useLiveEvents, useSseLive } from '@/src/providers/live-events-provider';
 import { Press, useReduceMotion,
   withAlpha,
 } from './ui';
@@ -20,11 +20,12 @@ export function NotificationBell() {
   const router = useRouter();
   const reduced = useReduceMotion();
   const { lastEventAt } = useLiveEvents();
+  const sseLive = useSseLive();
 
   const unread = useQuery({
     queryKey: ['notifications', 'unread-count'],
     queryFn: api.notifications.unreadCount,
-    refetchInterval: 15_000,
+    refetchInterval: sseLive ? false : 15_000,
     placeholderData: keepPreviousData,
   });
   const count = unread.data ?? 0;

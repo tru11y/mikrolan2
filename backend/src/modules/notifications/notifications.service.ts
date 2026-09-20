@@ -1,4 +1,6 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { BusinessException } from '../../common/exceptions/business.exception';
+import { ErrorCode } from '../../common/error-codes';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -175,7 +177,7 @@ export class NotificationsService {
       where: { id },
       data: { readAt: new Date() },
     });
-    if (result.count === 0) throw new NotFoundException('Notification introuvable.');
+    if (result.count === 0) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.NOTIFICATION_NOT_FOUND, 'Notification introuvable.');
     return { read: true };
   }
 

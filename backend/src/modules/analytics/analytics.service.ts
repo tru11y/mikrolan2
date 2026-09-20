@@ -1,4 +1,6 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
+import { BusinessException } from '../../common/exceptions/business.exception';
+import { ErrorCode } from '../../common/error-codes';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getTenantContext } from '../../common/context/tenant-context';
 import {
@@ -149,7 +151,7 @@ export class AnalyticsService {
 
     if (filters.period === 'custom') {
       if (!filters.from || !filters.to) {
-        throw new BadRequestException('from et to sont requis en period=custom');
+        throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.ANALYTICS_DATE_REQUIRED, 'from et to sont requis en period=custom');
       }
       const from = new Date(filters.from);
       const to = new Date(filters.to);
@@ -165,7 +167,7 @@ export class AnalyticsService {
       where: { tenantId, id: routerId },
       select: { id: true },
     });
-    if (!router) throw new BadRequestException("Routeur introuvable pour ce tenant");
+    if (!router) throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.ROUTER_NOT_FOUND, 'Routeur introuvable pour ce tenant');
   }
 
   private async assertPlanInTenant(tenantId: string, planId: string): Promise<void> {
@@ -173,7 +175,7 @@ export class AnalyticsService {
       where: { tenantId, id: planId },
       select: { id: true },
     });
-    if (!plan) throw new BadRequestException('Forfait introuvable pour ce tenant');
+    if (!plan) throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.PLAN_NOT_FOUND, 'Forfait introuvable pour ce tenant');
   }
 
   private summarize(lines: ActivationLine[]): QualitySummary & { salesCount: number; averageSaleXof: number; revenueXof: number } {
@@ -416,7 +418,7 @@ export class AnalyticsService {
         select: { startedAt: true },
       }),
     ]);
-    if (!router) throw new BadRequestException('Routeur introuvable pour ce tenant');
+    if (!router) throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.ROUTER_NOT_FOUND, 'Routeur introuvable pour ce tenant');
 
     const current = this.summarize(currentLines);
     const previous = this.summarize(previousLines);

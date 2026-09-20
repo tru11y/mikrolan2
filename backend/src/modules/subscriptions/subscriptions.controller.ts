@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  HttpStatus,
   Header,
   Param,
   ParseUUIDPipe,
@@ -11,6 +12,8 @@ import {
   Req,
   UseInterceptors,
 } from '@nestjs/common';
+import { BusinessException } from '../../common/exceptions/business.exception';
+import { ErrorCode } from '../../common/error-codes';
 import { PaymentMethod, UserRole } from '@prisma/client';
 import type { FastifyRequest } from 'fastify';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -84,9 +87,9 @@ export class SubscriptionsController {
     @Req() req: FastifyRequest,
   ) {
     const data = await req.file();
-    if (!data) throw new BadRequestException('Image requise.');
+    if (!data) throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.FILE_REQUIRED, 'Image requise.');
     if (!['image/jpeg', 'image/png'].includes(data.mimetype)) {
-      throw new BadRequestException('Seuls JPEG et PNG sont acceptés.');
+      throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.FILE_TYPE_UNSUPPORTED, 'Seuls JPEG et PNG sont acceptés.');
     }
 
     const fields = data.fields as Record<string, { value?: string }>;
@@ -94,9 +97,9 @@ export class SubscriptionsController {
     const method = fields['method']?.value;
     const note = fields['note']?.value;
 
-    if (!invoiceId) throw new BadRequestException('invoiceId requis.');
+    if (!invoiceId) throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.INVOICE_ID_REQUIRED, 'invoiceId requis.');
     if (!method || !['WAVE', 'ORANGE_MONEY'].includes(method)) {
-      throw new BadRequestException('method doit être WAVE ou ORANGE_MONEY.');
+      throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.PAYMENT_METHOD_INVALID, 'method doit être WAVE ou ORANGE_MONEY.');
     }
 
     const buffer = await data.toBuffer();

@@ -69,7 +69,7 @@ describe('PlansService', () => {
 
       await expect(
         service.create('bad-router', { name: 'Plan', durationMinutes: 60, priceXof: 100 }),
-      ).rejects.toThrow(NotFoundException);
+      ).rejects.toMatchObject({ status: 404 });
     });
   });
 
@@ -105,7 +105,7 @@ describe('PlansService', () => {
       const { service, prisma } = makeService();
       prisma.plan.findFirst.mockResolvedValue(null);
 
-      await expect(service.findOne('r1', 'bad')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('r1', 'bad')).rejects.toMatchObject({ status: 404 });
     });
   });
 

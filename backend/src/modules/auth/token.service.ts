@@ -1,7 +1,9 @@
 import {
+  HttpStatus,
   Injectable,
-  UnauthorizedException,
 } from '@nestjs/common';
+import { BusinessException } from '../../common/exceptions/business.exception';
+import { ErrorCode } from '../../common/error-codes';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { UserRole } from '@prisma/client';
@@ -64,7 +66,7 @@ export class TokenService {
       include: { user: true },
     });
 
-    if (!record) throw new UnauthorizedException('Invalid refresh token');
+    if (!record) throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_TOKEN_INVALID, 'Invalid refresh token');
 
     // Reuse of an already-rotated token → compromise: revoke the whole family.
     if (record.revoked) {
@@ -72,11 +74,11 @@ export class TokenService {
         where: { family: record.family, revoked: false },
         data: { revoked: true },
       });
-      throw new UnauthorizedException('Refresh token reuse detected');
+      throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_TOKEN_REUSE, 'Refresh token reuse detected');
     }
 
     if (record.expiresAt.getTime() < Date.now()) {
-      throw new UnauthorizedException('Refresh token expired');
+      throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_TOKEN_EXPIRED, 'Refresh token expired');
     }
 
     const next = await this.issueTokens(

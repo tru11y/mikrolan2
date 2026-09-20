@@ -1,4 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { BusinessException } from '../../common/exceptions/business.exception';
+import { ErrorCode } from '../../common/error-codes';
 import { AuditAction, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { getTenantContext } from '../../common/context/tenant-context';
@@ -40,6 +42,7 @@ function slugify(name: string): string {
 
 @Injectable()
 export class PlansService {
+  private readonly logger = new Logger(PlansService.name);
   constructor(private readonly prisma: PrismaService) {}
 
   async create(routerId: string, dto: CreatePlanDto) {
@@ -84,7 +87,7 @@ export class PlansService {
       where: { id, routerId, deletedAt: null },
       select: PLAN_PUBLIC,
     });
-    if (!plan) throw new NotFoundException('Forfait introuvable.');
+    if (!plan) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.PLAN_NOT_FOUND, 'Forfait introuvable.');
     return plan;
   }
 
@@ -131,7 +134,7 @@ export class PlansService {
       where: { id: routerId, deletedAt: null },
       select: { id: true },
     });
-    if (!router) throw new NotFoundException('Routeur introuvable — il a peut-être été supprimé.');
+    if (!router) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.ROUTER_NOT_FOUND, 'Routeur introuvable — il a peut-être été supprimé.');
   }
 
   // Unique per router, counting soft-deleted rows (they keep the slug via the
@@ -166,8 +169,8 @@ export class PlansService {
           metadata,
         },
       });
-    } catch {
-      // append-only, best-effort
+    } catch (err) {
+      this.logger.warn(`Audit log write failed: ${err instanceof Error ? err.message : err}`);
     }
   }
 }

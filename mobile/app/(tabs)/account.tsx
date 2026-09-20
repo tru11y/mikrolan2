@@ -12,6 +12,7 @@ import { useAuth } from '@/src/providers/auth-provider';
 import { useAppLock } from '@/src/providers/app-lock-provider';
 import { usePushStatus } from '@/src/providers/push-notifications-provider';
 import { useBatteryOptimization } from '@/src/hooks/use-battery-optimization';
+import { useBackToDashboard } from '@/src/hooks/use-back-to-dashboard';
 import { useTheme } from '@/src/providers/theme-provider';
 import { useThemeMode } from '@/src/providers/theme-provider';
 import { api, extractErrorMessage } from '@/src/lib/api';
@@ -100,6 +101,7 @@ function SectionSep() {
 }
 
 export default function AccountScreen() {
+  useBackToDashboard();
   const { t } = useTranslation();
   const theme = useTheme();
   const { mode: themeMode, setMode: setThemeMode } = useThemeMode();
@@ -128,11 +130,17 @@ export default function AccountScreen() {
   const [profileBusy, setProfileBusy] = useState(false);
   const [profileMsg, setProfileMsg] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
 
-  function selectCountry(c: typeof COUNTRIES[number]) {
+  async function selectCountry(c: typeof COUNTRIES[number]) {
     setCountry(c.name);
     setShowCountryPicker(false);
     i18n.changeLanguage(c.lang);
     AsyncStorage.setItem('mikrolan_language', c.lang).catch(() => {});
+    try {
+      await api.auth.updateProfile({ name: name.trim() || null, country: c.name });
+      await refreshProfile();
+    } catch (err) {
+      console.warn('Country auto-save failed:', err);
+    }
   }
 
   async function saveProfile() {
@@ -166,7 +174,7 @@ export default function AccountScreen() {
   const [loggingOutAll, setLoggingOutAll] = useState(false);
   async function logoutAllSessions() {
     setLoggingOutAll(true);
-    try { await api.auth.logoutAllSessions(); } catch {}
+    try { await api.auth.logoutAllSessions(); } catch (err) { console.warn('Logout all failed:', err); }
     await logout();
   }
 

@@ -57,7 +57,7 @@ describe('SupportService (real service layer, FIND-003)', () => {
     const { service, prisma } = makeService();
     prisma.supportTicket.findFirst.mockResolvedValue(null);
 
-    await expect(service.getOne('tenant-A', 'ticket-of-tenant-B')).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.getOne('tenant-A', 'ticket-of-tenant-B')).rejects.toMatchObject({ status: 404 });
   });
 
   it('addMessage() refuses to post on a ticket belonging to another tenant', async () => {
@@ -66,7 +66,7 @@ describe('SupportService (real service layer, FIND-003)', () => {
 
     await expect(
       service.addMessage('tenant-A', 'ticket-of-tenant-B', 'user-1', 'hello'),
-    ).rejects.toBeInstanceOf(NotFoundException);
+    ).rejects.toMatchObject({ status: 404 });
     expect(prisma.ticketMessage.create).not.toHaveBeenCalled();
   });
 

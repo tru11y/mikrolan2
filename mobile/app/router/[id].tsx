@@ -1,6 +1,6 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ScrollView, Text, View } from 'react-native';
+import { Alert, BackHandler, ScrollView, Text, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -22,6 +22,7 @@ import { listActiveLan } from '@/src/services/mikrotik-lan/hotspotLan';
 import { getWifiInfo, sameSubnet24 } from '@/src/lib/lanBinder';
 import { reportLanSessions } from '@/src/lib/sessionSync';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
+import { useSseLive } from '@/src/providers/live-events-provider';
 import {
   Badge,
   Banner,
@@ -167,6 +168,7 @@ export default function RouterDetailScreen() {
   const qc = useQueryClient();
   const { isPro } = useAuth();
   const { selectRouter } = useActiveRouter();
+  const sseLive = useSseLive();
   const navHeight = useBottomNavHeight();
   const toast = useToast();
 
@@ -176,11 +178,21 @@ export default function RouterDetailScreen() {
     if (id) void selectRouter(id);
   }, [id, selectRouter]);
 
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        router.navigate('/(tabs)/routeurs');
+        return true;
+      });
+      return () => sub.remove();
+    }, [router]),
+  );
+
   const query = useQuery({
     queryKey: ['router', id],
     queryFn: () => api.routers.get(id),
     enabled: Boolean(id),
-    refetchInterval: POLL_MS,
+    refetchInterval: sseLive ? false : POLL_MS,
     placeholderData: keepPreviousData,
   });
 
@@ -188,7 +200,7 @@ export default function RouterDetailScreen() {
     queryKey: ['router-remote', id],
     queryFn: () => api.routers.remoteStatus(id),
     enabled: Boolean(id) && isPro,
-    refetchInterval: POLL_MS,
+    refetchInterval: sseLive ? 30_000 : POLL_MS,
     placeholderData: keepPreviousData,
   });
 
@@ -228,14 +240,16 @@ export default function RouterDetailScreen() {
           await saveLocalCredentials(id, { username: remote.username, password: remote.password, host, port });
           qc.invalidateQueries({ queryKey: ['router-local-creds', id] });
         }
-      } catch {}
+      } catch (err) {
+        console.warn('Failed to sync credentials from server:', err);
+      }
     })();
   }, [id, missingLocalCreds, qc]);
 
   const activeSessionsQuery = useQuery({
     queryKey: ['router-active-sessions', id, query.data?.mode],
     enabled: Boolean(id) && query.isSuccess,
-    refetchInterval: POLL_MS,
+    refetchInterval: sseLive ? 30_000 : POLL_MS,
     placeholderData: keepPreviousData,
     queryFn: async (): Promise<number | null> => {
       const mode = query.data?.mode;
@@ -359,6 +373,150 @@ export default function RouterDetailScreen() {
   const lastSeenRef = useRef<number | null>(null);
 
   const remoteActive = remoteQuery.data?.status === 'ACTIVE';
+
+  // ── Mode Diagnostic (durée limitée, actions dangereuses) ──
+  const DIAG_DURATION_MS = 5 * 60 * 1000;
+  const [diagUntil, setDiagUntil] = useState<number | null>(null);
+  const [diagTimeLeft, setDiagTimeLeft] = useState(0);
+  const [diagBusy, setDiagBusy] = useState(false);
+  const diagActive = diagUntil != null && Date.now() < diagUntil;
+
+  const toggleDiag = useCallback(() => {
+    if (diagActive) {
+      setDiagUntil(null);
+      setDiagTimeLeft(0);
+    } else {
+      setDiagUntil(Date.now() + DIAG_DURATION_MS);
+    }
+  }, [diagActive, DIAG_DURATION_MS]);
+
+  useEffect(() => {
+    if (!diagUntil) return;
+    const tick = () => {
+      const left = Math.max(0, diagUntil - Date.now());
+      setDiagTimeLeft(left);
+      if (left <= 0) {
+        setDiagUntil(null);
+        toast.error(t('routerDetail.diagnosticExpired'));
+      }
+    };
+    tick();
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, [diagUntil, t, toast]);
+
+  async function diagReboot() {
+    Alert.alert(
+      t('routerDetail.dangerousAction'),
+      t('routerDetail.rebootConfirm1'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('common.confirm'),
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              t('routerDetail.dangerousAction'),
+              t('routerDetail.rebootConfirm2'),
+              [
+                { text: t('common.cancel'), style: 'cancel' },
+                {
+                  text: t('routerDetail.rebootRouter'),
+                  style: 'destructive',
+                  onPress: async () => {
+                    setDiagBusy(true);
+                    try {
+                      const creds = await getLocalCredentials(id!);
+                      const wifi = await getWifiInfo();
+                      const onLan =
+                        !!creds &&
+                        !!wifi &&
+                        (creds.host === wifi.gateway ||
+                          sameSubnet24(creds.host, wifi.ipAddress));
+                      if (creds && onLan) {
+                        await withApi(creds, (c) => c.reboot());
+                      } else if (remoteActive) {
+                        await api.routers.rebootRemote(id!);
+                      } else {
+                        toast.error(t('routerDetail.rebootFailed'));
+                        return;
+                      }
+                      toast.success(t('routerDetail.rebootSuccess'));
+                    } catch {
+                      toast.error(t('routerDetail.rebootFailed'));
+                    } finally {
+                      setDiagBusy(false);
+                    }
+                  },
+                },
+              ],
+            );
+          },
+        },
+      ],
+    );
+  }
+
+  async function diagResetHotspot() {
+    Alert.alert(
+      t('routerDetail.dangerousAction'),
+      t('routerDetail.resetHotspotConfirm1'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('common.confirm'),
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              t('routerDetail.dangerousAction'),
+              t('routerDetail.resetHotspotConfirm2'),
+              [
+                { text: t('common.cancel'), style: 'cancel' },
+                {
+                  text: t('routerDetail.resetHotspot'),
+                  style: 'destructive',
+                  onPress: async () => {
+                    setDiagBusy(true);
+                    try {
+                      const creds = await getLocalCredentials(id!);
+                      const wifi = await getWifiInfo();
+                      const onLan =
+                        !!creds &&
+                        !!wifi &&
+                        (creds.host === wifi.gateway ||
+                          sameSubnet24(creds.host, wifi.ipAddress));
+                      if (!(creds && onLan)) {
+                        toast.error(t('routerDetail.resetHotspotFailed'));
+                        return;
+                      }
+                      await withApi(creds, async (c) => {
+                        const servers = await c.print('/ip/hotspot');
+                        for (const s of servers) {
+                          if (s['.id']) {
+                            await c.set('/ip/hotspot', s['.id'], { disabled: 'yes' });
+                          }
+                        }
+                        for (const s of servers) {
+                          if (s['.id']) {
+                            await c.set('/ip/hotspot', s['.id'], { disabled: 'no' });
+                          }
+                        }
+                      });
+                      toast.success(t('routerDetail.resetHotspotSuccess'));
+                    } catch {
+                      toast.error(t('routerDetail.resetHotspotFailed'));
+                    } finally {
+                      setDiagBusy(false);
+                    }
+                  },
+                },
+              ],
+            );
+          },
+        },
+      ],
+    );
+  }
 
   const setLanStateSafe = useCallback((next: LanState) => {
     if (lanStateRef.current === next) return;
@@ -832,6 +990,56 @@ export default function RouterDetailScreen() {
             </Card>
           </Press>
         </Row>
+
+        {/* ── Mode Diagnostic ── */}
+        <Card>
+          <Row>
+            <Row style={{ gap: space.xs + 2, justifyContent: 'flex-start' }}>
+              <Ionicons
+                name="construct-outline"
+                size={icon.sm}
+                color={diagActive ? theme.warning : theme.textMuted}
+              />
+              <Label>{t('routerDetail.diagnosticMode')}</Label>
+            </Row>
+            <Press onPress={toggleDiag}>
+              <Badge
+                label={diagActive ? t('routerDetail.diagnosticActive') : 'OFF'}
+                tone={diagActive ? 'warning' : 'secondary'}
+              />
+            </Press>
+          </Row>
+          <Subtitle>{t('routerDetail.diagnosticDesc')}</Subtitle>
+          {diagActive ? (
+            <View style={{ gap: space.sm }}>
+              <Text
+                style={{
+                  color: theme.warning,
+                  fontSize: type.caption,
+                  fontWeight: '600',
+                  textAlign: 'center',
+                }}
+              >
+                {t('routerDetail.diagnosticTimeLeft', {
+                  minutes: Math.floor(diagTimeLeft / 60000),
+                  seconds: Math.floor((diagTimeLeft % 60000) / 1000),
+                })}
+              </Text>
+              <Button
+                title={t('routerDetail.rebootRouter')}
+                variant="ghost"
+                onPress={diagReboot}
+                loading={diagBusy}
+              />
+              <Button
+                title={t('routerDetail.resetHotspot')}
+                variant="ghost"
+                onPress={diagResetHotspot}
+                loading={diagBusy}
+              />
+            </View>
+          ) : null}
+        </Card>
 
         <Button
           title={t('routerDetail.createTickets')}

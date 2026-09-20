@@ -1,9 +1,12 @@
 import {
   ConflictException,
+  HttpStatus,
   Injectable,
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
+import { BusinessException } from '../../common/exceptions/business.exception';
+import { ErrorCode } from '../../common/error-codes';
 import { ConfigService } from '@nestjs/config';
 import {
   Prisma,
@@ -124,7 +127,7 @@ export class AuthService {
         e instanceof Prisma.PrismaClientKnownRequestError &&
         e.code === 'P2002'
       ) {
-        throw new ConflictException('Cette adresse e-mail est déjà utilisée.');
+        throw new BusinessException(HttpStatus.CONFLICT, ErrorCode.AUTH_EMAIL_TAKEN, 'Cette adresse e-mail est déjà utilisée.');
       }
       throw e;
     }
@@ -193,7 +196,7 @@ export class AuthService {
         select: { plan: true, status: true, currentPeriodEnd: true },
       }),
     ]);
-    if (!user || !tenant) throw new UnauthorizedException('Compte introuvable. Reconnectez-vous.');
+    if (!user || !tenant) throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_ACCOUNT_NOT_FOUND, 'Compte introuvable. Reconnectez-vous.');
     // L'app dessine ses cadenas à partir de ceci ; le serveur les applique.
     const entitlement =
       user.role === 'SUPER_ADMIN'
@@ -244,15 +247,16 @@ export class AuthService {
 
   async changePassword(userId: string, dto: ChangePasswordDto): Promise<void> {
     const user = await this.prisma.user.findFirst({ where: { id: userId } });
-    if (!user) throw new UnauthorizedException('Compte introuvable. Reconnectez-vous.');
+    if (!user) throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_ACCOUNT_NOT_FOUND, 'Compte introuvable. Reconnectez-vous.');
     if (!user.hasPassword) {
-      throw new UnauthorizedException(
+      throw new BusinessException(
+        HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_UNSUPPORTED_METHOD,
         'Compte OAuth — utilisez « Définir un mot de passe » à la place.',
       );
     }
 
     const ok = await argon2.verify(user.passwordHash, dto.currentPassword);
-    if (!ok) throw new UnauthorizedException('Mot de passe actuel incorrect');
+    if (!ok) throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_WRONG_PASSWORD, 'Mot de passe actuel incorrect');
 
     const passwordHash = await argon2.hash(dto.newPassword, ARGON);
     await this.prisma.user.update({
@@ -267,9 +271,10 @@ export class AuthService {
 
   async setPassword(userId: string, dto: SetPasswordDto): Promise<void> {
     const user = await this.prisma.user.findFirst({ where: { id: userId } });
-    if (!user) throw new UnauthorizedException('Compte introuvable. Reconnectez-vous.');
+    if (!user) throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_ACCOUNT_NOT_FOUND, 'Compte introuvable. Reconnectez-vous.');
     if (user.hasPassword) {
-      throw new ConflictException(
+      throw new BusinessException(
+        HttpStatus.CONFLICT, ErrorCode.AUTH_UNSUPPORTED_METHOD,
         'Un mot de passe existe déjà — utilisez « Changer le mot de passe ».',
       );
     }
@@ -319,7 +324,7 @@ export class AuthService {
 
   async googleLogin(idToken: string, nonce?: string): Promise<TokenPair> {
     if (!this.googleClient) {
-      throw new UnauthorizedException('Google OAuth non configuré.');
+      throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_GOOGLE_NOT_CONFIGURED, 'Google OAuth non configuré.');
     }
 
     let ticket;
@@ -329,26 +334,26 @@ export class AuthService {
         audience: this.googleAudiences,
       });
     } catch {
-      throw new UnauthorizedException('Token Google invalide.');
+      throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_GOOGLE_INVALID, 'Token Google invalide.');
     }
 
     const payload = ticket.getPayload();
-    if (!payload) throw new UnauthorizedException('Token Google invalide.');
+    if (!payload) throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_GOOGLE_INVALID, 'Token Google invalide.');
 
     if (nonce) {
       const expectedHash = createHash('sha256').update(nonce).digest('hex');
       if (payload.nonce !== expectedHash) {
-        throw new UnauthorizedException('Nonce OAuth invalide (replay potentiel).');
+        throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_NONCE_INVALID, 'Nonce OAuth invalide (replay potentiel).');
       }
     }
 
     if (payload.email_verified !== true) {
-      throw new UnauthorizedException('Adresse e-mail Google non vérifiée.');
+      throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_EMAIL_UNVERIFIED, 'Adresse e-mail Google non vérifiée.');
     }
 
     const googleId = payload.sub;
     const email = payload.email?.toLowerCase();
-    if (!email) throw new UnauthorizedException('E-mail Google requis.');
+    if (!email) throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_EMAIL_REQUIRED, 'E-mail Google requis.');
 
     // Lookup by googleId first (returning user), then by email (account linking).
     const byGoogleId = await this.prisma.user.findUnique({ where: { googleId } });
@@ -356,7 +361,7 @@ export class AuthService {
 
     if (existing) {
       if (existing.status !== UserStatus.ACTIVE) {
-        throw new UnauthorizedException('Compte désactivé.');
+        throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_ACCOUNT_DISABLED, 'Compte désactivé.');
       }
       if (!existing.googleId) {
         await this.prisma.user.update({
@@ -421,7 +426,7 @@ export class AuthService {
   ): Promise<TokenPair> {
     const clientId = this.config.get<string>('APPLE_CLIENT_ID');
     if (!clientId) {
-      throw new UnauthorizedException('Apple Sign-In non configuré.');
+      throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_APPLE_NOT_CONFIGURED, 'Apple Sign-In non configuré.');
     }
 
     let payload;
@@ -434,11 +439,11 @@ export class AuthService {
         ignoreExpiration: false,
       });
     } catch {
-      throw new UnauthorizedException('Token Apple invalide.');
+      throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_APPLE_INVALID, 'Token Apple invalide.');
     }
 
     if (payload.email && payload.email_verified !== 'true' && payload.email_verified !== true) {
-      throw new UnauthorizedException('Adresse e-mail Apple non vérifiée.');
+      throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_EMAIL_UNVERIFIED, 'Adresse e-mail Apple non vérifiée.');
     }
 
     const appleId = payload.sub;
@@ -452,7 +457,7 @@ export class AuthService {
 
     if (existing) {
       if (existing.status !== UserStatus.ACTIVE) {
-        throw new UnauthorizedException('Compte désactivé.');
+        throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_ACCOUNT_DISABLED, 'Compte désactivé.');
       }
       if (!existing.appleId) {
         await this.prisma.user.update({
@@ -471,7 +476,7 @@ export class AuthService {
     }
 
     if (!email) {
-      throw new UnauthorizedException('E-mail Apple requis pour la création de compte.');
+      throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_EMAIL_REQUIRED, 'E-mail Apple requis pour la création de compte.');
     }
 
     const now = new Date();
@@ -588,14 +593,14 @@ export class AuthService {
 
   async deleteAccount(userId: string, dto: DeleteAccountDto): Promise<void> {
     const user = await this.prisma.user.findFirst({ where: { id: userId } });
-    if (!user) throw new UnauthorizedException('Compte introuvable. Reconnectez-vous.');
+    if (!user) throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_ACCOUNT_NOT_FOUND, 'Compte introuvable. Reconnectez-vous.');
 
     if (user.hasPassword) {
-      if (!dto.password) throw new UnauthorizedException('Mot de passe requis.');
+      if (!dto.password) throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_PASSWORD_REQUIRED, 'Mot de passe requis.');
       const ok = await argon2.verify(user.passwordHash, dto.password);
-      if (!ok) throw new UnauthorizedException('Mot de passe incorrect');
+      if (!ok) throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_WRONG_PASSWORD, 'Mot de passe incorrect');
     } else if (dto.googleIdToken) {
-      if (!this.googleClient) throw new UnauthorizedException('Google OAuth non configuré.');
+      if (!this.googleClient) throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_GOOGLE_NOT_CONFIGURED, 'Google OAuth non configuré.');
       try {
         const ticket = await this.googleClient.verifyIdToken({
           idToken: dto.googleIdToken,
@@ -603,14 +608,15 @@ export class AuthService {
         });
         const payload = ticket.getPayload();
         if (payload?.sub !== user.googleId) {
-          throw new UnauthorizedException('Compte Google incorrect.');
+          throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_GOOGLE_WRONG_ACCOUNT, 'Compte Google incorrect.');
         }
       } catch (e) {
-        if (e instanceof UnauthorizedException) throw e;
-        throw new UnauthorizedException('Token Google invalide.');
+        if (e instanceof BusinessException) throw e;
+        throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_GOOGLE_INVALID, 'Token Google invalide.');
       }
     } else {
-      throw new UnauthorizedException(
+      throw new BusinessException(
+        HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_UNSUPPORTED_METHOD,
         'Vérification requise pour supprimer le compte.',
       );
     }

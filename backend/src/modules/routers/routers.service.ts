@@ -1,9 +1,10 @@
 import {
-  ConflictException,
-  ForbiddenException,
+  HttpStatus,
   Injectable,
-  NotFoundException,
+  Logger,
 } from '@nestjs/common';
+import { BusinessException } from '../../common/exceptions/business.exception';
+import { ErrorCode } from '../../common/error-codes';
 import { AuditAction, ManagementMode, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CryptoService } from '../../common/crypto/crypto.service';
@@ -34,6 +35,7 @@ const ROUTER_PUBLIC = {
 
 @Injectable()
 export class RoutersService {
+  private readonly logger = new Logger(RoutersService.name);
   constructor(
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
@@ -41,14 +43,12 @@ export class RoutersService {
     private readonly wg: WireGuardService,
   ) {}
 
-  // Remote (cloud + WireGuard) management is a PRO-only feature.
+  // Remote (cloud + WireGuard) management requires a paid plan.
   private async assertRemoteAllowed(mode?: ManagementMode): Promise<void> {
     if (mode !== ManagementMode.REMOTE) return;
     const tenantId = getTenantContext()?.tenantId;
     if (!tenantId || !(await this.subscriptions.isRemoteAllowed(tenantId))) {
-      throw new ForbiddenException(
-        'La gestion à distance nécessite un abonnement PRO actif',
-      );
+      throw new BusinessException(HttpStatus.FORBIDDEN, ErrorCode.SUBSCRIPTION_TIER_INSUFFICIENT, 'La gestion à distance nécessite un abonnement payant actif.');
     }
   }
 
@@ -62,8 +62,11 @@ export class RoutersService {
       where: { tenantId, deletedAt: null },
     });
     if (count >= entitlement.routerLimit) {
-      throw new ForbiddenException(
+      throw new BusinessException(
+        HttpStatus.FORBIDDEN,
+        ErrorCode.ROUTER_LIMIT_REACHED,
         `Votre formule autorise ${entitlement.routerLimit} routeur${entitlement.routerLimit > 1 ? 's' : ''}. Passez à une formule supérieure pour en ajouter.`,
+        { limit: entitlement.routerLimit, used: count },
       );
     }
   }
@@ -108,7 +111,7 @@ export class RoutersService {
         e instanceof Prisma.PrismaClientKnownRequestError &&
         e.code === 'P2002'
       ) {
-        throw new ConflictException('Un routeur avec cette identité existe déjà.');
+        throw new BusinessException(HttpStatus.CONFLICT, ErrorCode.ROUTER_DUPLICATE_IDENTITY, 'Un routeur avec cette identité existe déjà.');
       }
       throw e;
     }
@@ -127,7 +130,7 @@ export class RoutersService {
       where: { id, deletedAt: null },
       select: ROUTER_PUBLIC,
     });
-    if (!router) throw new NotFoundException('Routeur introuvable — il a peut-être été supprimé.');
+    if (!router) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.ROUTER_NOT_FOUND, 'Routeur introuvable — il a peut-être été supprimé.');
     return router;
   }
 
@@ -166,7 +169,7 @@ export class RoutersService {
       where: { id, deletedAt: null },
       select: { id: true, credEncrypted: true, localAddress: true },
     });
-    if (!router) throw new NotFoundException('Routeur introuvable.');
+    if (!router) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.ROUTER_NOT_FOUND, 'Routeur introuvable.');
     if (!router.credEncrypted) return null;
     const creds = JSON.parse(this.crypto.decrypt(router.credEncrypted)) as {
       username: string;
@@ -202,8 +205,12 @@ export class RoutersService {
           sshPort: peer.sshPort,
           winboxPort: peer.winboxPort,
         });
-      } catch {
-        // best-effort — proceed with DB cleanup regardless
+      } catch (err) {
+        this.logger.warn(`WireGuard cleanup failed (proceeding): ${err instanceof Error ? err.message : err}`);
+        await this.audit(AuditAction.DELETE, routerId, {
+          errorCode: ErrorCode.WG_PEER_REMOVAL_FAILED,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }
 
@@ -236,8 +243,8 @@ export class RoutersService {
           metadata,
         },
       });
-    } catch {
-      // append-only, best-effort
+    } catch (err) {
+      this.logger.warn(`Audit log write failed: ${err instanceof Error ? err.message : err}`);
     }
   }
 }

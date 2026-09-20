@@ -1,14 +1,6 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import QRCode from 'qrcode';
 import { DEFAULT_TICKET_TEMPLATE, type TicketTemplate } from './api';
-
-// Builds a printable A4 sheet of WiFi tickets (grid of cut-out cards, each with
-// its scannable QR) and hands it to the OS share/print sheet — AirPrint, PDF or
-// a thermal printer. See P8 (impression) in project_mikrolan2_commercial.
-// Rendering respects the router's ticket template (Paramètres du ticket).
-
-export type PrintableTicket = { code: string };
 
 function fmtDuration(min: number): string {
   if (min % 1440 === 0) return `${min / 1440} j`;
@@ -22,6 +14,17 @@ function esc(s: string): string {
   );
 }
 
+const DIACRITICS_RE = new RegExp('[̀-ͯ]', 'g');
+function slug(s: string): string {
+  return s
+    .normalize('NFD')
+    .replace(DIACRITICS_RE, '')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+export type PrintableTicket = { code: string };
+
 export type TicketsPdfOpts = {
   routerName: string;
   planName: string;
@@ -29,112 +32,128 @@ export type TicketsPdfOpts = {
   priceXof: number;
   tickets: PrintableTicket[];
   template?: TicketTemplate | null;
+  batchSeq?: number;
+  batchDate?: string;
 };
+
+export function buildPdfFileName(opts: {
+  routerName: string;
+  batchSeq?: number;
+  ticketCount: number;
+  date: Date;
+}): string {
+  const d = opts.date;
+  const yyyy = d.getFullYear();
+  const MM = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  const name = slug(opts.routerName) || 'WiFi';
+  const lot = opts.batchSeq != null ? `_Lot${opts.batchSeq}` : '';
+  return `MikroLan_${name}${lot}_${opts.ticketCount}Tickets_${yyyy}-${MM}-${dd}_${hh}-${mm}-${ss}.pdf`;
+}
+
+function fmtDateFull(d: Date): string {
+  const dd = String(d.getDate()).padStart(2, '0');
+  const MM = String(d.getMonth() + 1).padStart(2, '0');
+  const yyyy = d.getFullYear();
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${dd}/${MM}/${yyyy} ${hh}:${mm}:${ss}`;
+}
 
 export async function buildTicketsHtml(opts: TicketsPdfOpts): Promise<string> {
   const {
     routerName,
-    planName,
     durationMinutes,
     priceXof,
     tickets,
     template: t,
+    batchSeq,
+    batchDate,
   } = opts;
   const tpl = t ?? DEFAULT_TICKET_TEMPLATE;
 
-  const createdAt = new Date().toLocaleString('fr-FR');
-  const brandLine = tpl.showCompanyName && tpl.companyName ? tpl.companyName : null;
+  const COLS = 5;
+  const ROWS = 10;
+  const PER_PAGE = COLS * ROWS;
 
-  const cards = await Promise.all(
-    tickets.map(async (ticket, i) => {
-      const qr = tpl.showQrCode
-        ? await QRCode.toString(ticket.code, {
-            type: 'svg',
-            margin: 0,
-            width: 60,
-          })
-        : '';
-      return `
-        <div class="ticket">
-          <div class="head">
-            <span class="brand">${esc(brandLine ?? (tpl.showWifiName ? (tpl.wifiName || routerName) : ''))}</span>
-            ${tpl.showTicketNumber ? `<span class="num">#${i + 1}</span>` : ''}
-          </div>
-          ${qr ? `<div class="qr">${qr}</div>` : ''}
-          <div class="code">${esc(ticket.code)}</div>
-          ${
-            tpl.showPlanName || tpl.showPrice
-              ? `<div class="meta">${
-                  tpl.showPlanName ? `${esc(planName)} · ${fmtDuration(durationMinutes)}` : ''
-                }${
-                  tpl.showPrice
-                    ? ` ${tpl.showPlanName ? '·' : ''} ${priceXof.toLocaleString('fr-FR')} ${esc(tpl.currency)}`
-                    : ''
-                }</div>`
-              : ''
-          }
-          ${tpl.showCreatedAt ? `<div class="hint">${esc(createdAt)}</div>` : ''}
-          ${tpl.showNote && tpl.note ? `<div class="note">${esc(tpl.note)}</div>` : ''}
-          ${tpl.showPoweredBy ? `<div class="powered">Propulsé par MikroLan2</div>` : ''}
-        </div>`;
-    }),
-  );
+  const line1 = tpl.showWifiName ? esc(tpl.wifiName || routerName) : '';
+  const line3 = `${fmtDuration(durationMinutes)} - ${priceXof.toLocaleString('fr-FR')} ${esc(tpl.currency)}`;
+  const line4 = tpl.showNote && tpl.note ? esc(tpl.note) : '';
+  const line5 = tpl.showFooter && tpl.footer ? esc(tpl.footer) : '';
 
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8" />
-  <style>
-    * { box-sizing: border-box; }
-    @page { size: A4; margin: 5mm; }
-    body { margin: 0; font-family: -apple-system, Roboto, sans-serif; color: #0B0B12; }
-    .page-header { text-align: center; font-size: 10px; font-weight: 700; padding: 2mm 0; }
-    .grid { display: flex; flex-wrap: wrap; gap: 1.5mm; }
-    .ticket {
-      width: 38.5mm; height: 27mm; border: 1px dashed #9AA0B4; border-radius: 2mm;
-      padding: 1mm; text-align: center; page-break-inside: avoid;
-      overflow: hidden; line-height: 1.15;
+  const d = batchDate ? new Date(batchDate) : new Date();
+  const headerParts = [
+    `<span>${esc(routerName)}</span>`,
+    batchSeq != null ? `<span>Lot #${batchSeq}</span>` : '',
+    `<span>${tickets.length} tickets</span>`,
+    `<span>${fmtDateFull(d)}</span>`,
+  ].filter(Boolean);
+  const headerHtml = `<div class="hdr">${headerParts.join('<span class="sep">·</span>')}</div>`;
+
+  function buildCell(ticket: PrintableTicket): string {
+    return `<td class="c">${
+      line1 ? `<div class="l1">${line1}</div>` : ''
+    }<div class="code">${esc(ticket.code)}</div><div class="l3">${line3}</div>${
+      line4 ? `<div class="l4">${line4}</div>` : ''
+    }${
+      line5 ? `<div class="l5">${line5}</div>` : ''
+    }</td>`;
+  }
+
+  const pages: string[] = [];
+  for (let p = 0; p < tickets.length; p += PER_PAGE) {
+    const slice = tickets.slice(p, p + PER_PAGE);
+    const trs: string[] = [];
+    for (let r = 0; r < ROWS; r++) {
+      const rowCells: string[] = [];
+      for (let c = 0; c < COLS; c++) {
+        const idx = r * COLS + c;
+        if (idx < slice.length) rowCells.push(buildCell(slice[idx]));
+        else rowCells.push('<td class="c"></td>');
+      }
+      if (r * COLS < slice.length) trs.push(`<tr>${rowCells.join('')}</tr>`);
     }
-    .head { display: flex; justify-content: space-between; align-items: center;
-      font-size: 4.5px; font-weight: 700; margin-bottom: 0.3mm; }
-    .brand { color: #7B61FF; text-transform: uppercase; letter-spacing: .3px; }
-    .num { color: #9AA0B4; }
-    .qr { display: flex; justify-content: center; }
-    .qr svg { width: 10mm; height: 10mm; }
-    .code { font-family: monospace; font-size: 7px; font-weight: 700;
-      letter-spacing: .5px; margin: 0.5mm 0 0.3mm; word-break: break-all; }
-    .meta { font-size: 4.5px; color: #444; }
-    .hint { font-size: 3.5px; color: #9AA0B4; margin-top: 0.3mm; }
-    .note { font-size: 3.5px; color: #444; font-style: italic; margin-top: 0.3mm; }
-    .powered { font-size: 3.5px; color: #9AA0B4; margin-top: 0.3mm; }
-    .page-footer { text-align: center; font-size: 9px; color: #9AA0B4; padding: 2mm 0; }
-    @page { counter-increment: page; }
-    .page-number:after { content: counter(page); }
-  </style></head>
-  <body>
-    ${tpl.showLogo && tpl.logoDataUri ? `<div style="text-align:center;padding-top:10px"><img src="${tpl.logoDataUri}" style="height:48px" /></div>` : ''}
-    ${tpl.showHeader && tpl.header ? `<div class="page-header">${esc(tpl.header)}</div>` : ''}
-    <div class="grid">${cards.join('')}</div>
-    ${tpl.showFooter && tpl.footer ? `<div class="page-footer">${esc(tpl.footer)}</div>` : ''}
-    ${tpl.showPageNumber ? `<div class="page-footer">Page <span class="page-number"></span></div>` : ''}
-  </body></html>`;
+    const brk = p + PER_PAGE < tickets.length ? ' style="page-break-after:always"' : '';
+    pages.push(`<table class="g"${brk}><tbody>${trs.join('')}</tbody></table>`);
+  }
 
-  return html;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+@page{size:A4 portrait;margin:4mm}
+body{background:#fff;color:#000}
+.hdr{font-family:Arial,Helvetica,sans-serif;font-size:7pt;color:#555;display:flex;justify-content:center;gap:4px;padding:1mm 0 2mm;border-bottom:0.5px solid #ccc;margin-bottom:1mm}
+.hdr .sep{color:#ccc}
+.g{width:100%;border-collapse:collapse;table-layout:fixed}
+.c{border:0.5px solid #000;width:20%;height:28mm;text-align:center;vertical-align:middle;padding:0.3mm 0.8mm;overflow:hidden;line-height:1.05}
+.l1{font-family:Arial,Helvetica,sans-serif;font-size:6pt;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.code{font-family:'Courier New',Courier,monospace;font-size:13pt;font-weight:900;letter-spacing:0.5px;padding:0.8mm 0 0.3mm;white-space:nowrap}
+.l3{font-family:Arial,Helvetica,sans-serif;font-size:5.5pt;font-weight:700}
+.l4{font-family:Arial,Helvetica,sans-serif;font-size:4.5pt;margin-top:0.2mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.l5{font-family:Arial,Helvetica,sans-serif;font-size:4.5pt;color:#333;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+</style></head><body>${headerHtml}${pages.join('')}</body></html>`;
 }
 
-// "Télécharger" — génère le PDF et ouvre la feuille de partage OS (enregistrer,
-// envoyer, imprimer via une appli tierce).
 export async function printTickets(opts: TicketsPdfOpts): Promise<void> {
   const html = await buildTicketsHtml(opts);
   const { uri } = await Print.printToFileAsync({ html });
   if (await Sharing.isAvailableAsync()) {
     await Sharing.shareAsync(uri, {
       mimeType: 'application/pdf',
-      dialogTitle: 'Imprimer / partager les tickets',
+      dialogTitle: buildPdfFileName({
+        routerName: opts.routerName,
+        batchSeq: opts.batchSeq,
+        ticketCount: opts.tickets.length,
+        date: opts.batchDate ? new Date(opts.batchDate) : new Date(),
+      }),
     });
   }
 }
 
-// "Imprimer" — ouvre directement la boîte de dialogue d'impression OS
-// (sélection imprimante Bluetooth/AirPrint), sans passer par la feuille de
-// partage.
 export async function printTicketsDirect(opts: TicketsPdfOpts): Promise<void> {
   const html = await buildTicketsHtml(opts);
   await Print.printAsync({ html });

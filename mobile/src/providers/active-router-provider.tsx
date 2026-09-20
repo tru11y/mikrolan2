@@ -36,8 +36,9 @@ export function ActiveRouterProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const stored = await getStoredValue(KEY);
-      if (mounted) setActiveRouterId(stored);
+      // Clear any persisted router on cold start — user expects to land on
+      // global dashboard, not resume inside a router after app kill.
+      await deleteStoredValue(KEY);
       if (mounted) setIsReady(true);
     })();
     return () => {

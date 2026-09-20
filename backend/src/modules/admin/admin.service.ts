@@ -1,9 +1,13 @@
 import {
   BadRequestException,
   ForbiddenException,
+  HttpStatus,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { BusinessException } from '../../common/exceptions/business.exception';
+import { ErrorCode } from '../../common/error-codes';
 import {
   AuditAction,
   BillingPeriod,
@@ -16,12 +20,16 @@ import {
   UserStatus,
   VoucherStatus,
 } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { CacheService } from '../../common/redis/cache.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { RemoteRouterService } from '../remote-access/remote-router.service';
 import { monthlyPrice } from '../subscriptions/tiers.service';
 import type {
   ListAuditQueryDto,
+  ListFleetQueryDto,
   ListInvoicesQueryDto,
   ListTenantsQueryDto,
   ListTenantRoutersQueryDto,
@@ -57,10 +65,14 @@ const DAY_MS = 86_400_000;
  */
 @Injectable()
 export class AdminService {
+  private readonly logger = new Logger(AdminService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly subscriptions: SubscriptionsService,
+    private readonly cache: CacheService,
+    private readonly remoteRouter: RemoteRouterService,
   ) {}
 
   // ── Comptes clients ────────────────────────────────────
@@ -172,7 +184,7 @@ export class AdminService {
         },
       },
     });
-    if (!tenant) throw new NotFoundException('Compte introuvable');
+    if (!tenant) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.TENANT_NOT_FOUND, 'Compte introuvable');
     return tenant;
   }
 
@@ -185,11 +197,9 @@ export class AdminService {
       where: { id },
       select: { id: true, status: true, slug: true },
     });
-    if (!tenant) throw new NotFoundException('Compte introuvable');
-    // Suspendre le tenant de la plateforme reviendrait à se couper l'accès au
-    // back-office depuis le back-office.
+    if (!tenant) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.TENANT_NOT_FOUND, 'Compte introuvable');
     if (id === actor.tenantId) {
-      throw new ForbiddenException('Impossible de suspendre son propre compte.');
+      throw new BusinessException(HttpStatus.FORBIDDEN, ErrorCode.ADMIN_SELF_SUSPEND, 'Impossible de suspendre son propre compte.');
     }
 
     const updated = await this.prisma.tenant.update({
@@ -277,19 +287,15 @@ export class AdminService {
       where: { id },
       select: { id: true, tenantId: true, role: true, status: true },
     });
-    if (!user) throw new NotFoundException('Utilisateur introuvable');
+    if (!user) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.USER_NOT_FOUND, 'Utilisateur introuvable');
     if (user.id === actor.userId) {
-      throw new ForbiddenException('Impossible de modifier son propre compte.');
+      throw new BusinessException(HttpStatus.FORBIDDEN, ErrorCode.ADMIN_SELF_MODIFY, 'Impossible de modifier son propre compte.');
     }
-    // Un administrateur de plateforme ne se désactive pas depuis l'API : la
-    // seule sortie serait alors un accès direct à la base.
     if (user.role === UserRole.SUPER_ADMIN) {
-      throw new ForbiddenException(
-        'Le statut d\'un administrateur plateforme ne se modifie pas ici.',
-      );
+      throw new BusinessException(HttpStatus.FORBIDDEN, ErrorCode.ADMIN_SELF_MODIFY, 'Le statut d\'un administrateur plateforme ne se modifie pas ici.');
     }
     if (user.status === UserStatus.DELETED) {
-      throw new BadRequestException('Ce compte a été supprimé par son titulaire.');
+      throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.USER_DELETED, 'Ce compte a été supprimé par son titulaire.');
     }
 
     const updated = await this.prisma.user.update({
@@ -489,6 +495,10 @@ export class AdminService {
       where: {
         ...(query.tenantId ? { tenantId: query.tenantId } : {}),
         ...(query.action ? { action: query.action } : {}),
+        ...(query.entityType ? { entityType: query.entityType } : {}),
+        ...(query.errorCode
+          ? { metadata: { path: ['errorCode'], equals: query.errorCode } }
+          : {}),
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: query.limit + 1,
@@ -504,6 +514,7 @@ export class AdminService {
         ip: true,
         createdAt: true,
         tenant: { select: { name: true } },
+        user: { select: { name: true, email: true } },
       },
     });
 
@@ -512,6 +523,7 @@ export class AdminService {
       tenantId: a.tenantId,
       tenantName: a.tenant.name,
       userId: a.userId,
+      userName: a.user?.name ?? a.user?.email ?? null,
       action: a.action,
       entityType: a.entityType,
       entityId: a.entityId,
@@ -554,9 +566,9 @@ export class AdminService {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
     });
-    if (!invoice) throw new NotFoundException('Facture introuvable');
+    if (!invoice) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.INVOICE_NOT_FOUND, 'Facture introuvable');
     if (invoice.status !== 'PENDING') {
-      throw new BadRequestException('Cette facture n\'est pas en attente.');
+      throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.INVOICE_NOT_PENDING, 'Cette facture n\'est pas en attente.');
     }
 
     const periodDays = dto.months
@@ -581,9 +593,9 @@ export class AdminService {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
     });
-    if (!invoice) throw new NotFoundException('Facture introuvable');
+    if (!invoice) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.INVOICE_NOT_FOUND, 'Facture introuvable');
     if (invoice.status !== 'PENDING') {
-      throw new BadRequestException('Cette facture n\'est pas en attente.');
+      throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.INVOICE_NOT_PENDING, 'Cette facture n\'est pas en attente.');
     }
 
     const notification = await this.prisma.$transaction(async (tx) => {
@@ -592,7 +604,7 @@ export class AdminService {
         data: { status: 'FAILED' },
       });
       if (claimed.count === 0) {
-        throw new BadRequestException('Cette facture a déjà été traitée (validation concurrente).');
+        throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.INVOICE_CONCURRENT, 'Cette facture a déjà été traitée (validation concurrente).');
       }
       return tx.notification.create({
         data: {
@@ -633,13 +645,13 @@ export class AdminService {
     const sub = await this.prisma.subscription.findUnique({
       where: { tenantId },
     });
-    if (!sub) throw new NotFoundException('Abonnement introuvable');
+    if (!sub) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.SUBSCRIPTION_NOT_FOUND, 'Abonnement introuvable');
 
     if (dto.tierId) {
       const tier = await this.prisma.subscriptionTier.findUnique({
         where: { id: dto.tierId },
       });
-      if (!tier) throw new BadRequestException('Formule introuvable');
+      if (!tier) throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.TIER_NOT_FOUND, 'Formule introuvable');
     }
 
     const updated = await this.prisma.subscription.update({
@@ -680,7 +692,7 @@ export class AdminService {
         proofs: { orderBy: { createdAt: 'desc' } },
       },
     });
-    if (!invoice) throw new NotFoundException('Facture introuvable');
+    if (!invoice) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.INVOICE_NOT_FOUND, 'Facture introuvable');
     return invoice;
   }
 
@@ -734,7 +746,7 @@ export class AdminService {
         },
       },
     });
-    if (!ticket) throw new NotFoundException('Ticket introuvable');
+    if (!ticket) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.SUPPORT_TICKET_NOT_FOUND, 'Ticket introuvable');
     return ticket;
   }
 
@@ -742,7 +754,7 @@ export class AdminService {
     const ticket = await this.prisma.supportTicket.findUnique({
       where: { id: ticketId },
     });
-    if (!ticket) throw new NotFoundException('Ticket introuvable');
+    if (!ticket) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.SUPPORT_TICKET_NOT_FOUND, 'Ticket introuvable');
 
     const notifBody = body.length > 100 ? `${body.slice(0, 99)}…` : body;
     const [message, , notification] = await this.prisma.$transaction([
@@ -774,7 +786,7 @@ export class AdminService {
 
   async setTicketStatus(id: string, dto: SetTicketStatusDto) {
     const ticket = await this.prisma.supportTicket.findUnique({ where: { id } });
-    if (!ticket) throw new NotFoundException('Ticket introuvable');
+    if (!ticket) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.SUPPORT_TICKET_NOT_FOUND, 'Ticket introuvable');
     return this.prisma.supportTicket.update({
       where: { id },
       data: {
@@ -854,6 +866,69 @@ export class AdminService {
     return this.getConfig();
   }
 
+  // ── Fleet (vue cross-tenant des routeurs payants) ──────
+
+  async listFleet(query: ListFleetQueryDto): Promise<Page<unknown>> {
+    const where: Prisma.RouterWhereInput = {
+      deletedAt: null,
+      tenant: {
+        subscription: { plan: SubscriptionPlan.PRO, status: SubscriptionStatus.ACTIVE },
+      },
+      ...(query.health ? { health: query.health } : {}),
+      ...(query.q
+        ? {
+            OR: [
+              { identity: { contains: query.q, mode: 'insensitive' as const } },
+              { alias: { contains: query.q, mode: 'insensitive' as const } },
+              { tenant: { name: { contains: query.q, mode: 'insensitive' as const } } },
+            ],
+          }
+        : {}),
+    };
+
+    const rows = await this.prisma.router.findMany({
+      where,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: query.limit + 1,
+      ...(query.cursor ? { skip: 1, cursor: { id: query.cursor } } : {}),
+      select: {
+        id: true,
+        identity: true,
+        alias: true,
+        model: true,
+        mode: true,
+        health: true,
+        lastSyncAt: true,
+        lastSyncError: true,
+        syncFailCount: true,
+        createdAt: true,
+        tenant: { select: { id: true, name: true, slug: true } },
+        remotePeer: { select: { status: true, wgIp: true } },
+        telemetry: {
+          orderBy: { collectedAt: 'desc' as const },
+          take: 1,
+          select: {
+            cpuPercent: true,
+            ramUsedMb: true,
+            ramTotalMb: true,
+            uptime: true,
+            rosVersion: true,
+            boardName: true,
+            hotspotActive: true,
+            lastErrors: true,
+            health: true,
+            collectedAt: true,
+          },
+        },
+      },
+    });
+
+    return this.paginate(rows, query.limit, (r) => ({
+      ...r,
+      telemetry: r.telemetry[0] ?? null,
+    }));
+  }
+
   // ── Interne ────────────────────────────────────────────
 
   /** On demande `limit + 1` lignes : la surnuméraire dit qu'il reste une page. */
@@ -929,6 +1004,67 @@ export class AdminService {
     return { expiredButActive, paidWithoutPro, stalePending };
   }
 
+  // ── Diagnostic Mode & Safe Reboot ─────────────────────
+
+  private diagnosticKey(userId: string, routerId: string): string {
+    return `diag:${userId}:${routerId}`;
+  }
+
+  private static readonly DIAGNOSTIC_TTL_SECONDS = 300; // 5 min
+
+  async enterDiagnosticMode(
+    tenantId: string,
+    routerId: string,
+    actor: { userId: string },
+  ): Promise<{ confirmToken: string; expiresInSeconds: number }> {
+    await this.prisma.router.findFirstOrThrow({
+      where: { id: routerId, tenantId, deletedAt: null },
+      select: { id: true },
+    }).catch(() => { throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.ROUTER_NOT_FOUND, 'Routeur introuvable'); });
+
+    const confirmToken = randomUUID();
+    await this.cache.set(
+      this.diagnosticKey(actor.userId, routerId),
+      { confirmToken, tenantId },
+      AdminService.DIAGNOSTIC_TTL_SECONDS,
+    );
+
+    await this.audit(
+      tenantId, actor.userId, AuditAction.DIAGNOSTIC_ENTER,
+      'Router', routerId, { ttlSeconds: AdminService.DIAGNOSTIC_TTL_SECONDS },
+    );
+
+    return {
+      confirmToken,
+      expiresInSeconds: AdminService.DIAGNOSTIC_TTL_SECONDS,
+    };
+  }
+
+  async confirmedReboot(
+    tenantId: string,
+    routerId: string,
+    confirmToken: string,
+    actor: { userId: string },
+  ): Promise<{ rebooted: true }> {
+    const key = this.diagnosticKey(actor.userId, routerId);
+    const session = await this.cache.get<{ confirmToken: string; tenantId: string }>(key);
+
+    if (!session || session.confirmToken !== confirmToken || session.tenantId !== tenantId) {
+      throw new BusinessException(HttpStatus.FORBIDDEN, ErrorCode.SUBSCRIPTION_INACTIVE, 'Mode diagnostic inactif ou token invalide. Entrez en mode diagnostic d\'abord.');
+    }
+
+    await this.cache.del(key);
+
+    await this.remoteRouter.adminReboot(tenantId, routerId);
+
+    await this.audit(
+      tenantId, actor.userId, AuditAction.REBOOT,
+      'Router', routerId, { confirmedAt: new Date().toISOString() },
+    );
+
+    return { rebooted: true };
+  }
+
   private async audit(
     tenantId: string,
     userId: string,
@@ -941,9 +1077,8 @@ export class AdminService {
       await this.prisma.auditLog.create({
         data: { tenantId, userId, action, entityType, entityId, metadata },
       });
-    } catch {
-      // Append-only et jamais bloquant : un échec d'audit ne doit pas annuler
-      // la décision d'administration qui vient d'être prise.
+    } catch (err) {
+      this.logger.warn(`Audit log write failed: ${err instanceof Error ? err.message : err}`);
     }
   }
 }
