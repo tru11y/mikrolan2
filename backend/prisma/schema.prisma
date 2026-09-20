@@ -100,6 +100,26 @@ enum AuditAction {
   RESTORE
   ACTIVATE
   REJECT
+  DIAGNOSTIC_ENTER
+  REBOOT
+  GENERATE
+  PUSH
+  DOWNLOAD
+  UPLOAD
+  MESSAGE
+  CONFIRM
+  DIAGNOSE
+  REPLY
+  CONNECT
+  DISCONNECT
+  EXPORT
+}
+
+enum EventOutcome {
+  SUCCESS
+  WARNING
+  PARTIAL_SUCCESS
+  FAILED
 }
 
 // ─── HOTSPOT / VOUCHERS (P7 — boucle vendable) ───────────
@@ -133,6 +153,7 @@ enum VoucherBatchStatus {
   PENDING
   GENERATING
   COMPLETED
+  PARTIAL_SUCCESS
   FAILED
 }
 
@@ -148,28 +169,29 @@ enum GenerationType {
 
 // ─── TENANT (racine d'isolation) ─────────────────────────
 model Tenant {
-  id             String         @id @default(uuid())
-  name           String
-  slug           String         @unique
-  status         TenantStatus   @default(ACTIVE)
-  country              String?
-  countryUpdatedAt     DateTime?
+  id                    String          @id @default(uuid())
+  name                  String
+  slug                  String          @unique
+  status                TenantStatus    @default(ACTIVE)
+  country               String?
+  countryUpdatedAt      DateTime?
   lastCountryReminderAt DateTime?
-  timezone       String?        @default("Africa/Abidjan")
-  users          User[]
-  routers        Router[]
-  subscription   Subscription?
-  invoices       Invoice[]
-  auditLogs      AuditLog[]
-  plans          Plan[]
-  voucherBatches VoucherBatch[]
-  vouchers       Voucher[]
-  sessions       Session[]
-  notifications    Notification[]
-  supportTickets   SupportTicket[]
-  createdAt        DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  deletedAt      DateTime?
+  timezone              String?         @default("Africa/Abidjan")
+  users                 User[]
+  routers               Router[]
+  subscription          Subscription?
+  invoices              Invoice[]
+  auditLogs             AuditLog[]
+  plans                 Plan[]
+  voucherBatches        VoucherBatch[]
+  vouchers              Voucher[]
+  sessions              Session[]
+  notifications         Notification[]
+  supportTickets        SupportTicket[]
+  ticketVaults          TicketVault[]
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  deletedAt             DateTime?
 
   // Le back-office trie les comptes du plus récent au plus ancien et pagine
   // par curseur : sans cet index, chaque page est un seq scan de la table.
@@ -179,26 +201,27 @@ model Tenant {
 
 // ─── USER (email global unique → résout le tenant au login) ─
 model User {
-  id                   String         @id @default(uuid())
+  id                   String          @id @default(uuid())
   tenantId             String
-  tenant               Tenant         @relation(fields: [tenantId], references: [id])
-  email                String         @unique
+  tenant               Tenant          @relation(fields: [tenantId], references: [id])
+  email                String          @unique
   name                 String?
   country              String?
   passwordHash         String
-  hasPassword          Boolean        @default(true)
-  googleId             String?        @unique
-  appleId              String?        @unique
-  role                 UserRole       @default(MEMBER)
-  status               UserStatus     @default(ACTIVE)
-  notificationsEnabled Boolean        @default(true)
+  hasPassword          Boolean         @default(true)
+  googleId             String?         @unique
+  appleId              String?         @unique
+  role                 UserRole        @default(MEMBER)
+  status               UserStatus      @default(ACTIVE)
+  notificationsEnabled Boolean         @default(true)
   pushToken            String? // Expo push token pour les notifications OS
   lastLoginAt          DateTime? // dernière authentification réussie (vue admin)
   refreshTokens        RefreshToken[]
   supportTickets       SupportTicket[]
   ticketMessages       TicketMessage[]
-  createdAt            DateTime       @default(now())
-  updatedAt            DateTime       @updatedAt
+  auditLogs            AuditLog[]
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
 
   @@index([tenantId])
   @@index([tenantId, createdAt])
@@ -234,30 +257,31 @@ model PasswordResetCode {
 
 // ─── ROUTER (unique par tenant) ──────────────────────────
 model Router {
-  id             String         @id @default(uuid())
-  tenantId       String
-  tenant         Tenant         @relation(fields: [tenantId], references: [id])
-  identity       String
-  alias          String?
-  model          String?
-  localAddress   String? // IP:port LAN (mode local)
-  credEncrypted  String? // creds RouterOS AES-256-GCM (remote seulement)
-  mode           ManagementMode @default(LOCAL)
-  health         RouterHealth   @default(UNKNOWN)
-  lastHeartbeat  DateTime?
-  lastSyncAt     DateTime?
-  lastSyncError  String?
-  syncFailCount  Int            @default(0)
+  id                String            @id @default(uuid())
+  tenantId          String
+  tenant            Tenant            @relation(fields: [tenantId], references: [id])
+  identity          String
+  alias             String?
+  model             String?
+  localAddress      String? // IP:port LAN (mode local)
+  credEncrypted     String? // creds RouterOS AES-256-GCM (remote seulement)
+  mode              ManagementMode    @default(LOCAL)
+  health            RouterHealth      @default(UNKNOWN)
+  lastHeartbeat     DateTime?
+  lastSyncAt        DateTime?
+  lastSyncError     String?
+  syncFailCount     Int               @default(0)
   ticketTemplate    Json? // options d'affichage du reçu ticket (voir ticket-template.schemas.ts)
-  pushNotifications Boolean        @default(true) // notifs push OS pour ce routeur
+  pushNotifications Boolean           @default(true) // notifs push OS pour ce routeur
   remotePeer        RemotePeer?
-  plans          Plan[]
-  voucherBatches VoucherBatch[]
-  vouchers       Voucher[]
-  sessions       Session[]
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  deletedAt      DateTime?
+  telemetry         RouterTelemetry[]
+  plans             Plan[]
+  voucherBatches    VoucherBatch[]
+  vouchers          Voucher[]
+  sessions          Session[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  deletedAt         DateTime?
 
   @@unique([tenantId, identity])
   @@index([tenantId])
@@ -284,9 +308,9 @@ model RemotePeer {
   // WebFig HTTP service off the default 80 (hardening), and SSH/Winbox can
   // also be relocated. Captured at provision time so the DNAT rules on the
   // VPS target the actual listening port for each router.
-  webfigPort      Int              @default(80)
-  sshPort         Int              @default(22)
-  winboxPort      Int              @default(8291)
+  webfigPort Int @default(80)
+  sshPort    Int @default(22)
+  winboxPort Int @default(8291)
 
   @@index([tenantId])
 }
@@ -298,48 +322,48 @@ model RemotePeer {
 // donc ils divergeaient en silence et changer un tarif imposait de publier
 // une nouvelle version de l'application.
 model SubscriptionTier {
-  id              String         @id @default(uuid())
-  key             String         @unique // essentiel | avance | entreprise
-  name            String
-  monthlyXof      Int
-  annualDiscount  Int            @default(20) // en %, appliqué au paiement annuel
-  routerLimit          Int? // null = illimité
-  userLimit            Int? // null = illimité
-  voucherMonthlyLimit  Int? // null = illimité. Tickets générés/mois par tenant.
-  remoteAccess    Boolean        @default(false)
-  a4Printing      Boolean        @default(false)
-  cloudBackup     Boolean        @default(false)
-  prioritySupport Boolean        @default(false)
-  badge           String?
-  tagline         String?
-  features        Json // [{ label: string, included: boolean }]
-  displayOrder    Int            @default(0)
-  active          Boolean        @default(true)
-  subscriptions   Subscription[]
-  invoices        Invoice[]
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  id                  String         @id @default(uuid())
+  key                 String         @unique // essentiel | avance | entreprise
+  name                String
+  monthlyXof          Int
+  annualDiscount      Int            @default(20) // en %, appliqué au paiement annuel
+  routerLimit         Int? // null = illimité
+  userLimit           Int? // null = illimité
+  voucherMonthlyLimit Int? // null = illimité. Tickets générés/mois par tenant.
+  remoteAccess        Boolean        @default(false)
+  a4Printing          Boolean        @default(false)
+  cloudBackup         Boolean        @default(false)
+  prioritySupport     Boolean        @default(false)
+  badge               String?
+  tagline             String?
+  features            Json // [{ label: string, included: boolean }]
+  displayOrder        Int            @default(0)
+  active              Boolean        @default(true)
+  subscriptions       Subscription[]
+  invoices            Invoice[]
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
 
   @@index([active, displayOrder])
 }
 
 // ─── SUBSCRIPTION (1 par tenant) ─────────────────────────
 model Subscription {
-  id                 String             @id @default(uuid())
-  tenantId           String             @unique
-  tenant             Tenant             @relation(fields: [tenantId], references: [id])
-  plan               SubscriptionPlan   @default(FREE)
-  status             SubscriptionStatus @default(ACTIVE)
-  tierId             String? // formule souscrite (null tant que FREE/essai)
-  tier               SubscriptionTier?  @relation(fields: [tierId], references: [id])
-  billingPeriod      BillingPeriod?
-  currentPeriodStart DateTime?
-  currentPeriodEnd   DateTime?
+  id                   String             @id @default(uuid())
+  tenantId             String             @unique
+  tenant               Tenant             @relation(fields: [tenantId], references: [id])
+  plan                 SubscriptionPlan   @default(FREE)
+  status               SubscriptionStatus @default(ACTIVE)
+  tierId               String? // formule souscrite (null tant que FREE/essai)
+  tier                 SubscriptionTier?  @relation(fields: [tierId], references: [id])
+  billingPeriod        BillingPeriod?
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
   routerLimitOverride  Int?
   userLimitOverride    Int?
   voucherLimitOverride Int?
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
 
   @@index([status])
   @@index([tierId])
@@ -376,18 +400,21 @@ model Invoice {
 
 // ─── AUDIT LOG (append-only) ─────────────────────────────
 model AuditLog {
-  id         String      @id @default(uuid())
+  id         String       @id @default(uuid())
   tenantId   String
-  tenant     Tenant      @relation(fields: [tenantId], references: [id])
+  tenant     Tenant       @relation(fields: [tenantId], references: [id])
   userId     String?
+  user       User?        @relation(fields: [userId], references: [id])
   action     AuditAction
   entityType String
   entityId   String?
   metadata   Json?
   ip         String?
-  createdAt  DateTime    @default(now())
+  outcome    EventOutcome @default(SUCCESS)
+  createdAt  DateTime     @default(now())
 
   @@index([tenantId, createdAt])
+  @@index([outcome])
 }
 
 // ─── PLAN (forfait WiFi = user-profile RouterOS) ─────────
@@ -427,20 +454,23 @@ model Plan {
 
 // ─── VOUCHER BATCH (lot de codes généré en une fois) ─────
 model VoucherBatch {
-  id          String             @id @default(uuid())
-  tenantId    String
-  tenant      Tenant             @relation(fields: [tenantId], references: [id])
-  planId      String
-  plan        Plan               @relation(fields: [planId], references: [id])
-  routerId    String
-  router      Router             @relation(fields: [routerId], references: [id])
-  quantity    Int
-  generated   Int                @default(0)
-  status      VoucherBatchStatus @default(PENDING)
-  createdById String?
-  vouchers    Voucher[]
-  createdAt   DateTime           @default(now())
-  completedAt DateTime?
+  id           String             @id @default(uuid())
+  seq          Int                @default(autoincrement())
+  tenantId     String
+  tenant       Tenant             @relation(fields: [tenantId], references: [id])
+  planId       String
+  plan         Plan               @relation(fields: [planId], references: [id])
+  routerId     String
+  router       Router             @relation(fields: [routerId], references: [id])
+  quantity     Int
+  generated    Int                @default(0)
+  status       VoucherBatchStatus @default(PENDING)
+  createdById  String?
+  pdfUrl       String?
+  vouchers     Voucher[]
+  ticketVaults TicketVault[]
+  createdAt    DateTime           @default(now())
+  completedAt  DateTime?
 
   @@index([tenantId])
   @@index([tenantId, createdAt])
@@ -448,31 +478,31 @@ model VoucherBatch {
 
 // ─── VOUCHER (code hotspot = user RouterOS) ──────────────
 model Voucher {
-  id             String         @id @default(uuid())
-  tenantId       String
-  tenant         Tenant         @relation(fields: [tenantId], references: [id])
-  planId         String
-  plan           Plan           @relation(fields: [planId], references: [id])
-  routerId       String
-  router         Router         @relation(fields: [routerId], references: [id])
-  batchId        String?
-  batch          VoucherBatch?  @relation(fields: [batchId], references: [id])
-  code           String // identifiant hotspot (username)
-  password       String // credential hotspot imprimé sur le ticket
-  status         VoucherStatus  @default(GENERATED)
-  generationType GenerationType @default(MANUAL)
-  mikrotikId     String? // .id du /ip/hotspot/user sur le routeur
-  expiresAt      DateTime?
-  usedAt         DateTime?
+  id                   String         @id @default(uuid())
+  tenantId             String
+  tenant               Tenant         @relation(fields: [tenantId], references: [id])
+  planId               String
+  plan                 Plan           @relation(fields: [planId], references: [id])
+  routerId             String
+  router               Router         @relation(fields: [routerId], references: [id])
+  batchId              String?
+  batch                VoucherBatch?  @relation(fields: [batchId], references: [id])
+  code                 String // identifiant hotspot (username)
+  password             String // credential hotspot imprimé sur le ticket
+  status               VoucherStatus  @default(GENERATED)
+  generationType       GenerationType @default(MANUAL)
+  mikrotikId           String? // .id du /ip/hotspot/user sur le routeur
+  expiresAt            DateTime?
+  usedAt               DateTime?
   // Prix figé au moment de la première activation (jamais recalculé depuis
   // Plan.priceXof après coup) et sa provenance — voir audit/51 et audit/52.
   priceXofAtActivation Int?
   priceSnapshotSource  String? // 'EXACT' | 'ESTIMATED_FROM_CURRENT_PLAN_PRICE' | 'UNKNOWN'
-  revokedAt      DateTime?
-  createdById    String?
-  session        Session?
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  revokedAt            DateTime?
+  createdById          String?
+  session              Session?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
 
   @@unique([tenantId, code])
   @@index([tenantId])
@@ -521,19 +551,19 @@ enum NotificationType {
 
 // ─── NOTIFICATION (in-app + push + email) ─
 model Notification {
-  id          String           @id @default(uuid())
-  tenantId    String
-  tenant      Tenant           @relation(fields: [tenantId], references: [id])
-  type        NotificationType
-  title       String
-  body        String
-  voucherId   String?
-  routerId    String?
-  readAt      DateTime?
-  pushSentAt  DateTime?
-  pushError   String?
-  retryCount  Int              @default(0)
-  createdAt   DateTime         @default(now())
+  id         String           @id @default(uuid())
+  tenantId   String
+  tenant     Tenant           @relation(fields: [tenantId], references: [id])
+  type       NotificationType
+  title      String
+  body       String
+  voucherId  String?
+  routerId   String?
+  readAt     DateTime?
+  pushSentAt DateTime?
+  pushError  String?
+  retryCount Int              @default(0)
+  createdAt  DateTime         @default(now())
 
   @@index([tenantId, createdAt])
   @@index([tenantId, readAt])
@@ -568,21 +598,21 @@ enum TicketPriority {
 }
 
 model SupportTicket {
-  id             String         @id @default(uuid())
-  tenantId       String
-  tenant         Tenant         @relation(fields: [tenantId], references: [id])
-  userId         String
-  user           User           @relation(fields: [userId], references: [id])
-  subject        String
-  status         TicketStatus   @default(OPEN)
-  priority       TicketPriority @default(MEDIUM)
-  slaDeadlineAt  DateTime?
-  firstReplyAt   DateTime?
+  id                String          @id @default(uuid())
+  tenantId          String
+  tenant            Tenant          @relation(fields: [tenantId], references: [id])
+  userId            String
+  user              User            @relation(fields: [userId], references: [id])
+  subject           String
+  status            TicketStatus    @default(OPEN)
+  priority          TicketPriority  @default(MEDIUM)
+  slaDeadlineAt     DateTime?
+  firstReplyAt      DateTime?
   satisfactionScore Int?
-  closedAt       DateTime?
-  messages       TicketMessage[]
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  closedAt          DateTime?
+  messages          TicketMessage[]
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
   @@index([tenantId])
   @@index([status, createdAt])
@@ -601,6 +631,43 @@ model TicketMessage {
   createdAt DateTime      @default(now())
 
   @@index([ticketId, createdAt])
+}
+
+// ─── ROUTER TELEMETRY (historique diagnostics, rétention 7-30j) ─
+model RouterTelemetry {
+  id            String       @id @default(uuid())
+  routerId      String
+  router        Router       @relation(fields: [routerId], references: [id])
+  cpuPercent    Int?
+  ramUsedMb     Int?
+  ramTotalMb    Int?
+  uptime        String?
+  rosVersion    String?
+  boardName     String?
+  hotspotActive Int?
+  lastErrors    Json?
+  health        RouterHealth @default(UNKNOWN)
+  collectedAt   DateTime
+  createdAt     DateTime     @default(now())
+
+  @@index([routerId, collectedAt])
+  @@index([collectedAt])
+}
+
+// ─── TICKET VAULT (PDF archivés côté serveur) ────────────
+model TicketVault {
+  id          String       @id @default(uuid())
+  tenantId    String
+  tenant      Tenant       @relation(fields: [tenantId], references: [id])
+  batchId     String
+  batch       VoucherBatch @relation(fields: [batchId], references: [id])
+  fileName    String
+  storagePath String
+  sizeByte    Int
+  createdAt   DateTime     @default(now())
+
+  @@index([tenantId])
+  @@index([batchId])
 }
 
 // ─── CONFIG PLATEFORME ───────────────────────────────────
