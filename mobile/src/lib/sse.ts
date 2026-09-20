@@ -40,8 +40,8 @@ export interface SseConnection {
 const BASE_RETRY_MS = 2_000;
 const MAX_RETRY_MS = 30_000;
 
-/** Recycle la connexion XHR après ~512 KB de responseText accumulé. */
-const RECYCLE_AFTER_BYTES = 512 * 1024;
+/** Recycle la connexion XHR après ~128 KB de responseText accumulé. */
+const RECYCLE_AFTER_BYTES = 128 * 1024;
 
 function parseChunk(raw: string): SseMessage | null {
   let id: string | null = null;

@@ -24,7 +24,7 @@ const mockSubscriptions = {
 const actor = { userId: 'admin-1', tenantId: 'platform' };
 
 function buildService() {
-  return new AdminService(mockPrisma as any, mockNotifications as any, mockSubscriptions as any);
+  return new AdminService(mockPrisma as any, mockNotifications as any, mockSubscriptions as any, { get: jest.fn(), set: jest.fn(), del: jest.fn() } as any, {} as any);
 }
 
 beforeEach(() => jest.clearAllMocks());
@@ -95,9 +95,7 @@ describe('AdminService.validateInvoice', () => {
     mockPrisma.invoice.findUnique.mockResolvedValue(null);
     const service = buildService();
 
-    await expect(service.validateInvoice('missing', actor, {})).rejects.toThrow(
-      NotFoundException,
-    );
+    await expect(service.validateInvoice('missing', actor, {})).rejects.toMatchObject({ status: 404 });
     expect(mockSubscriptions.activate).not.toHaveBeenCalled();
   });
 
@@ -110,9 +108,7 @@ describe('AdminService.validateInvoice', () => {
     });
     const service = buildService();
 
-    await expect(service.validateInvoice('inv-1', actor, {})).rejects.toThrow(
-      BadRequestException,
-    );
+    await expect(service.validateInvoice('inv-1', actor, {})).rejects.toMatchObject({ status: 400 });
     expect(mockSubscriptions.activate).not.toHaveBeenCalled();
   });
 });
@@ -170,7 +166,7 @@ describe('AdminService.rejectInvoice', () => {
 
     await expect(
       service.rejectInvoice('missing', actor, { reason: 'x' }),
-    ).rejects.toThrow(NotFoundException);
+    ).rejects.toMatchObject({ status: 404 });
     expect(mockPrisma.$transaction).not.toHaveBeenCalled();
   });
 
@@ -184,7 +180,7 @@ describe('AdminService.rejectInvoice', () => {
 
     await expect(
       service.rejectInvoice('inv-1', actor, { reason: 'x' }),
-    ).rejects.toThrow(BadRequestException);
+    ).rejects.toMatchObject({ status: 400 });
     expect(mockPrisma.$transaction).not.toHaveBeenCalled();
   });
 });

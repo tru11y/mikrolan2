@@ -1,6 +1,6 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
 import { useCallback, useState } from 'react';
-import { RefreshControl, ScrollView, View, Text, Pressable } from 'react-native';
+import { BackHandler, RefreshControl, ScrollView, View, Text, Pressable } from 'react-native';
 import { Link, Redirect, useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -136,6 +136,12 @@ function StatCard({
 }
 
 export default function MaisonScreen() {
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+      return () => sub.remove();
+    }, []),
+  );
   const theme = useTheme();
   const { t } = useTranslation();
   const router = useRouter();
@@ -242,7 +248,7 @@ export default function MaisonScreen() {
     try {
       await api.auth.dismissCountryReminder();
       me.refetch();
-    } catch { /* best-effort */ }
+    } catch (err) { console.warn('Dismiss country reminder failed:', err); }
   }
 
   function refreshAll() {

@@ -1,4 +1,6 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
+import { BusinessException } from '../../common/exceptions/business.exception';
+import { ErrorCode } from '../../common/error-codes';
 import { ManagementMode } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RemoteRouterService } from '../remote-access/remote-router.service';
@@ -42,7 +44,7 @@ export class HotspotService {
     const [base, prefixStr] = network.split('/');
     const octets = base.split('.').map((n) => Number.parseInt(n, 10));
     if (octets.length !== 4 || octets.some((n) => Number.isNaN(n))) {
-      throw new BadRequestException('Réseau invalide');
+      throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.HOTSPOT_INVALID_NETWORK, 'Réseau invalide');
     }
     const [a, b, c] = octets;
     const gateway = `${a}.${b}.${c}.1`;
@@ -185,9 +187,10 @@ export class HotspotService {
       where: { id: routerId, deletedAt: null },
       select: { id: true, mode: true },
     });
-    if (!router) throw new NotFoundException('Routeur introuvable — il a peut-être été supprimé.');
+    if (!router) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.ROUTER_NOT_FOUND, 'Routeur introuvable — il a peut-être été supprimé.');
     if (router.mode !== ManagementMode.REMOTE) {
-      throw new BadRequestException(
+      throw new BusinessException(
+        HttpStatus.BAD_REQUEST, ErrorCode.ROUTER_CREDS_MISSING,
         'Routeur local : les IP bindings se gèrent via le LAN',
       );
     }
@@ -198,6 +201,6 @@ export class HotspotService {
       where: { id: routerId, deletedAt: null },
       select: { id: true },
     });
-    if (!router) throw new NotFoundException('Routeur introuvable — il a peut-être été supprimé.');
+    if (!router) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.ROUTER_NOT_FOUND, 'Routeur introuvable — il a peut-être été supprimé.');
   }
 }

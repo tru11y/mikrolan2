@@ -241,6 +241,7 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
       return;
     }
     const SEEN_MAX = 200;
+    const SEEN_TTL_MS = 10 * 60_000;
 
     async function tick() {
       if (AppState.currentState !== 'active') return;
@@ -255,6 +256,9 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
         }
         const fresh = list.filter((n) => !seen.has(n.id));
         for (const n of list) seen.set(n.id, now);
+        for (const [k, ts] of seen) {
+          if (now - ts > SEEN_TTL_MS) seen.delete(k);
+        }
         if (seen.size > SEEN_MAX) {
           const sorted = [...seen.entries()].sort((a, b) => a[1] - b[1]);
           for (let i = 0; i < sorted.length - SEEN_MAX; i++) {

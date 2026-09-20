@@ -1,5 +1,9 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { AuditAction } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { BusinessException } from '../../common/exceptions/business.exception';
+import { ErrorCode } from '../../common/error-codes';
+import { getTenantContext } from '../../common/context/tenant-context';
 import { SupportSlaCron } from './support-sla.cron';
 import type { CreateTicketDto, ListMyTicketsDto } from './dto/support.schemas';
 
@@ -10,6 +14,7 @@ export interface Page<T> {
 
 @Injectable()
 export class SupportService {
+  private readonly logger = new Logger(SupportService.name);
   constructor(private readonly prisma: PrismaService) {}
 
   async create(tenantId: string, userId: string, dto: CreateTicketDto) {
@@ -27,6 +32,10 @@ export class SupportService {
         },
       },
       include: { messages: true },
+    });
+    await this.audit(tenantId, userId, AuditAction.CREATE, 'SupportTicket', ticket.id, {
+      subject: dto.subject,
+      priority,
     });
     return ticket;
   }
@@ -78,7 +87,7 @@ export class SupportService {
         },
       },
     });
-    if (!ticket) throw new NotFoundException('Ticket introuvable');
+    if (!ticket) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.SUPPORT_TICKET_NOT_FOUND, 'Ticket introuvable');
     return ticket;
   }
 
@@ -86,10 +95,37 @@ export class SupportService {
     const ticket = await this.prisma.supportTicket.findFirst({
       where: { id: ticketId, tenantId },
     });
-    if (!ticket) throw new NotFoundException('Ticket introuvable');
+    if (!ticket) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.SUPPORT_TICKET_NOT_FOUND, 'Ticket introuvable');
 
-    return this.prisma.ticketMessage.create({
+    const msg = await this.prisma.ticketMessage.create({
       data: { ticketId, userId, body, isAdmin: false },
     });
+    await this.audit(tenantId, userId, AuditAction.MESSAGE, 'SupportTicket', ticketId, {});
+    return msg;
+  }
+
+  private async audit(
+    tenantId: string,
+    userId: string,
+    action: AuditAction,
+    entityType: string,
+    entityId: string,
+    metadata: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      await this.prisma.auditLog.create({
+        data: {
+          tenantId,
+          userId,
+          action,
+          entityType,
+          entityId,
+          metadata: metadata as any,
+          ip: getTenantContext()?.ip ?? null,
+        },
+      });
+    } catch (err) {
+      this.logger.warn(`Audit log write failed: ${err instanceof Error ? err.message : err}`);
+    }
   }
 }

@@ -95,7 +95,7 @@ describe('SubscriptionsService.uploadProof', () => {
 
     await expect(
       service.uploadProof('t-1', 'missing', PaymentMethod.WAVE, file),
-    ).rejects.toThrow(BadRequestException);
+    ).rejects.toMatchObject({ status: 400 });
     expect(mockPrisma.paymentProof.create).not.toHaveBeenCalled();
   });
 
@@ -112,7 +112,7 @@ describe('SubscriptionsService.uploadProof', () => {
         ...file,
         mimetype: 'application/pdf',
       }),
-    ).rejects.toThrow(BadRequestException);
+    ).rejects.toMatchObject({ status: 400 });
     expect(mockPrisma.paymentProof.create).not.toHaveBeenCalled();
   });
 
@@ -130,7 +130,7 @@ describe('SubscriptionsService.uploadProof', () => {
         originalname: 'hack.jpg',
         mimetype: 'image/jpeg',
       }),
-    ).rejects.toThrow(BadRequestException);
+    ).rejects.toMatchObject({ status: 400 });
     expect(mockPrisma.paymentProof.create).not.toHaveBeenCalled();
   });
 

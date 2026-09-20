@@ -2,11 +2,12 @@ import { Module } from '@nestjs/common';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { RemoteAccessModule } from '../remote-access/remote-access.module';
+import { TelemetryModule } from '../telemetry/telemetry.module';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
 
 @Module({
-  imports: [SubscriptionsModule, NotificationsModule, RemoteAccessModule],
+  imports: [SubscriptionsModule, NotificationsModule, RemoteAccessModule, TelemetryModule],
   controllers: [AdminController],
   providers: [AdminService],
 })

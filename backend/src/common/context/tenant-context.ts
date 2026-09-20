@@ -5,6 +5,7 @@ export interface TenantContext {
   tenantId: string;
   userId: string;
   role: UserRole;
+  ip?: string;
 }
 
 // Mutable holder so the auth guard can populate the context after the

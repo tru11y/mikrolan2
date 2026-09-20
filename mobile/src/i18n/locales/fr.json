@@ -37,7 +37,9 @@
     "revoke": "Révoquer",
     "copy": "Copier",
     "open": "Ouvrir",
-    "apply": "Appliquer"
+    "apply": "Appliquer",
+    "print": "Imprimer",
+    "download": "Télécharger"
   },
   "login": {
     "welcome": "Bienvenue",
@@ -181,7 +183,12 @@
     "wifiCodes": "Codes WiFi :",
     "ticketGenerated": "{{count}} ticket généré.",
     "ticketGenerated_plural": "{{count}} tickets générés.",
-    "localCredsRequired": "Identifiants locaux requis : testez d'abord la connexion LAN sur ce routeur."
+    "localCredsRequired": "Identifiants locaux requis : testez d'abord la connexion LAN sur ce routeur.",
+    "generatedPartial": "{{count}} ticket(s) créé(s) — routeur injoignable, les codes seront poussés au prochain accès.",
+    "generatedPartialDetail": "{{pushed}}/{{total}} tickets poussés sur le routeur. Les restants seront synchronisés au prochain accès.",
+    "generatedFailed": "Échec de la génération des tickets. Veuillez réessayer.",
+    "partialBadge": "Partiel",
+    "partialMessage": "Les tickets sont enregistrés sur le serveur mais n'ont pas pu être poussés sur le routeur. Ils seront utilisables dès que le routeur sera joignable (LAN ou tunnel distant)."
   },
   "verifyTicket": {
     "title": "Vérifier un ticket",
@@ -318,7 +325,16 @@
     "download": "Téléchargé",
     "upload": "Envoyé",
     "total": "Total",
-    "sessionsByRouter": "SESSIONS PAR ROUTEUR"
+    "sessionsByRouter": "SESSIONS PAR ROUTEUR",
+    "dailyRevenueChart": "CA journalier",
+    "monthlyRevenue": "CA mensuel",
+    "connectedPerDay": "Clients connectés / jour",
+    "ticketsSoldPerDay": "Tickets vendus / jour",
+    "hourlyHeatmap": "Heatmap horaire",
+    "month": "Mois",
+    "year": "Année",
+    "months": ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"],
+    "noChartData": "Pas de données sur cette période."
   },
   "payment": {
     "title": "Paiement",
@@ -373,6 +389,7 @@
     "sav": "SAV",
     "formulas": "Formules",
     "config": "Config",
+    "auditLog": "Journal d'audit",
     "mrr": "Revenu mensuel récurrent",
     "pendingRequests": "Demandes en attente",
     "clientAccounts": "Comptes clients",
@@ -684,7 +701,23 @@
     "local": "LOCAL",
     "routerSettings": "Paramètres du routeur",
     "cpu": "CPU",
-    "proBadge": "PRO"
+    "proBadge": "PRO",
+    "diagnosticMode": "Mode Diagnostic",
+    "diagnosticDesc": "Accès temporaire aux actions sensibles (reboot, reset). Durée limitée à 5 minutes.",
+    "diagnosticActive": "Diagnostic actif",
+    "diagnosticTimeLeft": "{{minutes}}m {{seconds}}s restantes",
+    "diagnosticExpired": "Mode diagnostic expiré.",
+    "rebootRouter": "Redémarrer le routeur",
+    "rebootConfirm1": "Voulez-vous redémarrer ce routeur ?",
+    "rebootConfirm2": "Tous les utilisateurs connectés seront déconnectés. Confirmer le redémarrage ?",
+    "rebootSuccess": "Redémarrage envoyé. Le routeur sera de retour dans ~60 secondes.",
+    "rebootFailed": "Échec du redémarrage.",
+    "resetHotspot": "Redémarrer le service Hotspot",
+    "resetHotspotConfirm1": "Voulez-vous redémarrer le service hotspot ?",
+    "resetHotspotConfirm2": "Les sessions actives seront interrompues. Confirmer ?",
+    "resetHotspotSuccess": "Service hotspot redémarré.",
+    "resetHotspotFailed": "Échec du redémarrage hotspot.",
+    "dangerousAction": "Action sensible"
   },
   "routerSettings": {
     "screenTitle": "Paramètres routeur",
@@ -907,5 +940,15 @@
     "step3Desc": "Définissez vos forfaits, générez des tickets et encaissez vos clients avec Mobile Money.",
     "step4Title": "Suivez votre activité",
     "step4Desc": "Tableau de bord en temps réel : chiffre d'affaires, sessions connectées, prévisions et insights business."
+  },
+  "vault": {
+    "title": "Historique des lots",
+    "subtitle": "Consultez, réimprimez et téléchargez vos anciens lots de tickets.",
+    "tickets": "tickets",
+    "reprint": "Réimprimer (PDF)",
+    "archivedPdfs": "PDF archivés",
+    "noPdfs": "Aucun PDF archivé pour ce lot.",
+    "empty": "Aucun lot de tickets généré.",
+    "openFailed": "Impossible d'ouvrir le PDF."
   }
 }

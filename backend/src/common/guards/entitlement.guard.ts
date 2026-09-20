@@ -12,11 +12,8 @@ import { TenantContext } from '../context/tenant-context';
 import { UserRole } from '@prisma/client';
 
 /**
- * Enforces the paywall. Once the free trial has run out and no PRO plan is
- * active, the tenant's data is off limits until they pay — only the account
- * and the upgrade flow stay reachable (see @AlwaysAllowed).
- *
- * The padlocks drawn in the app mirror this; they are not what enforces it.
+ * Enforces the paywall. FREE accounts keep permanent local access.
+ * Only manually suspended tenants are blocked.
  */
 @Injectable()
 export class EntitlementGuard implements CanActivate {
@@ -40,19 +37,19 @@ export class EntitlementGuard implements CanActivate {
 
     const req = context.switchToHttp().getRequest<{ user?: TenantContext }>();
     const user = req.user;
-    if (!user) return true; // JwtAuthGuard already rejected, nothing to gate
+    if (!user) return true;
 
-    // Platform staff must keep access to support a locked tenant.
+    // Platform staff must keep access to support any tenant.
     if (user.role === UserRole.SUPER_ADMIN) return true;
 
+    // FREE = permanent local access, never locked. This guard only blocks
+    // manually suspended tenants.
     const entitlement = await this.subscriptions.getEntitlement(user.tenantId);
-    if (entitlement.tier !== 'LOCKED') return true;
+    if (entitlement.localAllowed) return true;
 
     throw new ForbiddenException({
-      code: 'SUBSCRIPTION_REQUIRED',
-      message:
-        'Votre période d’essai est terminée. Activez un forfait PRO pour ' +
-        'retrouver l’accès à vos routeurs.',
+      code: 'ACCOUNT_SUSPENDED',
+      message: 'Votre compte est suspendu. Contactez le support.',
     });
   }
 }

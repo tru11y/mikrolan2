@@ -617,6 +617,13 @@ export type CreateIpBindingPayload = {
   comment?: string;
 };
 
+export type VaultEntry = {
+  id: string;
+  fileName: string;
+  sizeByte: number;
+  createdAt: string;
+};
+
 export type VoucherBatchStatus =
   | 'PENDING'
   | 'GENERATING'
@@ -624,6 +631,7 @@ export type VoucherBatchStatus =
   | 'FAILED';
 export type VoucherBatch = {
   id: string;
+  seq: number;
   planId: string;
   routerId: string;
   quantity: number;
@@ -656,7 +664,11 @@ export type VoucherPushParams = {
 
 export type GenerateResult = {
   batchId: string;
+  batchSeq: number;
+  batchStatus: 'COMPLETED' | 'PARTIAL_SUCCESS' | 'FAILED';
   pushedByServer: boolean;
+  pushedCount: number;
+  totalCount: number;
   push?: VoucherPushParams;
   vouchers: VoucherItem[];
 };
@@ -802,8 +814,11 @@ async function refreshTokens(): Promise<AuthTokens | null> {
     const next = unwrap(response);
     await setAuthTokens(next);
     return next;
-  } catch {
-    await clearAuthTokens(true);
+  } catch (err) {
+    const status = (err as AxiosError)?.response?.status;
+    if (status === 401 || status === 403) {
+      await clearAuthTokens(true);
+    }
     return null;
   }
 }
@@ -833,10 +848,15 @@ apiClient.interceptors.response.use(
       refreshToken
     ) {
       original._retry = true;
-      refreshInFlight ??= refreshTokens();
+      const isInitiator = !refreshInFlight;
+      refreshInFlight ??= refreshTokens().finally(() => {
+        refreshInFlight = null;
+      });
       const refreshed = await refreshInFlight;
-      refreshInFlight = null;
-      if (!refreshed) return Promise.reject(error);
+      if (!refreshed) {
+        if (isInitiator) await clearAuthTokens(true);
+        return Promise.reject(error);
+      }
       original.headers = original.headers ?? {};
       (original.headers as Record<string, string>).Authorization =
         `Bearer ${refreshed.accessToken}`;
@@ -1199,6 +1219,37 @@ export const api = {
       );
       return unwrap(res);
     },
+    async uploadBatchPdf(
+      id: string,
+      batchId: string,
+      pdfUri: string,
+      fileName: string,
+    ): Promise<{ id: string; storagePath: string }> {
+      const form = new FormData();
+      form.append('file', {
+        uri: pdfUri,
+        type: 'application/pdf',
+        name: fileName,
+      } as unknown as Blob);
+      const res = await apiClient.post<ApiEnvelope<{ id: string; storagePath: string }>>(
+        `/routers/${id}/vouchers/batches/${batchId}/vault`,
+        form,
+        { headers: { 'Content-Type': 'multipart/form-data' } },
+      );
+      return unwrap(res);
+    },
+    async listBatchPdfs(
+      id: string,
+      batchId: string,
+    ): Promise<VaultEntry[]> {
+      const res = await apiClient.get<ApiEnvelope<VaultEntry[]>>(
+        `/routers/${id}/vouchers/batches/${batchId}/vault`,
+      );
+      return unwrap(res);
+    },
+    vaultDownloadUrl(vaultId: string): string {
+      return `${getApiBaseUrl()}/routers/vault/${vaultId}`;
+    },
     async revokeVoucher(
       id: string,
       voucherId: string,
@@ -1506,11 +1557,13 @@ export const api = {
       );
       return unwrap(res);
     },
+    /** @deprecated Use enterDiagnostic + confirmedReboot instead */
     async rebootRouter(
       tenantId: string,
       routerId: string,
+      confirmToken: string,
     ): Promise<void> {
-      await apiClient.post(`/admin/tenants/${tenantId}/routers/${routerId}/reboot`);
+      await apiClient.post(`/admin/tenants/${tenantId}/routers/${routerId}/reboot`, { confirmToken });
     },
     async patchSubscription(
       tenantId: string,
@@ -1586,11 +1639,43 @@ export const api = {
       await apiClient.patch('/admin/config', entries);
     },
     async audit(
-      params: { tenantId?: string; cursor?: string; limit?: number } = {},
+      params: { tenantId?: string; entityType?: string; errorCode?: string; cursor?: string; limit?: number } = {},
     ): Promise<Page<AuditEntry>> {
       const res = await apiClient.get<ApiEnvelope<Page<AuditEntry>>>('/admin/audit', {
         params,
       });
+      return unwrap(res);
+    },
+    async fleet(
+      params: { health?: string; q?: string; cursor?: string; limit?: number } = {},
+    ): Promise<Page<FleetRouter>> {
+      const res = await apiClient.get<ApiEnvelope<Page<FleetRouter>>>('/admin/fleet', {
+        params,
+      });
+      return unwrap(res);
+    },
+    async enterDiagnostic(
+      tenantId: string,
+      routerId: string,
+    ): Promise<{ confirmToken: string; expiresInSeconds: number }> {
+      const res = await apiClient.post<ApiEnvelope<{ confirmToken: string; expiresInSeconds: number }>>(
+        `/admin/tenants/${tenantId}/routers/${routerId}/enter-diagnostic`,
+      );
+      return unwrap(res);
+    },
+    async confirmedReboot(
+      tenantId: string,
+      routerId: string,
+      confirmToken: string,
+    ): Promise<{ rebooted: true }> {
+      const res = await apiClient.post<ApiEnvelope<{ rebooted: true }>>(
+        `/admin/tenants/${tenantId}/routers/${routerId}/reboot`,
+        { confirmToken },
+      );
+      return unwrap(res);
+    },
+    async billingAudit(): Promise<unknown> {
+      const res = await apiClient.get<ApiEnvelope<unknown>>('/admin/billing-audit');
       return unwrap(res);
     },
   },
@@ -1804,9 +1889,27 @@ export type PlatformMetrics = {
   revenue: { mrrXof: number; currency: string; untieredActive: number };
   trialsExpiringIn7Days: number;
   pendingInvoices: number;
-  routers: { total: number; online: number };
+  routers: { total: number; online: number; offline: number; degraded: number };
   vouchers30d: { generated: number; activated: number };
+  sessions: { active: number };
+  support: { open: number; overdue: number };
   generatedAt: string;
+};
+
+export type FleetRouter = {
+  id: string;
+  identity: string;
+  alias: string | null;
+  model: string | null;
+  mode: string;
+  health: string;
+  lastSyncAt: string | null;
+  lastSyncError: string | null;
+  syncFailCount: number;
+  createdAt: string;
+  tenant: { id: string; name: string; slug: string };
+  remotePeer: { status: string; wgIp: string }[] | null;
+  telemetry: { cpuPercent: number; memoryPercent: number; uptimeSeconds: number; collectedAt: string }[];
 };
 
 export type AdminTenant = {
@@ -1897,10 +2000,11 @@ export type AuditEntry = {
   tenantId: string;
   tenantName: string;
   userId: string | null;
+  userName: string | null;
   action: string;
   entityType: string;
   entityId: string | null;
-  metadata: unknown;
+  metadata: Record<string, unknown> | null;
   ip: string | null;
   createdAt: string;
 };

@@ -37,7 +37,9 @@
     "revoke": "Revoke",
     "copy": "Copy",
     "open": "Open",
-    "apply": "Apply"
+    "apply": "Apply",
+    "print": "Print",
+    "download": "Download"
   },
   "login": {
     "welcome": "Welcome",
@@ -181,7 +183,12 @@
     "wifiCodes": "WiFi codes:",
     "ticketGenerated": "{{count}} ticket generated.",
     "ticketGenerated_plural": "{{count}} tickets generated.",
-    "localCredsRequired": "Local credentials required: test the LAN connection on this router first."
+    "localCredsRequired": "Local credentials required: test the LAN connection on this router first.",
+    "generatedPartial": "{{count}} ticket(s) created — router unreachable, codes will be pushed on next access.",
+    "generatedPartialDetail": "{{pushed}}/{{total}} tickets pushed to the router. Remaining will sync on next access.",
+    "generatedFailed": "Ticket generation failed. Please try again.",
+    "partialBadge": "Partial",
+    "partialMessage": "Tickets are saved on the server but could not be pushed to the router. They will work once the router is reachable (LAN or remote tunnel)."
   },
   "verifyTicket": {
     "title": "Verify a ticket",
@@ -318,7 +325,16 @@
     "download": "Download",
     "upload": "Upload",
     "total": "Total",
-    "sessionsByRouter": "SESSIONS BY ROUTER"
+    "sessionsByRouter": "SESSIONS BY ROUTER",
+    "dailyRevenueChart": "Daily revenue",
+    "monthlyRevenue": "Monthly revenue",
+    "connectedPerDay": "Clients connected / day",
+    "ticketsSoldPerDay": "Tickets sold / day",
+    "hourlyHeatmap": "Hourly heatmap",
+    "month": "Month",
+    "year": "Year",
+    "months": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+    "noChartData": "No data for this period."
   },
   "payment": {
     "title": "Payment",
@@ -373,6 +389,7 @@
     "sav": "Support",
     "formulas": "Plans",
     "config": "Config",
+    "auditLog": "Audit log",
     "mrr": "Monthly recurring revenue",
     "pendingRequests": "Pending requests",
     "clientAccounts": "Client accounts",
@@ -684,7 +701,23 @@
     "local": "LOCAL",
     "routerSettings": "Router settings",
     "cpu": "CPU",
-    "proBadge": "PRO"
+    "proBadge": "PRO",
+    "diagnosticMode": "Diagnostic Mode",
+    "diagnosticDesc": "Temporary access to sensitive actions (reboot, reset). Limited to 5 minutes.",
+    "diagnosticActive": "Diagnostic active",
+    "diagnosticTimeLeft": "{{minutes}}m {{seconds}}s remaining",
+    "diagnosticExpired": "Diagnostic mode expired.",
+    "rebootRouter": "Reboot router",
+    "rebootConfirm1": "Do you want to reboot this router?",
+    "rebootConfirm2": "All connected users will be disconnected. Confirm reboot?",
+    "rebootSuccess": "Reboot sent. Router will be back in ~60 seconds.",
+    "rebootFailed": "Reboot failed.",
+    "resetHotspot": "Restart Hotspot service",
+    "resetHotspotConfirm1": "Do you want to restart the hotspot service?",
+    "resetHotspotConfirm2": "Active sessions will be interrupted. Confirm?",
+    "resetHotspotSuccess": "Hotspot service restarted.",
+    "resetHotspotFailed": "Hotspot restart failed.",
+    "dangerousAction": "Sensitive action"
   },
   "routerSettings": {
     "screenTitle": "Router settings",
@@ -907,5 +940,15 @@
     "step3Desc": "Set up your plans, generate tickets and collect payments with Mobile Money.",
     "step4Title": "Track your business",
     "step4Desc": "Real-time dashboard: revenue, connected sessions, forecasts and business insights."
+  },
+  "vault": {
+    "title": "Batch history",
+    "subtitle": "View, reprint and download your past ticket batches.",
+    "tickets": "tickets",
+    "reprint": "Reprint (PDF)",
+    "archivedPdfs": "Archived PDFs",
+    "noPdfs": "No archived PDF for this batch.",
+    "empty": "No ticket batches generated.",
+    "openFailed": "Could not open the PDF."
   }
 }
