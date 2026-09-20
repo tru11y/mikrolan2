@@ -31,6 +31,7 @@ import { AccountingModule } from './modules/accounting/accounting.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { MailModule } from './modules/mail/mail.module';
 import { SupportModule } from './modules/support/support.module';
+import { TelemetryModule } from './modules/telemetry/telemetry.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { EntitlementGuard } from './common/guards/entitlement.guard';
@@ -71,6 +72,7 @@ import { TenantContextMiddleware } from './common/context/tenant-context.middlew
     AnalyticsModule,
     MailModule,
     SupportModule,
+    TelemetryModule,
     HealthModule,
     LegalModule,
   ],

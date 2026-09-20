@@ -24,8 +24,10 @@ import {
 import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
+import { useBackToDashboard } from '@/src/hooks/use-back-to-dashboard';
 
 export default function TicketsScreen() {
+  useBackToDashboard();
   const theme = useTheme();
   const { t } = useTranslation();
   const navHeight = useBottomNavHeight();

@@ -1,10 +1,6 @@
 import { Redirect, Tabs } from 'expo-router';
 import { useAuth } from '@/src/providers/auth-provider';
 
-// No native chrome at all: the tab bar is hidden (each screen renders its own
-// <BottomNav>, which adapts to whether a router is selected) and the header is
-// hidden too (each screen renders <AppHeader>). Mixing the native header with
-// in-page titles is what made the same screen name appear twice.
 export default function TabsLayout() {
   const { isReady, isAuthenticated } = useAuth();
   if (isReady && !isAuthenticated) return <Redirect href="/login" />;

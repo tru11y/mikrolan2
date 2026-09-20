@@ -1,4 +1,6 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { HttpStatus, Injectable } from '@nestjs/common';
+import { BusinessException } from '../../../common/exceptions/business.exception';
+import { ErrorCode } from '../../../common/error-codes';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { getTenantContext } from '../../../common/context/tenant-context';
 import { RevenueService, type ActivationLine } from '../../revenue/revenue.service';
@@ -416,12 +418,12 @@ export class ForecastService {
 
   private async assertRouterInTenant(tenantId: string, routerId: string): Promise<void> {
     const router = await this.prisma.router.findFirst({ where: { tenantId, id: routerId }, select: { id: true } });
-    if (!router) throw new BadRequestException('Routeur introuvable pour ce tenant');
+    if (!router) throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.ROUTER_NOT_FOUND, 'Routeur introuvable pour ce tenant');
   }
 
   private async assertPlanInTenant(tenantId: string, planId: string): Promise<void> {
     const plan = await this.prisma.plan.findFirst({ where: { tenantId, id: planId }, select: { id: true } });
-    if (!plan) throw new BadRequestException('Forfait introuvable pour ce tenant');
+    if (!plan) throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.PLAN_NOT_FOUND, 'Forfait introuvable pour ce tenant');
   }
 }
 

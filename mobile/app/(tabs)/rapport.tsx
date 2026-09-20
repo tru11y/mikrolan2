@@ -5,7 +5,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { PieChart } from 'react-native-gifted-charts';
+import { BarChart, LineChart, PieChart } from 'react-native-gifted-charts';
+import { useSseLive } from '@/src/providers/live-events-provider';
 import {
   api,
   type AnalyticsPeriod,
@@ -18,7 +19,6 @@ import { fmtGrowth } from '@/src/lib/analyticsFormat';
 import {
   AnimatedNumber,
   AuroraCard,
-  Badge,
   Card,
   Empty,
   ErrorState,
@@ -36,6 +36,14 @@ import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
+import { useBackToDashboard } from '@/src/hooks/use-back-to-dashboard';
+
+const MONTHS_FR = [
+  'Janvier','Février','Mars','Avril','Mai','Juin',
+  'Juillet','Août','Septembre','Octobre','Novembre','Décembre',
+];
+
+type FilterMode = 'preset' | 'month';
 
 const ANALYTICS_PERIODS: { key: string; value: AnalyticsPeriod }[] = [
   { key: 'rapport.today', value: 'today' },
@@ -203,7 +211,255 @@ function RouterCard({
   );
 }
 
+function MonthYearPicker({
+  month,
+  year,
+  onChangeMonth,
+  onChangeYear,
+}: {
+  month: number;
+  year: number;
+  onChangeMonth: (m: number) => void;
+  onChangeYear: (y: number) => void;
+}) {
+  const theme = useTheme();
+  const { t } = useTranslation();
+  const months: string[] = t('rapport.months', { returnObjects: true }) as string[];
+
+  return (
+    <View style={{ gap: 8 }}>
+      {/* Year nav */}
+      <Row style={{ justifyContent: 'center', gap: 16 }}>
+        <Press onPress={() => onChangeYear(year - 1)} style={{ padding: 8 }}>
+          <Ionicons name="chevron-back" size={18} color={theme.text} />
+        </Press>
+        <Text style={{ color: theme.text, fontSize: 16, fontWeight: weight.bold, minWidth: 60, textAlign: 'center' }}>{year}</Text>
+        <Press onPress={() => onChangeYear(year + 1)} style={{ padding: 8 }}>
+          <Ionicons name="chevron-forward" size={18} color={theme.text} />
+        </Press>
+      </Row>
+      {/* Month grid */}
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
+        {months.map((label, idx) => {
+          const active = idx === month;
+          return (
+            <Press
+              key={idx}
+              onPress={() => onChangeMonth(idx)}
+              style={{
+                width: '24%',
+                paddingVertical: 8,
+                borderRadius: 10,
+                alignItems: 'center',
+                backgroundColor: active ? theme.primary : 'transparent',
+              }}
+            >
+              <Text style={{
+                color: active ? theme.primaryText : theme.textMuted,
+                fontSize: 11,
+                fontWeight: active ? '700' : '500',
+              }}>
+                {label.slice(0, 4)}
+              </Text>
+            </Press>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+function fmtDay(dateStr: string): string {
+  const d = new Date(dateStr);
+  return `${d.getDate()}/${d.getMonth() + 1}`;
+}
+
+function RevenueChart({
+  timeSeries,
+  chartWidth,
+}: {
+  timeSeries: { date: string; revenueXof: number; salesCount: number }[];
+  chartWidth: number;
+}) {
+  const theme = useTheme();
+  const { t } = useTranslation();
+
+  if (!timeSeries.length) return <Empty icon="bar-chart-outline" text={t('rapport.noChartData')} />;
+
+  const spacing = Math.max(8, Math.min(40, (chartWidth - 60) / Math.max(timeSeries.length - 1, 1)));
+
+  const data = timeSeries.map((d) => ({
+    value: d.revenueXof,
+    label: fmtDay(d.date),
+    dataPointText: d.revenueXof > 0 ? fmtXof(d.revenueXof) : undefined,
+  }));
+
+  return (
+    <Card style={{ gap: 10 }}>
+      <SectionHeader icon="trending-up" label={t('rapport.dailyRevenueChart')} color={theme.success} />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <LineChart
+          data={data}
+          width={Math.max(chartWidth - 60, timeSeries.length * spacing)}
+          height={160}
+          spacing={spacing}
+          color={theme.success}
+          thickness={2}
+          startFillColor={withAlpha(theme.success, 0.2)}
+          endFillColor={withAlpha(theme.success, 0.01)}
+          areaChart
+          curved
+          hideDataPoints={timeSeries.length > 14}
+          dataPointsColor={theme.success}
+          xAxisColor={theme.border}
+          yAxisColor={theme.border}
+          yAxisTextStyle={{ color: theme.textMuted, fontSize: 9 }}
+          xAxisLabelTextStyle={{ color: theme.textMuted, fontSize: 8, width: 30, textAlign: 'center' }}
+          noOfSections={4}
+          pointerConfig={{
+            pointerStripColor: theme.border,
+            pointerStripWidth: 1,
+            pointerColor: theme.success,
+            radius: 5,
+            pointerLabelWidth: 100,
+            pointerLabelHeight: 40,
+            activatePointersOnLongPress: false,
+            pointerLabelComponent: (items: { value: number }[]) => (
+              <View style={{
+                backgroundColor: theme.surface,
+                borderRadius: 8,
+                padding: 6,
+                borderWidth: 1,
+                borderColor: theme.border,
+              }}>
+                <Text style={{ color: theme.success, fontSize: 12, fontWeight: '700', fontFamily: theme.mono }}>
+                  {fmtXof(items[0]?.value ?? 0)}
+                </Text>
+              </View>
+            ),
+          }}
+        />
+      </ScrollView>
+    </Card>
+  );
+}
+
+function TicketsChart({
+  timeSeries,
+  chartWidth,
+}: {
+  timeSeries: { date: string; revenueXof: number; salesCount: number }[];
+  chartWidth: number;
+}) {
+  const theme = useTheme();
+  const { t } = useTranslation();
+
+  if (!timeSeries.length) return null;
+
+  const spacing = Math.max(8, Math.min(40, (chartWidth - 60) / Math.max(timeSeries.length - 1, 1)));
+  const barWidth = Math.max(6, Math.min(20, spacing * 0.6));
+
+  const data = timeSeries.map((d) => ({
+    value: d.salesCount,
+    label: fmtDay(d.date),
+    frontColor: withAlpha(theme.primary, 0.7),
+    topLabelComponent: () =>
+      d.salesCount > 0 ? (
+        <Text style={{ color: theme.text, fontSize: 8, fontWeight: '700', textAlign: 'center' }}>
+          {d.salesCount}
+        </Text>
+      ) : undefined,
+  }));
+
+  return (
+    <Card style={{ gap: 10 }}>
+      <SectionHeader icon="ticket-outline" label={t('rapport.ticketsSoldPerDay')} color={theme.primary} />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <BarChart
+          data={data}
+          width={Math.max(chartWidth - 60, timeSeries.length * spacing)}
+          height={120}
+          spacing={spacing}
+          barWidth={barWidth}
+          barBorderRadius={4}
+          xAxisColor={theme.border}
+          yAxisColor={theme.border}
+          yAxisTextStyle={{ color: theme.textMuted, fontSize: 9 }}
+          xAxisLabelTextStyle={{ color: theme.textMuted, fontSize: 8, width: 30, textAlign: 'center' }}
+          noOfSections={4}
+          isAnimated
+        />
+      </ScrollView>
+    </Card>
+  );
+}
+
+const DAYS_SHORT = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+
+function HourlyHeatmap({ cells }: { cells: { dayOfWeek: number; hour: number; count: number; revenueXof?: number }[] }) {
+  const theme = useTheme();
+  const maxCount = Math.max(1, ...cells.map((c) => c.count));
+
+  const grid: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
+  for (const c of cells) {
+    if (c.dayOfWeek >= 0 && c.dayOfWeek < 7 && c.hour >= 0 && c.hour < 24) {
+      grid[c.dayOfWeek][c.hour] = c.count;
+    }
+  }
+
+  const cellSize = 11;
+  const labelW = 28;
+
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      <View style={{ gap: 2 }}>
+        {/* Hour labels */}
+        <View style={{ flexDirection: 'row', marginLeft: labelW }}>
+          {Array.from({ length: 24 }, (_, h) => (
+            <Text key={h} style={{
+              width: cellSize + 2, textAlign: 'center',
+              color: theme.textMuted, fontSize: 7, fontWeight: '600',
+            }}>
+              {h % 3 === 0 ? String(h) : ''}
+            </Text>
+          ))}
+        </View>
+        {/* Rows */}
+        {DAYS_SHORT.map((day, d) => (
+          <View key={d} style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ width: labelW, color: theme.textMuted, fontSize: 8, fontWeight: '600' }}>{day}</Text>
+            {grid[d].map((count, h) => {
+              const alpha = count === 0 ? 0.03 : 0.1 + 0.9 * (count / maxCount);
+              return (
+                <View
+                  key={h}
+                  style={{
+                    width: cellSize, height: cellSize, borderRadius: 2, margin: 1,
+                    backgroundColor: withAlpha(theme.primary, alpha),
+                  }}
+                />
+              );
+            })}
+          </View>
+        ))}
+        {/* Legend */}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4, marginLeft: labelW, width: 24 * (cellSize + 2) }}>
+          <Text style={{ color: theme.textMuted, fontSize: 9 }}>Peu actif</Text>
+          <View style={{ flexDirection: 'row', gap: 3, alignItems: 'center' }}>
+            {[0.08, 0.25, 0.5, 0.75, 1].map((a, i) => (
+              <View key={i} style={{ width: 12, height: 8, borderRadius: 2, backgroundColor: withAlpha(theme.primary, a) }} />
+            ))}
+          </View>
+          <Text style={{ color: theme.textMuted, fontSize: 9 }}>Très actif</Text>
+        </View>
+      </View>
+    </ScrollView>
+  );
+}
+
 export default function RapportScreen() {
+  useBackToDashboard();
+  const sseLive = useSseLive();
   const theme = useTheme();
   const { t } = useTranslation();
   const { routerId } = useLocalSearchParams<{ routerId?: string }>();
@@ -211,9 +467,28 @@ export default function RapportScreen() {
   const navHeight = useBottomNavHeight();
   const qc = useQueryClient();
   const router = useRouter();
+  const { width: screenWidth } = useWindowDimensions();
+  const chartWidth = screenWidth - space.lg * 2;
+
+  const [filterMode, setFilterMode] = useState<FilterMode>('preset');
   const [analyticsPeriod, setAnalyticsPeriod] = useState<AnalyticsPeriod>('last30days');
+  const now = new Date();
+  const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
+  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [refreshing, setRefreshing] = useState(false);
-  const period = METRICS_BY_ANALYTICS[analyticsPeriod];
+
+  const effectivePeriod = filterMode === 'month' ? 'custom' as AnalyticsPeriod : analyticsPeriod;
+  const customFrom = useMemo(() => {
+    if (filterMode !== 'month') return undefined;
+    return `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`;
+  }, [filterMode, selectedMonth, selectedYear]);
+  const customTo = useMemo(() => {
+    if (filterMode !== 'month') return undefined;
+    const last = new Date(selectedYear, selectedMonth + 1, 0);
+    return `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;
+  }, [filterMode, selectedMonth, selectedYear]);
+
+  const period = METRICS_BY_ANALYTICS[effectivePeriod] ?? '30d';
 
   const AP = ANALYTICS_PERIODS.map((p) => ({ value: p.value, label: t(p.key) }));
   const PERIODS = [
@@ -230,22 +505,50 @@ export default function RapportScreen() {
   const clients = useQuery({
     queryKey: ['clients', routerId],
     queryFn: () => api.metrics.recentClients(15, routerId),
-    refetchInterval: 15_000,
+    refetchInterval: sseLive ? false : 30_000,
     placeholderData: keepPreviousData,
   });
   const overview = useQuery({
-    queryKey: ['analytics', 'overview', analyticsPeriod, routerId],
-    queryFn: () => api.analytics.overview({ period: analyticsPeriod, routerId }),
+    queryKey: ['analytics', 'overview', effectivePeriod, customFrom, customTo, routerId],
+    queryFn: () =>
+      api.analytics.overview({
+        period: effectivePeriod,
+        from: customFrom,
+        to: customTo,
+        routerId,
+      }),
     placeholderData: keepPreviousData,
   });
   const analyticsRouters = useQuery({
-    queryKey: ['analytics', 'routers', analyticsPeriod],
-    queryFn: () => api.analytics.routers({ period: analyticsPeriod }),
+    queryKey: ['analytics', 'routers', effectivePeriod, customFrom, customTo],
+    queryFn: () =>
+      api.analytics.routers({
+        period: effectivePeriod,
+        from: customFrom,
+        to: customTo,
+      }),
+    placeholderData: keepPreviousData,
+  });
+  const traffic = useQuery({
+    queryKey: ['analytics', 'traffic', effectivePeriod, customFrom, customTo, routerId],
+    queryFn: () =>
+      api.analytics.traffic({
+        period: effectivePeriod,
+        from: customFrom,
+        to: customTo,
+        routerId,
+      }),
     placeholderData: keepPreviousData,
   });
   const sessionStats = useQuery({
-    queryKey: ['analytics', 'sessions', analyticsPeriod, routerId],
-    queryFn: () => api.analytics.sessionStats({ period: analyticsPeriod, routerId }),
+    queryKey: ['analytics', 'sessions', effectivePeriod, customFrom, customTo, routerId],
+    queryFn: () =>
+      api.analytics.sessionStats({
+        period: effectivePeriod,
+        from: customFrom,
+        to: customTo,
+        routerId,
+      }),
     placeholderData: keepPreviousData,
   });
 
@@ -260,16 +563,12 @@ export default function RapportScreen() {
   }, [qc]);
 
   const data = metrics.data;
+  const timeSeries = overview.data?.timeSeries ?? [];
 
-  const conversionPct = useMemo(() => {
-    if (!data || data.ticketsGenerated === 0) return null;
-    return Math.round((data.ticketsUsed / data.ticketsGenerated) * 100);
-  }, [data]);
-
-  const arpu = useMemo(() => {
-    if (!data || data.ticketsUsed === 0) return null;
-    return Math.round(data.revenueXof / data.ticketsUsed);
-  }, [data]);
+  const monthlyRevenue = useMemo(() => {
+    if (!timeSeries.length) return 0;
+    return timeSeries.reduce((sum, d) => sum + d.revenueXof, 0);
+  }, [timeSeries]);
 
   const error = metrics.error;
 
@@ -324,51 +623,96 @@ export default function RapportScreen() {
           <ErrorState message={t('rapport.loadError')} onRetry={onRefresh} />
         ) : (
           <>
-            {/* Period filter */}
+            {/* Filter mode toggle */}
             <FadeIn>
-              <Row style={{
-                backgroundColor: theme.surface,
-                borderRadius: 14, padding: 3, gap: 3,
-              }}>
-                {AP.map((p) => {
-                  const active = p.value === analyticsPeriod;
-                  return (
-                    <Press
-                      key={p.value}
-                      onPress={() => setAnalyticsPeriod(p.value)}
-                      style={{
-                        flex: 1, paddingVertical: 8, borderRadius: 11, alignItems: 'center',
-                        backgroundColor: active ? theme.primary : 'transparent',
-                      }}
-                    >
-                      <Text style={{
-                        color: active ? theme.primaryText : theme.textMuted,
-                        fontSize: 11, fontWeight: '700',
-                      }}>
-                        {p.label}
-                      </Text>
-                    </Press>
-                  );
-                })}
+              <Row style={{ gap: 6 }}>
+                <Press
+                  onPress={() => setFilterMode('preset')}
+                  style={{
+                    paddingVertical: 6, paddingHorizontal: 12, borderRadius: 10,
+                    backgroundColor: filterMode === 'preset' ? theme.primary : theme.surface,
+                  }}
+                >
+                  <Text style={{
+                    color: filterMode === 'preset' ? theme.primaryText : theme.textMuted,
+                    fontSize: 11, fontWeight: '700',
+                  }}>
+                    Période
+                  </Text>
+                </Press>
+                <Press
+                  onPress={() => setFilterMode('month')}
+                  style={{
+                    paddingVertical: 6, paddingHorizontal: 12, borderRadius: 10,
+                    backgroundColor: filterMode === 'month' ? theme.primary : theme.surface,
+                  }}
+                >
+                  <Text style={{
+                    color: filterMode === 'month' ? theme.primaryText : theme.textMuted,
+                    fontSize: 11, fontWeight: '700',
+                  }}>
+                    {t('rapport.month')} / {t('rapport.year')}
+                  </Text>
+                </Press>
               </Row>
+            </FadeIn>
+
+            {/* Period filter or month/year picker */}
+            <FadeIn>
+              {filterMode === 'preset' ? (
+                <Row style={{
+                  backgroundColor: theme.surface,
+                  borderRadius: 14, padding: 3, gap: 3,
+                }}>
+                  {AP.map((p) => {
+                    const active = p.value === analyticsPeriod;
+                    return (
+                      <Press
+                        key={p.value}
+                        onPress={() => setAnalyticsPeriod(p.value)}
+                        style={{
+                          flex: 1, paddingVertical: 8, borderRadius: 11, alignItems: 'center',
+                          backgroundColor: active ? theme.primary : 'transparent',
+                        }}
+                      >
+                        <Text style={{
+                          color: active ? theme.primaryText : theme.textMuted,
+                          fontSize: 11, fontWeight: '700',
+                        }}>
+                          {p.label}
+                        </Text>
+                      </Press>
+                    );
+                  })}
+                </Row>
+              ) : (
+                <Card style={{ gap: 8 }}>
+                  <MonthYearPicker
+                    month={selectedMonth}
+                    year={selectedYear}
+                    onChangeMonth={setSelectedMonth}
+                    onChangeYear={setSelectedYear}
+                  />
+                </Card>
+              )}
             </FadeIn>
 
             {/* Hero revenue */}
             <FadeIn delay={50}>
               <AuroraCard style={{ gap: 10, padding: 20 }}>
                 <Text style={{ color: withAlpha('#FFFFFF', 0.7), fontSize: 11, fontWeight: '700', letterSpacing: 0.5 }}>
-                  {t('rapport.revenue')}
+                  {filterMode === 'month' ? t('rapport.monthlyRevenue') : t('rapport.revenue')}
                 </Text>
-                {metrics.isLoading ? (
+                {metrics.isLoading && overview.isLoading ? (
                   <Skeleton height={36} width="60%" />
                 ) : (
                   <AnimatedNumber
-                    value={data?.revenueXof ?? 0}
+                    value={filterMode === 'month' ? monthlyRevenue : (data?.revenueXof ?? 0)}
                     format={(n) => fmtXof(n)}
                     style={{ color: '#FFFFFF', fontSize: 32, fontWeight: '900', fontFamily: theme.mono }}
                   />
                 )}
-                {data?.trendPct != null ? (
+                {data?.trendPct != null && filterMode === 'preset' ? (
                   <Row style={{ justifyContent: 'flex-start', gap: 6 }}>
                     <View style={{
                       backgroundColor: withAlpha('#FFFFFF', 0.18), borderRadius: 8,
@@ -388,33 +732,59 @@ export default function RapportScreen() {
               </AuroraCard>
             </FadeIn>
 
-            {/* KPIs */}
+            {/* KPIs — sessions en ligne + tickets vendus + CA moyen/jour */}
             <FadeIn delay={100}>
               <Row style={{ gap: 8 }}>
-                <Kpi
-                  icon="swap-horizontal-outline"
-                  iconColor={theme.primary}
-                  value={conversionPct != null ? `${conversionPct}%` : '—'}
-                  label={t('rapport.conversionRate')}
-                />
-                <Kpi
-                  icon="pricetag-outline"
-                  iconColor={theme.warning}
-                  value={arpu != null ? fmtXof(arpu) : '—'}
-                  label={t('rapport.avgBasket')}
-                />
                 <Kpi
                   icon="people-outline"
                   iconColor={theme.success}
                   value={`${data?.activeSessions ?? 0}`}
                   label={t('rapport.onlineNow')}
                 />
+                <Kpi
+                  icon="ticket-outline"
+                  iconColor={theme.primary}
+                  value={`${timeSeries.reduce((s, d) => s + d.salesCount, 0)}`}
+                  label={t('rapport.ticketsSoldPerDay')}
+                />
+                <Kpi
+                  icon="cash-outline"
+                  iconColor={theme.warning}
+                  value={timeSeries.length ? fmtXof(Math.round(monthlyRevenue / timeSeries.length)) : '—'}
+                  label={t('rapport.avgDailyRevenue')}
+                />
+                <Kpi
+                  icon="calendar-outline"
+                  iconColor="#EAB308"
+                  value={fmtXof(monthlyRevenue)}
+                  label={t('rapport.monthlyRevenue')}
+                />
               </Row>
             </FadeIn>
 
-            {/* Sessions summary - compact */}
+            {/* CA journalier — interactive line chart */}
+            <FadeIn delay={130}>
+              <RevenueChart timeSeries={timeSeries} chartWidth={chartWidth} />
+            </FadeIn>
+
+            {/* Tickets vendus par jour — bar chart */}
+            <FadeIn delay={160}>
+              <TicketsChart timeSeries={timeSeries} chartWidth={chartWidth} />
+            </FadeIn>
+
+            {/* Heatmap horaire */}
+            {traffic.data?.salesHeatmap?.length ? (
+              <FadeIn delay={175}>
+                <Card style={{ gap: 10 }}>
+                  <SectionHeader icon="flame-outline" label={t('rapport.hourlyHeatmap')} color={theme.warning} />
+                  <HourlyHeatmap cells={traffic.data.salesHeatmap} />
+                </Card>
+              </FadeIn>
+            ) : null}
+
+            {/* Sessions summary */}
             {sessionStats.data && sessionStats.data.totalSessions > 0 ? (
-              <FadeIn delay={130}>
+              <FadeIn delay={190}>
                 <Card style={{ gap: 8 }}>
                   <SectionHeader icon="wifi-outline" label={t('rapport.sessionsSection')} color={theme.primary} />
                   <Row style={{ gap: 12 }}>
@@ -444,7 +814,7 @@ export default function RapportScreen() {
             ) : null}
 
             {/* Plan breakdown */}
-            <FadeIn delay={160}>
+            <FadeIn delay={220}>
               <Card style={{ gap: 12 }}>
                 <SectionHeader icon="pie-chart-outline" label={t('rapport.planBreakdown')} color={theme.warning} />
                 {metrics.isLoading ? <Skeleton height={100} /> : <PlanPieChart data={data?.byPlan ?? []} t={t} />}
@@ -452,7 +822,7 @@ export default function RapportScreen() {
             </FadeIn>
 
             {/* Router ranking */}
-            <FadeIn delay={200}>
+            <FadeIn delay={250}>
               <View style={{ gap: 10 }}>
                 <SectionHeader icon="hardware-chip-outline" label={t('rapport.routersSection')} color={theme.primary} />
                 {overview.isLoading && analyticsRouters.isLoading ? (
@@ -465,7 +835,7 @@ export default function RapportScreen() {
                       <RouterCard
                         key={r.routerId}
                         r={r}
-                        onPress={() => router.push(`/analytics-router/${r.routerId}?period=${analyticsPeriod}`)}
+                        onPress={() => router.push(`/analytics-router/${r.routerId}?period=${effectivePeriod}`)}
                         t={t}
                       />
                     ))}
@@ -475,7 +845,7 @@ export default function RapportScreen() {
             </FadeIn>
 
             {/* Recent clients */}
-            <FadeIn delay={250}>
+            <FadeIn delay={280}>
               <View style={{ gap: 10 }}>
                 <SectionHeader icon="people-outline" label={t('rapport.recentClients')} color={theme.success} />
                 {!clients.data?.length ? (

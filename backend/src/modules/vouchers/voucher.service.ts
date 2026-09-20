@@ -1,8 +1,10 @@
 import {
-  BadRequestException,
+  HttpStatus,
   Injectable,
-  NotFoundException,
+  Logger,
 } from '@nestjs/common';
+import { BusinessException } from '../../common/exceptions/business.exception';
+import { ErrorCode } from '../../common/error-codes';
 import { randomBytes } from 'node:crypto';
 import {
   AuditAction,
@@ -26,7 +28,6 @@ import type {
   GenerateVouchersDto,
   VerifyVoucherDto,
 } from './dto/voucher.schemas';
-import { UnauthorizedException } from '@nestjs/common';
 
 // No ambiguous glyphs (0/O, 1/I) — codes get read aloud and typed by hand.
 const ALPHANUMERIC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -64,6 +65,8 @@ export interface VoucherPushParams {
 
 @Injectable()
 export class VoucherService {
+  private readonly logger = new Logger(VoucherService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly remote: RemoteRouterService,
@@ -75,7 +78,7 @@ export class VoucherService {
       where: { id: routerId, deletedAt: null },
       select: { id: true, mode: true },
     });
-    if (!router) throw new NotFoundException('Routeur introuvable — il a peut-être été supprimé.');
+    if (!router) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.ROUTER_NOT_FOUND, 'Routeur introuvable — il a peut-être été supprimé.');
 
     const plan = await this.prisma.plan.findFirst({
       where: { id: dto.planId, routerId, deletedAt: null },
@@ -92,11 +95,11 @@ export class VoucherService {
         codeFormat: true,
       },
     });
-    if (!plan) throw new NotFoundException('Forfait introuvable.');
+    if (!plan) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.PLAN_NOT_FOUND, 'Forfait introuvable.');
 
     const ctx = getTenantContext();
     const tenantId = ctx?.tenantId;
-    if (!tenantId) throw new BadRequestException('Contexte tenant manquant');
+    if (!tenantId) throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.TENANT_CONTEXT_MISSING, 'Contexte tenant manquant');
 
     await this.subscriptions.assertVoucherLimit(tenantId);
 
@@ -129,7 +132,7 @@ export class VoucherService {
         status: VoucherBatchStatus.GENERATING,
         createdById: ctx.userId,
       } satisfies Prisma.VoucherBatchUncheckedCreateInput,
-      select: { id: true },
+      select: { id: true, seq: true },
     });
     push.comment = `mikrolan:${batch.id}`;
 
@@ -183,9 +186,31 @@ export class VoucherService {
           },
           { timeoutMs: Math.max(60_000, codes.length * 3000) },
         );
-      } catch {
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        this.logger.error({
+          errorCode: 'VOUCHER_PUSH_FAILED',
+          batchId: batch.id,
+          routerId,
+          pushedCount,
+          totalCount: codes.length,
+          error: errorMsg,
+        });
+        await this.audit(AuditAction.CREATE, batch.id, {
+          errorCode: 'VOUCHER_PUSH_FAILED',
+          pushedCount,
+          totalCount: codes.length,
+          error: errorMsg,
+        }, 'VoucherBatch');
         if (pushedCount > 0) {
-          await this.completeBatch(batch.id, pushedCount);
+          await this.prisma.voucherBatch.update({
+            where: { id: batch.id },
+            data: {
+              status: VoucherBatchStatus.PARTIAL_SUCCESS,
+              generated: pushedCount,
+              completedAt: new Date(),
+            },
+          });
         } else {
           await this.prisma.voucherBatch.update({
             where: { id: batch.id },
@@ -198,14 +223,24 @@ export class VoucherService {
       }
     }
 
-    const vouchers = await this.prisma.voucher.findMany({
-      where: { batchId: batch.id },
-      select: VOUCHER_PUBLIC,
-      orderBy: { createdAt: 'asc' },
-    });
+    const [vouchers, updatedBatch] = await Promise.all([
+      this.prisma.voucher.findMany({
+        where: { batchId: batch.id },
+        select: VOUCHER_PUBLIC,
+        orderBy: { createdAt: 'asc' },
+      }),
+      this.prisma.voucherBatch.findUnique({
+        where: { id: batch.id },
+        select: { status: true, generated: true },
+      }),
+    ]);
     return {
       batchId: batch.id,
+      batchSeq: batch.seq,
+      batchStatus: updatedBatch?.status ?? VoucherBatchStatus.GENERATING,
       pushedByServer: Boolean(peer),
+      pushedCount: updatedBatch?.generated ?? 0,
+      totalCount: codes.length,
       push: peer ? undefined : push,
       vouchers,
     };
@@ -266,7 +301,7 @@ export class VoucherService {
       },
     });
     if (!voucher) {
-      throw new NotFoundException('Ce code n’a pas été émis pour ce routeur.');
+      throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.VOUCHER_NOT_FOUND, 'Ce code n\'a pas été émis pour ce routeur.');
     }
     return voucher;
   }
@@ -306,7 +341,7 @@ export class VoucherService {
     });
 
     if (!voucher) {
-      throw new UnauthorizedException('Code inconnu ou non attribué à ce routeur.');
+      throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.VOUCHER_NOT_FOUND, 'Code inconnu ou non attribué à ce routeur.');
     }
 
     const canLogin =
@@ -351,6 +386,7 @@ export class VoucherService {
       where: routerId ? { routerId } : {},
       select: {
         id: true,
+        seq: true,
         planId: true,
         routerId: true,
         quantity: true,
@@ -376,9 +412,9 @@ export class VoucherService {
         router: { select: { mode: true } },
       },
     });
-    if (!voucher) throw new NotFoundException('Ticket introuvable.');
+    if (!voucher) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.VOUCHER_NOT_FOUND, 'Ticket introuvable.');
     if (voucher.status === VoucherStatus.REVOKED) {
-      throw new BadRequestException('Voucher déjà révoqué');
+      throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.VOUCHER_ALREADY_REVOKED, 'Voucher déjà révoqué');
     }
 
     // Remove from the router only over the tunnel (REMOTE). For LOCAL routers the
@@ -388,8 +424,13 @@ export class VoucherService {
         await this.remote.run(voucher.routerId, (client) =>
           removeHotspotUser(client, voucher.mikrotikId as string),
         );
-      } catch {
-        // router unreachable — keep the DB state authoritative
+      } catch (err) {
+        this.logger.warn({
+          errorCode: 'VOUCHER_REVOKE_ROUTER_UNREACHABLE',
+          voucherId: id,
+          routerId: voucher.routerId,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }
 
@@ -416,15 +457,20 @@ export class VoucherService {
         router: { select: { mode: true } },
       },
     });
-    if (!voucher) throw new NotFoundException('Ticket introuvable.');
+    if (!voucher) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.VOUCHER_NOT_FOUND, 'Ticket introuvable.');
 
     if (voucher.mikrotikId && voucher.router.mode === ManagementMode.REMOTE) {
       try {
         await this.remote.run(voucher.routerId, (client) =>
           removeHotspotUser(client, voucher.mikrotikId as string),
         );
-      } catch {
-        // router unreachable — delete the DB row anyway
+      } catch (err) {
+        this.logger.warn({
+          errorCode: 'VOUCHER_DELETE_ROUTER_UNREACHABLE',
+          voucherId: id,
+          routerId: voucher.routerId,
+          error: err instanceof Error ? err.message : String(err),
+        });
       }
     }
 
@@ -442,7 +488,7 @@ export class VoucherService {
       where: { id: batchId },
       select: { id: true },
     });
-    if (!batch) throw new NotFoundException('Lot introuvable.');
+    if (!batch) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.BATCH_NOT_FOUND, 'Lot introuvable.');
 
     await this.prisma.$transaction(async (tx) => {
       await tx.session.deleteMany({ where: { voucher: { batchId } } });
@@ -504,8 +550,8 @@ export class VoucherService {
           metadata,
         },
       });
-    } catch {
-      // append-only, best-effort
+    } catch (err) {
+      this.logger.warn(`Audit log write failed: ${err instanceof Error ? err.message : err}`);
     }
   }
 }

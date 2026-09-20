@@ -123,7 +123,7 @@ describe('AuthService', () => {
 
       await expect(
         service.signup({ tenantName: 'X', email: 'dup@t.com', password: PASSWORD }),
-      ).rejects.toThrow(ConflictException);
+      ).rejects.toMatchObject({ status: 409 });
     });
   });
 
@@ -160,7 +160,7 @@ describe('AuthService', () => {
 
       await expect(
         service.login({ email: 'a@b.com', password: 'wrong' }),
-      ).rejects.toThrow(UnauthorizedException);
+      ).rejects.toMatchObject({ status: 401 });
     });
 
     it('rejects unknown user with same error (no enumeration)', async () => {
@@ -169,7 +169,7 @@ describe('AuthService', () => {
 
       await expect(
         service.login({ email: 'nope@x.com', password: PASSWORD }),
-      ).rejects.toThrow(UnauthorizedException);
+      ).rejects.toMatchObject({ status: 401 });
     });
 
     it('rejects inactive user', async () => {
@@ -181,7 +181,7 @@ describe('AuthService', () => {
 
       await expect(
         service.login({ email: 'a@b.com', password: PASSWORD }),
-      ).rejects.toThrow(UnauthorizedException);
+      ).rejects.toMatchObject({ status: 401 });
     });
   });
 
@@ -254,7 +254,7 @@ describe('AuthService', () => {
       mockPrisma.tenant.findUnique.mockResolvedValue(tenant);
       mockPrisma.subscription.findUnique.mockResolvedValue(sub);
 
-      await expect(service.me('u1', 't1')).rejects.toThrow(UnauthorizedException);
+      await expect(service.me('u1', 't1')).rejects.toMatchObject({ status: 401 });
     });
   });
 
@@ -290,7 +290,7 @@ describe('AuthService', () => {
           currentPassword: 'x',
           newPassword: 'y',
         }),
-      ).rejects.toThrow(UnauthorizedException);
+      ).rejects.toMatchObject({ status: 401 });
     });
   });
 

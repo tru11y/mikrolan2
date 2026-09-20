@@ -1,6 +1,7 @@
 import {
   ConflictException,
   ForbiddenException,
+  HttpException,
   NotFoundException,
 } from '@nestjs/common';
 import { ManagementMode, Prisma } from '@prisma/client';
@@ -110,7 +111,7 @@ describe('RoutersService', () => {
       const { service, prisma } = makeService();
       prisma.router.findFirst.mockResolvedValue(null);
 
-      await expect(service.findOne('bad')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('bad')).rejects.toMatchObject({ status: 404 });
     });
   });
 
@@ -144,7 +145,7 @@ describe('RoutersService', () => {
           localAddress: '192.168.88.1',
           mode: ManagementMode.LOCAL,
         }),
-      ).rejects.toThrow(ConflictException);
+      ).rejects.toMatchObject({ status: 409 });
     });
 
     it('enforces router limit', async () => {
@@ -158,7 +159,7 @@ describe('RoutersService', () => {
           localAddress: '192.168.88.2',
           mode: ManagementMode.LOCAL,
         }),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toThrow(HttpException);
     });
 
     it('blocks REMOTE mode without PRO subscription', async () => {
@@ -171,7 +172,7 @@ describe('RoutersService', () => {
           localAddress: '10.0.0.1',
           mode: ManagementMode.REMOTE,
         }),
-      ).rejects.toThrow(ForbiddenException);
+      ).rejects.toMatchObject({ status: 403 });
     });
   });
 

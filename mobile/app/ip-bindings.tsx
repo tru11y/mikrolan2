@@ -20,6 +20,7 @@ import {
   listActiveLan,
 } from '@/src/services/mikrotik-lan/hotspotLan';
 import { getLocalCredentials } from '@/src/lib/router-credentials';
+import { getWifiInfo, sameSubnet24 } from '@/src/lib/lanBinder';
 import {
   Banner,
   Button,
@@ -63,6 +64,16 @@ function TypeDot({ type }: { type: IpBindingType }) {
   );
 }
 
+async function lanCreds(routerId: string) {
+  const creds = await getLocalCredentials(routerId);
+  if (!creds) return null;
+  const wifi = await getWifiInfo();
+  const onLan =
+    !!wifi &&
+    (creds.host === wifi.gateway || sameSubnet24(creds.host, wifi.ipAddress));
+  return onLan ? creds : null;
+}
+
 export default function IpBindingsScreen() {
   const theme = useTheme();
   const { t } = useTranslation();
@@ -73,7 +84,7 @@ export default function IpBindingsScreen() {
   const bindingsQuery = useQuery({
     queryKey: ['ip-bindings', routerId],
     queryFn: async (): Promise<IpBinding[]> => {
-      const creds = await getLocalCredentials(routerId);
+      const creds = await lanCreds(routerId);
       if (creds) return listIpBindingsLan(creds);
       return api.routers.listIpBindings(routerId);
     },
@@ -94,7 +105,7 @@ export default function IpBindingsScreen() {
   const sessionsQuery = useQuery({
     queryKey: ['sessions', routerId],
     queryFn: async (): Promise<LiveSession[]> => {
-      const creds = await getLocalCredentials(routerId);
+      const creds = await lanCreds(routerId);
       if (creds) return listActiveLan(creds);
       return api.routers.listSessions(routerId);
     },
@@ -145,7 +156,7 @@ export default function IpBindingsScreen() {
         type,
         comment: comment.trim() || undefined,
       };
-      const creds = await getLocalCredentials(routerId);
+      const creds = await lanCreds(routerId);
       if (editingId) {
         if (creds) {
           await updateIpBindingLan(creds, editingId, payload);
@@ -169,7 +180,7 @@ export default function IpBindingsScreen() {
 
   async function remove(bindingId: string) {
     try {
-      const creds = await getLocalCredentials(routerId);
+      const creds = await lanCreds(routerId);
       if (creds) {
         await removeIpBindingLan(creds, bindingId);
       } else {
