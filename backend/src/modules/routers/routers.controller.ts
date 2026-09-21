@@ -14,8 +14,10 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { UserRole } from '@prisma/client';
 import { RoutersService } from './routers.service';
 import {
+  clientEventSchema,
   createRouterSchema,
   updateRouterSchema,
+  type ClientEventDto,
   type CreateRouterDto,
   type UpdateRouterDto,
 } from './dto/router.schemas';
@@ -37,6 +39,16 @@ export class RoutersController {
   @Get()
   findAll() {
     return this.routers.findAll();
+  }
+
+  @Post(':id/events')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  recordClientEvent(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(clientEventSchema)) dto: ClientEventDto,
+  ) {
+    return this.routers.recordClientEvent(id, dto);
   }
 
   @Get(':id')

@@ -5,13 +5,14 @@ import {
 } from '@nestjs/common';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/error-codes';
+import { EventLogService, describeFailure } from '../events/event-log.service';
 import { AuditAction, ManagementMode, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CryptoService } from '../../common/crypto/crypto.service';
 import { getTenantContext } from '../../common/context/tenant-context';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { WireGuardService } from '../../common/wireguard/wireguard.service';
-import { CreateRouterDto, UpdateRouterDto } from './dto/router.schemas';
+import { ClientEventDto, CreateRouterDto, UpdateRouterDto } from './dto/router.schemas';
 import { TicketTemplateDto } from './dto/ticket-template.schemas';
 
 // Never expose credEncrypted to the API.
@@ -41,6 +42,7 @@ export class RoutersService {
     private readonly crypto: CryptoService,
     private readonly subscriptions: SubscriptionsService,
     private readonly wg: WireGuardService,
+    private readonly eventLog: EventLogService,
   ) {}
 
   // Remote (cloud + WireGuard) management requires a paid plan.
@@ -71,7 +73,19 @@ export class RoutersService {
     }
   }
 
-  async create(dto: CreateRouterDto) {
+  create(dto: CreateRouterDto) {
+    return this.eventLog.track(
+      {
+        action: AuditAction.CREATE,
+        entityType: 'Router',
+        metadata: { identity: dto.identity, mode: dto.mode ?? 'LOCAL' },
+      },
+      () => this.createRouter(dto),
+      (router) => ({ entityId: router.id }),
+    );
+  }
+
+  private async createRouter(dto: CreateRouterDto) {
     await this.assertRemoteAllowed(dto.mode);
     const tenantId = getTenantContext()?.tenantId;
     if (tenantId) await this.assertRouterLimit(tenantId);
@@ -104,7 +118,6 @@ export class RoutersService {
         } as Prisma.RouterCreateInput,
         select: ROUTER_PUBLIC,
       });
-      await this.audit(AuditAction.CREATE, created.id, { identity: dto.identity });
       return created;
     } catch (e) {
       if (
@@ -123,6 +136,32 @@ export class RoutersService {
       select: ROUTER_PUBLIC,
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  /** Trace d'une action faite par l'app directement sur le LAN (invisible du serveur). */
+  async recordClientEvent(id: string, dto: ClientEventDto) {
+    await this.findOne(id);
+    const isDiagnostic = dto.kind === 'REBOOT' || dto.kind === 'HOTSPOT_RESET';
+    const action =
+      dto.kind === 'REBOOT'
+        ? AuditAction.REBOOT
+        : dto.kind === 'HOTSPOT_RESET'
+          ? AuditAction.DIAGNOSE
+          : AuditAction.CONNECT;
+    await this.eventLog.emit({
+      action,
+      entityType: isDiagnostic ? 'Diagnostic' : 'Router',
+      entityId: id,
+      outcome: dto.outcome,
+      metadata: {
+        source: 'app',
+        via: 'lan',
+        kind: dto.kind,
+        ...(dto.errorCode ? { errorCode: dto.errorCode } : {}),
+        ...(dto.message ? { error: dto.message } : {}),
+      },
+    });
+    return { recorded: true };
   }
 
   async findOne(id: string) {
@@ -182,11 +221,15 @@ export class RoutersService {
     };
   }
 
-  async remove(id: string) {
-    await this.findOne(id);
-    await this.hardCleanup(id);
-    await this.audit(AuditAction.DELETE, id, {});
-    return { deleted: true };
+  remove(id: string) {
+    return this.eventLog.track(
+      { action: AuditAction.DELETE, entityType: 'Router', entityId: id },
+      async () => {
+        await this.findOne(id);
+        await this.hardCleanup(id);
+        return { deleted: true };
+      },
+    );
   }
 
   /**
@@ -207,9 +250,9 @@ export class RoutersService {
         });
       } catch (err) {
         this.logger.warn(`WireGuard cleanup failed (proceeding): ${err instanceof Error ? err.message : err}`);
-        await this.audit(AuditAction.DELETE, routerId, {
+        await this.eventLog.warning(AuditAction.DELETE, 'Router', routerId, {
+          ...describeFailure(err),
           errorCode: ErrorCode.WG_PEER_REMOVAL_FAILED,
-          error: err instanceof Error ? err.message : String(err),
         });
       }
     }
@@ -223,28 +266,5 @@ export class RoutersService {
       if (peer) await tx.remotePeer.delete({ where: { id: peer.id } });
       await tx.router.delete({ where: { id: routerId } });
     });
-  }
-
-  private async audit(
-    action: AuditAction,
-    entityId: string,
-    metadata: Prisma.InputJsonValue,
-  ): Promise<void> {
-    const ctx = getTenantContext();
-    if (!ctx) return;
-    try {
-      await this.prisma.auditLog.create({
-        data: {
-          tenantId: ctx.tenantId,
-          userId: ctx.userId,
-          action,
-          entityType: 'Router',
-          entityId,
-          metadata,
-        },
-      });
-    } catch (err) {
-      this.logger.warn(`Audit log write failed: ${err instanceof Error ? err.message : err}`);
-    }
   }
 }

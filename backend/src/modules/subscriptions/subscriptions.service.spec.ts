@@ -1,3 +1,4 @@
+import { makeEventLogStub } from '../../common/testing/event-log.stub';
 import { NotFoundException } from '@nestjs/common';
 import {
   BillingPeriod,
@@ -57,6 +58,7 @@ function buildService() {
     mockTiers as any,
     mockEvents as any,
     mockNotifications as any,
+    makeEventLogStub() as any,
   );
 }
 

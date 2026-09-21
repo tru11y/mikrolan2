@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { AuditAction } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { EventLogService } from '../events/event-log.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { SubscriptionsService } from './subscriptions.service';
 
@@ -14,20 +16,34 @@ export class PaymentCron {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly subscriptions: SubscriptionsService,
+    private readonly eventLog: EventLogService,
   ) {}
 
   @Cron(CronExpression.EVERY_HOUR)
   async expirePendingInvoices(): Promise<void> {
-    const result = await this.prisma.invoice.updateMany({
+    const overdue = await this.prisma.invoice.findMany({
       where: {
         status: 'PENDING',
         expiresAt: { not: null, lt: new Date() },
       },
+      select: { id: true, tenantId: true },
+    });
+    if (!overdue.length) return;
+
+    await this.prisma.invoice.updateMany({
+      where: { id: { in: overdue.map((i) => i.id) }, status: 'PENDING' },
       data: { status: 'FAILED' },
     });
-    if (result.count > 0) {
-      this.logger.log(`Expired ${result.count} pending invoices`);
+    for (const invoice of overdue) {
+      await this.eventLog.warning(
+        AuditAction.UPDATE,
+        'Invoice',
+        invoice.id,
+        { reason: 'expired', actor: SYSTEM_ACTOR },
+        { tenantId: invoice.tenantId },
+      );
     }
+    this.logger.log(`Expired ${overdue.length} pending invoices`);
   }
 
   @Cron('0 9 * * *') // 9h chaque jour
@@ -89,6 +105,7 @@ export class PaymentCron {
         );
         this.logger.log(`Downgraded expired PRO → FREE (via deactivate): ${sub.tenant.name}`);
       } catch (e) {
+        // deactivate() already traced the failure (FAILED) in the event log.
         this.logger.error(`Failed to deactivate ${sub.tenant.name}: ${e}`);
       }
     }

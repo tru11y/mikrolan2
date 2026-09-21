@@ -33,3 +33,14 @@ export const verifyVoucherSchema = z
   })
   .strict();
 export type VerifyVoucherDto = z.infer<typeof verifyVoucherSchema>;
+
+// LOCAL path: the client could not push all/part of a batch over the LAN.
+export const reportPushFailureSchema = z
+  .object({
+    batchId: z.string().uuid(),
+    reason: z.string().trim().min(1).max(300),
+    errorCode: z.string().trim().max(50).optional(),
+    pushedCount: z.number().int().min(0).max(500).optional(),
+  })
+  .strict();
+export type ReportPushFailureDto = z.infer<typeof reportPushFailureSchema>;

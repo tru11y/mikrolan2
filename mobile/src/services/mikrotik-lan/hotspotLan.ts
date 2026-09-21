@@ -17,6 +17,17 @@ import type {
 // See skills_routeros_print_proplist_hang in project memory.
 
 /** Pushes generated vouchers to the router over the LAN (free/offline mode). */
+/** The LAN push failed after some tickets were already written on the router. */
+export class PartialPushError extends Error {
+  constructor(
+    public readonly pushed: { id: string; mikrotikId: string }[],
+    cause: unknown,
+  ) {
+    super(cause instanceof Error ? cause.message : String(cause));
+    this.name = 'PartialPushError';
+  }
+}
+
 export async function pushVouchersLan(
   creds: ApiConnectionParams,
   vouchers: VoucherItem[],
@@ -38,19 +49,24 @@ export async function pushVouchersLan(
 
     // 2) push each voucher as a hotspot user, collecting the RouterOS .id
     const out: { id: string; mikrotikId: string }[] = [];
-    for (const v of vouchers) {
-      const data: Record<string, string> = {
-        name: v.code,
-        password: v.password,
-        profile: push.userProfile,
-        'limit-uptime': push.limitUptime,
-        comment: push.comment,
-      };
-      if (push.limitBytesTotal) {
-        data['limit-bytes-total'] = String(push.limitBytesTotal);
+    try {
+      for (const v of vouchers) {
+        const data: Record<string, string> = {
+          name: v.code,
+          password: v.password,
+          profile: push.userProfile,
+          'limit-uptime': push.limitUptime,
+          comment: push.comment,
+        };
+        if (push.limitBytesTotal) {
+          data['limit-bytes-total'] = String(push.limitBytesTotal);
+        }
+        const mikrotikId = await c.add('/ip/hotspot/user', data);
+        if (mikrotikId) out.push({ id: v.id, mikrotikId });
       }
-      const mikrotikId = await c.add('/ip/hotspot/user', data);
-      if (mikrotikId) out.push({ id: v.id, mikrotikId });
+    } catch (e) {
+      if (out.length) throw new PartialPushError(out, e);
+      throw e;
     }
     return out;
   });

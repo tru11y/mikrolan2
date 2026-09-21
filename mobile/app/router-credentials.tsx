@@ -1,4 +1,6 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
+import { traceRouterEvent } from '@/src/lib/router-events';
+import { reportSilent } from '@/src/lib/report';
 import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -117,7 +119,7 @@ export default function RouterCredentialsScreen() {
           return;
         }
       } catch (err) {
-        console.warn('Failed to load router credentials from server:', err);
+        reportSilent('router-credentials.load-from-server', err, { routerId });
       }
       setSyncState('not_found');
       if (routerQuery.data?.localAddress) {
@@ -145,7 +147,9 @@ export default function RouterCredentialsScreen() {
         (c) => c.systemIdentity(),
       );
       setTest({ kind: 'ok', identity: res.name });
+      if (routerId) void traceRouterEvent(routerId, 'LAN_CONNECT', 'SUCCESS');
     } catch (e) {
+      if (routerId) void traceRouterEvent(routerId, 'LAN_CONNECT', 'FAILED', e);
       const message =
         e instanceof LanAuthFailedError
           ? t('addRouter.authFailed')
@@ -174,7 +178,7 @@ export default function RouterCredentialsScreen() {
           localAddress: `${address.trim()}:${portNum}`,
         });
       } catch (err) {
-        console.warn('Failed to sync credentials to server:', err);
+        reportSilent('router-credentials.sync-to-server', err, { routerId });
       }
       qc.invalidateQueries({ queryKey: ['router-local-creds'] });
       router.back();

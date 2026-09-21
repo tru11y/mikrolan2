@@ -1,3 +1,4 @@
+import { makeEventLogStub } from '../../common/testing/event-log.stub';
 import {
   ConflictException,
   ForbiddenException,
@@ -64,7 +65,7 @@ function makeService() {
   const subs = makeSubs() as any;
   const wg = makeWg() as any;
   return {
-    service: new RoutersService(prisma, crypto, subs, wg),
+    service: new RoutersService(prisma, crypto, subs, wg, makeEventLogStub() as any),
     prisma,
     subs,
   };

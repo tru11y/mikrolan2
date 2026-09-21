@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   AuditAction,
   BillingPeriod,
+  EventOutcome,
   PaymentProvider,
   PaymentStatus,
   RouterHealth,
@@ -52,6 +53,10 @@ export const listAuditQuerySchema = z.object({
   tenantId: z.string().uuid().optional(),
   action: z.nativeEnum(AuditAction).optional(),
   entityType: z.string().max(50).optional(),
+  category: z
+    .enum(['TICKETS', 'VAULT', 'ROUTERS', 'DIAGNOSTICS', 'PAYMENTS', 'SUPPORT', 'ACCOUNT'])
+    .optional(),
+  outcome: z.nativeEnum(EventOutcome).optional(),
   errorCode: z.string().max(50).optional(),
   cursor,
   limit,

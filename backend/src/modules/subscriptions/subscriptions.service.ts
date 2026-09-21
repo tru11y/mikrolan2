@@ -28,6 +28,7 @@ import { basename, join, resolve, sep } from 'node:path';
 import type { TenantContext } from '../../common/context/tenant-context';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
+import { EventLogService } from '../events/event-log.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PERIOD_DAYS, TiersService, periodAmount } from './tiers.service';
 
@@ -70,6 +71,7 @@ export class SubscriptionsService {
     private readonly tiers: TiersService,
     private readonly events: EventsService,
     private readonly notifications: NotificationsService,
+    private readonly eventLog: EventLogService,
   ) {}
 
   getForTenant(tenantId: string) {
@@ -193,7 +195,17 @@ export class SubscriptionsService {
    * ultérieure des tarifs ne doit pas changer ce que le client a demandé à
    * payer.
    */
-  async requestUpgrade(
+  requestUpgrade(
+    tenantId: string,
+    userId: string,
+    note?: string,
+    tierKey?: string,
+    billingPeriod: BillingPeriod = BillingPeriod.MONTHLY,
+  ) {
+    return this.eventLog.guard({ action: AuditAction.SUBSCRIBE, entityType: 'Invoice', metadata: { kind: 'upgrade-request', tier: tierKey ?? null, billingPeriod }, actor: { tenantId, userId } }, () => this.requestUpgradeInner(tenantId, userId, note, tierKey, billingPeriod));
+  }
+
+  private async requestUpgradeInner(
     tenantId: string,
     userId: string,
     note?: string,
@@ -383,7 +395,11 @@ export class SubscriptionsService {
   }
 
   /** Downgrade to FREE and revoke any remote access (paywall re-enforced). */
-  async deactivate(tenantId: string, actorId: string) {
+  deactivate(tenantId: string, actorId: string) {
+    return this.eventLog.guard({ action: AuditAction.SUBSCRIBE, entityType: 'Subscription', entityId: tenantId, metadata: { kind: 'deactivate-pro' }, actor: { tenantId, userId: actorId } }, () => this.deactivateInner(tenantId, actorId));
+  }
+
+  private async deactivateInner(tenantId: string, actorId: string) {
     const sub = await this.prisma.subscription.findUnique({ where: { tenantId } });
     if (!sub) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.SUBSCRIPTION_NOT_FOUND, 'Abonnement introuvable.');
 
@@ -446,7 +462,17 @@ export class SubscriptionsService {
     };
   }
 
-  async uploadProof(
+  uploadProof(
+    tenantId: string,
+    invoiceId: string,
+    method: PaymentMethod,
+    file: { buffer: Buffer; originalname: string; mimetype: string },
+    note?: string,
+  ) {
+    return this.eventLog.track({ action: AuditAction.UPLOAD, entityType: 'PaymentProof', metadata: { invoiceId, method }, actor: { tenantId } }, () => this.uploadProofInner(tenantId, invoiceId, method, file, note), (result) => ({ entityId: result.proof.id }));
+  }
+
+  private async uploadProofInner(
     tenantId: string,
     invoiceId: string,
     method: PaymentMethod,
@@ -513,7 +539,11 @@ export class SubscriptionsService {
    * gets the same 404 as a nonexistent proof, never a distinguishing 403 —
    * this avoids confirming to an attacker that a given proofId exists.
    */
-  async getProofFile(actor: TenantContext, proofId: string): Promise<StreamableFile> {
+  getProofFile(actor: TenantContext, proofId: string) {
+    return this.eventLog.track({ action: AuditAction.DOWNLOAD, entityType: 'PaymentProof', entityId: proofId, actor: { tenantId: actor.tenantId, userId: actor.userId } }, () => this.getProofFileInner(actor, proofId));
+  }
+
+  private async getProofFileInner(actor: TenantContext, proofId: string): Promise<StreamableFile> {
     const proof = await this.prisma.paymentProof.findUnique({
       where: { id: proofId },
       include: { invoice: { select: { tenantId: true } } },
@@ -540,22 +570,15 @@ export class SubscriptionsService {
     return stream;
   }
 
-  // Append-only, never throws (audit must not break the operation).
-  private async audit(
+  private audit(
     tenantId: string,
     userId: string,
     action: AuditAction,
     entityType: string,
     entityId: string,
-    metadata: Prisma.InputJsonValue,
+    metadata: Prisma.InputJsonObject,
   ): Promise<void> {
-    try {
-      await this.prisma.auditLog.create({
-        data: { tenantId, userId, action, entityType, entityId, metadata },
-      });
-    } catch (err) {
-      this.logger.warn(`Audit log write failed: ${err instanceof Error ? err.message : err}`);
-    }
+    return this.eventLog.success(action, entityType, entityId, metadata, { tenantId, userId });
   }
 }
 

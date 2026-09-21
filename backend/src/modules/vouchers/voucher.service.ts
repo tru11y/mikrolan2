@@ -11,12 +11,14 @@ import {
   ManagementMode,
   Prisma,
   RemotePeerStatus,
+  EventOutcome,
   VoucherBatchStatus,
   VoucherStatus,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RemoteRouterService } from '../remote-access/remote-router.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { EventLogService, describeFailure } from '../events/event-log.service';
 import {
   addHotspotUser,
   ensureUserProfile,
@@ -25,6 +27,7 @@ import {
 import { getTenantContext } from '../../common/context/tenant-context';
 import type {
   ConfirmVouchersDto,
+  ReportPushFailureDto,
   GenerateVouchersDto,
   VerifyVoucherDto,
 } from './dto/voucher.schemas';
@@ -71,9 +74,23 @@ export class VoucherService {
     private readonly prisma: PrismaService,
     private readonly remote: RemoteRouterService,
     private readonly subscriptions: SubscriptionsService,
+    private readonly eventLog: EventLogService,
   ) {}
 
   async generate(routerId: string, dto: GenerateVouchersDto) {
+    try {
+      return await this.doGenerate(routerId, dto);
+    } catch (err) {
+      await this.eventLog.failure(AuditAction.CREATE, 'VoucherBatch', routerId, err, {
+        routerId,
+        quantity: dto.quantity,
+        stage: 'generate',
+      });
+      throw err;
+    }
+  }
+
+  private async doGenerate(routerId: string, dto: GenerateVouchersDto) {
     const router = await this.prisma.router.findFirst({
       where: { id: routerId, deletedAt: null },
       select: { id: true, mode: true },
@@ -196,12 +213,21 @@ export class VoucherService {
           totalCount: codes.length,
           error: errorMsg,
         });
-        await this.audit(AuditAction.CREATE, batch.id, {
-          errorCode: 'VOUCHER_PUSH_FAILED',
-          pushedCount,
-          totalCount: codes.length,
-          error: errorMsg,
-        }, 'VoucherBatch');
+        const failMeta = { routerId, pushedCount, totalCount: codes.length };
+        if (pushedCount > 0) {
+          await this.eventLog.emit({
+            action: AuditAction.CREATE,
+            entityType: 'VoucherBatch',
+            entityId: batch.id,
+            outcome: EventOutcome.PARTIAL_SUCCESS,
+            metadata: { ...failMeta, ...describeFailure(err), pushErrorCode: ErrorCode.VOUCHER_PUSH_FAILED },
+          });
+        } else {
+          await this.eventLog.failure(AuditAction.CREATE, 'VoucherBatch', batch.id, err, {
+            ...failMeta,
+            pushErrorCode: ErrorCode.VOUCHER_PUSH_FAILED,
+          });
+        }
         if (pushedCount > 0) {
           await this.prisma.voucherBatch.update({
             where: { id: batch.id },
@@ -220,7 +246,20 @@ export class VoucherService {
       }
       if (pushedCount === codes.length) {
         await this.completeBatch(batch.id, codes.length);
+        await this.eventLog.success(AuditAction.CREATE, 'VoucherBatch', batch.id, {
+          routerId,
+          pushedCount,
+          totalCount: codes.length,
+          via: 'tunnel',
+        });
       }
+    } else {
+      await this.eventLog.success(AuditAction.CREATE, 'VoucherBatch', batch.id, {
+        routerId,
+        totalCount: codes.length,
+        via: 'lan',
+        awaitingLanPush: true,
+      });
     }
 
     const [vouchers, updatedBatch] = await Promise.all([
@@ -254,13 +293,72 @@ export class VoucherService {
         data: { mikrotikId: item.mikrotikId },
       });
     }
-    await this.completeBatch(dto.batchId, dto.items.length);
-    await this.audit(AuditAction.CREATE, dto.batchId, {
+    const batch = await this.prisma.voucherBatch.findFirst({
+      where: { id: dto.batchId, routerId },
+      select: { quantity: true },
+    });
+    const complete = !batch || dto.items.length >= batch.quantity;
+    if (complete) {
+      await this.completeBatch(dto.batchId, dto.items.length);
+    } else {
+      await this.prisma.voucherBatch.update({
+        where: { id: dto.batchId },
+        data: {
+          status: VoucherBatchStatus.PARTIAL_SUCCESS,
+          generated: dto.items.length,
+          completedAt: new Date(),
+        },
+      });
+    }
+    const meta = {
       routerId,
       confirmed: dto.items.length,
+      totalCount: batch?.quantity ?? dto.items.length,
       via: 'lan',
-    });
+    };
+    if (complete) await this.eventLog.success(AuditAction.UPDATE, 'VoucherBatch', dto.batchId, meta);
+    else await this.eventLog.partialSuccess(AuditAction.UPDATE, 'VoucherBatch', dto.batchId, meta);
     return { confirmed: dto.items.length };
+  }
+
+  /** LOCAL path: the client could not push (all or part) over the LAN. */
+  async reportPushFailure(routerId: string, dto: ReportPushFailureDto) {
+    const batch = await this.prisma.voucherBatch.findFirst({
+      where: { id: dto.batchId, routerId },
+      select: { id: true, quantity: true },
+    });
+    if (!batch) {
+      throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.BATCH_NOT_FOUND, 'Lot introuvable.');
+    }
+    const pushed = dto.pushedCount ?? 0;
+    const meta = {
+      routerId,
+      pushedCount: pushed,
+      totalCount: batch.quantity,
+      errorCode: dto.errorCode ?? ErrorCode.VOUCHER_PUSH_FAILED,
+      error: dto.reason.slice(0, 300),
+      via: 'lan',
+    };
+    if (pushed > 0) {
+      await this.prisma.voucherBatch.update({
+        where: { id: batch.id },
+        data: { status: VoucherBatchStatus.PARTIAL_SUCCESS, generated: pushed, completedAt: new Date() },
+      });
+      await this.eventLog.partialSuccess(AuditAction.UPDATE, 'VoucherBatch', batch.id, meta);
+    } else {
+      await this.prisma.voucherBatch.update({
+        where: { id: batch.id },
+        data: { status: VoucherBatchStatus.FAILED },
+      });
+      await this.eventLog.emit({
+        action: AuditAction.UPDATE,
+        entityType: 'VoucherBatch',
+        entityId: batch.id,
+        outcome: EventOutcome.FAILED,
+        metadata: meta,
+      });
+    }
+    return { recorded: true };
   }
 
   private async completeBatch(batchId: string, generated: number) {
@@ -419,6 +517,7 @@ export class VoucherService {
 
     // Remove from the router only over the tunnel (REMOTE). For LOCAL routers the
     // client removes it over the LAN; DB state stays authoritative regardless.
+    let routerWarning: Prisma.InputJsonObject | null = null;
     if (voucher.mikrotikId && voucher.router.mode === ManagementMode.REMOTE) {
       try {
         await this.remote.run(voucher.routerId, (client) =>
@@ -431,6 +530,7 @@ export class VoucherService {
           routerId: voucher.routerId,
           error: err instanceof Error ? err.message : String(err),
         });
+        routerWarning = { ...describeFailure(err), errorCode: ErrorCode.VOUCHER_REVOKE_ROUTER_UNREACHABLE };
       }
     }
 
@@ -438,7 +538,8 @@ export class VoucherService {
       where: { id },
       data: { status: VoucherStatus.REVOKED, revokedAt: new Date() },
     });
-    await this.audit(AuditAction.REVOKE, id, {});
+    if (routerWarning) await this.eventLog.warning(AuditAction.REVOKE, 'Voucher', id, { routerId: voucher.routerId, ...routerWarning });
+    else await this.eventLog.success(AuditAction.REVOKE, 'Voucher', id, { routerId: voucher.routerId });
     return { revoked: true };
   }
 
@@ -459,6 +560,7 @@ export class VoucherService {
     });
     if (!voucher) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.VOUCHER_NOT_FOUND, 'Ticket introuvable.');
 
+    let routerWarning: Prisma.InputJsonObject | null = null;
     if (voucher.mikrotikId && voucher.router.mode === ManagementMode.REMOTE) {
       try {
         await this.remote.run(voucher.routerId, (client) =>
@@ -471,6 +573,7 @@ export class VoucherService {
           routerId: voucher.routerId,
           error: err instanceof Error ? err.message : String(err),
         });
+        routerWarning = { ...describeFailure(err), errorCode: ErrorCode.VOUCHER_DELETE_ROUTER_UNREACHABLE };
       }
     }
 
@@ -478,7 +581,8 @@ export class VoucherService {
       await tx.session.deleteMany({ where: { voucherId: id } });
       await tx.voucher.delete({ where: { id } });
     });
-    await this.audit(AuditAction.DELETE, id, {});
+    if (routerWarning) await this.eventLog.warning(AuditAction.DELETE, 'Voucher', id, { routerId: voucher.routerId, ...routerWarning });
+    else await this.eventLog.success(AuditAction.DELETE, 'Voucher', id, { routerId: voucher.routerId });
     return { deleted: true };
   }
 
@@ -495,7 +599,7 @@ export class VoucherService {
       await tx.voucher.deleteMany({ where: { batchId } });
       await tx.voucherBatch.delete({ where: { id: batchId } });
     });
-    await this.audit(AuditAction.DELETE, batchId, {}, 'VoucherBatch');
+    await this.eventLog.success(AuditAction.DELETE, 'VoucherBatch', batchId);
     return { deleted: true };
   }
 
@@ -529,29 +633,5 @@ export class VoucherService {
     let s = '';
     for (let i = 0; i < length; i += 1) s += alphabet[b[i] % alphabet.length];
     return (opts.codePrefix || '') + s;
-  }
-
-  private async audit(
-    action: AuditAction,
-    entityId: string,
-    metadata: Prisma.InputJsonValue,
-    entityType = 'Voucher',
-  ): Promise<void> {
-    const ctx = getTenantContext();
-    if (!ctx) return;
-    try {
-      await this.prisma.auditLog.create({
-        data: {
-          tenantId: ctx.tenantId,
-          userId: ctx.userId,
-          action,
-          entityType,
-          entityId,
-          metadata,
-        },
-      });
-    } catch (err) {
-      this.logger.warn(`Audit log write failed: ${err instanceof Error ? err.message : err}`);
-    }
   }
 }
