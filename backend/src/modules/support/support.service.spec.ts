@@ -1,3 +1,4 @@
+import { makeEventLogStub } from '../../common/testing/event-log.stub';
 import { NotFoundException } from '@nestjs/common';
 import { SupportService } from './support.service';
 
@@ -16,7 +17,7 @@ function makePrisma() {
 
 function makeService() {
   const prisma = makePrisma();
-  return { service: new SupportService(prisma as any), prisma };
+  return { service: new SupportService(prisma as any, makeEventLogStub() as any), prisma };
 }
 
 describe('SupportService (real service layer, FIND-003)', () => {

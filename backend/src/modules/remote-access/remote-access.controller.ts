@@ -17,6 +17,7 @@ import { TenantContext } from '../../common/context/tenant-context';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ErrorCode } from '../../common/error-codes';
+import { EventLogService } from '../events/event-log.service';
 import { RemoteAccessService } from './remote-access.service';
 import { RemoteRouterService } from './remote-router.service';
 
@@ -41,6 +42,7 @@ export class RemoteAccessController {
     private readonly remote: RemoteAccessService,
     private readonly remoteRouter: RemoteRouterService,
     private readonly prisma: PrismaService,
+    private readonly eventLog: EventLogService,
   ) {}
 
   @Get()
@@ -87,36 +89,17 @@ export class RemoteAccessController {
       await this.remoteRouter.reboot(id);
     } catch (err) {
       this.logger.warn(`Router ${id} reboot failed: ${err instanceof Error ? err.message : err}`);
-      try {
-        await this.prisma.auditLog.create({
-          data: {
-            tenantId: user.tenantId,
-            userId: user.userId,
-            action: AuditAction.REBOOT,
-            entityType: 'Router',
-            entityId: id,
-            metadata: { source: 'diagnostic', errorCode: ErrorCode.ROUTER_REBOOT_FAILED, error: err instanceof Error ? err.message : String(err) },
-          },
-        });
-      } catch (auditErr) {
-        this.logger.warn(`Audit log write failed: ${auditErr instanceof Error ? auditErr.message : auditErr}`);
-      }
+      await this.eventLog.failure(
+        AuditAction.REBOOT, 'Diagnostic', id, err,
+        { source: 'diagnostic', errorCode: ErrorCode.ROUTER_REBOOT_FAILED },
+        { tenantId: user.tenantId, userId: user.userId },
+      );
       throw err;
     }
-    try {
-      await this.prisma.auditLog.create({
-        data: {
-          tenantId: user.tenantId,
-          userId: user.userId,
-          action: AuditAction.REBOOT,
-          entityType: 'Router',
-          entityId: id,
-          metadata: { source: 'diagnostic' },
-        },
-      });
-    } catch (err) {
-      this.logger.warn(`Audit log write failed: ${err instanceof Error ? err.message : err}`);
-    }
+    await this.eventLog.success(
+      AuditAction.REBOOT, 'Diagnostic', id, { source: 'diagnostic' },
+      { tenantId: user.tenantId, userId: user.userId },
+    );
     return { rebooted: true };
   }
 }

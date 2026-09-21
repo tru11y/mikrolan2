@@ -1,3 +1,4 @@
+import { makeEventLogStub } from '../../common/testing/event-log.stub';
 import { BadRequestException } from '@nestjs/common';
 import { PaymentMethod, PaymentStatus, BillingPeriod } from '@prisma/client';
 import { SubscriptionsService } from './subscriptions.service';
@@ -43,6 +44,7 @@ function buildService() {
     mockTiers as any,
     mockEvents as any,
     mockNotifications as any,
+    makeEventLogStub() as any,
   );
 }
 

@@ -1,3 +1,4 @@
+import { makeEventLogStub } from '../../common/testing/event-log.stub';
 import {
   BadRequestException,
   NotFoundException,
@@ -49,7 +50,7 @@ function makeService(prisma?: unknown, remote?: unknown, subs?: unknown) {
   const p = prisma ?? makePrisma();
   const r = remote ?? makeRemote();
   const s = subs ?? makeSubscriptions();
-  return { service: new VoucherService(p as any, r as any, s as any), prisma: p as any };
+  return { service: new VoucherService(p as any, r as any, s as any, makeEventLogStub() as any), prisma: p as any };
 }
 
 const VOUCHER_ROW = {

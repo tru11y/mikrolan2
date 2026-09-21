@@ -3,7 +3,7 @@ import { AuditAction } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/error-codes';
-import { getTenantContext } from '../../common/context/tenant-context';
+import { EventLogService } from '../events/event-log.service';
 import { SupportSlaCron } from './support-sla.cron';
 import type { CreateTicketDto, ListMyTicketsDto } from './dto/support.schemas';
 
@@ -15,9 +15,25 @@ export interface Page<T> {
 @Injectable()
 export class SupportService {
   private readonly logger = new Logger(SupportService.name);
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly eventLog: EventLogService,
+  ) {}
 
-  async create(tenantId: string, userId: string, dto: CreateTicketDto) {
+  create(tenantId: string, userId: string, dto: CreateTicketDto) {
+    return this.eventLog.track(
+      {
+        action: AuditAction.CREATE,
+        entityType: 'SupportTicket',
+        metadata: { subject: dto.subject },
+        actor: { tenantId, userId },
+      },
+      () => this.createTicket(tenantId, userId, dto),
+      (ticket) => ({ entityId: ticket.id, metadata: { priority: ticket.priority } }),
+    );
+  }
+
+  private async createTicket(tenantId: string, userId: string, dto: CreateTicketDto) {
     const now = new Date();
     const priority = dto.priority ?? 'MEDIUM';
     const ticket = await this.prisma.supportTicket.create({
@@ -32,10 +48,6 @@ export class SupportService {
         },
       },
       include: { messages: true },
-    });
-    await this.audit(tenantId, userId, AuditAction.CREATE, 'SupportTicket', ticket.id, {
-      subject: dto.subject,
-      priority,
     });
     return ticket;
   }
@@ -91,7 +103,19 @@ export class SupportService {
     return ticket;
   }
 
-  async addMessage(tenantId: string, ticketId: string, userId: string, body: string) {
+  addMessage(tenantId: string, ticketId: string, userId: string, body: string) {
+    return this.eventLog.track(
+      {
+        action: AuditAction.MESSAGE,
+        entityType: 'SupportTicket',
+        entityId: ticketId,
+        actor: { tenantId, userId },
+      },
+      () => this.postMessage(tenantId, ticketId, userId, body),
+    );
+  }
+
+  private async postMessage(tenantId: string, ticketId: string, userId: string, body: string) {
     const ticket = await this.prisma.supportTicket.findFirst({
       where: { id: ticketId, tenantId },
     });
@@ -100,32 +124,6 @@ export class SupportService {
     const msg = await this.prisma.ticketMessage.create({
       data: { ticketId, userId, body, isAdmin: false },
     });
-    await this.audit(tenantId, userId, AuditAction.MESSAGE, 'SupportTicket', ticketId, {});
     return msg;
-  }
-
-  private async audit(
-    tenantId: string,
-    userId: string,
-    action: AuditAction,
-    entityType: string,
-    entityId: string,
-    metadata: Record<string, unknown>,
-  ): Promise<void> {
-    try {
-      await this.prisma.auditLog.create({
-        data: {
-          tenantId,
-          userId,
-          action,
-          entityType,
-          entityId,
-          metadata: metadata as any,
-          ip: getTenantContext()?.ip ?? null,
-        },
-      });
-    } catch (err) {
-      this.logger.warn(`Audit log write failed: ${err instanceof Error ? err.message : err}`);
-    }
   }
 }

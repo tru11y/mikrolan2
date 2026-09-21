@@ -1,3 +1,4 @@
+import { reportSilent, swallow } from '@/src/lib/report';
 import {
   createContext,
   PropsWithChildren,
@@ -105,7 +106,7 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
             data: { ...event.data, type: event.type, fromSse: true },
           },
           trigger: null,
-        }).catch(() => {});
+        }).catch(swallow('sse.local-notification'));
       }
 
       // Un ticket qui s'active change le CA, les sessions et l'état du lot ;
@@ -116,7 +117,7 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
       }
       if (event.type === 'SUBSCRIPTION_ACTIVATED') {
         keys.push(['subscription']);
-        void refreshProfile().catch(() => {});
+        void refreshProfile().catch(swallow('sse.refresh-profile'));
       }
       if (event.type === 'UPGRADE_REQUESTED') keys.push(['admin']);
       if (event.type === 'ROUTER_OFFLINE' || event.type === 'ROUTER_ONLINE') {
@@ -185,8 +186,8 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
                 lastEventId.current = String(event.id);
               }
               handleEventRef.current(event);
-            } catch {
-              // Charge utile illisible — ignorer.
+            } catch (e) {
+              reportSilent('sse.parse-event', e);
             }
           },
           onError: (attempt) => {
@@ -204,8 +205,8 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
             onMessage: (message) => {
               try {
                 handleEventRef.current(JSON.parse(message.data) as LiveEvent);
-              } catch {
-                // idem
+              } catch (e) {
+                reportSilent('sse.parse-platform-event', e);
               }
             },
           }),
@@ -276,8 +277,9 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
         );
         await qc.invalidateQueries({ queryKey: ['notifications'] });
         await qc.invalidateQueries({ queryKey: ['metrics'] });
-      } catch {
+      } catch (e) {
         // Réseau coupé : on retentera au prochain tour.
+        reportSilent('sse.fallback-poll', e);
       }
     }
 

@@ -14,9 +14,10 @@ import {
 } from '@nestjs/common';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/error-codes';
-import { UserRole, VoucherStatus } from '@prisma/client';
+import { AuditAction, UserRole, VoucherStatus } from '@prisma/client';
 import { FastifyReply, FastifyRequest } from 'fastify';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { NoEnvelope } from '../../common/decorators/no-envelope.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { TenantContext } from '../../common/context/tenant-context';
@@ -24,8 +25,10 @@ import { VoucherService } from './voucher.service';
 import { TicketVaultService } from './ticket-vault.service';
 import {
   confirmVouchersSchema,
+  reportPushFailureSchema,
   generateVouchersSchema,
   type ConfirmVouchersDto,
+  type ReportPushFailureDto,
   type GenerateVouchersDto,
 } from './dto/voucher.schemas';
 
@@ -54,6 +57,16 @@ export class VouchersController {
     @Body(new ZodValidationPipe(confirmVouchersSchema)) dto: ConfirmVouchersDto,
   ) {
     return this.vouchers.confirmPush(id, dto);
+  }
+
+  @Post('push-failure')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  reportPushFailure(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(reportPushFailureSchema)) dto: ReportPushFailureDto,
+  ) {
+    return this.vouchers.reportPushFailure(id, dto);
   }
 
   @Get()
@@ -109,16 +122,23 @@ export class VouchersController {
     @Param('batchId', ParseUUIDPipe) batchId: string,
     @Req() req: FastifyRequest,
   ) {
-    const data = await req.file();
-    if (!data) throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.FILE_REQUIRED, 'Fichier PDF requis.');
-    if (data.mimetype !== 'application/pdf') {
-      throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.FILE_TYPE_UNSUPPORTED, 'Seuls les fichiers PDF sont acceptés.');
+    try {
+      const data = await req.file();
+      if (!data) throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.FILE_REQUIRED, 'Fichier PDF requis.');
+      if (data.mimetype !== 'application/pdf') {
+        throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.FILE_TYPE_UNSUPPORTED, 'Seuls les fichiers PDF sont acceptés.');
+      }
+      const buffer = await data.toBuffer();
+      if (buffer.length > 10 * 1024 * 1024) {
+        throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.FILE_TOO_LARGE, 'Le fichier ne doit pas dépasser 10 Mo.');
+      }
+      return await this.vault.store(user.tenantId, batchId, buffer, data.filename);
+    } catch (err) {
+      if (err instanceof BusinessException && err.errorCode !== ErrorCode.VAULT_UPLOAD_FAILED) {
+        await this.vault.traceFailure(user.tenantId, AuditAction.CREATE, batchId, err, { batchId });
+      }
+      throw err;
     }
-    const buffer = await data.toBuffer();
-    if (buffer.length > 10 * 1024 * 1024) {
-      throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.FILE_TOO_LARGE, 'Le fichier ne doit pas dépasser 10 Mo.');
-    }
-    return this.vault.store(user.tenantId, batchId, buffer, data.filename);
   }
 
   @Get('batches/:batchId/vault')
@@ -127,6 +147,7 @@ export class VouchersController {
   }
 
   @Get('vault/:vaultId')
+  @NoEnvelope() // StreamableFile must reach Nest's Fastify reply undecorated
   async downloadPdf(
     @CurrentUser() user: TenantContext,
     @Param('vaultId', ParseUUIDPipe) vaultId: string,

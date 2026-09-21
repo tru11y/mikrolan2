@@ -1,4 +1,5 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
+import { reportSilent } from '@/src/lib/report';
 import { useEffect, useState } from 'react';
 import { Linking, ScrollView, Switch, Text, View } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
@@ -112,7 +113,8 @@ export default function RouterSettingsScreen() {
     try {
       await api.routers.update(routerId, { pushNotifications: value });
       await qc.invalidateQueries({ queryKey: ['router', routerId] });
-    } catch {
+    } catch (e) {
+      reportSilent('router-settings.push-toggle', e, { routerId });
       setPushEnabled(!value);
     }
   }

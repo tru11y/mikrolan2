@@ -1,3 +1,4 @@
+import { swallow } from '@/src/lib/report';
 import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
@@ -96,12 +97,12 @@ export function ThemeProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY).then((v: string | null) => {
       if (v === 'light' || v === 'dark') setModeState(v);
-    }).catch(() => {});
+    }).catch(swallow('theme.read'));
   }, []);
 
   const setMode = useCallback((m: ThemeMode) => {
     setModeState(m);
-    AsyncStorage.setItem(STORAGE_KEY, m).catch(() => {});
+    AsyncStorage.setItem(STORAGE_KEY, m).catch(swallow('theme.persist'));
   }, []);
 
   const toggle = useCallback(() => {

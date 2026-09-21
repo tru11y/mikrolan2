@@ -1,3 +1,4 @@
+import { swallow } from '@/src/lib/report';
 import {
   createContext,
   useContext,
@@ -154,7 +155,7 @@ export function PushNotificationsProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     const sub = Notifications.addPushTokenListener((event) => {
       if (isAuthenticated) {
-        api.auth.registerPushToken(event.data).catch(() => {});
+        api.auth.registerPushToken(event.data).catch(swallow('push.register-token'));
       }
     });
     return () => sub.remove();
@@ -165,7 +166,7 @@ export function PushNotificationsProvider({ children }: PropsWithChildren) {
       const data = notification.request.content.data as Record<string, unknown> | undefined;
       if (data?.fromSse) return;
       if (markSeen(data)) {
-        Notifications.dismissNotificationAsync(notification.request.identifier).catch(() => {});
+        Notifications.dismissNotificationAsync(notification.request.identifier).catch(swallow('push.dismiss'));
         return;
       }
       qc.invalidateQueries({ queryKey: ['notifications'] });
@@ -203,7 +204,7 @@ export function PushNotificationsProvider({ children }: PropsWithChildren) {
         const target = routeForNotification(data);
         if (target) router.push(target as never);
       })
-      .catch(() => {});
+      .catch(swallow('push.initial-response'));
   }, [isAuthenticated]);
 
   return (

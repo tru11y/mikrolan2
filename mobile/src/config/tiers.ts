@@ -1,3 +1,4 @@
+import { reportSilent } from '@/src/lib/report';
 import { api, type BillingPeriod, type Tier } from '@/src/lib/api';
 
 /**
@@ -26,7 +27,7 @@ const OFFLINE_FALLBACK: Tier[] = [
     annualDiscount: 20,
     routerLimit: 3,
     voucherMonthlyLimit: null,
-    remoteAccess: false,
+    remoteAccess: true,
     a4Printing: false,
     cloudBackup: false,
     prioritySupport: false,
@@ -40,7 +41,7 @@ const OFFLINE_FALLBACK: Tier[] = [
       { label: 'Impression thermique Bluetooth', included: true },
       { label: 'Templates de tickets basiques', included: true },
       { label: 'Sauvegarde Cloud automatique', included: false },
-      { label: 'Accès distant multi-sites', included: false },
+      { label: 'Accès distant multi-sites', included: true },
     ],
   },
   {
@@ -102,7 +103,8 @@ export async function loadTiers(): Promise<Tier[]> {
   try {
     const tiers = await api.subscriptions.tiers();
     return tiers.length ? tiers : OFFLINE_FALLBACK;
-  } catch {
+  } catch (e) {
+    reportSilent('tiers.load', e);
     return OFFLINE_FALLBACK;
   }
 }

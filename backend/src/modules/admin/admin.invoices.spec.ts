@@ -1,3 +1,4 @@
+import { makeEventLogStub } from '../../common/testing/event-log.stub';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import {
   AuditAction,
@@ -23,8 +24,10 @@ const mockSubscriptions = {
 
 const actor = { userId: 'admin-1', tenantId: 'platform' };
 
+const mockEventLog = makeEventLogStub();
+
 function buildService() {
-  return new AdminService(mockPrisma as any, mockNotifications as any, mockSubscriptions as any, { get: jest.fn(), set: jest.fn(), del: jest.fn() } as any, {} as any);
+  return new AdminService(mockPrisma as any, mockNotifications as any, mockSubscriptions as any, { get: jest.fn(), set: jest.fn(), del: jest.fn() } as any, {} as any, mockEventLog as any);
 }
 
 beforeEach(() => jest.clearAllMocks());
@@ -140,15 +143,12 @@ describe('AdminService.rejectInvoice', () => {
         }),
       }),
     );
-    expect(mockPrisma.auditLog.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          action: AuditAction.REJECT,
-          entityType: 'Invoice',
-          entityId: 'inv-1',
-          metadata: { reason: 'Preuve illisible' },
-        }),
-      }),
+    expect(mockEventLog.success).toHaveBeenCalledWith(
+      AuditAction.REJECT,
+      'Invoice',
+      'inv-1',
+      { reason: 'Preuve illisible' },
+      expect.objectContaining({ tenantId: 'tenant-1' }),
     );
     expect(mockNotifications.sendPushToTenant).toHaveBeenCalledWith(
       'tenant-1',

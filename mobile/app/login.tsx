@@ -1,4 +1,5 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
+import { reportSilent, swallow } from '@/src/lib/report';
 import { useMemo, useState } from 'react';
 import {
   FlatList,
@@ -84,7 +85,7 @@ export default function LoginScreen() {
             .filter(Boolean)
             .join(' ')
         : undefined;
-      await appleLogin(credential.identityToken, nonce, fullName || undefined).catch(() => {});
+      await appleLogin(credential.identityToken, nonce, fullName || undefined).catch(swallow('login.apple'));
     } catch (e: any) {
       // ERR_REQUEST_CANCELED : l'utilisateur a annulé, pas une erreur à afficher.
       if (e?.code !== 'ERR_REQUEST_CANCELED') throw e;
@@ -99,8 +100,9 @@ export default function LoginScreen() {
       } else {
         await login(email.trim(), password);
       }
-    } catch {
-      // error surfaced via context
+    } catch (e) {
+      // Error is shown through the auth context; keep the trace.
+      reportSilent('login.submit', e);
     }
   }
 

@@ -10,6 +10,7 @@ import {
   setStoredValue,
 } from '@/src/lib/storage';
 import { errorMessage } from '@/src/lib/errors';
+import { swallow } from '@/src/lib/report';
 
 const ACCESS_TOKEN_KEY = 'mikrolan_access_token';
 const REFRESH_TOKEN_KEY = 'mikrolan_refresh_token';
@@ -937,7 +938,7 @@ export const api = {
       });
     },
     async logout(): Promise<void> {
-      await apiClient.delete('/auth/push-token').catch(() => {});
+      await apiClient.delete('/auth/push-token').catch(swallow('logout.push-token'));
       if (!refreshToken) return;
       await apiClient.post('/auth/logout', { refreshToken });
     },
@@ -1181,6 +1182,26 @@ export const api = {
     ): Promise<{ confirmed: number }> {
       const res = await apiClient.post<ApiEnvelope<{ confirmed: number }>>(
         `/routers/${id}/vouchers/confirm`,
+        payload,
+      );
+      return unwrap(res);
+    },
+    async reportPushFailure(
+      id: string,
+      payload: { batchId: string; reason: string; errorCode?: string; pushedCount?: number },
+    ): Promise<{ recorded: boolean }> {
+      const res = await apiClient.post<ApiEnvelope<{ recorded: boolean }>>(
+        `/routers/${id}/vouchers/push-failure`,
+        payload,
+      );
+      return unwrap(res);
+    },
+    async recordEvent(
+      id: string,
+      payload: { kind: ClientEventKind; outcome: EventOutcome; errorCode?: string; message?: string },
+    ): Promise<{ recorded: boolean }> {
+      const res = await apiClient.post<ApiEnvelope<{ recorded: boolean }>>(
+        `/routers/${id}/events`,
         payload,
       );
       return unwrap(res);
@@ -1639,7 +1660,15 @@ export const api = {
       await apiClient.patch('/admin/config', entries);
     },
     async audit(
-      params: { tenantId?: string; entityType?: string; errorCode?: string; cursor?: string; limit?: number } = {},
+      params: {
+        tenantId?: string;
+        entityType?: string;
+        category?: EventCategory;
+        outcome?: EventOutcome;
+        errorCode?: string;
+        cursor?: string;
+        limit?: number;
+      } = {},
     ): Promise<Page<AuditEntry>> {
       const res = await apiClient.get<ApiEnvelope<Page<AuditEntry>>>('/admin/audit', {
         params,
@@ -1995,6 +2024,17 @@ export type AdminInvoice = {
   paidAt: string | null;
 };
 
+export type EventOutcome = 'SUCCESS' | 'WARNING' | 'PARTIAL_SUCCESS' | 'FAILED';
+export type EventCategory =
+  | 'TICKETS'
+  | 'VAULT'
+  | 'ROUTERS'
+  | 'DIAGNOSTICS'
+  | 'PAYMENTS'
+  | 'SUPPORT'
+  | 'ACCOUNT';
+export type ClientEventKind = 'REBOOT' | 'HOTSPOT_RESET' | 'LAN_CONNECT';
+
 export type AuditEntry = {
   id: string;
   tenantId: string;
@@ -2004,6 +2044,8 @@ export type AuditEntry = {
   action: string;
   entityType: string;
   entityId: string | null;
+  category: EventCategory | null;
+  outcome: EventOutcome;
   metadata: Record<string, unknown> | null;
   ip: string | null;
   createdAt: string;

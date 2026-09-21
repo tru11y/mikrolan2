@@ -1,4 +1,5 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
+import { swallow } from '@/src/lib/report';
 import { useCallback, useState } from 'react';
 import { Linking, Modal, ScrollView, Switch, Text, View, Pressable, FlatList } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -134,7 +135,7 @@ export default function AccountScreen() {
     setCountry(c.name);
     setShowCountryPicker(false);
     i18n.changeLanguage(c.lang);
-    AsyncStorage.setItem('mikrolan_language', c.lang).catch(() => {});
+    AsyncStorage.setItem('mikrolan_language', c.lang).catch(swallow('account.language-persist'));
     try {
       await api.auth.updateProfile({ name: name.trim() || null, country: c.name });
       await refreshProfile();
