@@ -1,3 +1,4 @@
+import { reportSilent, swallow } from '@/src/lib/report';
 import { useRouter } from 'expo-router';
 import {
   createContext,
@@ -39,8 +40,9 @@ async function clearAllLocalRouterCredentials(): Promise<void> {
     await Promise.all(
       routers.map((router) => deleteLocalCredentials(router.id)),
     );
-  } catch {
-    // best-effort — logout must not be blocked by this cleanup
+  } catch (e) {
+    // Logout must not be blocked by this cleanup, but keep the trace.
+    reportSilent('logout.clear-local-creds', e);
   }
 }
 
@@ -93,7 +95,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, nonceRef.current).then(
       setNonceHash,
-    ).catch(() => {});
+    ).catch(swallow('auth.nonce-hash'));
   }, []);
 
   const [, googleResponse, promptGoogle] = Google.useIdTokenAuthRequest({
@@ -132,7 +134,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
           return;
         }
         setMe(await api.auth.me());
-      } catch {
+      } catch (e) {
+        reportSilent('auth.restore-session', e);
         await clearAuthTokens();
         if (mounted) setMe(null);
       } finally {
@@ -220,8 +223,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
     try {
       await clearAllLocalRouterCredentials();
       await api.auth.logout();
-    } catch {
-      // best-effort
+    } catch (e) {
+      reportSilent('auth.logout', e);
     } finally {
       clearSeenNotifications();
       await clearAuthTokens();
@@ -269,7 +272,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       googleLogin,
       googleAuthAvailable: Boolean(GOOGLE_WEB_CLIENT_ID),
       promptGoogleLogin: () => {
-        promptGoogle().catch(() => {});
+        promptGoogle().catch(swallow('auth.google-prompt'));
       },
       appleLogin,
       logout,

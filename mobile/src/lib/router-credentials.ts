@@ -1,3 +1,4 @@
+import { reportSilent } from '@/src/lib/report';
 import {
   deleteStoredValue,
   getStoredValue,
@@ -29,7 +30,8 @@ export async function getLocalCredentials(
   if (!raw) return null;
   try {
     return JSON.parse(raw) as LocalRouterCredentials;
-  } catch {
+  } catch (e) {
+    reportSilent('router-credentials.parse', e, { routerId });
     return null;
   }
 }

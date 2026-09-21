@@ -3,7 +3,7 @@ import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/error-codes';
 import { AuditAction, Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { getTenantContext } from '../../common/context/tenant-context';
+import { EventLogService } from '../events/event-log.service';
 import { CreatePlanDto, UpdatePlanDto } from './dto/plan.schemas';
 
 const PLAN_PUBLIC = {
@@ -43,9 +43,20 @@ function slugify(name: string): string {
 @Injectable()
 export class PlansService {
   private readonly logger = new Logger(PlansService.name);
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly eventLog: EventLogService,
+  ) {}
 
-  async create(routerId: string, dto: CreatePlanDto) {
+  create(routerId: string, dto: CreatePlanDto) {
+    return this.eventLog.track(
+      { action: AuditAction.CREATE, entityType: 'Plan', metadata: { routerId } },
+      () => this.createPlan(routerId, dto),
+      (plan) => ({ entityId: plan.id, metadata: { slug: plan.slug } }),
+    );
+  }
+
+  private async createPlan(routerId: string, dto: CreatePlanDto) {
     await this.assertRouter(routerId);
     const slug = await this.uniqueSlug(routerId, slugify(dto.name));
     const created = await this.prisma.plan.create({
@@ -70,7 +81,6 @@ export class PlansService {
       } as unknown as Prisma.PlanUncheckedCreateInput,
       select: PLAN_PUBLIC,
     });
-    await this.audit(AuditAction.CREATE, created.id, { slug, routerId });
     return created;
   }
 
@@ -91,7 +101,14 @@ export class PlansService {
     return plan;
   }
 
-  async update(routerId: string, id: string, dto: UpdatePlanDto) {
+  update(routerId: string, id: string, dto: UpdatePlanDto) {
+    return this.eventLog.track(
+      { action: AuditAction.UPDATE, entityType: 'Plan', entityId: id, metadata: { routerId } },
+      () => this.updatePlan(routerId, id, dto),
+    );
+  }
+
+  private async updatePlan(routerId: string, id: string, dto: UpdatePlanDto) {
     await this.findOne(routerId, id); // ownership + existence (404 cross-tenant/router)
 
     const data: Prisma.PlanUpdateInput = {};
@@ -114,17 +131,22 @@ export class PlansService {
 
     // Middleware rewrites update→updateMany (tenant-scoped); no select here.
     await this.prisma.plan.update({ where: { id }, data });
-    await this.audit(AuditAction.UPDATE, id, {});
     return this.findOne(routerId, id);
   }
 
-  async remove(routerId: string, id: string) {
+  remove(routerId: string, id: string) {
+    return this.eventLog.track(
+      { action: AuditAction.DELETE, entityType: 'Plan', entityId: id, metadata: { routerId } },
+      () => this.removePlan(routerId, id),
+    );
+  }
+
+  private async removePlan(routerId: string, id: string) {
     await this.findOne(routerId, id);
     await this.prisma.plan.update({
       where: { id },
       data: { deletedAt: new Date() },
     });
-    await this.audit(AuditAction.DELETE, id, {});
     return { deleted: true };
   }
 
@@ -149,28 +171,5 @@ export class PlansService {
     let i = 2;
     while (taken.has(`${base}-${i}`)) i += 1;
     return `${base}-${i}`;
-  }
-
-  private async audit(
-    action: AuditAction,
-    entityId: string,
-    metadata: Prisma.InputJsonValue,
-  ): Promise<void> {
-    const ctx = getTenantContext();
-    if (!ctx) return;
-    try {
-      await this.prisma.auditLog.create({
-        data: {
-          tenantId: ctx.tenantId,
-          userId: ctx.userId,
-          action,
-          entityType: 'Plan',
-          entityId,
-          metadata,
-        },
-      });
-    } catch (err) {
-      this.logger.warn(`Audit log write failed: ${err instanceof Error ? err.message : err}`);
-    }
   }
 }

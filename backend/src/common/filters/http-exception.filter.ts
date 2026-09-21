@@ -40,6 +40,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     } else {
       this.logger.error(exception);
       Sentry.captureException(exception);
+      errorCode = 'INTERNAL_ERROR';
     }
 
     void res.status(status).send({

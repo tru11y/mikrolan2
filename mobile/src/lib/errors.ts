@@ -38,6 +38,7 @@ function readIssues(payload: unknown): FieldErrors {
 }
 
 const ERROR_CODE_MESSAGES: Record<string, string> = {
+  INTERNAL_ERROR: 'Erreur interne du serveur. L\'équipe MikroLan a été alertée, réessayez dans un instant.',
   ROUTER_AUTH_FAILED: 'Authentification RouterOS échouée. Vérifiez les identifiants du routeur.',
   ROUTER_UNREACHABLE: 'Routeur injoignable. Vérifiez la connexion WireGuard.',
   ROUTER_REBOOT_FAILED: 'Le redémarrage du routeur a échoué.',

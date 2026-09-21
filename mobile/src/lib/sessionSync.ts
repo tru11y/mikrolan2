@@ -1,3 +1,4 @@
+import { reportSilent } from '@/src/lib/report';
 import { api, type LiveSession } from './api';
 
 /**
@@ -14,7 +15,8 @@ export async function reportLanSessions(
 ): Promise<void> {
   try {
     await api.routers.syncSessions(routerId, active);
-  } catch {
-    // offline, or the router flipped to REMOTE between reads — nothing to do
+  } catch (e) {
+    // Offline, or the router flipped to REMOTE between reads: retried on next read.
+    reportSilent('session-sync', e, { routerId });
   }
 }

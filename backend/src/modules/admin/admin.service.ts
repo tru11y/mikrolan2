@@ -25,6 +25,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CacheService } from '../../common/redis/cache.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { EventLogService, categoryOf, entityTypesOf } from '../events/event-log.service';
 import { RemoteRouterService } from '../remote-access/remote-router.service';
 import { monthlyPrice } from '../subscriptions/tiers.service';
 import type {
@@ -73,6 +74,7 @@ export class AdminService {
     private readonly subscriptions: SubscriptionsService,
     private readonly cache: CacheService,
     private readonly remoteRouter: RemoteRouterService,
+    private readonly eventLog: EventLogService,
   ) {}
 
   // ── Comptes clients ────────────────────────────────────
@@ -188,7 +190,15 @@ export class AdminService {
     return tenant;
   }
 
-  async setTenantStatus(
+  setTenantStatus(
+    id: string,
+    actor: { userId: string; tenantId: string },
+    dto: SetTenantStatusDto,
+  ) {
+    return this.eventLog.guard({ action: AuditAction.SUSPEND, entityType: 'Tenant', entityId: id, metadata: { requested: dto.status }, actor: { tenantId: id, userId: actor.userId } }, () => this.setTenantStatusInner(id, actor, dto));
+  }
+
+  private async setTenantStatusInner(
     id: string,
     actor: { userId: string; tenantId: string },
     dto: SetTenantStatusDto,
@@ -278,7 +288,15 @@ export class AdminService {
     }));
   }
 
-  async setUserStatus(
+  setUserStatus(
+    id: string,
+    actor: { userId: string },
+    dto: SetUserStatusDto,
+  ) {
+    return this.eventLog.guard({ action: AuditAction.SUSPEND, entityType: 'User', entityId: id, metadata: { requested: dto.status }, actor: { userId: actor.userId } }, () => this.setUserStatusInner(id, actor, dto));
+  }
+
+  private async setUserStatusInner(
     id: string,
     actor: { userId: string },
     dto: SetUserStatusDto,
@@ -495,7 +513,12 @@ export class AdminService {
       where: {
         ...(query.tenantId ? { tenantId: query.tenantId } : {}),
         ...(query.action ? { action: query.action } : {}),
-        ...(query.entityType ? { entityType: query.entityType } : {}),
+        ...(query.entityType
+          ? { entityType: query.entityType }
+          : query.category
+            ? { entityType: { in: entityTypesOf(query.category) } }
+            : {}),
+        ...(query.outcome ? { outcome: query.outcome } : {}),
         ...(query.errorCode
           ? { metadata: { path: ['errorCode'], equals: query.errorCode } }
           : {}),
@@ -511,6 +534,7 @@ export class AdminService {
         entityType: true,
         entityId: true,
         metadata: true,
+        outcome: true,
         ip: true,
         createdAt: true,
         tenant: { select: { name: true } },
@@ -527,6 +551,8 @@ export class AdminService {
       action: a.action,
       entityType: a.entityType,
       entityId: a.entityId,
+      category: categoryOf(a.entityType),
+      outcome: a.outcome,
       metadata: a.metadata,
       ip: a.ip,
       createdAt: a.createdAt.toISOString(),
@@ -558,7 +584,15 @@ export class AdminService {
 
   // ── Validation / rejet de facture ─────────────────────
 
-  async validateInvoice(
+  validateInvoice(
+    invoiceId: string,
+    actor: { userId: string; tenantId: string },
+    dto: ValidateInvoiceDto,
+  ) {
+    return this.eventLog.guard({ action: AuditAction.ACTIVATE, entityType: 'Invoice', entityId: invoiceId, actor: { tenantId: actor.tenantId, userId: actor.userId } }, () => this.validateInvoiceInner(invoiceId, actor, dto));
+  }
+
+  private async validateInvoiceInner(
     invoiceId: string,
     actor: { userId: string; tenantId: string },
     dto: ValidateInvoiceDto,
@@ -585,7 +619,15 @@ export class AdminService {
     return { validated: true };
   }
 
-  async rejectInvoice(
+  rejectInvoice(
+    invoiceId: string,
+    actor: { userId: string; tenantId: string },
+    dto: RejectInvoiceDto,
+  ) {
+    return this.eventLog.guard({ action: AuditAction.REJECT, entityType: 'Invoice', entityId: invoiceId, actor: { tenantId: actor.tenantId, userId: actor.userId } }, () => this.rejectInvoiceInner(invoiceId, actor, dto));
+  }
+
+  private async rejectInvoiceInner(
     invoiceId: string,
     actor: { userId: string; tenantId: string },
     dto: RejectInvoiceDto,
@@ -637,7 +679,15 @@ export class AdminService {
 
   // ── Subscription override (P0-04 / P0-08) ─────────────
 
-  async patchSubscription(
+  patchSubscription(
+    tenantId: string,
+    actor: { userId: string },
+    dto: PatchSubscriptionDto,
+  ) {
+    return this.eventLog.guard({ action: AuditAction.UPDATE, entityType: 'Subscription', entityId: tenantId, actor: { tenantId, userId: actor.userId } }, () => this.patchSubscriptionInner(tenantId, actor, dto));
+  }
+
+  private async patchSubscriptionInner(
     tenantId: string,
     actor: { userId: string },
     dto: PatchSubscriptionDto,
@@ -674,7 +724,7 @@ export class AdminService {
       AuditAction.UPDATE,
       'Subscription',
       sub.id,
-      dto as unknown as Prisma.InputJsonValue,
+      dto as unknown as Prisma.InputJsonObject,
     );
 
     return updated;
@@ -750,7 +800,11 @@ export class AdminService {
     return ticket;
   }
 
-  async replyToTicket(ticketId: string, userId: string, body: string) {
+  replyToTicket(ticketId: string, userId: string, body: string) {
+    return this.eventLog.guard({ action: AuditAction.REPLY, entityType: 'SupportTicket', entityId: ticketId, actor: { userId } }, () => this.replyToTicketInner(ticketId, userId, body));
+  }
+
+  private async replyToTicketInner(ticketId: string, userId: string, body: string) {
     const ticket = await this.prisma.supportTicket.findUnique({
       where: { id: ticketId },
     });
@@ -781,13 +835,21 @@ export class AdminService {
       null,
       { notificationId: notification.id, type: 'TICKET_REPLY', ticketId },
     );
+    await this.eventLog.success(AuditAction.REPLY, 'SupportTicket', ticketId, { isAdmin: true }, {
+      tenantId: ticket.tenantId,
+      userId,
+    });
     return message;
   }
 
-  async setTicketStatus(id: string, dto: SetTicketStatusDto) {
+  setTicketStatus(id: string, dto: SetTicketStatusDto) {
+    return this.eventLog.guard({ action: AuditAction.UPDATE, entityType: 'SupportTicket', entityId: id, metadata: { status: dto.status } }, () => this.setTicketStatusInner(id, dto));
+  }
+
+  private async setTicketStatusInner(id: string, dto: SetTicketStatusDto) {
     const ticket = await this.prisma.supportTicket.findUnique({ where: { id } });
     if (!ticket) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.SUPPORT_TICKET_NOT_FOUND, 'Ticket introuvable');
-    return this.prisma.supportTicket.update({
+    const updated = await this.prisma.supportTicket.update({
       where: { id },
       data: {
         status: dto.status,
@@ -796,6 +858,10 @@ export class AdminService {
           : {}),
       },
     });
+    await this.eventLog.success(AuditAction.UPDATE, 'SupportTicket', id, { status: dto.status }, {
+      tenantId: ticket.tenantId,
+    });
+    return updated;
   }
 
   // ── Audit sécurité ────────────────────────────────────
@@ -854,7 +920,11 @@ export class AdminService {
     return Object.fromEntries(rows.map((r) => [r.key, r.value]));
   }
 
-  async updateConfig(dto: UpdateConfigDto): Promise<Record<string, string>> {
+  updateConfig(dto: UpdateConfigDto) {
+    return this.eventLog.track({ action: AuditAction.UPDATE, entityType: 'PlatformConfig', metadata: { keys: Object.keys(dto).join(',') } }, () => this.updateConfigInner(dto));
+  }
+
+  private async updateConfigInner(dto: UpdateConfigDto): Promise<Record<string, string>> {
     const ops = Object.entries(dto).map(([key, value]) =>
       this.prisma.platformConfig.upsert({
         where: { key },
@@ -1012,7 +1082,15 @@ export class AdminService {
 
   private static readonly DIAGNOSTIC_TTL_SECONDS = 300; // 5 min
 
-  async enterDiagnosticMode(
+  enterDiagnosticMode(
+    tenantId: string,
+    routerId: string,
+    actor: { userId: string },
+  ) {
+    return this.eventLog.guard({ action: AuditAction.DIAGNOSTIC_ENTER, entityType: 'Diagnostic', entityId: routerId, actor: { tenantId, userId: actor.userId } }, () => this.enterDiagnosticModeInner(tenantId, routerId, actor));
+  }
+
+  private async enterDiagnosticModeInner(
     tenantId: string,
     routerId: string,
     actor: { userId: string },
@@ -1031,7 +1109,7 @@ export class AdminService {
 
     await this.audit(
       tenantId, actor.userId, AuditAction.DIAGNOSTIC_ENTER,
-      'Router', routerId, { ttlSeconds: AdminService.DIAGNOSTIC_TTL_SECONDS },
+      'Diagnostic', routerId, { ttlSeconds: AdminService.DIAGNOSTIC_TTL_SECONDS },
     );
 
     return {
@@ -1040,7 +1118,16 @@ export class AdminService {
     };
   }
 
-  async confirmedReboot(
+  confirmedReboot(
+    tenantId: string,
+    routerId: string,
+    confirmToken: string,
+    actor: { userId: string },
+  ) {
+    return this.eventLog.guard({ action: AuditAction.REBOOT, entityType: 'Diagnostic', entityId: routerId, actor: { tenantId, userId: actor.userId } }, () => this.confirmedRebootInner(tenantId, routerId, confirmToken, actor));
+  }
+
+  private async confirmedRebootInner(
     tenantId: string,
     routerId: string,
     confirmToken: string,
@@ -1059,26 +1146,20 @@ export class AdminService {
 
     await this.audit(
       tenantId, actor.userId, AuditAction.REBOOT,
-      'Router', routerId, { confirmedAt: new Date().toISOString() },
+      'Diagnostic', routerId, { confirmedAt: new Date().toISOString() },
     );
 
     return { rebooted: true };
   }
 
-  private async audit(
+  private audit(
     tenantId: string,
     userId: string,
     action: AuditAction,
     entityType: string,
     entityId: string,
-    metadata: Prisma.InputJsonValue,
+    metadata: Prisma.InputJsonObject,
   ): Promise<void> {
-    try {
-      await this.prisma.auditLog.create({
-        data: { tenantId, userId, action, entityType, entityId, metadata },
-      });
-    } catch (err) {
-      this.logger.warn(`Audit log write failed: ${err instanceof Error ? err.message : err}`);
-    }
+    return this.eventLog.success(action, entityType, entityId, metadata, { tenantId, userId });
   }
 }

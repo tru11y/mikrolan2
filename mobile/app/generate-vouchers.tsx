@@ -8,7 +8,8 @@ import { api, type Plan, type VoucherItem, type GenerateResult } from '@/src/lib
 import { useTranslation } from 'react-i18next';
 import { describeError } from '@/src/lib/errors';
 import { getLocalCredentials } from '@/src/lib/router-credentials';
-import { pushVouchersLan } from '@/src/services/mikrotik-lan/hotspotLan';
+import { PartialPushError, pushVouchersLan } from '@/src/services/mikrotik-lan/hotspotLan';
+import { swallow } from '@/src/lib/report';
 import { TicketCard } from '@/src/components/TicketCard';
 import { printTickets } from '@/src/lib/ticketsPdf';
 import {
@@ -135,20 +136,48 @@ export default function GenerateVouchersScreen() {
       : res.batchStatus === 'PARTIAL_SUCCESS' ? 'PARTIAL_SUCCESS'
       : 'FAILED';
 
+    let pushedCount = res.pushedCount;
+    let failureMessage: string | null = null;
+
     if (outcome === 'SUCCESS' && !res.pushedByServer && res.push) {
+      const reportFailure = (reason: string, code: string, pushed: number) =>
+        api.routers
+          .reportPushFailure(routerId, {
+            batchId: res.batchId,
+            reason,
+            errorCode: code,
+            pushedCount: pushed,
+          })
+          .catch(swallow('generate.report-push-failure'));
       try {
         const creds = await getLocalCredentials(routerId);
         if (!creds) {
-          outcome = 'PARTIAL_SUCCESS';
+          failureMessage = t('tickets.localCredsRequired');
+          pushedCount = 0;
+          await reportFailure(failureMessage, 'ROUTER_CREDS_MISSING', 0);
+          outcome = 'FAILED';
         } else {
           const items = await pushVouchersLan(creds, res.vouchers, res.push);
+          pushedCount = items.length;
           await api.routers.confirmVouchers(routerId, {
             batchId: res.batchId,
             items,
           });
         }
-      } catch {
-        outcome = 'PARTIAL_SUCCESS';
+      } catch (e) {
+        const described = describeError(e);
+        failureMessage = described.message;
+        if (e instanceof PartialPushError) {
+          pushedCount = e.pushed.length;
+          await api.routers
+            .confirmVouchers(routerId, { batchId: res.batchId, items: e.pushed })
+            .catch(swallow('generate.confirm-partial'));
+          outcome = 'PARTIAL_SUCCESS';
+        } else {
+          pushedCount = 0;
+          await reportFailure(described.message, described.errorCode ?? (e instanceof Error ? e.name : 'LAN_PUSH_FAILED'), 0);
+          outcome = 'FAILED';
+        }
       }
     }
 
@@ -162,13 +191,13 @@ export default function GenerateVouchersScreen() {
     } else if (outcome === 'PARTIAL_SUCCESS') {
       toast.show(
         t('tickets.generatedPartialDetail', {
-          pushed: res.pushedCount,
+          pushed: pushedCount,
           total: res.totalCount,
         }),
         'info',
       );
     } else {
-      toast.error(t('tickets.generatedFailed'));
+      toast.error(failureMessage ?? t('tickets.generatedFailed'));
     }
     if (outputFormat === 'pdf' && selectedPlan) {
       await printBatch(res.vouchers, selectedPlan);

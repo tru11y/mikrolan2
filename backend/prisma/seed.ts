@@ -73,7 +73,7 @@ async function seedTiers(): Promise<void> {
       monthlyXof: 5000,
       tagline: 'Jusqu’à 3 routeurs',
       routerLimit: 3,
-      remoteAccess: false,
+      remoteAccess: true,
       a4Printing: false,
       cloudBackup: false,
       prioritySupport: false,

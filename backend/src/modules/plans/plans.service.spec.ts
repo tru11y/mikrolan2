@@ -1,3 +1,4 @@
+import { makeEventLogStub } from '../../common/testing/event-log.stub';
 import { NotFoundException } from '@nestjs/common';
 import { AuditAction } from '@prisma/client';
 import { PlansService } from './plans.service';
@@ -27,7 +28,7 @@ function makePrisma() {
 
 function makeService(prisma?: unknown) {
   const p = prisma ?? makePrisma();
-  return { service: new PlansService(p as any), prisma: p as any };
+  return { service: new PlansService(p as any, makeEventLogStub() as any), prisma: p as any };
 }
 
 describe('PlansService', () => {

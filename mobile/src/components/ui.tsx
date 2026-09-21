@@ -1,3 +1,4 @@
+import { swallow } from '@/src/lib/report';
 import {
   createContext,
   PropsWithChildren,
@@ -326,7 +327,7 @@ AccessibilityInfo.isReduceMotionEnabled()
   .then((v) => {
     reduceMotionCache = v;
   })
-  .catch(() => {});
+  .catch(swallow('a11y.reduce-motion'));
 
 export function useReduceMotion(): boolean {
   const [reduced, setReduced] = useState(reduceMotionCache);
@@ -337,7 +338,7 @@ export function useReduceMotion(): boolean {
         reduceMotionCache = v;
         if (alive) setReduced(v);
       })
-      .catch(() => {});
+      .catch(swallow('a11y.reduce-motion'));
     const sub = AccessibilityInfo.addEventListener(
       'reduceMotionChanged',
       (v: boolean) => {

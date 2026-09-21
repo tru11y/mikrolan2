@@ -1,3 +1,4 @@
+import { reportSilent } from '@/src/lib/report';
 import { NativeModules, Platform } from 'react-native';
 
 export interface WifiInfo {
@@ -18,7 +19,8 @@ export async function getWifiInfo(): Promise<WifiInfo | null> {
   if (Platform.OS !== 'android' || !native) return null;
   try {
     return await native.getWifiInfo();
-  } catch {
+  } catch (e) {
+    reportSilent('lan.wifi-info', e);
     return null;
   }
 }
@@ -41,16 +43,17 @@ export async function withWifi<T>(fn: () => Promise<T>): Promise<T> {
   if (Platform.OS !== 'android' || !native) return fn();
   try {
     await native.bindWifi();
-  } catch {
-    // fall through — try the request on the default network anyway
+  } catch (e) {
+    // Try the request on the default network anyway, but keep the trace.
+    reportSilent('lan.bind-wifi', e);
   }
   try {
     return await fn();
   } finally {
     try {
       await native.unbindWifi();
-    } catch {
-      // ignore
+    } catch (e) {
+      reportSilent('lan.unbind-wifi', e);
     }
   }
 }

@@ -18,6 +18,7 @@ import { WireGuardService, SSH_PORT_OFFSET, WINBOX_PORT_OFFSET } from '../../com
 import { generateWgKeyPair } from '../../common/wireguard/wg-keys';
 import { getTenantContext } from '../../common/context/tenant-context';
 import type { AppConfig } from '../../config/configuration';
+import { EventLogService, describeFailure } from '../events/event-log.service';
 
 function ipToInt(ip: string): number {
   return ip
@@ -52,9 +53,22 @@ export class RemoteAccessService {
     private readonly subscriptions: SubscriptionsService,
     private readonly wg: WireGuardService,
     private readonly config: ConfigService<AppConfig, true>,
+    private readonly eventLog: EventLogService,
   ) {}
 
-  async provision(
+  provision(
+    routerId: string,
+    actorId: string,
+    servicePorts: {
+      webfigPort?: number;
+      sshPort?: number;
+      winboxPort?: number;
+    } = {},
+  ) {
+    return this.eventLog.guard({ action: AuditAction.PROVISION, entityType: 'Router', entityId: routerId, actor: { userId: actorId } }, () => this.provisionInner(routerId, actorId, servicePorts));
+  }
+
+  private async provisionInner(
     routerId: string,
     actorId: string,
     servicePorts: {
@@ -107,11 +121,11 @@ export class RemoteAccessService {
       });
     } catch (err) {
       this.logger.warn(`WireGuard provision failed for router ${routerId}: ${err instanceof Error ? err.message : err}`);
-      await this.audit(tenantId, actorId, AuditAction.PROVISION, routerId, {
-        errorCode: ErrorCode.ROUTER_PROVISION_FAILED,
-        error: err instanceof Error ? err.message : String(err),
-      });
-      throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, ErrorCode.ROUTER_PROVISION_FAILED, "Impossible d'activer la gestion à distance pour le moment. Réessayez plus tard.");
+      const failure = new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, ErrorCode.ROUTER_PROVISION_FAILED, "Impossible d'activer la gestion à distance pour le moment. Réessayez plus tard.");
+      await this.eventLog.failure(AuditAction.PROVISION, 'Router', routerId, failure, {
+        cause: describeFailure(err).error,
+      }, { tenantId, userId: actorId });
+      throw failure;
     }
 
     const data = {
@@ -159,11 +173,16 @@ export class RemoteAccessService {
     };
   }
 
-  async revoke(routerId: string, actorId: string) {
+  revoke(routerId: string, actorId: string) {
+    return this.eventLog.guard({ action: AuditAction.REVOKE, entityType: 'Router', entityId: routerId, actor: { userId: actorId } }, () => this.revokeInner(routerId, actorId));
+  }
+
+  private async revokeInner(routerId: string, actorId: string) {
     const tenantId = getTenantContext()?.tenantId;
     const peer = await this.prisma.remotePeer.findFirst({ where: { routerId } });
     if (!peer) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.REMOTE_ACCESS_NOT_FOUND, 'Aucun accès à distance actif pour ce routeur.');
 
+    let wgRemovalFailure: Prisma.InputJsonObject | null = null;
     try {
       await this.wg.removePeer(peer.wgPublicKey);
       await this.wg.removeDnat(peer.wgIp, peer.allocatedPort, {
@@ -173,12 +192,7 @@ export class RemoteAccessService {
       });
     } catch (err) {
       this.logger.warn(`WireGuard peer removal failed (proceeding with DB revocation): ${err instanceof Error ? err.message : err}`);
-      if (tenantId) {
-        await this.audit(tenantId, actorId, AuditAction.REVOKE, routerId, {
-          errorCode: ErrorCode.WG_PEER_REMOVAL_FAILED,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
+      wgRemovalFailure = { ...describeFailure(err), errorCode: ErrorCode.WG_PEER_REMOVAL_FAILED };
     }
 
     await this.prisma.$transaction(async (tx) => {
@@ -192,7 +206,9 @@ export class RemoteAccessService {
       });
     });
 
-    if (tenantId) {
+    if (wgRemovalFailure) {
+      await this.eventLog.warning(AuditAction.REVOKE, 'Router', routerId, wgRemovalFailure, { tenantId, userId: actorId });
+    } else {
       await this.audit(tenantId, actorId, AuditAction.REVOKE, routerId, {});
     }
     return { revoked: true };
@@ -273,26 +289,13 @@ export class RemoteAccessService {
     return { wgIp, allocatedPort: port };
   }
 
-  private async audit(
-    tenantId: string,
+  private audit(
+    tenantId: string | undefined,
     userId: string,
     action: AuditAction,
     routerId: string,
-    metadata: Prisma.InputJsonValue,
+    metadata: Prisma.InputJsonObject,
   ): Promise<void> {
-    try {
-      await this.prisma.auditLog.create({
-        data: {
-          tenantId,
-          userId,
-          action,
-          entityType: 'Router',
-          entityId: routerId,
-          metadata,
-        },
-      });
-    } catch (err) {
-      this.logger.warn(`Audit log write failed: ${err instanceof Error ? err.message : err}`);
-    }
+    return this.eventLog.success(action, 'Router', routerId, metadata, { tenantId, userId });
   }
 }

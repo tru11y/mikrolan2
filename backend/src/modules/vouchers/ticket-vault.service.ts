@@ -31,66 +31,95 @@ export class TicketVaultService {
     pdfBuffer: Buffer,
     originalName: string,
   ): Promise<{ id: string; storagePath: string }> {
-    const dir = resolve(process.cwd(), VAULT_DIR, tenantId);
-    await mkdir(dir, { recursive: true });
+    try {
+      const dir = resolve(process.cwd(), VAULT_DIR, tenantId);
+      await mkdir(dir, { recursive: true });
 
-    const filename = `${randomUUID()}.pdf`;
-    const storagePath = join(VAULT_DIR, tenantId, filename);
-    await writeFile(join(dir, filename), pdfBuffer);
+      const filename = `${randomUUID()}.pdf`;
+      const storagePath = join(VAULT_DIR, tenantId, filename);
+      await writeFile(join(dir, filename), pdfBuffer);
 
-    const record = await this.prisma.ticketVault.create({
-      data: {
-        tenantId,
+      const record = await this.prisma.ticketVault.create({
+        data: {
+          tenantId,
+          batchId,
+          fileName: originalName || `batch-${batchId}.pdf`,
+          storagePath,
+          sizeByte: pdfBuffer.length,
+        },
+      });
+
+      await this.prisma.voucherBatch.update({
+        where: { id: batchId },
+        data: { pdfUrl: `/api/vouchers/vault/${record.id}` },
+      });
+
+      this.logger.log(`Stored PDF for batch ${batchId} (${pdfBuffer.length} bytes)`);
+      await this.eventLog.success(AuditAction.CREATE, 'TicketVault', record.id, {
         batchId,
-        fileName: originalName || `batch-${batchId}.pdf`,
-        storagePath,
+        fileName: record.fileName,
         sizeByte: pdfBuffer.length,
-      },
-    });
+      }, { tenantId });
+      return { id: record.id, storagePath };
+    } catch (err) {
+      this.logger.error(`Vault store failed for batch ${batchId}: ${err instanceof Error ? err.message : err}`);
+      await this.traceFailure(tenantId, AuditAction.CREATE, batchId, err, { batchId });
+      if (err instanceof BusinessException) throw err;
+      throw new BusinessException(
+        HttpStatus.INTERNAL_SERVER_ERROR,
+        ErrorCode.VAULT_UPLOAD_FAILED,
+        "Le PDF n'a pas pu être archivé. Réessayez.",
+      );
+    }
+  }
 
-    await this.prisma.voucherBatch.update({
-      where: { id: batchId },
-      data: { pdfUrl: `/api/vouchers/vault/${record.id}` },
-    });
-
-    this.logger.log(`Stored PDF for batch ${batchId} (${pdfBuffer.length} bytes)`);
-    await this.eventLog.emit({
-      tenantId, action: AuditAction.CREATE, entityType: 'TicketVault', entityId: record.id,
-      outcome: 'SUCCESS', metadata: { batchId, fileName: record.fileName, sizeByte: pdfBuffer.length },
-    });
-    return { id: record.id, storagePath };
+  /** Trace un échec du coffre (validation d'upload, lecture, chemin refusé). */
+  traceFailure(
+    tenantId: string,
+    action: AuditAction,
+    entityId: string,
+    err: unknown,
+    metadata?: Record<string, string | number>,
+  ): Promise<void> {
+    return this.eventLog.failure(action, 'TicketVault', entityId, err, metadata, { tenantId });
   }
 
   async download(vaultId: string, tenantId?: string): Promise<StreamableFile & { fileName: string }> {
     const where: { id: string; tenantId?: string } = { id: vaultId };
     if (tenantId) where.tenantId = tenantId;
 
+    const reject = async (reason: string): Promise<never> => {
+      const err = new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.VAULT_PDF_NOT_FOUND, 'PDF introuvable.');
+      if (tenantId) await this.traceFailure(tenantId, AuditAction.EXPORT, vaultId, err, { reason });
+      throw err;
+    };
+
     const record = await this.prisma.ticketVault.findFirst({ where });
-    if (!record) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.VAULT_PDF_NOT_FOUND, 'PDF introuvable.');
+    if (!record) return reject('not_found');
 
     const absPath = resolve(process.cwd(), record.storagePath);
     const normalized = absPath.split(sep).join('/');
     const vaultRoot = resolve(process.cwd(), VAULT_DIR).split(sep).join('/');
-    if (!normalized.startsWith(vaultRoot + '/')) {
-      throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.VAULT_PDF_NOT_FOUND, 'PDF introuvable.');
-    }
+    if (!normalized.startsWith(vaultRoot + '/')) return reject('path_outside_vault');
 
     const safeName = basename(record.storagePath);
-    if (!FILENAME_PATTERN.test(safeName)) {
-      throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.VAULT_PDF_NOT_FOUND, 'PDF introuvable.');
-    }
+    if (!FILENAME_PATTERN.test(safeName)) return reject('bad_filename');
 
-    const buffer = await readFile(absPath);
+    let buffer: Buffer;
+    try {
+      buffer = await readFile(absPath);
+    } catch {
+      return reject('file_missing_on_disk');
+    }
     const stream = new StreamableFile(buffer, {
       type: 'application/pdf',
       disposition: `attachment; filename="${record.fileName}"`,
     });
 
     if (tenantId) {
-      await this.eventLog.emit({
-        tenantId, action: AuditAction.EXPORT, entityType: 'TicketVault', entityId: vaultId,
-        outcome: 'SUCCESS', metadata: { fileName: record.fileName },
-      });
+      await this.eventLog.success(AuditAction.EXPORT, 'TicketVault', vaultId, {
+        fileName: record.fileName,
+      }, { tenantId });
     }
     return Object.assign(stream, { fileName: record.fileName });
   }
