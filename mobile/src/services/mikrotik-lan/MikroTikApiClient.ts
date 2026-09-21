@@ -1,3 +1,4 @@
+import { reportSilent } from '@/src/lib/report';
 import TcpSocket from 'react-native-tcp-socket';
 import { Buffer } from 'buffer';
 
@@ -332,8 +333,8 @@ export class MikroTikApiClient {
   destroy(): void {
     try {
       this.socket?.destroy();
-    } catch {
-      // ignore
+    } catch (e) {
+      reportSilent('lan.api-socket-destroy', e);
     }
     this.socket = null;
   }

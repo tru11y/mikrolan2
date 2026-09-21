@@ -1,3 +1,4 @@
+import { logAndContinue } from '../../common/utils/log-and-continue';
 import { Injectable, Logger } from '@nestjs/common';
 import { RouterHealth } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -90,10 +91,12 @@ export class TelemetryService {
         async (client) => {
           const [resources, hotspot, logs] = await Promise.all([
             client.command(['/system/resource/print']),
-            client.command(['/ip/hotspot/active/print']).catch(() => [] as ApiRow[]),
+            client
+              .command(['/ip/hotspot/active/print'])
+              .catch(logAndContinue<ApiRow[]>(this.logger, `Hotspot active read (router ${routerId})`, [])),
             client
               .command(['/log/print', '?topics~error', '=.proplist=time,message'])
-              .catch(() => [] as ApiRow[]),
+              .catch(logAndContinue<ApiRow[]>(this.logger, `Router log read (router ${routerId})`, [])),
           ]);
 
           const res = resources[0] ?? {};

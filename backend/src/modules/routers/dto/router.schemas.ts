@@ -40,3 +40,16 @@ export const updateRouterSchema = z
   })
   .strict();
 export type UpdateRouterDto = z.infer<typeof updateRouterSchema>;
+
+// Actions performed by the app directly over the LAN: the server cannot see
+// them, so the client reports the outcome to keep the audit trail complete.
+export const CLIENT_EVENT_KINDS = ['REBOOT', 'HOTSPOT_RESET', 'LAN_CONNECT'] as const;
+export const clientEventSchema = z
+  .object({
+    kind: z.enum(CLIENT_EVENT_KINDS),
+    outcome: z.enum(['SUCCESS', 'WARNING', 'PARTIAL_SUCCESS', 'FAILED']),
+    errorCode: z.string().trim().max(50).optional(),
+    message: z.string().trim().max(300).optional(),
+  })
+  .strict();
+export type ClientEventDto = z.infer<typeof clientEventSchema>;

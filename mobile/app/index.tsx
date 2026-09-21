@@ -1,4 +1,5 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
+import { reportSilent } from '@/src/lib/report';
 import { useEffect, useState } from 'react';
 import { Redirect } from 'expo-router';
 import { ActivityIndicator, View } from 'react-native';
@@ -13,7 +14,10 @@ export default function Index() {
   const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
 
   useEffect(() => {
-    AsyncStorage.getItem(ONBOARDING_KEY).then((v) => setOnboardingDone(v === '1')).catch(() => setOnboardingDone(false));
+    AsyncStorage.getItem(ONBOARDING_KEY).then((v) => setOnboardingDone(v === '1')).catch((e) => {
+        reportSilent('onboarding.read', e);
+        setOnboardingDone(false);
+      });
   }, []);
 
   if (!isReady || onboardingDone === null) {

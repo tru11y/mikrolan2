@@ -1,4 +1,7 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
+import { reportSilent } from '@/src/lib/report';
+import { traceRouterEvent } from '@/src/lib/router-events';
+import { describeError } from '@/src/lib/errors';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, BackHandler, ScrollView, Text, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -425,6 +428,7 @@ export default function RouterDetailScreen() {
                   style: 'destructive',
                   onPress: async () => {
                     setDiagBusy(true);
+                    let viaLan = false;
                     try {
                       const creds = await getLocalCredentials(id!);
                       const wifi = await getWifiInfo();
@@ -434,6 +438,7 @@ export default function RouterDetailScreen() {
                         (creds.host === wifi.gateway ||
                           sameSubnet24(creds.host, wifi.ipAddress));
                       if (creds && onLan) {
+                        viaLan = true;
                         await withApi(creds, (c) => c.reboot());
                       } else if (remoteActive) {
                         await api.routers.rebootRemote(id!);
@@ -441,9 +446,11 @@ export default function RouterDetailScreen() {
                         toast.error(t('routerDetail.rebootFailed'));
                         return;
                       }
+                      if (viaLan) void traceRouterEvent(id!, 'REBOOT', 'SUCCESS');
                       toast.success(t('routerDetail.rebootSuccess'));
-                    } catch {
-                      toast.error(t('routerDetail.rebootFailed'));
+                    } catch (e) {
+                      if (viaLan) void traceRouterEvent(id!, 'REBOOT', 'FAILED', e);
+                      toast.error(`${t('routerDetail.rebootFailed')} ${describeError(e).message}`);
                     } finally {
                       setDiagBusy(false);
                     }
@@ -486,6 +493,7 @@ export default function RouterDetailScreen() {
                         (creds.host === wifi.gateway ||
                           sameSubnet24(creds.host, wifi.ipAddress));
                       if (!(creds && onLan)) {
+                        void traceRouterEvent(id!, 'HOTSPOT_RESET', 'FAILED', new Error('Routeur hors du LAN du téléphone'));
                         toast.error(t('routerDetail.resetHotspotFailed'));
                         return;
                       }
@@ -502,9 +510,11 @@ export default function RouterDetailScreen() {
                           }
                         }
                       });
+                      void traceRouterEvent(id!, 'HOTSPOT_RESET', 'SUCCESS');
                       toast.success(t('routerDetail.resetHotspotSuccess'));
-                    } catch {
-                      toast.error(t('routerDetail.resetHotspotFailed'));
+                    } catch (e) {
+                      void traceRouterEvent(id!, 'HOTSPOT_RESET', 'FAILED', e);
+                      toast.error(`${t('routerDetail.resetHotspotFailed')} ${describeError(e).message}`);
                     } finally {
                       setDiagBusy(false);
                     }
@@ -545,8 +555,9 @@ export default function RouterDetailScreen() {
       try {
         markReachable('lan', await withApi(creds, (c) => c.systemResource()));
         return;
-      } catch {
-        // fall through to remote
+      } catch (e) {
+        // Fall through to the remote tunnel, but keep the reason.
+        reportSilent('router-detail.lan-probe', e, { routerId: id });
       }
     }
 
@@ -557,8 +568,9 @@ export default function RouterDetailScreen() {
           (await api.routers.remoteSystemResource(id)) as SystemResource,
         );
         return;
-      } catch {
-        // fall through to offline
+      } catch (e) {
+        // Fall through to offline, but keep the reason.
+        reportSilent('router-detail.remote-probe', e, { routerId: id });
       }
     }
 

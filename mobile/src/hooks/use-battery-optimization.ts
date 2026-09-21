@@ -1,3 +1,4 @@
+import { swallow } from '@/src/lib/report';
 import { useCallback, useEffect, useState } from 'react';
 import { AppState, NativeModules, Platform } from 'react-native';
 
@@ -14,7 +15,7 @@ export function useBatteryOptimization() {
 
   const check = useCallback(() => {
     if (!available) return;
-    BatteryOptimization!.isIgnoringBatteryOptimizations().then(setIgnored).catch(() => {});
+    BatteryOptimization!.isIgnoringBatteryOptimizations().then(setIgnored).catch(swallow('battery.check'));
   }, [available]);
 
   useEffect(() => {

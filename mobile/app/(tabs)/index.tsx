@@ -1,4 +1,5 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
+import { reportSilent } from '@/src/lib/report';
 import { useCallback, useState } from 'react';
 import { BackHandler, RefreshControl, ScrollView, View, Text, Pressable } from 'react-native';
 import { Link, Redirect, useFocusEffect, useRouter } from 'expo-router';
@@ -192,7 +193,8 @@ export default function MaisonScreen() {
           (c) => c.systemResource(),
         );
         setLocalProbe({ routerId: r.id, health: 'ONLINE' });
-      } catch {
+      } catch (e) {
+        reportSilent('home.local-probe', e, { routerId: r.id });
         setLocalProbe({ routerId: r.id, health: 'OFFLINE' });
       }
       return;

@@ -26,6 +26,7 @@ import {
   TRIAL_DAYS,
 } from '../subscriptions/subscriptions.service';
 import { MailService } from '../mail/mail.service';
+import { logAndContinue } from '../../common/utils/log-and-continue';
 import {
   ChangePasswordDto,
   ConfirmPasswordResetDto,
@@ -132,7 +133,9 @@ export class AuthService {
       throw e;
     }
 
-    this.mail.sendWelcome(dto.email, dto.tenantName).catch(() => {});
+    this.mail
+      .sendWelcome(dto.email, dto.tenantName)
+      .catch(logAndContinue(this.logger, 'Welcome mail'));
 
     return this.tokens.issueTokens({
       id: user.id,
@@ -150,7 +153,9 @@ export class AuthService {
     const invalid = new UnauthorizedException('Invalid credentials');
     if (!user || user.status !== UserStatus.ACTIVE) {
       // Still spend time hashing to reduce timing signal.
-      await argon2.hash(dto.password, ARGON).catch(() => undefined);
+      await argon2
+        .hash(dto.password, ARGON)
+        .catch(logAndContinue(this.logger, 'Dummy hash (anti-timing)'));
       throw invalid;
     }
 
@@ -162,7 +167,7 @@ export class AuthService {
     // savoir horodater ne doit pas empêcher quelqu'un de se connecter.
     await this.prisma.user
       .update({ where: { id: user.id }, data: { lastLoginAt: new Date() } })
-      .catch(() => undefined);
+      .catch(logAndContinue(this.logger, 'lastLoginAt update'));
 
     return this.tokens.issueTokens({
       id: user.id,
@@ -371,7 +376,7 @@ export class AuthService {
       }
       await this.prisma.user
         .update({ where: { id: existing.id }, data: { lastLoginAt: new Date() } })
-        .catch(() => undefined);
+        .catch(logAndContinue(this.logger, 'lastLoginAt update'));
       return this.tokens.issueTokens({
         id: existing.id,
         tenantId: existing.tenantId,
@@ -467,7 +472,7 @@ export class AuthService {
       }
       await this.prisma.user
         .update({ where: { id: existing.id }, data: { lastLoginAt: new Date() } })
-        .catch(() => undefined);
+        .catch(logAndContinue(this.logger, 'lastLoginAt update'));
       return this.tokens.issueTokens({
         id: existing.id,
         tenantId: existing.tenantId,
@@ -546,7 +551,7 @@ export class AuthService {
 
     await this.mail
       .sendPasswordReset(email, code, RESET_CODE_EXPIRY_MINUTES)
-      .catch(() => {});
+      .catch(logAndContinue(this.logger, 'Password reset mail'));
   }
 
   async confirmPasswordReset(dto: ConfirmPasswordResetDto): Promise<void> {

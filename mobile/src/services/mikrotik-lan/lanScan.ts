@@ -1,3 +1,4 @@
+import { fallbackTo, reportSilent } from '@/src/lib/report';
 import * as Network from 'expo-network';
 import TcpSocket from 'react-native-tcp-socket';
 import { getWifiInfo } from '@/src/lib/lanBinder';
@@ -16,8 +17,8 @@ async function isRouter(host: string, port: number): Promise<boolean> {
       done = true;
       try {
         socket?.destroy();
-      } catch {
-        // ignore
+      } catch (e) {
+        reportSilent('lan.scan-socket-destroy', e);
       }
       socket = null;
       resolve(v);
@@ -58,7 +59,7 @@ export async function scanLan(
   const info = await getWifiInfo();
   const ip = isIp(info?.ipAddress)
     ? info!.ipAddress
-    : await Network.getIpAddressAsync().catch(() => null);
+    : await Network.getIpAddressAsync().catch(fallbackTo('lan.scan-ip', null));
   const gateway = isIp(info?.gateway) ? info!.gateway : null;
 
   const bases = new Set<string>();
