@@ -212,6 +212,7 @@ export default function FichiersScreen() {
       await qc.invalidateQueries({ queryKey: ['vouchers', routerId] });
       setConfirmBatch(null);
     } catch (e) {
+      reportSilent('fichiers.delete-batch', e, { routerId, batchId: confirmBatch.id });
       setError(extractErrorMessage(e));
     } finally {
       setDeleteBusy(false);
