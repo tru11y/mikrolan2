@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { describeError } from '@/src/lib/errors';
 import { getLocalCredentials } from '@/src/lib/router-credentials';
 import { PartialPushError, pushVouchersLan } from '@/src/services/mikrotik-lan/hotspotLan';
-import { swallow } from '@/src/lib/report';
+import { reportSilent, swallow } from '@/src/lib/report';
 import { TicketCard } from '@/src/components/TicketCard';
 import { printTickets } from '@/src/lib/ticketsPdf';
 import {
@@ -100,6 +100,7 @@ export default function GenerateVouchersScreen() {
         batchSeq: lastBatchSeq ?? undefined,
       });
     } catch (e) {
+      reportSilent('generate-vouchers.print-batch', e, { routerId });
       toast.error(describeError(e).message);
     } finally {
       setPrintBusy(false);
@@ -124,6 +125,7 @@ export default function GenerateVouchersScreen() {
         quantity,
       });
     } catch (e) {
+      reportSilent('generate-vouchers.generate', e, { routerId, planId, quantity });
       setLastOutcome('FAILED');
       toast.error(describeError(e).message);
       setBusy(false);
@@ -206,8 +208,13 @@ export default function GenerateVouchersScreen() {
   }
 
   async function shareCodes(codes: VoucherItem[]) {
-    const text = codes.map((v) => v.code).join('\n');
-    await Share.share({ message: `${t('tickets.wifiCodes')}\n${text}` });
+    try {
+      const text = codes.map((v) => v.code).join('\n');
+      await Share.share({ message: `${t('tickets.wifiCodes')}\n${text}` });
+    } catch (e) {
+      reportSilent('generate-vouchers.share', e, { routerId });
+      toast.error(describeError(e).message);
+    }
   }
 
   const r = routerQuery.data;

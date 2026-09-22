@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -309,8 +310,10 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
     }
   }, [me?.entitlement?.tier, toast]);
 
+  const value = useMemo(() => ({ lastEventAt, live }), [lastEventAt, live]);
+
   return (
-    <LiveEventsContext.Provider value={{ lastEventAt, live }}>
+    <LiveEventsContext.Provider value={value}>
       {children}
     </LiveEventsContext.Provider>
   );

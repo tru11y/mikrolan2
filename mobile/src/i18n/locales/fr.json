@@ -217,9 +217,11 @@
     "router": "Routeur",
     "source": "Source",
     "sourceLegacy": "Legacy (routeur)",
-    "deliveredAt": "Livré le",
+    "createdAt": "Créé le",
     "firstConnection": "1re connexion",
     "expiresAt": "Expire le",
+    "consumedDuration": "Durée consommée",
+    "totalDuration": "Durée totale",
     "session": "Session",
     "statusActive": "En cours",
     "statusTerminated": "Terminée",
@@ -231,7 +233,14 @@
     "uploaded": "Envoyé",
     "mac": "MAC",
     "ip": "IP",
-    "state": "État"
+    "state": "État",
+    "voucherStatus": {
+      "GENERATED": "Généré",
+      "ACTIVE": "En cours",
+      "USED": "Utilisé",
+      "EXPIRED": "Expiré",
+      "REVOKED": "Révoqué"
+    }
   },
   "rapport": {
     "title": "Rapport & performance",
@@ -523,7 +532,11 @@
     "upload": "Envoi",
     "sortData": "Données",
     "sortUptime": "Durée",
-    "sortName": "Nom"
+    "sortName": "Nom",
+    "terminateConfirmTitle": "Déconnecter cet utilisateur ?",
+    "terminateConfirmTicket": "Ticket {{ticket}}",
+    "terminateConfirmSince": "Connecté depuis {{duration}}",
+    "terminateConfirmBody": "Le ticket reste valide. Le client pourra se reconnecter avec le temps restant de son forfait."
   },
   "forgotPassword": {
     "title": "Mot de passe oublié",

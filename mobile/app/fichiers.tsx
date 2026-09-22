@@ -12,6 +12,7 @@ import {
   type VoucherItem,
 } from '@/src/lib/api';
 import { printTickets, printTicketsDirect } from '@/src/lib/ticketsPdf';
+import { reportSilent } from '@/src/lib/report';
 import { TicketCard } from '@/src/components/TicketCard';
 import { Badge, Banner, Button, ConfirmDialog, Empty, Press, Subtitle, Title,
   withAlpha,
@@ -158,6 +159,7 @@ export default function FichiersScreen() {
         await printTicketsDirect(opts);
       }
     } catch (e) {
+      reportSilent('fichiers.batch-action', e, { routerId, batchId: batch.id, kind });
       setError(extractErrorMessage(e));
     } finally {
       setBusy(null);
@@ -165,8 +167,13 @@ export default function FichiersScreen() {
   }
 
   async function shareCodes(codes: VoucherItem[]) {
-    const text = codes.map((v) => v.code).join('\n');
-    await Share.share({ message: `${t('fichiers.wifiCodes')}\n${text}` });
+    try {
+      const text = codes.map((v) => v.code).join('\n');
+      await Share.share({ message: `${t('fichiers.wifiCodes')}\n${text}` });
+    } catch (e) {
+      reportSilent('fichiers.share', e, { routerId });
+      setError(extractErrorMessage(e));
+    }
   }
 
   async function revoke(id: string) {
@@ -174,6 +181,7 @@ export default function FichiersScreen() {
       await api.routers.revokeVoucher(routerId, id);
       await qc.invalidateQueries({ queryKey: ['vouchers', routerId] });
     } catch (e) {
+      reportSilent('fichiers.revoke', e, { routerId, voucherId: id });
       setError(extractErrorMessage(e));
     }
   }
@@ -187,6 +195,7 @@ export default function FichiersScreen() {
       await qc.invalidateQueries({ queryKey: ['vouchers', routerId] });
       setConfirmVoucher(null);
     } catch (e) {
+      reportSilent('fichiers.delete-voucher', e, { routerId, voucherId: confirmVoucher.id });
       setError(extractErrorMessage(e));
     } finally {
       setDeleteBusy(false);

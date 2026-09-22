@@ -13,6 +13,7 @@ import {
   type TicketTemplate,
 } from '@/src/lib/api';
 import { buildTicketsHtml } from '@/src/lib/ticketsPdf';
+import { reportSilent } from '@/src/lib/report';
 import {
   Banner,
   Button,
@@ -135,6 +136,7 @@ export default function TicketSettingsScreen() {
       await qc.invalidateQueries({ queryKey: ['router', routerId] });
       setMsg({ tone: 'success', text: t('ticketSettings.saved') });
     } catch (e) {
+      reportSilent('ticket-settings.save', e, { routerId });
       setMsg({ tone: 'danger', text: extractErrorMessage(e) });
     } finally {
       setBusy(false);

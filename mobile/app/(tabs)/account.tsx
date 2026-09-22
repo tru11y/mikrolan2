@@ -1,5 +1,5 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
-import { swallow } from '@/src/lib/report';
+import { reportSilent, swallow } from '@/src/lib/report';
 import { useCallback, useState } from 'react';
 import { Linking, Modal, ScrollView, Switch, Text, View, Pressable, FlatList } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -140,7 +140,7 @@ export default function AccountScreen() {
       await api.auth.updateProfile({ name: name.trim() || null, country: c.name });
       await refreshProfile();
     } catch (err) {
-      console.warn('Country auto-save failed:', err);
+      reportSilent('account.country-autosave', err);
     }
   }
 
@@ -175,7 +175,7 @@ export default function AccountScreen() {
   const [loggingOutAll, setLoggingOutAll] = useState(false);
   async function logoutAllSessions() {
     setLoggingOutAll(true);
-    try { await api.auth.logoutAllSessions(); } catch (err) { console.warn('Logout all failed:', err); }
+    try { await api.auth.logoutAllSessions(); } catch (err) { reportSilent('account.logout-all', err); }
     await logout();
   }
 
