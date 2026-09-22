@@ -1,6 +1,7 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { DEFAULT_TICKET_TEMPLATE, type TicketTemplate } from './api';
+import { reportSilent } from './report';
 
 function fmtDuration(min: number): string {
   if (min % 1440 === 0) return `${min / 1440} j`;
@@ -139,22 +140,32 @@ body{background:#fff;color:#000}
 }
 
 export async function printTickets(opts: TicketsPdfOpts): Promise<void> {
-  const html = await buildTicketsHtml(opts);
-  const { uri } = await Print.printToFileAsync({ html });
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(uri, {
-      mimeType: 'application/pdf',
-      dialogTitle: buildPdfFileName({
-        routerName: opts.routerName,
-        batchSeq: opts.batchSeq,
-        ticketCount: opts.tickets.length,
-        date: opts.batchDate ? new Date(opts.batchDate) : new Date(),
-      }),
-    });
+  try {
+    const html = await buildTicketsHtml(opts);
+    const { uri } = await Print.printToFileAsync({ html });
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(uri, {
+        mimeType: 'application/pdf',
+        dialogTitle: buildPdfFileName({
+          routerName: opts.routerName,
+          batchSeq: opts.batchSeq,
+          ticketCount: opts.tickets.length,
+          date: opts.batchDate ? new Date(opts.batchDate) : new Date(),
+        }),
+      });
+    }
+  } catch (err) {
+    reportSilent('ticketsPdf.print', err, { routerName: opts.routerName, ticketCount: opts.tickets.length });
+    throw err;
   }
 }
 
 export async function printTicketsDirect(opts: TicketsPdfOpts): Promise<void> {
-  const html = await buildTicketsHtml(opts);
-  await Print.printAsync({ html });
+  try {
+    const html = await buildTicketsHtml(opts);
+    await Print.printAsync({ html });
+  } catch (err) {
+    reportSilent('ticketsPdf.printDirect', err, { routerName: opts.routerName, ticketCount: opts.tickets.length });
+    throw err;
+  }
 }

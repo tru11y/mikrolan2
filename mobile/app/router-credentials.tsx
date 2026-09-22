@@ -180,7 +180,7 @@ export default function RouterCredentialsScreen() {
       } catch (err) {
         reportSilent('router-credentials.sync-to-server', err, { routerId });
       }
-      qc.invalidateQueries({ queryKey: ['router-local-creds'] });
+      qc.invalidateQueries({ queryKey: ['router-local-creds', routerId] });
       router.back();
     } catch (e) {
       setError(extractErrorMessage(e));

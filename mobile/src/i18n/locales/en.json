@@ -217,9 +217,11 @@
     "router": "Router",
     "source": "Source",
     "sourceLegacy": "Legacy (router)",
-    "deliveredAt": "Delivered on",
+    "createdAt": "Created on",
     "firstConnection": "First connection",
     "expiresAt": "Expires on",
+    "consumedDuration": "Time used",
+    "totalDuration": "Total duration",
     "session": "Session",
     "statusActive": "Active",
     "statusTerminated": "Terminated",
@@ -231,7 +233,14 @@
     "uploaded": "Uploaded",
     "mac": "MAC",
     "ip": "IP",
-    "state": "Status"
+    "state": "Status",
+    "voucherStatus": {
+      "GENERATED": "Generated",
+      "ACTIVE": "Active",
+      "USED": "Used",
+      "EXPIRED": "Expired",
+      "REVOKED": "Revoked"
+    }
   },
   "rapport": {
     "title": "Report & performance",
@@ -523,7 +532,11 @@
     "upload": "Upload",
     "sortData": "Data",
     "sortUptime": "Duration",
-    "sortName": "Name"
+    "sortName": "Name",
+    "terminateConfirmTitle": "Disconnect this user?",
+    "terminateConfirmTicket": "Ticket {{ticket}}",
+    "terminateConfirmSince": "Connected for {{duration}}",
+    "terminateConfirmBody": "The ticket stays valid. The client can reconnect with the remaining time on their plan."
   },
   "forgotPassword": {
     "title": "Forgot password",

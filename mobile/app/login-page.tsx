@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { api, extractErrorMessage } from '@/src/lib/api';
+import { reportSilent } from '@/src/lib/report';
 import {
   Banner,
   Button,
@@ -59,6 +60,7 @@ export default function LoginPageScreen() {
       await api.routers.updateHotspotSettings(routerId, payload);
       setMsg({ tone: 'success', text: t('loginPage.saved') });
     } catch (e) {
+      reportSilent('login-page.save-hotspot-settings', e, { routerId });
       setMsg({ tone: 'danger', text: extractErrorMessage(e) });
     } finally {
       setBusy(false);

@@ -244,7 +244,7 @@ export default function RouterDetailScreen() {
           qc.invalidateQueries({ queryKey: ['router-local-creds', id] });
         }
       } catch (err) {
-        console.warn('Failed to sync credentials from server:', err);
+        reportSilent('router.sync-credentials', err, { routerId: id });
       }
     })();
   }, [id, missingLocalCreds, qc]);

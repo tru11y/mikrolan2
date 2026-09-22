@@ -250,7 +250,7 @@ export default function MaisonScreen() {
     try {
       await api.auth.dismissCountryReminder();
       me.refetch();
-    } catch (err) { console.warn('Dismiss country reminder failed:', err); }
+    } catch (err) { reportSilent('index.dismiss-country-reminder', err); }
   }
 
   function refreshAll() {
