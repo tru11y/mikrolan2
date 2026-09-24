@@ -4,14 +4,41 @@ import { RouterHealth } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CryptoService } from '../../common/crypto/crypto.service';
 import {
+  RouterOsApiError,
   withRouterOsApi,
   type ApiRow,
+  type RouterOsApiClient,
 } from '../../common/routeros/routeros-api.client';
 
 const ROUTEROS_API_PORT = 8728;
-const TIMEOUT_MS = 10_000;
+// Par commande. Mesuré sur un RB951 chargé : 0,5-35 s par commande ; 10 s faisait
+// échouer la collecte de ce type de routeur.
+const TIMEOUT_MS = 30_000;
 const CONCURRENCY = 5;
 const RETENTION_DAYS = 30;
+
+// Lectures minimales : uniquement les champs stockés dans RouterTelemetry.
+const RESOURCE_CMD = [
+  '/system/resource/print',
+  '=.proplist=cpu-load,total-memory,free-memory,uptime,version,board-name',
+];
+// Réponse d'une ligne `ret=<n>` au lieu d'une ligne par client connecté.
+const HOTSPOT_COUNT_CMD = ['/ip/hotspot/active/print', '=count-only='];
+// Le journal d'erreurs n'est affiché nulle part dans Fleet (le mobile ne lit que
+// cpu/uptime) et son parcours est la lecture la plus coûteuse : désactivé par défaut.
+const COLLECT_ERROR_LOG = process.env['TELEMETRY_COLLECT_ERRORS'] === '1';
+const ERROR_LOG_CMD = ['/log/print', '?topics~error', '=.proplist=time,message'];
+
+/** Nombre de clients : `ret` d'un count-only, sinon nombre de lignes reçues. */
+function countFrom(rows: ApiRow[] | null): number | null {
+  if (!rows) return null;
+  const ret = rows[0]?.['ret'];
+  if (ret !== undefined) {
+    const n = parseInt(ret, 10);
+    return Number.isNaN(n) ? null : n;
+  }
+  return rows.length;
+}
 
 interface TelemetrySnapshot {
   routerId: string;
@@ -89,15 +116,15 @@ export class TelemetryService {
           timeoutMs: TIMEOUT_MS,
         },
         async (client) => {
-          const [resources, hotspot, logs] = await Promise.all([
-            client.command(['/system/resource/print']),
-            client
-              .command(['/ip/hotspot/active/print'])
-              .catch(logAndContinue<ApiRow[]>(this.logger, `Hotspot active read (router ${routerId})`, [])),
-            client
-              .command(['/log/print', '?topics~error', '=.proplist=time,message'])
-              .catch(logAndContinue<ApiRow[]>(this.logger, `Router log read (router ${routerId})`, [])),
-          ]);
+          // 1 routeur = 1 connexion = 1 commande à la fois : le client API n'a
+          // qu'une réponse « pending », lancer les lectures en parallèle sur la
+          // même connexion les mélange (et bloquait la collecte pour toujours).
+          const resources = await client.command(RESOURCE_CMD);
+          const optional = this.optionalReader(client, routerId);
+          const hotspot = await optional(HOTSPOT_COUNT_CMD, 'Hotspot active count');
+          const logs = COLLECT_ERROR_LOG
+            ? await optional(ERROR_LOG_CMD, 'Router log read')
+            : null;
 
           const res = resources[0] ?? {};
           return this.parseSnapshot(routerId, res, hotspot, logs);
@@ -126,11 +153,34 @@ export class TelemetryService {
     }
   }
 
+  /**
+   * Lecture facultative : un refus RouterOS (trap) est journalisé et la collecte
+   * continue. Toute autre erreur (timeout, socket fermée) laisse la connexion dans
+   * un état inconnu — une réponse tardive serait attribuée à la commande suivante —
+   * donc les lectures restantes sont abandonnées.
+   */
+  private optionalReader(client: RouterOsApiClient, routerId: string) {
+    let broken = false;
+    return async (words: string[], what: string): Promise<ApiRow[] | null> => {
+      if (broken) return null;
+      try {
+        return await client.command(words);
+      } catch (err) {
+        if (!(err instanceof RouterOsApiError)) broken = true;
+        return logAndContinue<ApiRow[] | null>(
+          this.logger,
+          `${what} (router ${routerId})`,
+          null,
+        )(err);
+      }
+    };
+  }
+
   private parseSnapshot(
     routerId: string,
     res: ApiRow,
-    hotspot: ApiRow[],
-    logs: ApiRow[],
+    hotspot: ApiRow[] | null,
+    logs: ApiRow[] | null,
   ): TelemetrySnapshot {
     const totalMem = res['total-memory']
       ? Math.round(parseInt(res['total-memory'], 10) / 1048576)
@@ -147,11 +197,13 @@ export class TelemetryService {
       uptime: res['uptime'] ?? null,
       rosVersion: res['version'] ?? null,
       boardName: res['board-name'] ?? null,
-      hotspotActive: hotspot.length,
-      lastErrors: logs.slice(-20).map((l) => ({
-        time: l['time'] ?? '',
-        message: l['message'] ?? '',
-      })),
+      hotspotActive: countFrom(hotspot),
+      lastErrors: logs
+        ? logs.slice(-20).map((l) => ({
+            time: l['time'] ?? '',
+            message: l['message'] ?? '',
+          }))
+        : null,
       health: RouterHealth.ONLINE,
     };
   }
