@@ -119,7 +119,6 @@ export default function RouteursScreen() {
           initialNumToRender={15}
           maxToRenderPerBatch={15}
           windowSize={7}
-          removeClippedSubviews
           ListHeaderComponent={
             query.isError && hasData ? (
               <View style={{ marginBottom: space.lg }}>

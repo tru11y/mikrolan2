@@ -151,7 +151,6 @@ export function AdminTicketsTab() {
               initialNumToRender={15}
               maxToRenderPerBatch={15}
               windowSize={7}
-              removeClippedSubviews
               contentContainerStyle={{ padding: space.lg, gap: space.sm }}
               renderItem={({ item: msg }) => (
                 <View

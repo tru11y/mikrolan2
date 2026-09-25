@@ -116,7 +116,6 @@ export default function PaymentHistoryScreen() {
         initialNumToRender={15}
         maxToRenderPerBatch={15}
         windowSize={7}
-        removeClippedSubviews
         ListEmptyComponent={
           !isLoading ? (
             <View style={{ alignItems: 'center', paddingTop: 60 }}>

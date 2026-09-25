@@ -208,9 +208,11 @@ export class MikroTikApiClient {
           clearTimeout(timer);
           reject(new LanUnreachableError(`Routeur injoignable (${e.message})`));
         }
+        this.socket = null;
         this.failPending(new LanUnreachableError(e.message));
       });
       socket.on('close', () => {
+        this.socket = null;
         this.failPending(new LanUnreachableError('Connexion fermée'));
       });
     });
@@ -267,7 +269,14 @@ export class MikroTikApiClient {
         clearTimeout(timer);
         orig(e);
       })(reject);
-      this.socket.write(encodeSentence(words) as unknown as Uint8Array);
+      try {
+        this.socket.write(encodeSentence(words) as unknown as Uint8Array);
+      } catch (e) {
+        clearTimeout(timer);
+        this.socket = null;
+        this.failPending(new LanUnreachableError('Connexion fermée'));
+        reportSilent('lan.api-socket-write', e);
+      }
     });
   }
 
