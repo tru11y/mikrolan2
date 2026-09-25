@@ -219,7 +219,6 @@ function TicketDetail({
             initialNumToRender={15}
             maxToRenderPerBatch={15}
             windowSize={7}
-            removeClippedSubviews
           />
           {ticket?.status !== 'CLOSED' ? (
             <View
@@ -419,7 +418,6 @@ export default function SupportScreen() {
         initialNumToRender={15}
         maxToRenderPerBatch={15}
         windowSize={7}
-        removeClippedSubviews
         ListHeaderComponent={
           <FadeIn>
             <Row style={{ justifyContent: 'space-between', marginBottom: space.md }}>
