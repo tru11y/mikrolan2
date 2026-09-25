@@ -15,6 +15,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { RemoteRouterService } from '../remote-access/remote-router.service';
 import { listActive, removeActive } from '../../common/routeros/hotspot.ops';
 import type { ApiRow } from '../../common/routeros/routeros-api.client';
+import { withDeadline } from '../../common/utils/with-deadline';
 import { tenantStore, setTenantContext } from '../../common/context/tenant-context';
 
 export interface LiveSession {
@@ -39,9 +40,15 @@ function mapActive(row: ApiRow): LiveSession {
   };
 }
 
+// Pire cas légitime d'une lecture : 2 essais × (connexion + login + commande,
+// 12 s chacun) + 2 s d'attente. Au-delà le travail est considéré bloqué.
+const SYNC_ROUTER_DEADLINE_MS = 90_000;
+
 @Injectable()
 export class SessionsService {
   private readonly logger = new Logger(SessionsService.name);
+  private syncTickStartedAt: number | null = null;
+  private readonly syncRoutersInFlight = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -197,14 +204,52 @@ export class SessionsService {
    */
   @Interval(25_000)
   async syncActivations(): Promise<void> {
-    const routers = await this.prisma.router.findMany({
-      where: { mode: ManagementMode.REMOTE, deletedAt: null },
-      select: { id: true, tenantId: true },
-    });
+    // `@Interval` ne tient pas compte de la durée du tick précédent : sur un
+    // routeur lent un tick dépasse 25 s et le suivant démarrerait par-dessus,
+    // multipliant les sessions API simultanées sur un petit MikroTik.
+    if (this.syncTickStartedAt !== null) {
+      this.logger.warn(
+        `sync tick SKIPPED_ALREADY_RUNNING runningForMs=${Date.now() - this.syncTickStartedAt}`,
+      );
+      return;
+    }
+    const tickStart = Date.now();
+    this.syncTickStartedAt = tickStart;
+    try {
+      const routers = await this.prisma.router.findMany({
+        where: { mode: ManagementMode.REMOTE, deletedAt: null },
+        select: { id: true, tenantId: true },
+      });
+      this.logger.log(`sync tick START routers=${routers.length}`);
 
-    for (const router of routers) {
-      try {
-        await tenantStore.run({}, async () => {
+      const tally = { ok: 0, failed: 0, skipped: 0 };
+      for (const router of routers) {
+        tally[await this.syncRouter(router)] += 1;
+      }
+      this.logger.log(
+        `sync tick END routers=${routers.length} ok=${tally.ok} failed=${tally.failed} skipped=${tally.skipped} durationMs=${Date.now() - tickStart}`,
+      );
+    } finally {
+      this.syncTickStartedAt = null;
+    }
+  }
+
+  /** Une seule lecture RouterOS en cours par routeur ; le verrou est toujours libéré. */
+  private async syncRouter(router: {
+    id: string;
+    tenantId: string;
+  }): Promise<'ok' | 'failed' | 'skipped'> {
+    if (this.syncRoutersInFlight.has(router.id)) {
+      this.logger.warn(`sync router SKIPPED_ALREADY_RUNNING routerId=${router.id}`);
+      return 'skipped';
+    }
+    this.syncRoutersInFlight.add(router.id);
+    const start = Date.now();
+    this.logger.log(`sync router START routerId=${router.id}`);
+    let status: 'ok' | 'failed' = 'ok';
+    try {
+      await withDeadline(
+        tenantStore.run({}, async () => {
           setTenantContext({
             tenantId: router.tenantId,
             userId: 'system-activity-sync',
@@ -221,13 +266,22 @@ export class SessionsService {
             router.tenantId,
             active.map(mapActive),
           );
-        });
-      } catch (e) {
-        this.logger.warn(
-          `Activation sync failed for router ${router.id}: ${(e as Error).message}`,
-        );
-      }
+        }),
+        SYNC_ROUTER_DEADLINE_MS,
+        `Activation sync ${router.id}`,
+      );
+    } catch (e) {
+      status = 'failed';
+      this.logger.warn(
+        `Activation sync failed for router ${router.id}: ${(e as Error).message}`,
+      );
+    } finally {
+      this.syncRoutersInFlight.delete(router.id);
+      this.logger.log(
+        `sync router END routerId=${router.id} status=${status} durationMs=${Date.now() - start}`,
+      );
     }
+    return status;
   }
 
   /**

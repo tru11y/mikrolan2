@@ -1,6 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { TelemetryService } from './telemetry.service';
+import { withDeadline } from '../../common/utils/with-deadline';
+
+// Moins que l'intervalle du cron (15 min).
+export const MAX_RUN_MS = 10 * 60_000;
 
 @Injectable()
 export class TelemetryCron {
@@ -17,7 +21,11 @@ export class TelemetryCron {
     }
     this.running = true;
     try {
-      await this.telemetry.collectAll();
+      // Filet de sécurité : même si une collecte reste bloquée, le garde est
+      // libéré avant le tick suivant (15 min) au lieu de rester vrai à jamais.
+      await withDeadline(this.telemetry.collectAll(), MAX_RUN_MS, 'Collecte télémétrie');
+    } catch (err) {
+      this.logger.error(`Telemetry collection aborted: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       this.running = false;
     }
