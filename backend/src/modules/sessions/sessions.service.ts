@@ -5,6 +5,8 @@ import { Interval } from '@nestjs/schedule';
 import {
   ManagementMode,
   NotificationType,
+  RemotePeerStatus,
+  RouterHealth,
   SessionStatus,
   UserRole,
   VoucherStatus,
@@ -16,6 +18,7 @@ import { RemoteRouterService } from '../remote-access/remote-router.service';
 import { listActive, removeActive } from '../../common/routeros/hotspot.ops';
 import type { ApiRow } from '../../common/routeros/routeros-api.client';
 import { withDeadline } from '../../common/utils/with-deadline';
+import { RouterSyncScheduler, type SchedulerRouter } from './router-sync-scheduler';
 import { tenantStore, setTenantContext } from '../../common/context/tenant-context';
 
 export interface LiveSession {
@@ -43,12 +46,21 @@ function mapActive(row: ApiRow): LiveSession {
 // Pire cas légitime d'une lecture : 2 essais × (connexion + login + commande,
 // 12 s chacun) + 2 s d'attente. Au-delà le travail est considéré bloqué.
 const SYNC_ROUTER_DEADLINE_MS = 90_000;
+// Handshake WireGuard considéré périmé (aligné sur le seuil de 150 s du réconciliateur).
+const TUNNEL_STALE_MS = 150_000;
 
 @Injectable()
 export class SessionsService {
   private readonly logger = new Logger(SessionsService.name);
   private syncTickStartedAt: number | null = null;
   private readonly syncRoutersInFlight = new Set<string>();
+  private readonly scheduler = new RouterSyncScheduler({
+    now: () => Date.now(),
+    listRouters: () => this.listSchedulableRouters(),
+    run: (router) => this.syncRouter(router),
+    log: (line) => this.logger.log(line),
+    warn: (line) => this.logger.warn(line),
+  });
 
   constructor(
     private readonly prisma: PrismaService,
@@ -204,6 +216,9 @@ export class SessionsService {
    */
   @Interval(25_000)
   async syncActivations(): Promise<void> {
+    // SYNC_SCHEDULER=legacy : comportement historique (un tick séquentiel sur
+    // toute la flotte). Par défaut, l'ordonnanceur par routeur ci-dessous.
+    if (!this.legacySync()) return;
     // `@Interval` ne tient pas compte de la durée du tick précédent : sur un
     // routeur lent un tick dépasse 25 s et le suivant démarrerait par-dessus,
     // multipliant les sessions API simultanées sur un petit MikroTik.
@@ -232,6 +247,47 @@ export class SessionsService {
     } finally {
       this.syncTickStartedAt = null;
     }
+  }
+
+  /**
+   * Ordonnanceur par routeur : le dispatcheur (5 s) lance les routeurs dus dans un
+   * pool borné. Chaque lecture est exactement `syncRouter` : seule la cadence et
+   * la concurrence changent.
+   */
+  @Interval(5_000)
+  async dispatchSync(): Promise<void> {
+    if (this.legacySync()) return;
+    await this.scheduler.dispatch();
+  }
+
+  private legacySync(): boolean {
+    return process.env['SYNC_SCHEDULER'] === 'legacy';
+  }
+
+  private async listSchedulableRouters(): Promise<SchedulerRouter[]> {
+    const rows = await this.prisma.router.findMany({
+      where: { mode: ManagementMode.REMOTE, deletedAt: null },
+      select: {
+        id: true,
+        tenantId: true,
+        health: true,
+        lastHeartbeat: true,
+        credEncrypted: true,
+        remotePeer: { select: { status: true } },
+      },
+    });
+    const now = Date.now();
+    return rows.map((r) => ({
+      id: r.id,
+      tenantId: r.tenantId,
+      hasCredentials: Boolean(r.credEncrypted),
+      hasActivePeer: r.remotePeer?.status === RemotePeerStatus.ACTIVE,
+      // Le réconciliateur WireGuard passe le routeur OFFLINE quand le handshake
+      // dépasse 150 s ; on ne fait que lire cet état.
+      tunnelDown:
+        r.health === RouterHealth.OFFLINE &&
+        (r.lastHeartbeat === null || now - r.lastHeartbeat.getTime() > TUNNEL_STALE_MS),
+    }));
   }
 
   /** Une seule lecture RouterOS en cours par routeur ; le verrou est toujours libéré. */
