@@ -156,7 +156,12 @@ describe('SessionsService — snapshot du prix à l\'activation (audit/51, audit
       { '.id': 'rt1', user: 'ABC123', address: '10.0.0.5', 'mac-address': 'AA:BB', 'bytes-in': '0', 'bytes-out': '0', uptime: '1m' },
     ]);
 
-    await buildService().syncActivations();
+    process.env['SYNC_SCHEDULER'] = 'legacy'; // chemin historique testé ici
+    try {
+      await buildService().syncActivations();
+    } finally {
+      delete process.env['SYNC_SCHEDULER'];
+    }
 
     expect(mockPrisma.voucher.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
