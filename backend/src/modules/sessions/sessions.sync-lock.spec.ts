@@ -34,6 +34,14 @@ const flush = async () => {
   for (let i = 0; i < 30; i++) await Promise.resolve();
 };
 
+// Ces tests couvrent le mode historique (tick séquentiel global).
+beforeAll(() => {
+  process.env['SYNC_SCHEDULER'] = 'legacy';
+});
+afterAll(() => {
+  delete process.env['SYNC_SCHEDULER'];
+});
+
 let warn: jest.SpyInstance;
 let log: jest.SpyInstance;
 
