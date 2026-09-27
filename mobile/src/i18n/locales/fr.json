@@ -683,6 +683,9 @@
   "routerDetail": {
     "missingCredsBanner": "Ce routeur n'a pas d'identifiants sur ce téléphone — les appareils autorisés et les sessions ne peuvent pas s'afficher.",
     "addCredentials": "Ajouter les identifiants",
+    "updatedAgo": "Actualisé il y a {{s}} s",
+    "refreshing": "Actualisation…",
+    "dataNotRefreshed": "Données temporairement non actualisées",
     "performanceMonitor": "Moniteur performance",
     "memory": "Mémoire",
     "remoteManagement": "Gestion à distance",
