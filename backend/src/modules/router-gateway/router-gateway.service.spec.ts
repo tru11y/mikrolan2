@@ -221,6 +221,42 @@ describe('RouterGatewayService — routeur offline / timeout / recovery', () => 
     await expect(gateway.getLiveSnapshot('r1', 'stats')).rejects.toThrow(/injoignable/);
   });
 
+  it("E/F. cold-start : après le premier échec, 10 requêtes pendant le cooldown → 0 nouvelle lecture RouterOS (le RB951 est protégé dès son 1er échec, pas seulement après un succès)", async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    const { gateway } = build();
+    mockRemote.run.mockRejectedValueOnce(new Error('Routeur injoignable (timeout)'));
+    await expect(gateway.getLiveSnapshot('r1', 'stats')).rejects.toThrow(); // 1er échec, jamais de snapshot
+    expect(mockRemote.run).toHaveBeenCalledTimes(1);
+
+    const attempts = Array.from({ length: 10 }, () =>
+      gateway.getLiveSnapshot('r1', 'stats').catch((e: Error) => e),
+    );
+    const results = await Promise.all(attempts);
+    expect(mockRemote.run).toHaveBeenCalledTimes(1); // toujours 1 : aucune des 10 n'a rouvert RouterOS
+    for (const r of results) expect(r).toBeInstanceOf(Error); // état contrôlé, pas un écran silencieux
+    jest.useRealTimers();
+  });
+
+  it('G. cooldown expiré : 10 nouvelles requêtes concurrentes → exactement 1 nouvelle lecture RouterOS', async () => {
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
+    const { gateway } = build();
+    mockRemote.run.mockRejectedValueOnce(new Error('Routeur injoignable (timeout)'));
+    await expect(gateway.getLiveSnapshot('r1', 'stats')).rejects.toThrow();
+    jest.advanceTimersByTime(GATEWAY_RETRY_COOLDOWN_MS + 1000);
+
+    let release!: () => void;
+    mockRemote.run.mockImplementationOnce(
+      (_id: string, fn: (c: unknown) => unknown) => new Promise((resolve) => (release = () => resolve(fn(fakeClient({ cpu: '30' }))))),
+    );
+    const attempts = Array.from({ length: 10 }, () => gateway.getLiveSnapshot('r1', 'stats'));
+    await Promise.resolve();
+    release();
+    const results = await Promise.all(attempts);
+    expect(mockRemote.run).toHaveBeenCalledTimes(2); // 1er échec + exactement 1 nouvelle lecture
+    for (const r of results) expect(r.cpuPercent).toBe(30);
+    jest.useRealTimers();
+  });
+
   it('recovery : health repasse ONLINE et ROUTER_LIVE_RECOVERED est émis après un ROUTER_LIVE_STALE', async () => {
     jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate'] });
     const { gateway, events } = build();
