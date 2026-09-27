@@ -683,6 +683,9 @@
   "routerDetail": {
     "missingCredsBanner": "This router has no credentials on this phone — authorized devices and sessions cannot be displayed.",
     "addCredentials": "Add credentials",
+    "updatedAgo": "Updated {{s}} s ago",
+    "refreshing": "Refreshing…",
+    "dataNotRefreshed": "Data temporarily not refreshed",
     "performanceMonitor": "Performance monitor",
     "memory": "Memory",
     "remoteManagement": "Remote management",
