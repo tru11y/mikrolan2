@@ -13,6 +13,7 @@
     "**/*.tsx"
   ],
   "exclude": [
-    "src/lib/metricsCsvRows.test.ts"
+    "src/lib/metricsCsvRows.test.ts",
+    "src/hooks/use-router-live.test.ts"
   ]
 }

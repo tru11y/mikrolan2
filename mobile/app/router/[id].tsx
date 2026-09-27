@@ -25,6 +25,7 @@ import { listActiveLan } from '@/src/services/mikrotik-lan/hotspotLan';
 import { getWifiInfo, sameSubnet24 } from '@/src/lib/lanBinder';
 import { reportLanSessions } from '@/src/lib/sessionSync';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
+import { useRouterLive } from '@/src/hooks/use-router-live';
 import { useSseLive } from '@/src/providers/live-events-provider';
 import {
   Badge,
@@ -251,16 +252,15 @@ export default function RouterDetailScreen() {
 
   const activeSessionsQuery = useQuery({
     queryKey: ['router-active-sessions', id, query.data?.mode],
-    enabled: Boolean(id) && query.isSuccess,
+    // REMOTE : le compteur vient de `useRouterLive` (source unique) — cette
+    // requête ne se déclenche plus jamais pour ce mode, elle ne fait double
+    // emploi qu'en LOCAL, chemin LAN inchangé.
+    enabled: Boolean(id) && query.isSuccess && query.data?.mode !== 'REMOTE',
     refetchInterval: sseLive ? 30_000 : POLL_MS,
     placeholderData: keepPreviousData,
     queryFn: async (): Promise<number | null> => {
       const mode = query.data?.mode;
-      if (!mode) return null;
-      if (mode === 'REMOTE') {
-        const list = await api.routers.listSessions(id);
-        return list.length;
-      }
+      if (!mode || mode === 'REMOTE') return null;
       const creds = await getLocalCredentials(id);
       if (!creds) {
         // Pas de credentials locaux : lire le dernier compte synchronisé en DB.
@@ -376,6 +376,11 @@ export default function RouterDetailScreen() {
   const lastSeenRef = useRef<number | null>(null);
 
   const remoteActive = remoteQuery.data?.status === 'ACTIVE';
+
+  // Source unique REMOTE (CPU/RAM/uptime/sessions), mutualisée côté serveur —
+  // remplace l'ancien appel direct `remoteSystemResource` + le polling propre
+  // à `router-active-sessions`. Le LAN (ci-dessous) reste inchangé et prioritaire.
+  const live = useRouterLive(id, Boolean(id) && remoteActive);
 
   // ── Mode Diagnostic (durée limitée, actions dangereuses) ──
   const DIAG_DURATION_MS = 5 * 60 * 1000;
@@ -562,16 +567,9 @@ export default function RouterDetailScreen() {
     }
 
     if (remoteActive) {
-      try {
-        markReachable(
-          'remote',
-          (await api.routers.remoteSystemResource(id)) as SystemResource,
-        );
-        return;
-      } catch (e) {
-        // Fall through to offline, but keep the reason.
-        reportSilent('router-detail.remote-probe', e, { routerId: id });
-      }
+      // Géré par `useRouterLive` (source unique, effet de synchronisation
+      // ci-dessous) : plus aucune connexion RouterOS indépendante ici.
+      return;
     }
 
     if (!creds && !remoteActive) {
@@ -585,6 +583,35 @@ export default function RouterDetailScreen() {
     if (lastSeen != null && Date.now() - lastSeen < OFFLINE_GRACE_MS) return;
     setLanStateSafe('error');
   }, [id, remoteActive, setLanStateSafe]);
+
+  // Synchronise l'état REMOTE depuis la source unique `useRouterLive` — jamais
+  // depuis `loadLocal` (voir ci-dessus, le chemin REMOTE y est un no-op). Le
+  // LAN, quand il vient de répondre, reste prioritaire (donnée plus fraîche) :
+  // on ne remplace pas un contact LAN récent par une donnée REMOTE plus âgée.
+  const liveData = live.data;
+  useEffect(() => {
+    if (!remoteActive) return;
+    if (resourceVia === 'lan' && lastSeenRef.current && Date.now() - lastSeenRef.current < 30_000) return;
+    if (liveData) {
+      setResource({
+        'cpu-load': liveData.cpuPercent != null ? String(liveData.cpuPercent) : '',
+        'free-memory':
+          liveData.memoryTotalMb != null && liveData.memoryUsedMb != null
+            ? String((liveData.memoryTotalMb - liveData.memoryUsedMb) * 1024 * 1024)
+            : '',
+        'total-memory': liveData.memoryTotalMb != null ? String(liveData.memoryTotalMb * 1024 * 1024) : '',
+        uptime: liveData.uptime ?? '',
+      } as SystemResource);
+      setResourceVia('remote');
+      lastSeenRef.current = Date.now() - liveData.ageMs;
+      // « stale » (dernière donnée valide, refresh en cours ou en échec passager)
+      // reste distinct de « hors ligne » (aucune donnée valide) — §9 du cadrage.
+      setLanStateSafe(liveData.health === 'OFFLINE' && !liveData.stale ? 'error' : 'ok');
+    } else if (live.isError) {
+      const lastSeen = lastSeenRef.current;
+      if (lastSeen == null || Date.now() - lastSeen >= OFFLINE_GRACE_MS) setLanStateSafe('error');
+    }
+  }, [remoteActive, liveData, live.isError, resourceVia, setLanStateSafe]);
 
   useFocusEffect(
     useCallback(() => {
@@ -712,6 +739,14 @@ export default function RouterDetailScreen() {
               <Ionicons name="pulse-outline" size={icon.sm} color={theme.primaryMuted} />
               <Label>{t('routerDetail.performanceMonitor')}</Label>
             </Row>
+            {resourceVia === 'remote' && live.ageSec != null ? (
+              <Subtitle>
+                {live.data?.stale ? '⚠ ' : ''}
+                {t('routerDetail.updatedAgo', { s: live.ageSec })}
+                {live.data?.refreshing || live.isFetching ? ` · ↻ ${t('routerDetail.refreshing')}` : ''}
+                {live.data?.stale ? ` · ${t('routerDetail.dataNotRefreshed')}` : ''}
+              </Subtitle>
+            ) : null}
             <Row style={{ gap: space.sm + 2, alignItems: 'stretch' }}>
               <Gauge
                 label={t('routerDetail.cpu')}
@@ -841,14 +876,13 @@ export default function RouterDetailScreen() {
           <StatSquare
             icon="people"
             color={theme.success}
-            value={
-              activeSessionsQuery.data == null
-                ? '—'
-                : `${activeSessionsQuery.data}`
-            }
+            value={(() => {
+              const n = remoteActive ? live.data?.sessionCount : activeSessionsQuery.data;
+              return n == null ? '—' : `${n}`;
+            })()}
             label={t('routerDetail.actifs')}
             onPress={() => {
-              if (activeSessionsQuery.isError) {
+              if (!remoteActive && activeSessionsQuery.isError) {
                 const message = extractErrorMessage(activeSessionsQuery.error);
                 toast.error(message);
                 if (message.includes('Identifiants RouterOS')) setShowCreds(true);

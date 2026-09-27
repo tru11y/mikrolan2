@@ -653,6 +653,30 @@ export type LiveSession = {
   uptime: string | null;
 };
 
+/**
+ * Snapshot mutualisé servi par RouterGateway (`GET /routers/:id/remote/live`,
+ * P0 Realtime Router Phase 1 — backend figé). `sessions` n'est présent que si
+ * cet appel (ou un appel concurrent réchauffant le même cache) a demandé
+ * `want=sessions`/`both` ; sinon `null`, jamais un tableau vide trompeur.
+ */
+export type RouterLiveData = {
+  routerId: string;
+  lastSuccessAt: number;
+  health: 'ONLINE' | 'OFFLINE' | 'UNKNOWN';
+  cpuPercent: number | null;
+  memoryUsedMb: number | null;
+  memoryTotalMb: number | null;
+  uptime: string | null;
+  rosVersion: string | null;
+  boardName: string | null;
+  sessionCount: number | null;
+  sessions: LiveSession[] | null;
+  ageMs: number;
+  stale: boolean;
+  refreshing: boolean;
+  lastError: string | null;
+};
+
 // RouterOS push params returned for LOCAL routers so the app pushes over the LAN.
 export type VoucherPushParams = {
   userProfile: string;
@@ -1015,6 +1039,17 @@ export const api = {
     async remoteStatus(id: string): Promise<RemoteStatus> {
       const res = await apiClient.get<ApiEnvelope<RemoteStatus>>(
         `/routers/${id}/remote`,
+      );
+      return unwrap(res);
+    },
+    /**
+     * Source unique pour un routeur REMOTE (CPU/RAM/uptime/sessionCount, et la
+     * liste des sessions si `want` la demande) : mutualisée côté serveur
+     * (RouterGateway), jamais une connexion RouterOS indépendante par écran.
+     */
+    async remoteLive(id: string, want?: 'stats' | 'sessions' | 'both'): Promise<RouterLiveData> {
+      const res = await apiClient.get<ApiEnvelope<RouterLiveData>>(
+        `/routers/${id}/remote/live${want ? `?want=${want}` : ''}`,
       );
       return unwrap(res);
     },
