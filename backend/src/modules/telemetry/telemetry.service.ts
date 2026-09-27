@@ -4,6 +4,8 @@ import { RouterHealth } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CryptoService } from '../../common/crypto/crypto.service';
 import { RouterGatewayService } from '../router-gateway/router-gateway.service';
+import { tenantStore, setTenantContext } from '../../common/context/tenant-context';
+import { UserRole } from '@prisma/client';
 import {
   RouterOsApiError,
   withRouterOsApi,
@@ -77,7 +79,7 @@ export class TelemetryService {
         routerId: true,
         wgIp: true,
         router: {
-          select: { id: true, credEncrypted: true, deletedAt: true },
+          select: { id: true, tenantId: true, credEncrypted: true, deletedAt: true },
         },
       },
     });
@@ -95,7 +97,7 @@ export class TelemetryService {
     for (const chunk of chunks) {
       await Promise.allSettled(
         chunk.map((peer) =>
-          this.collectOne(peer.routerId, peer.wgIp, peer.router.credEncrypted!, now),
+          this.collectOne(peer.routerId, peer.router.tenantId, peer.wgIp, peer.router.credEncrypted!, now),
         ),
       );
     }
@@ -105,6 +107,7 @@ export class TelemetryService {
 
   private async collectOne(
     routerId: string,
+    tenantId: string,
     wgIp: string,
     credEncrypted: string,
     collectedAt: Date,
@@ -115,10 +118,22 @@ export class TelemetryService {
       // d'erreurs (`lastErrors`) reste hors périmètre Phase 1 (le Gateway ne le
       // lit pas) : `null` dans ce chemin, comme lorsque `TELEMETRY_COLLECT_ERRORS`
       // est désactivé — sans effet observable puisqu'il l'est par défaut.
+      //
+      // Le cron ne pose aucun contexte tenant global : `RemoteRouterService.run()`
+      // (utilisé par le Gateway) exige `getTenantContext()` pour vérifier
+      // l'abonnement, sans quoi il rejette (`SUBSCRIPTION_INACTIVE`) — c'est
+      // exactement le blocage constaté en production sous Gateway ON. Le contexte
+      // est donc ouvert ICI, un scope isolé PAR ROUTEUR (jamais un scope partagé
+      // pour tout le cron, qui ferait fuiter le tenant précédent vers le suivant
+      // en cas d'exécution concurrente).
       if (GATEWAY_ENABLED() && this.gateway) {
-        const snap = await this.gateway.getLiveSnapshot(routerId, 'stats', {
-          priority: 'P3_TELEMETRY',
-          minFreshnessMs: TELEMETRY_ACCEPT_AGE_MS,
+        const gateway = this.gateway;
+        const snap = await tenantStore.run({}, () => {
+          setTenantContext({ tenantId, userId: 'system-telemetry', role: UserRole.OWNER });
+          return gateway.getLiveSnapshot(routerId, 'stats', {
+            priority: 'P3_TELEMETRY',
+            minFreshnessMs: TELEMETRY_ACCEPT_AGE_MS,
+          });
         });
         await this.prisma.routerTelemetry.create({
           data: {
