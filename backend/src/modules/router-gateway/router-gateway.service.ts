@@ -1,4 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { BusinessException } from '../../common/exceptions/business.exception';
+import { ErrorCode } from '../../common/error-codes';
 import { RemoteRouterService } from '../remote-access/remote-router.service';
 import { listActive } from '../../common/routeros/hotspot.ops';
 import { RouterLiveEventsService } from './router-live-events.service';
@@ -124,8 +126,29 @@ export class RouterGatewayService {
       return this.toResult(entry, true);
     }
 
-    this.log('cache', routerId, { status: entry.inflight ? 'JOIN' : 'MISS', priority });
-    const snapshot = await (entry.inflight ?? this.refresh(routerId, entry, wantSessions, priority));
+    if (entry.inflight) {
+      this.log('cache', routerId, { status: 'JOIN', priority });
+      const snapshot = await entry.inflight;
+      return this.toResult({ ...entry, value: snapshot }, false);
+    }
+
+    // Cold-start (aucun snapshot n'a jamais réussi) : sans ce garde, chaque appel
+    // rouvrirait sa propre connexion RouterOS pendant que le routeur est en panne
+    // (trouvé lors du test terrain Gateway ON — le RB951 martelé sans frein).
+    // Le cooldown est indépendant de l'existence d'un snapshot : `entry.lastError`
+    // seul suffit à le déclencher, qu'il y ait ou non une valeur en cache.
+    const cooling = entry.lastError !== undefined && now - entry.lastError.at < GATEWAY_RETRY_COOLDOWN_MS;
+    if (cooling) {
+      this.log('cache', routerId, { status: 'COLD_COOLDOWN', priority });
+      throw new BusinessException(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        ErrorCode.ROUTER_UNREACHABLE,
+        entry.lastError!.message,
+      );
+    }
+
+    this.log('cache', routerId, { status: 'MISS', priority });
+    const snapshot = await this.refresh(routerId, entry, wantSessions, priority);
     return this.toResult({ ...entry, value: snapshot }, false);
   }
 
