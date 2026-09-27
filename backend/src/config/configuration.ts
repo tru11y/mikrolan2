@@ -30,6 +30,14 @@ const envSchema = z.object({
         .filter(Boolean),
     ),
 
+  // ─── P0 Realtime Router — Phase 1 (mutualisation des lectures live) ──
+  // OFF (défaut) : comportement actuel inchangé (chemins directs). syncActivations
+  // n'est JAMAIS concerné par ce flag, dans les deux positions.
+  ROUTER_GATEWAY_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+
   // ─── WireGuard remote access (real on VPS, stubbed in dev) ──
   WG_ENABLED: z
     .enum(['true', 'false'])
