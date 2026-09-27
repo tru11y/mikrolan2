@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger, Optional } from '@nestjs/common';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/error-codes';
 import { Interval } from '@nestjs/schedule';
@@ -18,6 +18,7 @@ import { RemoteRouterService } from '../remote-access/remote-router.service';
 import { listActive, removeActive } from '../../common/routeros/hotspot.ops';
 import type { ApiRow } from '../../common/routeros/routeros-api.client';
 import { withDeadline } from '../../common/utils/with-deadline';
+import { RouterGatewayService } from '../router-gateway/router-gateway.service';
 import { RouterSyncScheduler, type SchedulerRouter } from './router-sync-scheduler';
 import { tenantStore, setTenantContext } from '../../common/context/tenant-context';
 
@@ -67,7 +68,13 @@ export class SessionsService {
     private readonly remote: RemoteRouterService,
     private readonly events: EventsService,
     private readonly notifications: NotificationsService,
+    @Optional() private readonly gateway?: RouterGatewayService,
   ) {}
+
+  /** P0 Realtime Router — Phase 1. OFF par défaut : comportement actuel inchangé. */
+  private gatewayEnabled(): boolean {
+    return process.env['ROUTER_GATEWAY_ENABLED'] === 'true';
+  }
 
   /**
    * Brings the DB in line with what the router reports as connected. First
@@ -363,6 +370,13 @@ export class SessionsService {
   async live(routerId: string): Promise<LiveSession[]> {
     const router = await this.getRouter(routerId);
     if (router.mode === ManagementMode.REMOTE) {
+      // P0 Realtime Router — Phase 1 (UI uniquement) : sous flag, mutualisée via
+      // RouterGateway au lieu d'un `remote.run` indépendant par écran ouvert.
+      // `syncActivations`/`syncRouter` ne passent JAMAIS par ici, quel que soit le flag.
+      if (this.gatewayEnabled() && this.gateway) {
+        const snapshot = await this.gateway.getLiveSnapshot(routerId, 'sessions');
+        return snapshot.sessions ?? [];
+      }
       const active = await this.remote.run(
         routerId,
         (c) => listActive(c),

@@ -1,8 +1,9 @@
 import { logAndContinue } from '../../common/utils/log-and-continue';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { RouterHealth } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CryptoService } from '../../common/crypto/crypto.service';
+import { RouterGatewayService } from '../router-gateway/router-gateway.service';
 import {
   RouterOsApiError,
   withRouterOsApi,
@@ -28,6 +29,12 @@ const HOTSPOT_COUNT_CMD = ['/ip/hotspot/active/print', '=count-only='];
 // cpu/uptime) et son parcours est la lecture la plus coûteuse : désactivé par défaut.
 const COLLECT_ERROR_LOG = process.env['TELEMETRY_COLLECT_ERRORS'] === '1';
 const ERROR_LOG_CMD = ['/log/print', '?topics~error', '=.proplist=time,message'];
+// P0 Realtime Router — Phase 1. OFF par défaut : comportement actuel inchangé.
+const GATEWAY_ENABLED = () => process.env['ROUTER_GATEWAY_ENABLED'] === 'true';
+// Une collecte toutes les 15 min tolère une donnée bien plus âgée que le seuil
+// « frais » de l'UI (8-10 s) : accepter le cache évite de forcer un refresh
+// RouterOS à chaque tick alors qu'un écran vient peut-être d'en obtenir un.
+const TELEMETRY_ACCEPT_AGE_MS = 5 * 60_000;
 
 /** Nombre de clients : `ret` d'un count-only, sinon nombre de lignes reçues. */
 function countFrom(rows: ApiRow[] | null): number | null {
@@ -60,6 +67,7 @@ export class TelemetryService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
+    @Optional() private readonly gateway?: RouterGatewayService,
   ) {}
 
   async collectAll(): Promise<void> {
@@ -102,6 +110,34 @@ export class TelemetryService {
     collectedAt: Date,
   ): Promise<void> {
     try {
+      // P0 Realtime Router — Phase 1 : sous flag, réutilise le snapshot mutualisé
+      // du Gateway au lieu d'ouvrir sa propre connexion RouterOS. Le journal
+      // d'erreurs (`lastErrors`) reste hors périmètre Phase 1 (le Gateway ne le
+      // lit pas) : `null` dans ce chemin, comme lorsque `TELEMETRY_COLLECT_ERRORS`
+      // est désactivé — sans effet observable puisqu'il l'est par défaut.
+      if (GATEWAY_ENABLED() && this.gateway) {
+        const snap = await this.gateway.getLiveSnapshot(routerId, 'stats', {
+          priority: 'P3_TELEMETRY',
+          minFreshnessMs: TELEMETRY_ACCEPT_AGE_MS,
+        });
+        await this.prisma.routerTelemetry.create({
+          data: {
+            routerId,
+            cpuPercent: snap.cpuPercent,
+            ramUsedMb: snap.memoryUsedMb,
+            ramTotalMb: snap.memoryTotalMb,
+            uptime: snap.uptime,
+            rosVersion: snap.rosVersion,
+            boardName: snap.boardName,
+            hotspotActive: snap.sessionCount,
+            lastErrors: null as any,
+            health: snap.health === 'OFFLINE' ? RouterHealth.OFFLINE : RouterHealth.ONLINE,
+            collectedAt,
+          },
+        });
+        return;
+      }
+
       const creds = JSON.parse(this.crypto.decrypt(credEncrypted)) as {
         username: string;
         password: string;
