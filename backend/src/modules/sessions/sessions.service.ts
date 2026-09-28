@@ -1,10 +1,12 @@
-import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger, Optional } from '@nestjs/common';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/error-codes';
 import { Interval } from '@nestjs/schedule';
 import {
   ManagementMode,
   NotificationType,
+  RemotePeerStatus,
+  RouterHealth,
   SessionStatus,
   UserRole,
   VoucherStatus,
@@ -15,6 +17,9 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { RemoteRouterService } from '../remote-access/remote-router.service';
 import { listActive, removeActive } from '../../common/routeros/hotspot.ops';
 import type { ApiRow } from '../../common/routeros/routeros-api.client';
+import { withDeadline } from '../../common/utils/with-deadline';
+import { RouterGatewayService } from '../router-gateway/router-gateway.service';
+import { RouterSyncScheduler, type SchedulerRouter } from './router-sync-scheduler';
 import { tenantStore, setTenantContext } from '../../common/context/tenant-context';
 
 export interface LiveSession {
@@ -39,16 +44,37 @@ function mapActive(row: ApiRow): LiveSession {
   };
 }
 
+// Pire cas légitime d'une lecture : 2 essais × (connexion + login + commande,
+// 12 s chacun) + 2 s d'attente. Au-delà le travail est considéré bloqué.
+const SYNC_ROUTER_DEADLINE_MS = 90_000;
+// Handshake WireGuard considéré périmé (aligné sur le seuil de 150 s du réconciliateur).
+const TUNNEL_STALE_MS = 150_000;
+
 @Injectable()
 export class SessionsService {
   private readonly logger = new Logger(SessionsService.name);
+  private syncTickStartedAt: number | null = null;
+  private readonly syncRoutersInFlight = new Set<string>();
+  private readonly scheduler = new RouterSyncScheduler({
+    now: () => Date.now(),
+    listRouters: () => this.listSchedulableRouters(),
+    run: (router) => this.syncRouter(router),
+    log: (line) => this.logger.log(line),
+    warn: (line) => this.logger.warn(line),
+  });
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly remote: RemoteRouterService,
     private readonly events: EventsService,
     private readonly notifications: NotificationsService,
+    @Optional() private readonly gateway?: RouterGatewayService,
   ) {}
+
+  /** P0 Realtime Router — Phase 1. OFF par défaut : comportement actuel inchangé. */
+  private gatewayEnabled(): boolean {
+    return process.env['ROUTER_GATEWAY_ENABLED'] === 'true';
+  }
 
   /**
    * Brings the DB in line with what the router reports as connected. First
@@ -197,14 +223,96 @@ export class SessionsService {
    */
   @Interval(25_000)
   async syncActivations(): Promise<void> {
-    const routers = await this.prisma.router.findMany({
-      where: { mode: ManagementMode.REMOTE, deletedAt: null },
-      select: { id: true, tenantId: true },
-    });
+    // SYNC_SCHEDULER=legacy : comportement historique (un tick séquentiel sur
+    // toute la flotte). Par défaut, l'ordonnanceur par routeur ci-dessous.
+    if (!this.legacySync()) return;
+    // `@Interval` ne tient pas compte de la durée du tick précédent : sur un
+    // routeur lent un tick dépasse 25 s et le suivant démarrerait par-dessus,
+    // multipliant les sessions API simultanées sur un petit MikroTik.
+    if (this.syncTickStartedAt !== null) {
+      this.logger.warn(
+        `sync tick SKIPPED_ALREADY_RUNNING runningForMs=${Date.now() - this.syncTickStartedAt}`,
+      );
+      return;
+    }
+    const tickStart = Date.now();
+    this.syncTickStartedAt = tickStart;
+    try {
+      const routers = await this.prisma.router.findMany({
+        where: { mode: ManagementMode.REMOTE, deletedAt: null },
+        select: { id: true, tenantId: true },
+      });
+      this.logger.log(`sync tick START routers=${routers.length}`);
 
-    for (const router of routers) {
-      try {
-        await tenantStore.run({}, async () => {
+      const tally = { ok: 0, failed: 0, skipped: 0 };
+      for (const router of routers) {
+        tally[await this.syncRouter(router)] += 1;
+      }
+      this.logger.log(
+        `sync tick END routers=${routers.length} ok=${tally.ok} failed=${tally.failed} skipped=${tally.skipped} durationMs=${Date.now() - tickStart}`,
+      );
+    } finally {
+      this.syncTickStartedAt = null;
+    }
+  }
+
+  /**
+   * Ordonnanceur par routeur : le dispatcheur (5 s) lance les routeurs dus dans un
+   * pool borné. Chaque lecture est exactement `syncRouter` : seule la cadence et
+   * la concurrence changent.
+   */
+  @Interval(5_000)
+  async dispatchSync(): Promise<void> {
+    if (this.legacySync()) return;
+    await this.scheduler.dispatch();
+  }
+
+  private legacySync(): boolean {
+    return process.env['SYNC_SCHEDULER'] === 'legacy';
+  }
+
+  private async listSchedulableRouters(): Promise<SchedulerRouter[]> {
+    const rows = await this.prisma.router.findMany({
+      where: { mode: ManagementMode.REMOTE, deletedAt: null },
+      select: {
+        id: true,
+        tenantId: true,
+        health: true,
+        lastHeartbeat: true,
+        credEncrypted: true,
+        remotePeer: { select: { status: true } },
+      },
+    });
+    const now = Date.now();
+    return rows.map((r) => ({
+      id: r.id,
+      tenantId: r.tenantId,
+      hasCredentials: Boolean(r.credEncrypted),
+      hasActivePeer: r.remotePeer?.status === RemotePeerStatus.ACTIVE,
+      // Le réconciliateur WireGuard passe le routeur OFFLINE quand le handshake
+      // dépasse 150 s ; on ne fait que lire cet état.
+      tunnelDown:
+        r.health === RouterHealth.OFFLINE &&
+        (r.lastHeartbeat === null || now - r.lastHeartbeat.getTime() > TUNNEL_STALE_MS),
+    }));
+  }
+
+  /** Une seule lecture RouterOS en cours par routeur ; le verrou est toujours libéré. */
+  private async syncRouter(router: {
+    id: string;
+    tenantId: string;
+  }): Promise<'ok' | 'failed' | 'skipped'> {
+    if (this.syncRoutersInFlight.has(router.id)) {
+      this.logger.warn(`sync router SKIPPED_ALREADY_RUNNING routerId=${router.id}`);
+      return 'skipped';
+    }
+    this.syncRoutersInFlight.add(router.id);
+    const start = Date.now();
+    this.logger.log(`sync router START routerId=${router.id}`);
+    let status: 'ok' | 'failed' = 'ok';
+    try {
+      await withDeadline(
+        tenantStore.run({}, async () => {
           setTenantContext({
             tenantId: router.tenantId,
             userId: 'system-activity-sync',
@@ -221,13 +329,22 @@ export class SessionsService {
             router.tenantId,
             active.map(mapActive),
           );
-        });
-      } catch (e) {
-        this.logger.warn(
-          `Activation sync failed for router ${router.id}: ${(e as Error).message}`,
-        );
-      }
+        }),
+        SYNC_ROUTER_DEADLINE_MS,
+        `Activation sync ${router.id}`,
+      );
+    } catch (e) {
+      status = 'failed';
+      this.logger.warn(
+        `Activation sync failed for router ${router.id}: ${(e as Error).message}`,
+      );
+    } finally {
+      this.syncRoutersInFlight.delete(router.id);
+      this.logger.log(
+        `sync router END routerId=${router.id} status=${status} durationMs=${Date.now() - start}`,
+      );
     }
+    return status;
   }
 
   /**
@@ -253,6 +370,13 @@ export class SessionsService {
   async live(routerId: string): Promise<LiveSession[]> {
     const router = await this.getRouter(routerId);
     if (router.mode === ManagementMode.REMOTE) {
+      // P0 Realtime Router — Phase 1 (UI uniquement) : sous flag, mutualisée via
+      // RouterGateway au lieu d'un `remote.run` indépendant par écran ouvert.
+      // `syncActivations`/`syncRouter` ne passent JAMAIS par ici, quel que soit le flag.
+      if (this.gatewayEnabled() && this.gateway) {
+        const snapshot = await this.gateway.getLiveSnapshot(routerId, 'sessions');
+        return snapshot.sessions ?? [];
+      }
       const active = await this.remote.run(
         routerId,
         (c) => listActive(c),
