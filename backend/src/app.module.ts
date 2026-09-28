@@ -38,6 +38,7 @@ import { EntitlementGuard } from './common/guards/entitlement.guard';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TenantContextMiddleware } from './common/context/tenant-context.middleware';
+import { RouterGatewayModule } from './modules/router-gateway/router-gateway.module';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { TenantContextMiddleware } from './common/context/tenant-context.middlew
     HotspotModule,
     VouchersModule,
     SessionsModule,
+    RouterGatewayModule,
     MetricsModule,
     NotificationsModule,
     AccountingModule,
