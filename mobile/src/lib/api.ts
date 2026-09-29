@@ -643,6 +643,26 @@ export type VoucherBatch = {
   plan: { name: string; priceXof: number };
 };
 
+export type BatchDeletionPreview = {
+  batchId: string | null;
+  total: number;
+  /** Jamais utilisés ou déjà annulés — seront supprimés. */
+  eligible: number;
+  /** Déjà vendus (revenu compté) mais sans client connecté — conservés. */
+  keptForHistory: number;
+  /** Déjà vendus ET un client est connecté maintenant — conservés. */
+  connectedNow: number;
+};
+
+export type BulkDeletionResult = {
+  analyzed: number;
+  deleted: number;
+  protectedActive: number;
+  keptForHistory: number;
+  connectedNow: number;
+  routerCleanupFailed: number;
+};
+
 export type LiveSession = {
   id: string; // RouterOS .id
   user: string;
@@ -1267,11 +1287,34 @@ export const api = {
       );
       return unwrap(res);
     },
-    // Suppression définitive — pas de corbeille, le ticket/lot disparaît
-    // partout (DB + hotspot RouterOS si joignable), sans limite de statut.
-    async deleteBatch(id: string, batchId: string): Promise<{ deleted: boolean }> {
-      const res = await apiClient.delete<ApiEnvelope<{ deleted: boolean }>>(
+    // Répartition par statut d'un lot, à afficher avant confirmation de
+    // suppression — { total, eligible, keptForHistory, connectedNow }.
+    async previewBatchDeletion(id: string, batchId: string): Promise<BatchDeletionPreview> {
+      const res = await apiClient.get<ApiEnvelope<BatchDeletionPreview>>(
+        `/routers/${id}/vouchers/batches/${batchId}/deletion-preview`,
+      );
+      return unwrap(res);
+    },
+    // Suppression définitive des tickets éligibles du lot (DB + hotspot
+    // RouterOS si joignable). Les tickets ACTIVE (client connecté) sont
+    // toujours conservés par le backend, quel que soit ce que la preview
+    // annonçait — voir voucher.service.ts.
+    async deleteBatch(id: string, batchId: string): Promise<BulkDeletionResult> {
+      const res = await apiClient.delete<ApiEnvelope<BulkDeletionResult>>(
         `/routers/${id}/vouchers/batches/${batchId}`,
+      );
+      return unwrap(res);
+    },
+    // Même chose, mais pour "Nettoyer les tickets" à l'échelle du routeur.
+    async previewCleanup(id: string): Promise<Omit<BatchDeletionPreview, 'batchId'>> {
+      const res = await apiClient.get<ApiEnvelope<Omit<BatchDeletionPreview, 'batchId'>>>(
+        `/routers/${id}/vouchers/cleanup-preview`,
+      );
+      return unwrap(res);
+    },
+    async cleanupVouchers(id: string): Promise<BulkDeletionResult> {
+      const res = await apiClient.delete<ApiEnvelope<BulkDeletionResult>>(
+        `/routers/${id}/vouchers/cleanup`,
       );
       return unwrap(res);
     },
