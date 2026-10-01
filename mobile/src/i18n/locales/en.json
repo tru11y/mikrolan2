@@ -893,6 +893,7 @@
     "printBatch": "Print batch",
     "deleteBatch": "Delete batch",
     "existingCodes": "Existing codes",
+    "showMore": "Show more ({{count}} remaining)",
     "noCode": "No codes for this router.",
     "deleteTicketTitle": "Delete this ticket?",
     "deleteTicketMessage": "Code {{code}} will be permanently deleted — cannot be undone.",
