@@ -113,6 +113,39 @@ describe('SubscriptionsService', () => {
       expect(e.remoteAllowed).toBe(false);
     });
 
+    it.each(['essentiel', 'avance', 'entreprise'])(
+      'tier payant %s (PRO + ACTIVE + période valide) → remoteAllowed',
+      async (key) => {
+        const service = buildService();
+        mockPrisma.subscription.findUnique.mockResolvedValue({
+          plan: SubscriptionPlan.PRO,
+          status: SubscriptionStatus.ACTIVE,
+          currentPeriodEnd: new Date(Date.now() + 86_400_000),
+          tier: { key, routerLimit: null, userLimit: null, voucherMonthlyLimit: null },
+        });
+
+        const e = await service.getEntitlement('t1');
+        expect(e.tier).toBe('PRO');
+        expect(e.remoteAllowed).toBe(true);
+        expect(e.tierKey).toBe(key);
+      },
+    );
+
+    it.each([SubscriptionStatus.PAST_DUE, SubscriptionStatus.CANCELED, SubscriptionStatus.TRIALING])(
+      'PRO avec statut %s → pas de remote',
+      async (status) => {
+        const service = buildService();
+        mockPrisma.subscription.findUnique.mockResolvedValue({
+          plan: SubscriptionPlan.PRO,
+          status,
+          currentPeriodEnd: new Date(Date.now() + 86_400_000),
+          tier: { key: 'essentiel', routerLimit: 3, userLimit: null, voucherMonthlyLimit: null },
+        });
+
+        expect((await service.getEntitlement('t1')).remoteAllowed).toBe(false);
+      },
+    );
+
     it('no subscription → tier FREE', async () => {
       const service = buildService();
       mockPrisma.subscription.findUnique.mockResolvedValue(null);
