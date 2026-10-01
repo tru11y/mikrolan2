@@ -6,7 +6,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ManagementMode, Prisma } from '@prisma/client';
+import { UserRole } from '@prisma/client';
+import { ExecutionContext } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { getTenantContext } from '../../common/context/tenant-context';
 import { RoutersService } from './routers.service';
+import { RoutersController } from './routers.controller';
+import { RolesGuard } from '../../common/guards/roles.guard';
 
 jest.mock('../../common/context/tenant-context', () => ({
   getTenantContext: jest.fn(() => ({
@@ -64,10 +70,13 @@ function makeService() {
   const crypto = makeCrypto() as any;
   const subs = makeSubs() as any;
   const wg = makeWg() as any;
+  const eventLog = makeEventLogStub();
   return {
-    service: new RoutersService(prisma, crypto, subs, wg, makeEventLogStub() as any),
+    service: new RoutersService(prisma, crypto, subs, wg, eventLog as any),
     prisma,
     subs,
+    crypto,
+    eventLog,
   };
 }
 
@@ -191,5 +200,172 @@ describe('RoutersService', () => {
       const result = await service.update('r1', { alias: 'New Alias' });
       expect(prisma.router.update).toHaveBeenCalled();
     });
+  });
+});
+
+describe('RoutersService — credentials RouterOS côté serveur', () => {
+  const CREDS = { username: 'admin', password: 'S3cret-pass!' };
+
+  it('création avec credentials → credEncrypted chiffré, jamais de plaintext en base', async () => {
+    const { service, prisma, crypto } = makeService();
+    prisma.router.findFirst.mockResolvedValue(null);
+    prisma.router.create.mockResolvedValue({ ...ROUTER, credEncrypted: 'encrypted' });
+
+    const result = await service.create({
+      identity: 'MikroTik-01',
+      localAddress: '192.168.88.1',
+      mode: ManagementMode.LOCAL,
+      credentials: CREDS,
+    });
+
+    expect(crypto.encrypt).toHaveBeenCalledWith(JSON.stringify(CREDS));
+    const written = prisma.router.create.mock.calls[0][0];
+    expect(written.data.credEncrypted).toBe('encrypted');
+    expect(JSON.stringify(written)).not.toContain(CREDS.password);
+    expect(result.hasCredentials).toBe(true);
+    expect(JSON.stringify(result)).not.toContain(CREDS.password);
+    expect('credEncrypted' in result).toBe(false);
+  });
+
+  it('routeur sans credentials → hasCredentials=false', async () => {
+    const { service, prisma } = makeService();
+    prisma.router.findFirst.mockResolvedValue({ ...ROUTER, credEncrypted: null });
+
+    expect((await service.findOne('r1')).hasCredentials).toBe(false);
+  });
+
+  it('findAll/findOne ne renvoient jamais credEncrypted', async () => {
+    const { service, prisma } = makeService();
+    prisma.router.findMany.mockResolvedValue([{ ...ROUTER, credEncrypted: 'blob' }]);
+    prisma.router.findFirst.mockResolvedValue({ ...ROUTER, credEncrypted: 'blob' });
+
+    const [listed] = await service.findAll();
+    const one = await service.findOne('r1');
+    for (const r of [listed, one]) {
+      expect('credEncrypted' in r).toBe(false);
+      expect(r.hasCredentials).toBe(true);
+    }
+  });
+
+  it('reconfiguration → credEncrypted remplacé par le nouveau chiffré', async () => {
+    const { service, prisma, crypto } = makeService();
+    crypto.encrypt.mockReturnValue('encrypted-v2');
+    prisma.router.findFirst.mockResolvedValue({ ...ROUTER, credEncrypted: 'encrypted-v2' });
+    prisma.router.update.mockResolvedValue({});
+
+    await service.update('r1', { credentials: CREDS });
+
+    const data = prisma.router.update.mock.calls[0][0].data;
+    expect(data.credEncrypted).toBe('encrypted-v2');
+    expect(JSON.stringify(data)).not.toContain(CREDS.password);
+  });
+
+  it('credentials: null → efface credEncrypted', async () => {
+    const { service, prisma } = makeService();
+    prisma.router.findFirst.mockResolvedValue({ ...ROUTER, credEncrypted: null });
+    prisma.router.update.mockResolvedValue({});
+
+    await service.update('r1', { credentials: null });
+
+    expect(prisma.router.update.mock.calls[0][0].data.credEncrypted).toBeNull();
+  });
+
+  it('routeur d’un autre tenant (invisible) → 404, aucune écriture ni lecture de secret', async () => {
+    const { service, prisma, crypto } = makeService();
+    prisma.router.findFirst.mockResolvedValue(null);
+
+    await expect(service.update('other', { credentials: CREDS })).rejects.toMatchObject({ status: 404 });
+    await expect(service.getCredentials('other')).rejects.toMatchObject({ status: 404 });
+    expect(prisma.router.update).not.toHaveBeenCalled();
+    expect(crypto.decrypt).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /routers/:id/credentials — restauration LAN (ADMIN)', () => {
+  const SECRET = { username: 'admin', password: 'S3cret-pass!' };
+
+  function ctxFor(role: UserRole): ExecutionContext {
+    return {
+      getHandler: () => RoutersController.prototype.getCredentials,
+      getClass: () => RoutersController,
+      switchToHttp: () => ({ getRequest: () => ({ user: { role, tenantId: 'tenant-1' } }) }),
+    } as unknown as ExecutionContext;
+  }
+
+  it('ADMIN du bon tenant → accès autorisé, secret renvoyé, lecture filtrée par tenantId', async () => {
+    const guard = new RolesGuard(new Reflector());
+    expect(guard.canActivate(ctxFor(UserRole.ADMIN))).toBe(true);
+    expect(guard.canActivate(ctxFor(UserRole.OWNER))).toBe(true);
+
+    const { service, prisma, crypto } = makeService();
+    crypto.decrypt.mockReturnValue(JSON.stringify(SECRET));
+    prisma.router.findFirst.mockResolvedValue({ id: 'r1', credEncrypted: 'blob', localAddress: '192.168.88.1:8728' });
+
+    const res = await service.getCredentials('r1');
+
+    expect(res).toEqual({ ...SECRET, host: '192.168.88.1:8728' });
+    expect(prisma.router.findFirst.mock.calls[0][0].where).toMatchObject({ id: 'r1', tenantId: 'tenant-1' });
+  });
+
+  it('utilisateur non ADMIN (MEMBER) → refusé', () => {
+    const guard = new RolesGuard(new Reflector());
+    expect(() => guard.canActivate(ctxFor(UserRole.MEMBER))).toThrow();
+  });
+
+  it('ADMIN d’un autre tenant → 404, aucun déchiffrement ni audit', async () => {
+    const { service, prisma, crypto, eventLog } = makeService();
+    prisma.router.findFirst.mockResolvedValue(null);
+
+    await expect(service.getCredentials('foreign')).rejects.toMatchObject({ status: 404 });
+    expect(crypto.decrypt).not.toHaveBeenCalled();
+    expect(eventLog.emit).not.toHaveBeenCalled();
+  });
+
+  it('SUPER_ADMIN sans tenant → 404, aucune lecture ni déchiffrement ni audit', async () => {
+    (getTenantContext as jest.Mock).mockReturnValueOnce({ tenantId: undefined, userId: 'sa', role: 'SUPER_ADMIN' });
+    const { service, prisma, crypto, eventLog } = makeService();
+    prisma.router.findFirst.mockResolvedValue({ id: 'r1', credEncrypted: 'blob', localAddress: null });
+
+    await expect(service.getCredentials('r1')).rejects.toMatchObject({ status: 404 });
+    expect(prisma.router.findFirst).not.toHaveBeenCalled();
+    expect(crypto.decrypt).not.toHaveBeenCalled();
+    expect(eventLog.emit).not.toHaveBeenCalled();
+  });
+
+  it('lecture réussie → audit DOWNLOAD créé', async () => {
+    const { service, prisma, crypto, eventLog } = makeService();
+    crypto.decrypt.mockReturnValue(JSON.stringify(SECRET));
+    prisma.router.findFirst.mockResolvedValue({ id: 'r1', credEncrypted: 'blob', localAddress: null });
+
+    await service.getCredentials('r1');
+
+    expect(eventLog.emit).toHaveBeenCalledTimes(1);
+    expect(eventLog.emit.mock.calls[0][0]).toMatchObject({
+      action: 'DOWNLOAD',
+      entityType: 'Router',
+      entityId: 'r1',
+      outcome: 'SUCCESS',
+    });
+  });
+
+  it('l’audit ne contient jamais le password ni le username', async () => {
+    const { service, prisma, crypto, eventLog } = makeService();
+    crypto.decrypt.mockReturnValue(JSON.stringify(SECRET));
+    prisma.router.findFirst.mockResolvedValue({ id: 'r1', credEncrypted: 'blob', localAddress: null });
+
+    await service.getCredentials('r1');
+
+    const logged = JSON.stringify(eventLog.emit.mock.calls);
+    expect(logged).not.toContain(SECRET.password);
+    expect(logged).not.toContain(SECRET.username);
+  });
+
+  it('routeur sans identifiants → null explicite, sans audit', async () => {
+    const { service, prisma, crypto, eventLog } = makeService();
+    prisma.router.findFirst.mockResolvedValue({ id: 'r1', credEncrypted: null, localAddress: null });
+
+    await expect(service.getCredentials('r1')).resolves.toBeNull();
+    expect(crypto.decrypt).not.toHaveBeenCalled();
+    expect(eventLog.emit).not.toHaveBeenCalled();
   });
 });

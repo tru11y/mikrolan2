@@ -1,6 +1,8 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
 import { DEFAULT_TICKET_TEMPLATE, type TicketTemplate } from './api';
+import { reportSilent } from './report';
 
 function fmtDuration(min: number): string {
   if (min % 1440 === 0) return `${min / 1440} j`;
@@ -37,21 +39,17 @@ export type TicketsPdfOpts = {
 };
 
 export function buildPdfFileName(opts: {
-  routerName: string;
+  planName: string;
   batchSeq?: number;
-  ticketCount: number;
   date: Date;
 }): string {
   const d = opts.date;
   const yyyy = d.getFullYear();
   const MM = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  const ss = String(d.getSeconds()).padStart(2, '0');
-  const name = slug(opts.routerName) || 'WiFi';
-  const lot = opts.batchSeq != null ? `_Lot${opts.batchSeq}` : '';
-  return `MikroLan_${name}${lot}_${opts.ticketCount}Tickets_${yyyy}-${MM}-${dd}_${hh}-${mm}-${ss}.pdf`;
+  const plan = slug(opts.planName).replace(/_/g, '') || 'Forfait';
+  const lot = opts.batchSeq != null ? `Lot${opts.batchSeq}` : 'Lot';
+  return `Mikrolan_${plan}_${yyyy}-${MM}-${dd}_${lot}.pdf`;
 }
 
 function fmtDateFull(d: Date): string {
@@ -139,22 +137,32 @@ body{background:#fff;color:#000}
 }
 
 export async function printTickets(opts: TicketsPdfOpts): Promise<void> {
-  const html = await buildTicketsHtml(opts);
-  const { uri } = await Print.printToFileAsync({ html });
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(uri, {
-      mimeType: 'application/pdf',
-      dialogTitle: buildPdfFileName({
-        routerName: opts.routerName,
-        batchSeq: opts.batchSeq,
-        ticketCount: opts.tickets.length,
-        date: opts.batchDate ? new Date(opts.batchDate) : new Date(),
-      }),
+  try {
+    const html = await buildTicketsHtml(opts);
+    const { uri } = await Print.printToFileAsync({ html });
+    const fileName = buildPdfFileName({
+      planName: opts.planName,
+      batchSeq: opts.batchSeq,
+      date: opts.batchDate ? new Date(opts.batchDate) : new Date(),
     });
+    const target = `${FileSystem.cacheDirectory}${fileName}`;
+    await FileSystem.deleteAsync(target, { idempotent: true });
+    await FileSystem.moveAsync({ from: uri, to: target });
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(target, { mimeType: 'application/pdf', dialogTitle: fileName });
+    }
+  } catch (err) {
+    reportSilent('ticketsPdf.print', err, { routerName: opts.routerName, ticketCount: opts.tickets.length });
+    throw err;
   }
 }
 
 export async function printTicketsDirect(opts: TicketsPdfOpts): Promise<void> {
-  const html = await buildTicketsHtml(opts);
-  await Print.printAsync({ html });
+  try {
+    const html = await buildTicketsHtml(opts);
+    await Print.printAsync({ html });
+  } catch (err) {
+    reportSilent('ticketsPdf.printDirect', err, { routerName: opts.routerName, ticketCount: opts.tickets.length });
+    throw err;
+  }
 }

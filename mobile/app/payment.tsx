@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
 import { api } from '@/src/lib/api';
 import { describeError } from '@/src/lib/errors';
+import { reportSilent } from '@/src/lib/report';
 import {
   Button,
   ErrorState,
@@ -119,28 +120,38 @@ export default function PaymentScreen() {
   const [sent, setSent] = useState(false);
 
   async function pickImage() {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.7,
-      allowsEditing: true,
-    });
-    if (!result.canceled && result.assets[0]) {
-      setImageUri(result.assets[0].uri);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.7,
+        allowsEditing: true,
+      });
+      if (!result.canceled && result.assets[0]) {
+        setImageUri(result.assets[0].uri);
+      }
+    } catch (e) {
+      reportSilent('payment.pick-image', e);
+      toast.error(describeError(e).message);
     }
   }
 
   async function takePhoto() {
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert(t('payment.permissionRequired'), t('payment.cameraPermission'));
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      quality: 0.7,
-      allowsEditing: true,
-    });
-    if (!result.canceled && result.assets[0]) {
-      setImageUri(result.assets[0].uri);
+    try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert(t('payment.permissionRequired'), t('payment.cameraPermission'));
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        quality: 0.7,
+        allowsEditing: true,
+      });
+      if (!result.canceled && result.assets[0]) {
+        setImageUri(result.assets[0].uri);
+      }
+    } catch (e) {
+      reportSilent('payment.take-photo', e);
+      toast.error(describeError(e).message);
     }
   }
 

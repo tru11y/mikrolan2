@@ -95,10 +95,28 @@ export class VouchersController {
     return this.vouchers.lookupByCode(id, (code ?? '').trim());
   }
 
+  @Get('batches/:batchId/deletion-preview')
+  @Roles(UserRole.ADMIN)
+  previewBatchDeletion(@Param('batchId', ParseUUIDPipe) batchId: string) {
+    return this.vouchers.previewBatchDeletion(batchId);
+  }
+
   @Delete('batches/:batchId')
   @Roles(UserRole.ADMIN)
   removeBatch(@Param('batchId', ParseUUIDPipe) batchId: string) {
     return this.vouchers.removeBatch(batchId);
+  }
+
+  @Get('cleanup-preview')
+  @Roles(UserRole.ADMIN)
+  previewCleanup(@Param('id', ParseUUIDPipe) id: string) {
+    return this.vouchers.previewRouterCleanup(id);
+  }
+
+  @Delete('cleanup')
+  @Roles(UserRole.ADMIN)
+  cleanup(@Param('id', ParseUUIDPipe) id: string) {
+    return this.vouchers.removeAllEligible(id);
   }
 
   @Post(':voucherId/revoke')

@@ -1,5 +1,5 @@
 import { swallow } from '@/src/lib/report';
-import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
@@ -111,8 +111,13 @@ export function ThemeProvider({ children }: PropsWithChildren) {
 
   const colors = mode === 'dark' ? darkColors : lightColors;
 
+  const value = useMemo(
+    () => ({ mode, colors, setMode, toggle }),
+    [mode, colors, setMode, toggle],
+  );
+
   return (
-    <ThemeContext.Provider value={{ mode, colors, setMode, toggle }}>
+    <ThemeContext.Provider value={value}>
       {children}
     </ThemeContext.Provider>
   );

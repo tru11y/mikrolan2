@@ -3,6 +3,13 @@ import { nodeProfilingIntegration } from '@sentry/profiling-node';
 
 const dsn = process.env.SENTRY_DSN;
 
+// Les corps de requête peuvent contenir des identifiants RouterOS
+// (PATCH/POST /routers) : jamais envoyés à Sentry.
+export function scrubSentryEvent<T extends Sentry.ErrorEvent>(event: T): T {
+  if (event.request) delete event.request.data;
+  return event;
+}
+
 if (dsn) {
   Sentry.init({
     dsn,
@@ -10,5 +17,6 @@ if (dsn) {
     tracesSampleRate: 0.2,
     profilesSampleRate: 0.2,
     environment: process.env.NODE_ENV ?? 'development',
+    beforeSend: scrubSentryEvent,
   });
 }

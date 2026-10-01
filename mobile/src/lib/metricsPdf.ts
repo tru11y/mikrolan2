@@ -1,6 +1,7 @@
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import type { MetricsSummary, SessionStats, AnalyticsOverview } from './api';
+import { reportSilent } from './report';
 
 function fmtXof(n: number): string {
   return new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(n) + ' FCFA';
@@ -130,12 +131,17 @@ export async function exportMetricsPdf(
   sessionStats?: SessionStats,
   overview?: AnalyticsOverview,
 ): Promise<void> {
-  const html = buildHtml(metrics, periodLabel, sessionStats, overview);
-  const { uri } = await Print.printToFileAsync({ html, base64: false });
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(uri, {
-      mimeType: 'application/pdf',
-      dialogTitle: 'Exporter le rapport PDF',
-    });
+  try {
+    const html = buildHtml(metrics, periodLabel, sessionStats, overview);
+    const { uri } = await Print.printToFileAsync({ html, base64: false });
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(uri, {
+        mimeType: 'application/pdf',
+        dialogTitle: 'Exporter le rapport PDF',
+      });
+    }
+  } catch (err) {
+    reportSilent('metricsPdf.export', err, { periodLabel });
+    throw err;
   }
 }

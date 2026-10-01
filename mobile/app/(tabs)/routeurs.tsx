@@ -116,6 +116,9 @@ export default function RouteursScreen() {
           data={list}
           keyExtractor={(r) => r.id}
           renderItem={renderItem}
+          initialNumToRender={15}
+          maxToRenderPerBatch={15}
+          windowSize={7}
           ListHeaderComponent={
             query.isError && hasData ? (
               <View style={{ marginBottom: space.lg }}>

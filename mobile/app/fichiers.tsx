@@ -8,10 +8,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   api,
   extractErrorMessage,
+  type BatchDeletionPreview,
+  type BulkDeletionResult,
   type VoucherBatch,
   type VoucherItem,
 } from '@/src/lib/api';
 import { printTickets, printTicketsDirect } from '@/src/lib/ticketsPdf';
+import { reportSilent } from '@/src/lib/report';
 import { TicketCard } from '@/src/components/TicketCard';
 import { Badge, Banner, Button, ConfirmDialog, Empty, Press, Subtitle, Title,
   withAlpha,
@@ -49,6 +52,21 @@ function fmtDateFull(iso: string): string {
 }
 
 type BatchAction = { batchId: string; kind: 'download' | 'print' | 'share' } | null;
+
+function buildDeletionMessage(
+  t: (key: string, opts?: Record<string, unknown>) => string,
+  eligibleKey: string,
+  preview: { eligible: number; keptForHistory: number; connectedNow: number },
+): string {
+  const lines = [t(eligibleKey, { count: preview.eligible })];
+  if (preview.keptForHistory > 0) {
+    lines.push(t('fichiers.protectedHistoryLine', { count: preview.keptForHistory }));
+  }
+  if (preview.connectedNow > 0) {
+    lines.push(t('fichiers.protectedConnectedLine', { count: preview.connectedNow }));
+  }
+  return lines.join('\n\n');
+}
 
 function ActionButton({
   icon,
@@ -97,6 +115,13 @@ export default function FichiersScreen() {
   const [busy, setBusy] = useState<BatchAction>(null);
   const [confirmVoucher, setConfirmVoucher] = useState<VoucherItem | null>(null);
   const [confirmBatch, setConfirmBatch] = useState<VoucherBatch | null>(null);
+  const [batchPreview, setBatchPreview] = useState<BatchDeletionPreview | null>(null);
+  const [batchPreviewLoading, setBatchPreviewLoading] = useState(false);
+  const [confirmCleanup, setConfirmCleanup] = useState(false);
+  const [cleanupPreview, setCleanupPreview] = useState<Omit<BatchDeletionPreview, 'batchId'> | null>(null);
+  const [cleanupPreviewLoading, setCleanupPreviewLoading] = useState(false);
+  const [cleanupBusy, setCleanupBusy] = useState(false);
+  const [deleteResult, setDeleteResult] = useState<BulkDeletionResult | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
 
   const routerQuery = useQuery({
@@ -158,6 +183,7 @@ export default function FichiersScreen() {
         await printTicketsDirect(opts);
       }
     } catch (e) {
+      reportSilent('fichiers.batch-action', e, { routerId, batchId: batch.id, kind });
       setError(extractErrorMessage(e));
     } finally {
       setBusy(null);
@@ -165,8 +191,13 @@ export default function FichiersScreen() {
   }
 
   async function shareCodes(codes: VoucherItem[]) {
-    const text = codes.map((v) => v.code).join('\n');
-    await Share.share({ message: `${t('fichiers.wifiCodes')}\n${text}` });
+    try {
+      const text = codes.map((v) => v.code).join('\n');
+      await Share.share({ message: `${t('fichiers.wifiCodes')}\n${text}` });
+    } catch (e) {
+      reportSilent('fichiers.share', e, { routerId });
+      setError(extractErrorMessage(e));
+    }
   }
 
   async function revoke(id: string) {
@@ -174,6 +205,7 @@ export default function FichiersScreen() {
       await api.routers.revokeVoucher(routerId, id);
       await qc.invalidateQueries({ queryKey: ['vouchers', routerId] });
     } catch (e) {
+      reportSilent('fichiers.revoke', e, { routerId, voucherId: id });
       setError(extractErrorMessage(e));
     }
   }
@@ -187,9 +219,27 @@ export default function FichiersScreen() {
       await qc.invalidateQueries({ queryKey: ['vouchers', routerId] });
       setConfirmVoucher(null);
     } catch (e) {
+      reportSilent('fichiers.delete-voucher', e, { routerId, voucherId: confirmVoucher.id });
       setError(extractErrorMessage(e));
     } finally {
       setDeleteBusy(false);
+    }
+  }
+
+  // Calcule combien de tickets seront réellement supprimés (inutilisés/
+  // terminés) et combien seront protégés (clients connectés) AVANT que
+  // l'opérateur confirme — jamais un simple compteur "généré".
+  async function openDeleteBatch(b: VoucherBatch) {
+    setConfirmBatch(b);
+    setBatchPreview(null);
+    setBatchPreviewLoading(true);
+    try {
+      const preview = await api.routers.previewBatchDeletion(routerId, b.id);
+      setBatchPreview(preview);
+    } catch (e) {
+      reportSilent('fichiers.preview-batch', e, { routerId, batchId: b.id });
+    } finally {
+      setBatchPreviewLoading(false);
     }
   }
 
@@ -198,14 +248,49 @@ export default function FichiersScreen() {
     setDeleteBusy(true);
     setError(null);
     try {
-      await api.routers.deleteBatch(routerId, confirmBatch.id);
+      const result = await api.routers.deleteBatch(routerId, confirmBatch.id);
       await qc.invalidateQueries({ queryKey: ['batches', routerId] });
       await qc.invalidateQueries({ queryKey: ['vouchers', routerId] });
       setConfirmBatch(null);
+      setBatchPreview(null);
+      setDeleteResult(result);
     } catch (e) {
+      reportSilent('fichiers.delete-batch', e, { routerId, batchId: confirmBatch.id });
       setError(extractErrorMessage(e));
     } finally {
       setDeleteBusy(false);
+    }
+  }
+
+  async function openCleanup() {
+    setConfirmCleanup(true);
+    setCleanupPreview(null);
+    setCleanupPreviewLoading(true);
+    try {
+      const preview = await api.routers.previewCleanup(routerId);
+      setCleanupPreview(preview);
+    } catch (e) {
+      reportSilent('fichiers.preview-cleanup', e, { routerId });
+    } finally {
+      setCleanupPreviewLoading(false);
+    }
+  }
+
+  async function cleanupConfirmed() {
+    setCleanupBusy(true);
+    setError(null);
+    try {
+      const result = await api.routers.cleanupVouchers(routerId);
+      await qc.invalidateQueries({ queryKey: ['batches', routerId] });
+      await qc.invalidateQueries({ queryKey: ['vouchers', routerId] });
+      setConfirmCleanup(false);
+      setCleanupPreview(null);
+      setDeleteResult(result);
+    } catch (e) {
+      reportSilent('fichiers.cleanup', e, { routerId });
+      setError(extractErrorMessage(e));
+    } finally {
+      setCleanupBusy(false);
     }
   }
 
@@ -215,14 +300,69 @@ export default function FichiersScreen() {
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <AppHeader title={t('fichiers.screenTitle')} back />
       <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: navHeight }}>
-        <View>
-          <Title>{t('fichiers.titleFull')}</Title>
-          <Subtitle>
-            {t('fichiers.subtitle')}
-          </Subtitle>
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
+          <View style={{ flex: 1 }}>
+            <Title>{t('fichiers.titleFull')}</Title>
+            <Subtitle>
+              {t('fichiers.subtitle')}
+            </Subtitle>
+          </View>
+          <Press
+            accessibilityLabel={t('fichiers.cleanupTitle')}
+            onPress={openCleanup}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              borderRadius: 10,
+              backgroundColor: withAlpha(theme.danger, 0.08),
+            }}
+          >
+            <Ionicons name="sparkles-outline" size={15} color={theme.danger} />
+            <Text style={{ color: theme.danger, fontSize: 12, fontWeight: '700' }}>
+              {t('fichiers.cleanupTitle')}
+            </Text>
+          </Press>
         </View>
 
         {error ? <Banner tone="danger">{error}</Banner> : null}
+
+        {deleteResult ? (
+          <Banner tone={deleteResult.routerCleanupFailed > 0 ? 'warning' : 'success'}>
+            <View style={{ gap: 8 }}>
+              <Text style={{ color: theme.text, fontWeight: '700' }}>
+                {deleteResult.routerCleanupFailed > 0
+                  ? t('fichiers.cleanupDoneWithNotes')
+                  : t('fichiers.cleanupDone')}
+              </Text>
+              <Text style={{ color: theme.text }}>
+                {t('fichiers.cleanupSummaryDeleted', { count: deleteResult.deleted })}
+              </Text>
+              {deleteResult.keptForHistory > 0 ? (
+                <Text style={{ color: theme.text }}>
+                  {t('fichiers.cleanupSummaryHistory', { count: deleteResult.keptForHistory })}
+                </Text>
+              ) : null}
+              {deleteResult.connectedNow > 0 ? (
+                <Text style={{ color: theme.text }}>
+                  {t('fichiers.cleanupSummaryConnected', { count: deleteResult.connectedNow })}
+                </Text>
+              ) : null}
+              {deleteResult.routerCleanupFailed > 0 ? (
+                <Text style={{ color: theme.text }}>
+                  {t('fichiers.cleanupSummaryFailed', { count: deleteResult.routerCleanupFailed })}
+                </Text>
+              ) : null}
+              <Button
+                title={t('fichiers.cleanupDoneButton')}
+                variant="ghost"
+                onPress={() => setDeleteResult(null)}
+              />
+            </View>
+          </Banner>
+        ) : null}
 
         <View style={{ gap: 12 }}>
           {!batchesQuery.data?.length ? (
@@ -272,7 +412,7 @@ export default function FichiersScreen() {
                     </View>
                     <Press
                       accessibilityLabel={t('fichiers.deleteBatch')}
-                      onPress={() => setConfirmBatch(b)}
+                      onPress={() => openDeleteBatch(b)}
                       disabled={busy !== null}
                       style={{
                         width: 34,
@@ -349,7 +489,7 @@ export default function FichiersScreen() {
                         onPress={() => shareCodes([v])}
                       />
                     </View>
-                    {v.status !== 'REVOKED' ? (
+                    {v.status !== 'REVOKED' && v.status !== 'ACTIVE' ? (
                       <View style={{ flex: 1 }}>
                         <Button
                           title={t('common.revoke')}
@@ -358,13 +498,15 @@ export default function FichiersScreen() {
                         />
                       </View>
                     ) : null}
-                    <View style={{ flex: 1 }}>
-                      <Button
-                        title={t('common.delete')}
-                        variant="danger"
-                        onPress={() => setConfirmVoucher(v)}
-                      />
-                    </View>
+                    {v.status !== 'ACTIVE' ? (
+                      <View style={{ flex: 1 }}>
+                        <Button
+                          title={t('common.delete')}
+                          variant="danger"
+                          onPress={() => setConfirmVoucher(v)}
+                        />
+                      </View>
+                    ) : null}
                   </View>
                 </View>
               );
@@ -390,12 +532,48 @@ export default function FichiersScreen() {
         visible={confirmBatch !== null}
         icon="trash-outline"
         title={t('fichiers.deleteBatchTitle')}
-        message={t('fichiers.deleteBatchMessage', { count: confirmBatch?.generated ?? 0 })}
-        confirmLabel={t('common.delete')}
+        message={
+          batchPreviewLoading || !batchPreview
+            ? t('fichiers.deleteBatchAnalyzing')
+            : buildDeletionMessage(t, 'fichiers.deleteBatchMessageEligible', batchPreview)
+        }
+        confirmLabel={
+          batchPreview
+            ? t('fichiers.deleteBatchConfirmLabel', { count: batchPreview.eligible })
+            : t('common.delete')
+        }
         tone="danger"
-        busy={deleteBusy}
+        busy={deleteBusy || batchPreviewLoading}
+        focusCancel
         onConfirm={deleteBatchConfirmed}
-        onCancel={() => setConfirmBatch(null)}
+        onCancel={() => {
+          setConfirmBatch(null);
+          setBatchPreview(null);
+        }}
+      />
+
+      <ConfirmDialog
+        visible={confirmCleanup}
+        icon="sparkles-outline"
+        title={t('fichiers.cleanupConfirmTitle')}
+        message={
+          cleanupPreviewLoading || !cleanupPreview
+            ? t('fichiers.cleanupAnalyzing')
+            : buildDeletionMessage(t, 'fichiers.cleanupMessageEligible', cleanupPreview)
+        }
+        confirmLabel={
+          cleanupPreview
+            ? t('fichiers.cleanupConfirmLabel', { count: cleanupPreview.eligible })
+            : t('common.delete')
+        }
+        tone="danger"
+        busy={cleanupBusy || cleanupPreviewLoading}
+        focusCancel
+        onConfirm={cleanupConfirmed}
+        onCancel={() => {
+          setConfirmCleanup(false);
+          setCleanupPreview(null);
+        }}
       />
     </View>
   );
