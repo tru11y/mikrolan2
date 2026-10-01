@@ -85,15 +85,16 @@ export default function RapportScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const effectivePeriod = filterMode === 'month' ? 'custom' as AnalyticsPeriod : analyticsPeriod;
-  const customFrom = useMemo(() => {
-    if (filterMode !== 'month') return undefined;
-    return `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`;
-  }, [filterMode, selectedMonth, selectedYear]);
-  const customTo = useMemo(() => {
-    if (filterMode !== 'month') return undefined;
-    const last = new Date(selectedYear, selectedMonth + 1, 0);
-    return `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;
-  }, [filterMode, selectedMonth, selectedYear]);
+  // Le backend exige des datetimes ISO (z.string().datetime()) avec `to` exclusif :
+  // [1er du mois 00:00Z, 1er du mois suivant 00:00Z).
+  const customFrom = useMemo(
+    () => (filterMode === 'month' ? new Date(Date.UTC(selectedYear, selectedMonth, 1)).toISOString() : undefined),
+    [filterMode, selectedMonth, selectedYear],
+  );
+  const customTo = useMemo(
+    () => (filterMode === 'month' ? new Date(Date.UTC(selectedYear, selectedMonth + 1, 1)).toISOString() : undefined),
+    [filterMode, selectedMonth, selectedYear],
+  );
 
   const period = METRICS_BY_ANALYTICS[effectivePeriod] ?? '30d';
 
