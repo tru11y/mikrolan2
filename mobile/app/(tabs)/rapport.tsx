@@ -98,11 +98,41 @@ export default function RapportScreen() {
   const period = METRICS_BY_ANALYTICS[effectivePeriod] ?? '30d';
 
   const AP = ANALYTICS_PERIODS.map((p) => ({ value: p.value, label: t(p.key) }));
-  const PERIODS = [
-    { value: 'today' as MetricsPeriod, label: t('rapport.today') },
-    { value: '7d' as MetricsPeriod, label: t('rapport.thisWeek') },
-    { value: '30d' as MetricsPeriod, label: t('rapport.thisMonth') },
-  ];
+  // Le libellé d'export doit refléter ce que l'opérateur a réellement choisi
+  // (fenêtre glissante "30 derniers jours" vs mois calendaire) — jamais dérivé
+  // du bucket backend `MetricsPeriod` ('30d' sert aux deux, ce qui affichait
+  // à tort "Ce mois" pour un export "30 derniers jours").
+  const monthNames = t('rapport.months', { returnObjects: true }) as string[];
+  const exportPeriodLabel =
+    filterMode === 'month'
+      ? `${monthNames[selectedMonth]} ${selectedYear}`
+      : (AP.find((p) => p.value === analyticsPeriod)?.label ?? '');
+
+  const rangeCaption = useMemo(() => {
+    const fmt = (d: Date) =>
+      `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    const today = new Date();
+    const daysBack = (n: number) => new Date(today.getFullYear(), today.getMonth(), today.getDate() - n);
+    if (filterMode === 'month') {
+      return t('rapport.rangeMonth', {
+        from: fmt(new Date(selectedYear, selectedMonth, 1)),
+        to: fmt(new Date(selectedYear, selectedMonth + 1, 0)),
+      });
+    }
+    switch (analyticsPeriod) {
+      case 'last30days':
+        return t('rapport.rangeRolling', { days: 30, from: fmt(daysBack(29)), to: fmt(today) });
+      case 'last7days':
+        return t('rapport.rangeRolling', { days: 7, from: fmt(daysBack(6)), to: fmt(today) });
+      case 'currentMonth':
+        return t('rapport.rangeMonth', {
+          from: fmt(new Date(today.getFullYear(), today.getMonth(), 1)),
+          to: fmt(new Date(today.getFullYear(), today.getMonth() + 1, 0)),
+        });
+      default:
+        return fmt(today);
+    }
+  }, [filterMode, analyticsPeriod, selectedMonth, selectedYear, t]);
 
   const metrics = useQuery({
     queryKey: ['metrics', period, routerId],
@@ -200,8 +230,7 @@ export default function RapportScreen() {
               <Press
                 onPress={() => {
                   if (!data) return;
-                  const periodLabel = PERIODS.find((p) => p.value === period)?.label ?? '';
-                  exportMetricsCsv(data, periodLabel, sessionStats.data).catch((e) =>
+                  exportMetricsCsv(data, exportPeriodLabel, sessionStats.data).catch((e) =>
                     toast.error(describeError(e).message),
                   );
                 }}
@@ -217,8 +246,7 @@ export default function RapportScreen() {
               <Press
                 onPress={() => {
                   if (!data) return;
-                  const periodLabel = PERIODS.find((p) => p.value === period)?.label ?? '';
-                  exportMetricsPdf(data, periodLabel, sessionStats.data, overview.data).catch((e) =>
+                  exportMetricsPdf(data, exportPeriodLabel, sessionStats.data, overview.data).catch((e) =>
                     toast.error(describeError(e).message),
                   );
                 }}
@@ -253,7 +281,7 @@ export default function RapportScreen() {
                     color: filterMode === 'preset' ? theme.primaryText : theme.textMuted,
                     fontSize: 11, fontWeight: '700',
                   }}>
-                    Période
+                    {t('rapport.periodMode')}
                   </Text>
                 </Press>
                 <Press
@@ -312,6 +340,11 @@ export default function RapportScreen() {
                 </Card>
               )}
             </FadeIn>
+
+            <Text style={{ color: theme.textMuted, fontSize: 11, textAlign: 'center' }}>
+              {filterMode === 'month' ? `${monthNames[selectedMonth]} ${selectedYear} · ` : ''}
+              {rangeCaption}
+            </Text>
 
             {/* Hero revenue */}
             <FadeIn delay={50}>
