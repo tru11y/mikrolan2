@@ -1,29 +1,11 @@
 import type { RouterLiveData } from '@/src/lib/api';
 
 /**
- * Source de vérité des identifiants RouterOS d'un routeur d'un tenant payant :
- * le serveur (`Router.credEncrypted`, AES-256-GCM). Le SecureStore local ne sert
- * qu'au chemin LAN direct.
- *
- * Règle de priorité : le local ne remplace JAMAIS un secret serveur existant de
- * façon automatique. Un push automatique (backfill) n'a lieu que si le serveur
- * n'en a pas ; une reconfiguration reste une action explicite de l'opérateur.
+ * Source de vérité des identifiants RouterOS d'un tenant payant : le serveur
+ * (`Router.credEncrypted`, exposé via `hasCredentials`). Le SecureStore local ne
+ * sert qu'au LAN. Le backfill local → serveur n'a lieu que si `hasCredentials ===
+ * false` (écran Routeur) : jamais d'écrasement automatique d'un secret existant.
  */
-export type CredentialSyncDecision =
-  | 'synced' // le serveur a les identifiants
-  | 'backfill' // serveur sans identifiants + local présent → push sûr
-  | 'missing' // ni serveur ni local : à saisir
-  | 'local-only'; // tenant gratuit : le local est voulu (jamais envoyé)
-
-export function decideCredentialSync(input: {
-  isPaid: boolean;
-  hasServerCreds: boolean;
-  hasLocalCreds: boolean;
-}): CredentialSyncDecision {
-  if (!input.isPaid) return 'local-only';
-  if (input.hasServerCreds) return 'synced';
-  return input.hasLocalCreds ? 'backfill' : 'missing';
-}
 
 export type LiveHealthState = 'fresh' | 'stale' | 'none';
 export type LiveFailureKind = 'creds-invalid' | 'creds-missing' | 'tunnel' | 'other' | null;
