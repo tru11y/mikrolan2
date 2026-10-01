@@ -74,7 +74,9 @@ export class RoutersController {
     return this.routers.updateTicketTemplate(id, dto);
   }
 
+  // Restauration LAN d'un ADMIN : secret en clair, donc ADMIN+ uniquement, tenant explicite, lecture auditée.
   @Get(':id/credentials')
+  @Roles(UserRole.ADMIN)
   getCredentials(@Param('id', ParseUUIDPipe) id: string) {
     return this.routers.getCredentials(id);
   }

@@ -212,17 +212,33 @@ export class RoutersService {
     return this.findOne(id);
   }
 
+  /**
+   * Secret en clair destiné à la restauration LAN d'un ADMIN (voir contrôleur).
+   * Tenant filtré explicitement (le middleware Prisma est contourné pour SUPER_ADMIN).
+   * Chaque lecture réussie est auditée ; l'audit ne contient jamais le secret.
+   * Routeur sans identifiants → `null` (état normal, pas une erreur).
+   */
   async getCredentials(id: string) {
-    const router = await this.prisma.router.findFirst({
-      where: { id, deletedAt: null },
-      select: { id: true, credEncrypted: true, localAddress: true },
-    });
+    const tenantId = getTenantContext()?.tenantId;
+    const router = tenantId
+      ? await this.prisma.router.findFirst({
+          where: { id, tenantId, deletedAt: null },
+          select: { id: true, credEncrypted: true, localAddress: true },
+        })
+      : null;
     if (!router) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.ROUTER_NOT_FOUND, 'Routeur introuvable.');
     if (!router.credEncrypted) return null;
     const creds = JSON.parse(this.crypto.decrypt(router.credEncrypted)) as {
       username: string;
       password: string;
     };
+    await this.eventLog.emit({
+      action: AuditAction.DOWNLOAD,
+      entityType: 'Router',
+      entityId: id,
+      outcome: 'SUCCESS',
+      metadata: { purpose: 'lan-credentials-restore' },
+    });
     return {
       username: creds.username,
       password: creds.password,
