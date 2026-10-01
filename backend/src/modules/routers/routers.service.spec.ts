@@ -9,6 +9,7 @@ import { ManagementMode, Prisma } from '@prisma/client';
 import { UserRole } from '@prisma/client';
 import { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { getTenantContext } from '../../common/context/tenant-context';
 import { RoutersService } from './routers.service';
 import { RoutersController } from './routers.controller';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -316,6 +317,17 @@ describe('GET /routers/:id/credentials — restauration LAN (ADMIN)', () => {
     prisma.router.findFirst.mockResolvedValue(null);
 
     await expect(service.getCredentials('foreign')).rejects.toMatchObject({ status: 404 });
+    expect(crypto.decrypt).not.toHaveBeenCalled();
+    expect(eventLog.emit).not.toHaveBeenCalled();
+  });
+
+  it('SUPER_ADMIN sans tenant → 404, aucune lecture ni déchiffrement ni audit', async () => {
+    (getTenantContext as jest.Mock).mockReturnValueOnce({ tenantId: undefined, userId: 'sa', role: 'SUPER_ADMIN' });
+    const { service, prisma, crypto, eventLog } = makeService();
+    prisma.router.findFirst.mockResolvedValue({ id: 'r1', credEncrypted: 'blob', localAddress: null });
+
+    await expect(service.getCredentials('r1')).rejects.toMatchObject({ status: 404 });
+    expect(prisma.router.findFirst).not.toHaveBeenCalled();
     expect(crypto.decrypt).not.toHaveBeenCalled();
     expect(eventLog.emit).not.toHaveBeenCalled();
   });
