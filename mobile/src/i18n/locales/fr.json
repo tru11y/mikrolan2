@@ -118,6 +118,7 @@
     "welcomeUser": "Bienvenue, {{name}}",
     "profile": "Profil",
     "revenueToday": "Revenu du jour",
+    "routersOnlineOffline": "{{online}} en ligne · {{offline}} hors ligne",
     "ticketsSold": "{{count}} tickets vendus",
     "activeSessions": "{{count}} sessions actives",
     "myRouters": "Mes routeurs",

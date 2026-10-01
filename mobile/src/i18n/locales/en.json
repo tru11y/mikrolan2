@@ -118,6 +118,7 @@
     "welcomeUser": "Welcome, {{name}}",
     "profile": "Profile",
     "revenueToday": "Today's revenue",
+    "routersOnlineOffline": "{{online}} online · {{offline}} offline",
     "ticketsSold": "{{count}} tickets sold",
     "activeSessions": "{{count}} active sessions",
     "myRouters": "My routers",
