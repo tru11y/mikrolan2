@@ -1,6 +1,6 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
 import { useState } from 'react';
-import { ScrollView, Share, Text, View } from 'react-native';
+import { FlatList, Share, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -105,6 +105,13 @@ function ActionButton({
   );
 }
 
+// Tickets montés à la fois : chaque TicketCard coûte ~25 vues + un QR SVG (~1 Mo natif).
+const VOUCHERS_PAGE = 20;
+
+function VoucherSeparator() {
+  return <View style={{ height: 12 }} />;
+}
+
 export default function FichiersScreen() {
   const theme = useTheme();
   const { t } = useTranslation();
@@ -112,6 +119,7 @@ export default function FichiersScreen() {
   const qc = useQueryClient();
   const navHeight = useBottomNavHeight();
   const [error, setError] = useState<string | null>(null);
+  const [shownCount, setShownCount] = useState(VOUCHERS_PAGE);
   const [busy, setBusy] = useState<BatchAction>(null);
   const [confirmVoucher, setConfirmVoucher] = useState<VoucherItem | null>(null);
   const [confirmBatch, setConfirmBatch] = useState<VoucherBatch | null>(null);
@@ -144,6 +152,8 @@ export default function FichiersScreen() {
     queryFn: () => api.routers.listVouchers(routerId),
     enabled: Boolean(routerId),
   });
+
+  const vouchers = vouchersQuery.data ?? [];
 
   function buildPdfOpts(batch: VoucherBatch, codes: { code: string }[]) {
     const plan = plansQuery.data?.find((p) => p.id === batch.planId);
@@ -299,7 +309,19 @@ export default function FichiersScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
       <AppHeader title={t('fichiers.screenTitle')} back />
-      <ScrollView contentContainerStyle={{ gap: 16, padding: 16, paddingBottom: navHeight }}>
+      <FlatList
+        data={vouchers.slice(0, shownCount)}
+        keyExtractor={(v) => v.id}
+        contentContainerStyle={{ padding: 16, paddingBottom: navHeight }}
+        ItemSeparatorComponent={VoucherSeparator}
+        // Liste virtualisée : seuls les tickets proches de l'écran sont montés
+        // (chaque TicketCard = ~25 vues + un QR SVG ; 331 tickets montés d'un coup
+        // = ~12 000 vues / ~800 Mo → OOM).
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        windowSize={5}
+        ListHeaderComponent={
+          <View style={{ gap: 16, paddingBottom: 16 }}>
         <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}>
           <View style={{ flex: 1 }}>
             <Title>{t('fichiers.titleFull')}</Title>
@@ -463,16 +485,28 @@ export default function FichiersScreen() {
         <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
           {t('fichiers.existingCodes')}
         </Text>
-        {vouchersQuery.isLoading ? (
-          <Text style={{ color: theme.textMuted, fontSize: 13 }}>Chargement…</Text>
-        ) : !vouchersQuery.data?.length ? (
-          <Empty icon="key-outline" text={t('fichiers.noCode')} />
-        ) : (
-          <View style={{ gap: 12 }}>
-            {vouchersQuery.data.map((v) => {
+            {vouchersQuery.isLoading ? (
+              <Text style={{ color: theme.textMuted, fontSize: 13 }}>Chargement…</Text>
+            ) : !vouchersQuery.data?.length ? (
+              <Empty icon="key-outline" text={t('fichiers.noCode')} />
+            ) : null}
+          </View>
+        }
+        ListFooterComponent={
+          vouchers.length > shownCount ? (
+            <View style={{ paddingTop: 16 }}>
+              <Button
+                title={t('fichiers.showMore', { count: vouchers.length - shownCount })}
+                variant="ghost"
+                onPress={() => setShownCount((c) => c + VOUCHERS_PAGE)}
+              />
+            </View>
+          ) : null
+        }
+        renderItem={({ item: v }) => {
               const plan = plansQuery.data?.find((p) => p.id === v.planId);
               return (
-                <View key={v.id} style={{ gap: 8 }}>
+                <View style={{ gap: 8 }}>
                   <TicketCard
                     code={v.code}
                     planName={plan?.name ?? ''}
@@ -510,10 +544,8 @@ export default function FichiersScreen() {
                   </View>
                 </View>
               );
-            })}
-          </View>
-        )}
-      </ScrollView>
+        }}
+      />
       <BottomNav active="fichiers" />
 
       <ConfirmDialog

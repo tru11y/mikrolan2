@@ -893,6 +893,7 @@
     "printBatch": "Imprimer le lot",
     "deleteBatch": "Supprimer le lot",
     "existingCodes": "Codes existants",
+    "showMore": "Afficher plus ({{count}} restants)",
     "noCode": "Aucun code pour ce routeur.",
     "deleteTicketTitle": "Supprimer ce ticket ?",
     "deleteTicketMessage": "Le code {{code}} sera supprimé définitivement — impossible à annuler.",
