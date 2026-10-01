@@ -1,4 +1,5 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
+import axios from 'axios';
 import { useState } from 'react';
 import { ScrollView, Share, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -9,11 +10,10 @@ import { useTranslation } from 'react-i18next';
 import { describeError } from '@/src/lib/errors';
 import { getLocalCredentials } from '@/src/lib/router-credentials';
 import { PartialPushError, pushVouchersLan } from '@/src/services/mikrotik-lan/hotspotLan';
-import { swallow } from '@/src/lib/report';
+import { reportSilent, swallow } from '@/src/lib/report';
 import { TicketCard } from '@/src/components/TicketCard';
-import { printTickets } from '@/src/lib/ticketsPdf';
+import { printTickets, printTicketsDirect } from '@/src/lib/ticketsPdf';
 import {
-  Badge,
   Banner,
   Button,
   ErrorState,
@@ -23,7 +23,7 @@ import {
   useToast,
   withAlpha,
 } from '@/src/components/ui';
-import { useTheme } from '@/src/providers/theme-provider';
+import { useTheme, type ThemeColors } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
@@ -53,6 +53,147 @@ function fmtDuration(min: number): string {
 }
 
 type OutputFormat = 'screen' | 'pdf';
+type TFn = (key: string, opts?: Record<string, unknown>) => string;
+
+function Row({
+  label,
+  value,
+  theme,
+  emphasis,
+}: {
+  label: string;
+  value: string;
+  theme: ThemeColors;
+  emphasis?: boolean;
+}) {
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+      <Text style={{ color: theme.textMuted, fontSize: emphasis ? 13 : 12 }}>{label}</Text>
+      <Text
+        style={{
+          color: emphasis ? theme.success : theme.text,
+          fontSize: emphasis ? 15 : 13,
+          fontWeight: emphasis ? '800' : '600',
+        }}
+      >
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+/**
+ * Résumé compact post-génération : pas de dizaines/centaines de TicketCard
+ * affichées d'office (ça surcharge l'écran pour un lot de 100) — juste le
+ * verdict, la valeur du lot, et les actions immédiates. Le détail des tickets
+ * reste un tap volontaire ("Voir").
+ */
+function BatchResult({
+  theme,
+  t,
+  outcome,
+  batchSeq,
+  plan,
+  quantity,
+  pushed,
+  total,
+  failureMessage,
+  showTickets,
+  onToggleTickets,
+  onPrintPdf,
+  onPrintDirect,
+  onShare,
+  onNewBatch,
+  printBusy,
+  printDirectBusy,
+}: {
+  theme: ThemeColors;
+  t: TFn;
+  outcome: 'SUCCESS' | 'PARTIAL_SUCCESS' | 'FAILED';
+  batchSeq: number | null;
+  plan: Plan | null;
+  quantity: number;
+  pushed: number;
+  total: number;
+  failureMessage: string | null;
+  showTickets: boolean;
+  onToggleTickets: () => void;
+  onPrintPdf: () => void;
+  onPrintDirect: () => void;
+  onShare: () => void;
+  onNewBatch: () => void;
+  printBusy: boolean;
+  printDirectBusy: boolean;
+}) {
+  const failed = outcome === 'FAILED';
+  const partial = outcome === 'PARTIAL_SUCCESS';
+  const tone = failed ? 'danger' : partial ? 'warning' : 'success';
+  const title = failed
+    ? t('tickets.failedTitle')
+    : partial
+      ? t('tickets.partialTitle', { pushed, total, failed: total - pushed })
+      : t('tickets.completedTitle', { count: quantity });
+
+  return (
+    <Banner tone={tone}>
+      <View style={{ gap: 10 }}>
+        <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>{title}</Text>
+        {failed && failureMessage ? (
+          <Text style={{ color: theme.textMuted, fontSize: 12 }}>{failureMessage}</Text>
+        ) : null}
+        {!failed ? (
+          <View style={{ gap: 4 }}>
+            {batchSeq != null ? (
+              <Row label={t('tickets.batchLabel', { seq: batchSeq })} value="" theme={theme} />
+            ) : null}
+            <Row label={t('tickets.wifiPlan')} value={plan?.name ?? ''} theme={theme} />
+            <Row label={t('tickets.quantity')} value={String(quantity)} theme={theme} />
+            <Row
+              label={t('tickets.totalValue')}
+              value={`${((plan?.priceXof ?? 0) * quantity).toLocaleString('fr-FR')} FCFA`}
+              theme={theme}
+              emphasis
+            />
+          </View>
+        ) : null}
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {failed ? (
+            <View style={{ flex: 1 }}>
+              <Button title={t('tickets.newBatch')} onPress={onNewBatch} />
+            </View>
+          ) : (
+            <>
+              <View style={{ flex: 1, minWidth: '30%' }}>
+                <Button
+                  title={showTickets ? t('tickets.hideTickets') : t('tickets.viewTickets')}
+                  variant="ghost"
+                  onPress={onToggleTickets}
+                />
+              </View>
+              <View style={{ flex: 1, minWidth: '30%' }}>
+                <Button title={t('tickets.pdfFile')} variant="ghost" onPress={onPrintPdf} loading={printBusy} />
+              </View>
+              <View style={{ flex: 1, minWidth: '30%' }}>
+                <Button title={t('common.share')} variant="ghost" onPress={onShare} />
+              </View>
+              <View style={{ flex: 1, minWidth: '30%' }}>
+                <Button
+                  title={t('tickets.printDirect')}
+                  variant="ghost"
+                  onPress={onPrintDirect}
+                  loading={printDirectBusy}
+                />
+              </View>
+              <View style={{ flex: 1, minWidth: '30%' }}>
+                <Button title={t('tickets.newBatch')} onPress={onNewBatch} />
+              </View>
+            </>
+          )}
+        </View>
+      </View>
+    </Banner>
+  );
+}
 
 export default function GenerateVouchersScreen() {
   const theme = useTheme();
@@ -81,10 +222,16 @@ export default function GenerateVouchersScreen() {
   const [justGenerated, setJustGenerated] = useState<VoucherItem[] | null>(null);
   const [lastBatchSeq, setLastBatchSeq] = useState<number | null>(null);
   const [printBusy, setPrintBusy] = useState(false);
+  const [printDirectBusy, setPrintDirectBusy] = useState(false);
+  const [showTickets, setShowTickets] = useState(false);
   type GenOutcome = 'SUCCESS' | 'PARTIAL_SUCCESS' | 'FAILED';
   const [lastOutcome, setLastOutcome] = useState<GenOutcome | null>(null);
+  const [lastPushed, setLastPushed] = useState(0);
+  const [lastTotal, setLastTotal] = useState(0);
+  const [lastFailureMessage, setLastFailureMessage] = useState<string | null>(null);
 
   const selectedPlan = plansQuery.data?.find((p) => p.id === planId) ?? null;
+  const totalValueXof = (selectedPlan?.priceXof ?? 0) * quantity;
 
   async function printBatch(codes: VoucherItem[], plan: Plan) {
     setPrintBusy(true);
@@ -100,9 +247,31 @@ export default function GenerateVouchersScreen() {
         batchSeq: lastBatchSeq ?? undefined,
       });
     } catch (e) {
+      reportSilent('generate-vouchers.print-batch', e, { routerId });
       toast.error(describeError(e).message);
     } finally {
       setPrintBusy(false);
+    }
+  }
+
+  async function printDirect(codes: VoucherItem[], plan: Plan) {
+    setPrintDirectBusy(true);
+    try {
+      const r = routerQuery.data;
+      await printTicketsDirect({
+        routerName: r?.alias || r?.identity || 'WiFi',
+        planName: plan.name,
+        durationMinutes: plan.durationMinutes,
+        priceXof: plan.priceXof,
+        tickets: codes.map((v) => ({ code: v.code })),
+        template: r?.ticketTemplate,
+        batchSeq: lastBatchSeq ?? undefined,
+      });
+    } catch (e) {
+      reportSilent('generate-vouchers.print-direct', e, { routerId });
+      toast.error(describeError(e).message);
+    } finally {
+      setPrintDirectBusy(false);
     }
   }
 
@@ -117,6 +286,8 @@ export default function GenerateVouchersScreen() {
     }
     setBusy(true);
     setLastOutcome(null);
+    setLastFailureMessage(null);
+    setShowTickets(false);
     let res: GenerateResult | null = null;
     try {
       res = await api.routers.generateVouchers(routerId, {
@@ -124,8 +295,9 @@ export default function GenerateVouchersScreen() {
         quantity,
       });
     } catch (e) {
+      reportSilent('generate-vouchers.generate', e, { routerId, planId, quantity });
       setLastOutcome('FAILED');
-      toast.error(describeError(e).message);
+      setLastFailureMessage(describeError(e).message);
       setBusy(false);
       return;
     }
@@ -166,7 +338,7 @@ export default function GenerateVouchersScreen() {
         }
       } catch (e) {
         const described = describeError(e);
-        failureMessage = described.message;
+        failureMessage = axios.isAxiosError(e) ? described.message : t('tickets.lanPushFailed');
         if (e instanceof PartialPushError) {
           pushedCount = e.pushed.length;
           await api.routers
@@ -182,32 +354,34 @@ export default function GenerateVouchersScreen() {
     }
 
     setLastOutcome(outcome);
+    setLastPushed(pushedCount);
+    setLastTotal(res.totalCount);
+    setLastFailureMessage(failureMessage);
     setJustGenerated(res.vouchers);
     await qc.invalidateQueries({ queryKey: ['vouchers', routerId] });
     await qc.invalidateQueries({ queryKey: ['batches', routerId] });
 
-    if (outcome === 'SUCCESS') {
-      toast.success(t('tickets.generated', { count: res.vouchers.length }));
-    } else if (outcome === 'PARTIAL_SUCCESS') {
-      toast.show(
-        t('tickets.generatedPartialDetail', {
-          pushed: pushedCount,
-          total: res.totalCount,
-        }),
-        'info',
-      );
-    } else {
-      toast.error(failureMessage ?? t('tickets.generatedFailed'));
-    }
-    if (outputFormat === 'pdf' && selectedPlan) {
+    if (outputFormat === 'pdf' && selectedPlan && res.vouchers.length) {
       await printBatch(res.vouchers, selectedPlan);
     }
     setBusy(false);
   }
 
+  function newBatch() {
+    setJustGenerated(null);
+    setLastOutcome(null);
+    setLastFailureMessage(null);
+    setShowTickets(false);
+  }
+
   async function shareCodes(codes: VoucherItem[]) {
-    const text = codes.map((v) => v.code).join('\n');
-    await Share.share({ message: `${t('tickets.wifiCodes')}\n${text}` });
+    try {
+      const text = codes.map((v) => v.code).join('\n');
+      await Share.share({ message: `${t('tickets.wifiCodes')}\n${text}` });
+    } catch (e) {
+      reportSilent('generate-vouchers.share', e, { routerId });
+      toast.error(describeError(e).message);
+    }
   }
 
   const r = routerQuery.data;
@@ -564,14 +738,15 @@ export default function GenerateVouchersScreen() {
                 <Ionicons name="add" size={20} color={theme.text} />
               </Press>
             </View>
-            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
-              {[10, 25, 50, 100].map((n) => (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+              {[1, 5, 10, 20, 50, 100].map((n) => (
                 <Press
                   key={n}
                   accessibilityLabel={`${n} tickets`}
                   onPress={() => setQuantity(n)}
                   style={{
-                    flex: 1,
+                    flexBasis: '30%',
+                    flexGrow: 1,
                     borderWidth: 1,
                     borderColor: quantity === n ? theme.primary : theme.border,
                     backgroundColor:
@@ -595,33 +770,74 @@ export default function GenerateVouchersScreen() {
             </View>
           </View>
 
+          {selectedPlan ? (
+            <View
+              style={{
+                backgroundColor: theme.surfaceAlt,
+                borderRadius: 12,
+                padding: 14,
+                gap: 8,
+              }}
+            >
+              <Text style={{ color: theme.textMuted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase' }}>
+                {t('tickets.summaryTitle')}
+              </Text>
+              <Row label={t('tickets.hotspotServer')} value={r ? r.alias || r.identity : '—'} theme={theme} />
+              <Row label={t('tickets.wifiPlan')} value={selectedPlan.name} theme={theme} />
+              <Row
+                label={t('tickets.unitPrice')}
+                value={`${selectedPlan.priceXof.toLocaleString('fr-FR')} FCFA`}
+                theme={theme}
+              />
+              <Row label={t('tickets.quantity')} value={String(quantity)} theme={theme} />
+              <View
+                style={{
+                  height: 1,
+                  backgroundColor: theme.border,
+                  marginVertical: 2,
+                }}
+              />
+              <Row
+                label={t('tickets.totalValue')}
+                value={`${totalValueXof.toLocaleString('fr-FR')} FCFA`}
+                theme={theme}
+                emphasis
+              />
+            </View>
+          ) : null}
+
           <Button
             title={t('tickets.createButton', { count: quantity })}
             onPress={generate}
             loading={busy}
+            disabled={!selectedPlan}
           />
         </View>
 
-        {justGenerated?.length ? (
+        {lastOutcome ? (
+          <BatchResult
+            theme={theme}
+            t={t}
+            outcome={lastOutcome}
+            batchSeq={lastBatchSeq}
+            plan={selectedPlan}
+            quantity={lastOutcome === 'PARTIAL_SUCCESS' ? lastPushed : (justGenerated?.length ?? quantity)}
+            pushed={lastPushed}
+            total={lastTotal}
+            failureMessage={lastFailureMessage}
+            showTickets={showTickets}
+            onToggleTickets={() => setShowTickets((v) => !v)}
+            onPrintPdf={() => justGenerated && selectedPlan && printBatch(justGenerated, selectedPlan)}
+            onPrintDirect={() => justGenerated && selectedPlan && printDirect(justGenerated, selectedPlan)}
+            onShare={() => justGenerated && shareCodes(justGenerated)}
+            onNewBatch={newBatch}
+            printBusy={printBusy}
+            printDirectBusy={printDirectBusy}
+          />
+        ) : null}
+
+        {showTickets && justGenerated?.length ? (
           <View style={{ gap: 12 }}>
-            <View
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>
-                {t('tickets.generated', { count: justGenerated.length })}
-              </Text>
-              <Badge
-                label={lastOutcome === 'PARTIAL_SUCCESS' ? t('tickets.partialBadge') : t('tickets.new')}
-                tone={lastOutcome === 'PARTIAL_SUCCESS' ? 'warning' : 'success'}
-              />
-            </View>
-            {lastOutcome === 'PARTIAL_SUCCESS' ? (
-              <Banner tone="warning">{t('tickets.partialMessage')}</Banner>
-            ) : null}
             {justGenerated.map((v, i) => (
               <TicketCard
                 key={v.id}
@@ -635,16 +851,6 @@ export default function GenerateVouchersScreen() {
                 createdAt={new Date(v.createdAt)}
               />
             ))}
-            <Button
-              title={t('tickets.printPdf')}
-              onPress={() => selectedPlan && printBatch(justGenerated, selectedPlan)}
-              loading={printBusy}
-            />
-            <Button
-              title={t('tickets.shareAllCodes')}
-              variant="ghost"
-              onPress={() => shareCodes(justGenerated)}
-            />
           </View>
         ) : null}
       </ScrollView>

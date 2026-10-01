@@ -8,8 +8,11 @@ import { useTranslation } from 'react-i18next';
 import { api, extractErrorMessage, type LiveSession } from '@/src/lib/api';
 import { getLocalCredentials, saveLocalCredentials, parseAddress } from '@/src/lib/router-credentials';
 import { useSseLive } from '@/src/providers/live-events-provider';
+import { reportSilent } from '@/src/lib/report';
+import { useRouterLive } from '@/src/hooks/use-router-live';
 import { reportLanSessions } from '@/src/lib/sessionSync';
 import { getWifiInfo, sameSubnet24 } from '@/src/lib/lanBinder';
+import { fmtDurationHMS, parseRouterOsUptime } from '@/src/lib/format';
 import {
   listActiveLan,
   terminateActiveLan,
@@ -17,6 +20,7 @@ import {
 import {
   Banner,
   Card,
+  ConfirmDialog,
   Empty,
   FadeIn,
   Mono,
@@ -86,19 +90,7 @@ function fmtBytes(v: string): string {
   return `${(n / 1024 ** 3).toFixed(2)} Go`;
 }
 
-function parseUptime(uptime: string | null): number {
-  if (!uptime) return 0;
-  let total = 0;
-  const d = uptime.match(/(\d+)d/);
-  const h = uptime.match(/(\d+)h/);
-  const m = uptime.match(/(\d+)m/);
-  const s = uptime.match(/(\d+)s/);
-  if (d) total += parseInt(d[1]) * 86400;
-  if (h) total += parseInt(h[1]) * 3600;
-  if (m) total += parseInt(m[1]) * 60;
-  if (s) total += parseInt(s[1]);
-  return total;
-}
+const parseUptime = parseRouterOsUptime;
 
 function DataBar({ value, max, color }: { value: number; max: number; color: string }) {
   const theme = useTheme();
@@ -120,22 +112,40 @@ export default function SessionsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState<SortKey>('data');
+  const [confirmTarget, setConfirmTarget] = useState<LiveSession | null>(null);
+  const [terminating, setTerminating] = useState(false);
+
+  // REMOTE (pas sur le Wi-Fi du routeur) : source unique mutualisée, partagée
+  // avec l'écran Routeur (même queryKey `['router-live', id]`) — plus de
+  // polling indépendant à 15 s ici, `useRouterLive` gère SSE + repli 30 s.
+  const [remoteMode, setRemoteMode] = useState(false);
+  const live = useRouterLive(routerId, Boolean(routerId) && remoteMode);
 
   const query = useQuery({
     queryKey: ['sessions', routerId],
     enabled: Boolean(routerId),
-    refetchInterval: sseLive ? 30_000 : POLL_MS,
+    // La détection LAN elle-même reste vérifiée à cette cadence (lecture Wi-Fi
+    // locale, aucun réseau) pour ne pas casser la bascule REMOTE→LAN en cours
+    // d'écran ; seule la lecture RouterOS répétée en REMOTE est supprimée.
+    refetchInterval: remoteMode ? POLL_MS : sseLive ? 30_000 : POLL_MS,
     placeholderData: keepPreviousData,
     queryFn: async (): Promise<LiveSession[]> => {
       const creds = await lanCredentials(routerId);
       if (creds) {
+        setRemoteMode(false);
         const active = await listActiveLan(creds);
         void reportLanSessions(routerId, active);
         return active;
       }
-      return api.routers.listSessions(routerId);
+      setRemoteMode(true);
+      return [];
     },
   });
+
+  const sessions = remoteMode ? (live.data?.sessions ?? []) : (query.data ?? []);
+  const sessionsLoading = remoteMode ? live.isLoading : query.isLoading;
+  const sessionsError = remoteMode ? live.isError : query.isError;
+  const sessionsErrorObj: unknown = remoteMode ? live.error : query.error;
 
   const localCredsPresentQuery = useQuery({
     queryKey: ['router-local-creds', routerId],
@@ -155,13 +165,14 @@ export default function SessionsScreen() {
           qc.invalidateQueries({ queryKey: ['router-local-creds', routerId] });
         }
       } catch (err) {
-        console.warn('Failed to sync credentials from server:', err);
+        reportSilent('sessions.sync-credentials', err, { routerId });
       }
     })();
   }, [routerId, localCredsPresentQuery.isSuccess, localCredsPresentQuery.data, qc]);
 
   async function terminate(mikrotikId: string) {
     setError(null);
+    setTerminating(true);
     try {
       const creds = await lanCredentials(routerId);
       if (creds) {
@@ -170,12 +181,14 @@ export default function SessionsScreen() {
         await api.routers.terminateSession(routerId, mikrotikId);
       }
       await qc.invalidateQueries({ queryKey: ['sessions', routerId] });
+      await qc.invalidateQueries({ queryKey: ['router-live', routerId] });
+      setConfirmTarget(null);
     } catch (e) {
       setError(extractErrorMessage(e));
+    } finally {
+      setTerminating(false);
     }
   }
-
-  const sessions = query.data ?? [];
 
   const stats = useMemo(() => {
     let totalIn = 0, totalOut = 0, totalUptime = 0;
@@ -362,10 +375,10 @@ export default function SessionsScreen() {
         </FadeIn>
 
         {error ? <Banner tone="danger">{error}</Banner> : null}
-        {query.isError ? <Banner tone="warning">{extractErrorMessage(query.error)}</Banner> : null}
+        {sessionsError ? <Banner tone="warning">{extractErrorMessage(sessionsErrorObj)}</Banner> : null}
         {unreliableEmpty ? <Banner tone="warning">{t('sessions.unreliableWarning')}</Banner> : null}
 
-        {query.isLoading ? (
+        {sessionsLoading ? (
           <Text style={{ color: theme.textMuted, fontSize: type.body, textAlign: 'center', paddingVertical: space.xl }}>{t('sessions.readingRouter')}</Text>
         ) : !filtered.length ? (
           <Empty icon="people-outline" text={t('sessions.noSession')} />
@@ -415,12 +428,14 @@ export default function SessionsScreen() {
                       <Row style={{ gap: 8 }}>
                         {s.uptime ? (
                           <View style={{ backgroundColor: withAlpha(theme.warning, 0.1), borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 }}>
-                            <Mono style={{ color: theme.warning, fontSize: 10, fontWeight: '700' }}>{s.uptime}</Mono>
+                            <Mono style={{ color: theme.warning, fontSize: 10, fontWeight: '700' }}>
+                              {fmtDurationHMS(parseRouterOsUptime(s.uptime))}
+                            </Mono>
                           </View>
                         ) : null}
                         <Press
                           accessibilityLabel={t('sessions.disconnect')}
-                          onPress={() => terminate(s.id)}
+                          onPress={() => setConfirmTarget(s)}
                           hitSlop={3}
                           style={{
                             width: 32,
@@ -465,6 +480,30 @@ export default function SessionsScreen() {
           </View>
         )}
       </ScrollView>
+      <ConfirmDialog
+        visible={confirmTarget != null}
+        icon="power"
+        tone="danger"
+        title={t('sessions.terminateConfirmTitle')}
+        message={
+          confirmTarget
+            ? [
+                t('sessions.terminateConfirmTicket', { ticket: confirmTarget.user || '—' }),
+                t('sessions.terminateConfirmSince', {
+                  duration: fmtDurationHMS(parseRouterOsUptime(confirmTarget.uptime)),
+                }),
+                '',
+                t('sessions.terminateConfirmBody'),
+              ].join('\n')
+            : ''
+        }
+        confirmLabel={t('sessions.disconnect')}
+        cancelLabel={t('common.cancel')}
+        focusCancel
+        busy={terminating}
+        onConfirm={() => confirmTarget && terminate(confirmTarget.id)}
+        onCancel={() => setConfirmTarget(null)}
+      />
       <BottomNav active="index" />
     </View>
   );

@@ -250,7 +250,7 @@ export default function MaisonScreen() {
     try {
       await api.auth.dismissCountryReminder();
       me.refetch();
-    } catch (err) { console.warn('Dismiss country reminder failed:', err); }
+    } catch (err) { reportSilent('index.dismiss-country-reminder', err); }
   }
 
   function refreshAll() {
@@ -414,7 +414,7 @@ export default function MaisonScreen() {
         )}
         {metricsState === 'ready' ? (
           <Text style={{ color: theme.primaryText, opacity: 0.8, fontSize: type.caption, marginTop: space.xs }}>
-            {t('home.ticketsSold', { count: metrics.data?.ticketsGenerated ?? 0 })} ·{' '}
+            {t('home.ticketsSold', { count: metrics.data?.ticketsUsed ?? 0 })} ·{' '}
             {t('home.activeSessions', { count: metrics.data?.activeSessions ?? 0 })}
           </Text>
         ) : null}
@@ -449,6 +449,12 @@ export default function MaisonScreen() {
             </Text>
           </Press>
         </Row>
+
+        {routersState === 'ready' && list.length > 0 ? (
+          <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
+            {t('home.routersOnlineOffline', { online, offline: list.length - online })}
+          </Text>
+        ) : null}
 
         {routersState === 'loading' ? (
           <View style={{ gap: space.sm }}>

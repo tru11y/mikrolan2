@@ -15,6 +15,8 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
+  findNodeHandle,
+  InteractionManager,
   Modal,
   Platform,
   Pressable,
@@ -1250,6 +1252,7 @@ export function ConfirmDialog({
   tone = 'danger',
   busy,
   banner,
+  focusCancel,
   onConfirm,
   onCancel,
 }: {
@@ -1262,6 +1265,8 @@ export function ConfirmDialog({
   tone?: 'danger' | 'primary';
   busy?: boolean;
   banner?: { tone: 'success' | 'danger'; text: string } | null;
+  /** Pose le focus d'accessibilité (lecteur d'écran) sur Annuler à l'ouverture. */
+  focusCancel?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -1269,6 +1274,17 @@ export function ConfirmDialog({
   const s = useStyles();
   const accent = tone === 'danger' ? t.danger : t.primary;
   const done = banner?.tone === 'success';
+  const cancelRef = useRef<View>(null);
+
+  useEffect(() => {
+    if (!visible || !focusCancel) return;
+    const handle = InteractionManager.runAfterInteractions(() => {
+      const node = cancelRef.current && findNodeHandle(cancelRef.current);
+      if (node) AccessibilityInfo.setAccessibilityFocus(node);
+    });
+    return () => handle.cancel();
+  }, [visible, focusCancel]);
+
   return (
     <Modal
       visible={visible}
@@ -1285,7 +1301,7 @@ export function ConfirmDialog({
           </View>
           {banner ? <Banner tone={banner.tone}>{banner.text}</Banner> : null}
           <Row style={{ gap: space.sm, width: '100%' }}>
-            <Pressable onPress={onCancel} style={s.dialogCancel}>
+            <Pressable ref={cancelRef} onPress={onCancel} style={s.dialogCancel}>
               <Text style={s.dialogCancelText}>
                 {done ? 'Fermer' : cancelLabel}
               </Text>

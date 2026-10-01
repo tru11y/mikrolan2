@@ -20,6 +20,7 @@ import {
 } from '@/src/services/mikrotik-lan/MikroTikApiClient';
 import { scanLan } from '@/src/services/mikrotik-lan/lanScan';
 import { saveLocalCredentials } from '@/src/lib/router-credentials';
+import { useAuth } from '@/src/providers/auth-provider';
 import {
   Banner,
   Button,
@@ -60,6 +61,7 @@ function dedupeIdentity(base: string, taken: Set<string>): string {
 }
 
 export default function AddRouterScreen() {
+  const { isPro } = useAuth();
   const theme = useTheme();
   const { t } = useTranslation();
   const router = useRouter();
@@ -148,6 +150,9 @@ export default function AddRouterScreen() {
         alias: alias.trim() || undefined,
         localAddress: `${address.trim()}:${portNum}`,
         mode: 'LOCAL',
+        // Tenant payant : identifiants chiffrés côté serveur dès la création
+        // (source durable, indépendante du téléphone). Gratuit : local uniquement.
+        ...(isPro && address.trim() && password ? { credentials: { username, password } } : {}),
       });
       if (address.trim() && password) {
         await saveLocalCredentials(created.id, {

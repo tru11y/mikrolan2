@@ -1,3 +1,4 @@
+import { memo, useCallback, useMemo } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, type Href } from 'expo-router';
@@ -85,7 +86,7 @@ function routerTabs(routerId: string): Tab[] {
 // Adapts app-wide based on whether a router is currently selected (see
 // ActiveRouterProvider) — global mode vs router-connected mode, mirroring
 // the MikroTicket reference's dual navigation.
-export function BottomNav({ active }: { active?: string }) {
+export const BottomNav = memo(function BottomNav({ active }: { active?: string }) {
   const theme = useTheme();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -98,7 +99,12 @@ export function BottomNav({ active }: { active?: string }) {
     enabled: Boolean(activeRouterId),
   });
 
-  const tabs = activeRouterId ? routerTabs(activeRouterId) : GLOBAL_TABS;
+  const tabs = useMemo(
+    () => (activeRouterId ? routerTabs(activeRouterId) : GLOBAL_TABS),
+    [activeRouterId],
+  );
+
+  const navigateTo = useCallback((href: Href) => router.navigate(href), [router]);
 
   async function exitRouterMode() {
     await clearActiveRouter();
@@ -159,7 +165,7 @@ export function BottomNav({ active }: { active?: string }) {
             <Pressable
               key={tab.key}
               accessibilityLabel={label}
-              onPress={() => router.navigate(tab.href)}
+              onPress={() => navigateTo(tab.href)}
               style={{ flex: 1, alignItems: 'center', gap: 2, paddingVertical: 0 }}
             >
               <Ionicons
@@ -183,4 +189,4 @@ export function BottomNav({ active }: { active?: string }) {
       </View>
     </View>
   );
-}
+});

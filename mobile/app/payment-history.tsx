@@ -113,6 +113,9 @@ export default function PaymentHistoryScreen() {
         contentContainerStyle={{ padding: 16, paddingTop: 0 }}
         refreshing={isLoading}
         onRefresh={refetch}
+        initialNumToRender={15}
+        maxToRenderPerBatch={15}
+        windowSize={7}
         ListEmptyComponent={
           !isLoading ? (
             <View style={{ alignItems: 'center', paddingTop: 60 }}>

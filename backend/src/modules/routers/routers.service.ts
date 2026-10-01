@@ -15,8 +15,9 @@ import { WireGuardService } from '../../common/wireguard/wireguard.service';
 import { ClientEventDto, CreateRouterDto, UpdateRouterDto } from './dto/router.schemas';
 import { TicketTemplateDto } from './dto/ticket-template.schemas';
 
-// Never expose credEncrypted to the API.
+// credEncrypted n'est jamais renvoyé : `toPublic` le remplace par `hasCredentials`.
 const ROUTER_PUBLIC = {
+  credEncrypted: true,
   id: true,
   identity: true,
   alias: true,
@@ -33,6 +34,13 @@ const ROUTER_PUBLIC = {
   createdAt: true,
   updatedAt: true,
 } satisfies Prisma.RouterSelect;
+
+type RouterRow = Prisma.RouterGetPayload<{ select: typeof ROUTER_PUBLIC }>;
+
+function toPublic(row: RouterRow) {
+  const { credEncrypted, ...rest } = row;
+  return { ...rest, hasCredentials: Boolean(credEncrypted) };
+}
 
 @Injectable()
 export class RoutersService {
@@ -118,7 +126,7 @@ export class RoutersService {
         } as Prisma.RouterCreateInput,
         select: ROUTER_PUBLIC,
       });
-      return created;
+      return toPublic(created);
     } catch (e) {
       if (
         e instanceof Prisma.PrismaClientKnownRequestError &&
@@ -130,12 +138,13 @@ export class RoutersService {
     }
   }
 
-  findAll() {
-    return this.prisma.router.findMany({
+  async findAll() {
+    const rows = await this.prisma.router.findMany({
       where: { deletedAt: null },
       select: ROUTER_PUBLIC,
       orderBy: { createdAt: 'desc' },
     });
+    return rows.map(toPublic);
   }
 
   /** Trace d'une action faite par l'app directement sur le LAN (invisible du serveur). */
@@ -170,7 +179,7 @@ export class RoutersService {
       select: ROUTER_PUBLIC,
     });
     if (!router) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.ROUTER_NOT_FOUND, 'Routeur introuvable — il a peut-être été supprimé.');
-    return router;
+    return toPublic(router);
   }
 
   async update(id: string, dto: UpdateRouterDto) {
@@ -203,17 +212,33 @@ export class RoutersService {
     return this.findOne(id);
   }
 
+  /**
+   * Secret en clair destiné à la restauration LAN d'un ADMIN (voir contrôleur).
+   * Tenant filtré explicitement (le middleware Prisma est contourné pour SUPER_ADMIN).
+   * Chaque lecture réussie est auditée ; l'audit ne contient jamais le secret.
+   * Routeur sans identifiants → `null` (état normal, pas une erreur).
+   */
   async getCredentials(id: string) {
-    const router = await this.prisma.router.findFirst({
-      where: { id, deletedAt: null },
-      select: { id: true, credEncrypted: true, localAddress: true },
-    });
+    const tenantId = getTenantContext()?.tenantId;
+    const router = tenantId
+      ? await this.prisma.router.findFirst({
+          where: { id, tenantId, deletedAt: null },
+          select: { id: true, credEncrypted: true, localAddress: true },
+        })
+      : null;
     if (!router) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.ROUTER_NOT_FOUND, 'Routeur introuvable.');
     if (!router.credEncrypted) return null;
     const creds = JSON.parse(this.crypto.decrypt(router.credEncrypted)) as {
       username: string;
       password: string;
     };
+    await this.eventLog.emit({
+      action: AuditAction.DOWNLOAD,
+      entityType: 'Router',
+      entityId: id,
+      outcome: 'SUCCESS',
+      metadata: { purpose: 'lan-credentials-restore' },
+    });
     return {
       username: creds.username,
       password: creds.password,

@@ -8,6 +8,10 @@ export function reportSilent(scope: string, err: unknown, data?: Record<string, 
   const message = err instanceof Error ? err.message : String(err);
   if (__DEV__) console.warn(`[${scope}] ${message}`);
   Sentry.addBreadcrumb({ category: scope, level: 'warning', message, data });
+  Sentry.captureException(err instanceof Error ? err : new Error(message), {
+    level: 'warning',
+    extra: { scope, ...data },
+  });
 }
 
 /** `.catch()` handler that reports the failure instead of dropping it. */

@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { api, extractErrorMessage } from '@/src/lib/api';
+import { reportSilent } from '@/src/lib/report';
 import {
   Banner,
   Button,
@@ -85,6 +86,7 @@ export default function ForgotPasswordScreen() {
       await api.auth.requestPasswordReset(email.trim().toLowerCase());
       setStep('confirm');
     } catch (e) {
+      reportSilent('forgot-password.request-code', e);
       setError(extractErrorMessage(e));
     } finally {
       setBusy(false);
@@ -102,6 +104,7 @@ export default function ForgotPasswordScreen() {
       );
       setDone(true);
     } catch (e) {
+      reportSilent('forgot-password.confirm-reset', e);
       setError(extractErrorMessage(e));
     } finally {
       setBusy(false);

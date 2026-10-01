@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -19,7 +20,7 @@ export const HEADER_HEIGHT = 56;
  * `title` names the screen. When a router is selected its name and real state
  * show underneath, so the router context is never lost.
  */
-export function AppHeader({ title, back }: { title: string; back?: boolean }) {
+export const AppHeader = memo(function AppHeader({ title, back }: { title: string; back?: boolean }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const router = useRouter();
@@ -183,4 +184,4 @@ export function AppHeader({ title, back }: { title: string; back?: boolean }) {
       </View>
     </View>
   );
-}
+});

@@ -127,6 +127,8 @@ export type RouterItem = {
   lastHeartbeat: string | null;
   ticketTemplate: TicketTemplate | null;
   pushNotifications: boolean;
+  /** Le serveur détient des identifiants RouterOS chiffrés (jamais le secret). */
+  hasCredentials?: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -643,6 +645,26 @@ export type VoucherBatch = {
   plan: { name: string; priceXof: number };
 };
 
+export type BatchDeletionPreview = {
+  batchId: string | null;
+  total: number;
+  /** Jamais utilisés ou déjà annulés — seront supprimés. */
+  eligible: number;
+  /** Déjà vendus (revenu compté) mais sans client connecté — conservés. */
+  keptForHistory: number;
+  /** Déjà vendus ET un client est connecté maintenant — conservés. */
+  connectedNow: number;
+};
+
+export type BulkDeletionResult = {
+  analyzed: number;
+  deleted: number;
+  protectedActive: number;
+  keptForHistory: number;
+  connectedNow: number;
+  routerCleanupFailed: number;
+};
+
 export type LiveSession = {
   id: string; // RouterOS .id
   user: string;
@@ -651,6 +673,30 @@ export type LiveSession = {
   bytesIn: string;
   bytesOut: string;
   uptime: string | null;
+};
+
+/**
+ * Snapshot mutualisé servi par RouterGateway (`GET /routers/:id/remote/live`,
+ * P0 Realtime Router Phase 1 — backend figé). `sessions` n'est présent que si
+ * cet appel (ou un appel concurrent réchauffant le même cache) a demandé
+ * `want=sessions`/`both` ; sinon `null`, jamais un tableau vide trompeur.
+ */
+export type RouterLiveData = {
+  routerId: string;
+  lastSuccessAt: number;
+  health: 'ONLINE' | 'OFFLINE' | 'UNKNOWN';
+  cpuPercent: number | null;
+  memoryUsedMb: number | null;
+  memoryTotalMb: number | null;
+  uptime: string | null;
+  rosVersion: string | null;
+  boardName: string | null;
+  sessionCount: number | null;
+  sessions: LiveSession[] | null;
+  ageMs: number;
+  stale: boolean;
+  refreshing: boolean;
+  lastError: string | null;
 };
 
 // RouterOS push params returned for LOCAL routers so the app pushes over the LAN.
@@ -1018,6 +1064,17 @@ export const api = {
       );
       return unwrap(res);
     },
+    /**
+     * Source unique pour un routeur REMOTE (CPU/RAM/uptime/sessionCount, et la
+     * liste des sessions si `want` la demande) : mutualisée côté serveur
+     * (RouterGateway), jamais une connexion RouterOS indépendante par écran.
+     */
+    async remoteLive(id: string, want?: 'stats' | 'sessions' | 'both'): Promise<RouterLiveData> {
+      const res = await apiClient.get<ApiEnvelope<RouterLiveData>>(
+        `/routers/${id}/remote/live${want ? `?want=${want}` : ''}`,
+      );
+      return unwrap(res);
+    },
     async remoteSystemResource(id: string): Promise<Record<string, string>> {
       const res = await apiClient.get<ApiEnvelope<Record<string, string>>>(
         `/routers/${id}/remote/system-resource`,
@@ -1232,11 +1289,34 @@ export const api = {
       );
       return unwrap(res);
     },
-    // Suppression définitive — pas de corbeille, le ticket/lot disparaît
-    // partout (DB + hotspot RouterOS si joignable), sans limite de statut.
-    async deleteBatch(id: string, batchId: string): Promise<{ deleted: boolean }> {
-      const res = await apiClient.delete<ApiEnvelope<{ deleted: boolean }>>(
+    // Répartition par statut d'un lot, à afficher avant confirmation de
+    // suppression — { total, eligible, keptForHistory, connectedNow }.
+    async previewBatchDeletion(id: string, batchId: string): Promise<BatchDeletionPreview> {
+      const res = await apiClient.get<ApiEnvelope<BatchDeletionPreview>>(
+        `/routers/${id}/vouchers/batches/${batchId}/deletion-preview`,
+      );
+      return unwrap(res);
+    },
+    // Suppression définitive des tickets éligibles du lot (DB + hotspot
+    // RouterOS si joignable). Les tickets ACTIVE (client connecté) sont
+    // toujours conservés par le backend, quel que soit ce que la preview
+    // annonçait — voir voucher.service.ts.
+    async deleteBatch(id: string, batchId: string): Promise<BulkDeletionResult> {
+      const res = await apiClient.delete<ApiEnvelope<BulkDeletionResult>>(
         `/routers/${id}/vouchers/batches/${batchId}`,
+      );
+      return unwrap(res);
+    },
+    // Même chose, mais pour "Nettoyer les tickets" à l'échelle du routeur.
+    async previewCleanup(id: string): Promise<Omit<BatchDeletionPreview, 'batchId'>> {
+      const res = await apiClient.get<ApiEnvelope<Omit<BatchDeletionPreview, 'batchId'>>>(
+        `/routers/${id}/vouchers/cleanup-preview`,
+      );
+      return unwrap(res);
+    },
+    async cleanupVouchers(id: string): Promise<BulkDeletionResult> {
+      const res = await apiClient.delete<ApiEnvelope<BulkDeletionResult>>(
+        `/routers/${id}/vouchers/cleanup`,
       );
       return unwrap(res);
     },

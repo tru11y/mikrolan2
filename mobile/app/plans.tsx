@@ -22,7 +22,6 @@ import {
 import { useTranslation } from 'react-i18next';
 import { describeError, type FieldErrors } from '@/src/lib/errors';
 import {
-  Badge,
   Button,
   Card,
   ConfirmDialog,
@@ -32,7 +31,6 @@ import {
   Field,
   FieldError,
   Label,
-  Mono,
   NumberField,
   Press,
   Row,
@@ -41,88 +39,15 @@ import {
   Subtitle,
   Title,
   space,
-  type as typeScale,
   weight,
   useToast,
-  withAlpha,
 } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
-
-/**
- * Bornes du code imprimé sur le ticket.
- *
- * En dessous de 7 caractères un code se devine par force brute depuis le
- * portail captif ; au-delà de 12 le client se trompe en le recopiant. Le
- * serveur accepte encore 4 (schéma historique) — c'est l'app qui refuse.
- */
-const CODE_LENGTH_MIN = 7;
-const CODE_LENGTH_MAX = 12;
-
-function fmtDuration(min: number): string {
-  if (min % 1440 === 0) return `${min / 1440}j`;
-  if (min % 60 === 0) return `${min / 60}h`;
-  return `${min}min`;
-}
-
-// Mêmes alphabets que le générateur serveur (voucher.service.ts) : sans I, O,
-// 0 et 1 en alphanumérique, qui se confondent à l'impression thermique.
-const SAMPLE_ALPHANUMERIC = 'K7F9QXZ3M2VBTRN4';
-const SAMPLE_NUMERIC = '9831720465198327';
-
-/** Aperçu du code tel qu'il sortira, à la longueur et au préfixe choisis. */
-function sampleCode(
-  format: PlanCodeFormat,
-  prefix: string,
-  length: string,
-): string {
-  const n = Math.min(
-    CODE_LENGTH_MAX,
-    Math.max(CODE_LENGTH_MIN, Number.parseInt(length, 10) || CODE_LENGTH_MIN),
-  );
-  const pool = format === 'NUMERIC' ? SAMPLE_NUMERIC : SAMPLE_ALPHANUMERIC;
-  return prefix.trim() + pool.slice(0, n);
-}
-
-function speedLabel(p: Plan): string {
-  const up = p.uploadKbps ? Math.round(p.uploadKbps / 1000) : null;
-  const down = p.downloadKbps ? Math.round(p.downloadKbps / 1000) : null;
-  if (up && down) return `${up}M/${down}M`;
-  if (down) return `${down}M`;
-  return 'Illimité';
-}
-
-function Chip({
-  icon,
-  color,
-  label,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  color: string;
-  label: string;
-}) {
-  const theme = useTheme();
-  return (
-    <View
-      style={{
-        flex: 1,
-        backgroundColor: theme.surfaceAlt,
-        borderRadius: 12,
-        paddingVertical: 8,
-        paddingHorizontal: 8,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 5,
-      }}
-    >
-      <Ionicons name={icon} size={13} color={color} />
-      <Text style={{ color: theme.textMuted, fontSize: 11 }} numberOfLines={1}>
-        {label}
-      </Text>
-    </View>
-  );
-}
+import { PlanListItem } from '@/src/components/plans/PlanListItem';
+import { DeviceProfileCard } from '@/src/components/plans/DeviceProfileCard';
+import { CODE_LENGTH_MAX, CODE_LENGTH_MIN, sampleCode } from '@/src/components/plans/shared';
 
 export default function PlansScreen() {
   const theme = useTheme();
@@ -669,133 +594,16 @@ export default function PlansScreen() {
           <View style={{ gap: 12 }}>
             {query.data.map((p: Plan, index: number) => (
               <FadeIn key={p.id} delay={index * 55}>
-              <Card style={{ gap: 12 }}>
-                <Row style={{ alignItems: 'flex-start' }}>
-                  <Row style={{ gap: 12, flex: 1, justifyContent: 'flex-start' }}>
-                    <View
-                      style={{
-                        width: 46,
-                        height: 46,
-                        borderRadius: 14,
-                        backgroundColor: withAlpha(theme.primary, 0.13),
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Ionicons name="ticket-outline" size={22} color={theme.primary} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Row style={{ justifyContent: 'flex-start', gap: 8 }}>
-                        <Text style={{ color: theme.text, fontWeight: '700', fontSize: 15 }}>
-                          {p.name}
-                        </Text>
-                        <Badge
-                          label={`${p.priceXof.toLocaleString('fr-FR')} FCFA`}
-                          tone="success"
-                        />
-                      </Row>
-                      <Row style={{ justifyContent: 'flex-start', gap: 6, marginTop: 3 }}>
-                        <Ionicons name="time-outline" size={13} color={theme.textMuted} />
-                        <Text style={{ color: theme.textMuted, fontSize: 12 }}>
-                          {fmtDuration(p.durationMinutes)}
-                        </Text>
-                        <Text style={{ color: theme.textMuted, fontSize: 12 }}>•</Text>
-                        <Text style={{ color: theme.textMuted, fontSize: 12 }}>
-                          {p.expirationMode === 'RADIO_PAUSE' ? t('plans.radioPause') : t('plans.elapsed')}
-                        </Text>
-                      </Row>
-                      {p.description ? (
-                        <Text
-                          style={{ color: theme.textMuted, fontSize: 11.5, marginTop: 2 }}
-                          numberOfLines={1}
-                        >
-                          {p.description}
-                        </Text>
-                      ) : null}
-                    </View>
-                  </Row>
-                  <Press
-                    accessibilityLabel={t('plans.planOptions')}
-                    onPress={() => setMenuFor(menuFor === p.id ? null : p.id)}
-                    hitSlop={8}
-                    scaleTo={0.85}
-                    style={{ padding: 4 }}
-                  >
-                    <Ionicons name="ellipsis-vertical" size={18} color={theme.textMuted} />
-                  </Press>
-                </Row>
-
-                {menuFor === p.id ? (
-                  <FadeIn from={-6} style={{ gap: 8 }}>
-                    <Press
-                      accessibilityLabel={t('plans.editThisPlan')}
-                      onPress={() => startEdit(p)}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 8,
-                        paddingVertical: 10,
-                        paddingHorizontal: 12,
-                        borderRadius: 12,
-                        backgroundColor: withAlpha(theme.primary, 0.09),
-                      }}
-                    >
-                      <Ionicons name="create-outline" size={16} color={theme.primary} />
-                      <Text style={{ color: theme.primary, fontWeight: '600', fontSize: 13 }}>
-                        {t('plans.editThisPlan')}
-                      </Text>
-                    </Press>
-                    <Press
-                      accessibilityLabel={t('plans.deleteThisPlan')}
-                      onPress={() => {
-                        setMenuFor(null);
-                        remove(p.id);
-                      }}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 8,
-                        paddingVertical: 10,
-                        paddingHorizontal: 12,
-                        borderRadius: 12,
-                        backgroundColor: withAlpha(theme.danger, 0.09),
-                      }}
-                    >
-                      <Ionicons name="trash-outline" size={16} color={theme.danger} />
-                      <Text style={{ color: theme.danger, fontWeight: '600', fontSize: 13 }}>
-                        {t('plans.deleteThisPlan')}
-                      </Text>
-                    </Press>
-                  </FadeIn>
-                ) : null}
-
-                <Row
-                  style={{
-                    gap: 8,
-                    paddingTop: 12,
-                    borderTopWidth: 1,
-                    borderTopColor: theme.border,
+                <PlanListItem
+                  plan={p}
+                  menuOpen={menuFor === p.id}
+                  onToggleMenu={() => setMenuFor(menuFor === p.id ? null : p.id)}
+                  onEdit={() => startEdit(p)}
+                  onDelete={() => {
+                    setMenuFor(null);
+                    remove(p.id);
                   }}
-                >
-                  {/* Attributs techniques : gris. La couleur est réservée au
-                      prix (vert) et au statut — pas à la décoration. */}
-                  <Chip
-                    icon="flash-outline"
-                    color={theme.textMuted}
-                    label={speedLabel(p)}
-                  />
-                  <Chip
-                    icon="people-outline"
-                    color={theme.textMuted}
-                    label={`${p.sharedUsers} user${p.sharedUsers > 1 ? 's' : ''}`}
-                  />
-                  <Chip
-                    icon="key-outline"
-                    color={theme.textMuted}
-                    label={`${p.codeLength} car.`}
-                  />
-                </Row>
-              </Card>
+                />
               </FadeIn>
             ))}
           </View>
@@ -804,120 +612,20 @@ export default function PlansScreen() {
           <View style={{ gap: 12 }}>
             <Subtitle>{t('plans.deviceProfiles')}</Subtitle>
             {unmanagedProfiles.map((p) => (
-              <Card key={p.id} style={{ gap: 8 }}>
-                <Row style={{ alignItems: 'center' }}>
-                  <Row style={{ gap: 10, flex: 1, justifyContent: 'flex-start' }}>
-                    <View
-                      style={{
-                        width: 38,
-                        height: 38,
-                        borderRadius: 12,
-                        backgroundColor: withAlpha(theme.primaryMuted, 0.13),
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                    >
-                      <Ionicons name="server-outline" size={18} color={theme.primaryMuted} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ color: theme.text, fontWeight: '600', fontSize: 14 }}>
-                        {p.name}
-                      </Text>
-                      <Row style={{ justifyContent: 'flex-start', gap: 8, marginTop: 2 }}>
-                        <Text style={{ color: theme.textMuted, fontSize: 11 }}>
-                          {p.sharedUsers} user{p.sharedUsers > 1 ? 's' : ''}
-                        </Text>
-                        {p.rateLimit ? (
-                          <Text style={{ color: theme.textMuted, fontSize: 11 }}>
-                            {p.rateLimit}
-                          </Text>
-                        ) : null}
-                      </Row>
-                    </View>
-                  </Row>
-                  <Badge label={t('plans.routerBadge')} tone="secondary" />
-                </Row>
-
-                {deviceEditing?.id === p.id ? (
-                  <FadeIn from={-6} style={{ gap: 10 }}>
-                    <Row style={{ gap: 12, alignItems: 'flex-start' }}>
-                      <View style={{ flex: 1 }}>
-                        <NumberField
-                          label={t('plans.usersMax')}
-                          value={deviceUsers}
-                          onChangeValue={setDeviceUsers}
-                          min={1}
-                          max={1000}
-                        />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Field
-                          label={t('plans.rateLabel')}
-                          value={deviceRate}
-                          onChangeText={setDeviceRate}
-                          placeholder={t('plans.ratePlaceholder')}
-                          autoCapitalize="none"
-                        />
-                      </View>
-                    </Row>
-                    <Row style={{ gap: 8 }}>
-                      <View style={{ flex: 1 }}>
-                        <Button
-                          title={t('common.cancel')}
-                          variant="ghost"
-                          onPress={() => setDeviceEditing(null)}
-                        />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Button
-                          title={t('common.save')}
-                          onPress={saveDeviceProfile}
-                          loading={deviceBusy}
-                        />
-                      </View>
-                    </Row>
-                  </FadeIn>
-                ) : (
-                  <Row style={{ gap: 8, justifyContent: 'flex-end' }}>
-                    <Press
-                      accessibilityLabel={`${t('common.modify')} ${p.name}`}
-                      onPress={() => startEditDevice(p)}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 6,
-                        paddingVertical: 8,
-                        paddingHorizontal: 12,
-                        borderRadius: 10,
-                        backgroundColor: withAlpha(theme.primary, 0.09),
-                      }}
-                    >
-                      <Ionicons name="create-outline" size={15} color={theme.primary} />
-                      <Text style={{ color: theme.primary, fontWeight: '600', fontSize: 12 }}>
-                        {t('common.modify')}
-                      </Text>
-                    </Press>
-                    <Press
-                      accessibilityLabel={`${t('common.delete')} ${p.name}`}
-                      onPress={() => setDeviceRemoving(p)}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        gap: 6,
-                        paddingVertical: 8,
-                        paddingHorizontal: 12,
-                        borderRadius: 10,
-                        backgroundColor: withAlpha(theme.danger, 0.09),
-                      }}
-                    >
-                      <Ionicons name="trash-outline" size={15} color={theme.danger} />
-                      <Text style={{ color: theme.danger, fontWeight: '600', fontSize: 12 }}>
-                        {t('common.delete')}
-                      </Text>
-                    </Press>
-                  </Row>
-                )}
-              </Card>
+              <DeviceProfileCard
+                key={p.id}
+                profile={p}
+                editing={deviceEditing?.id === p.id}
+                users={deviceUsers}
+                rate={deviceRate}
+                busy={deviceBusy}
+                onStartEdit={() => startEditDevice(p)}
+                onCancelEdit={() => setDeviceEditing(null)}
+                onChangeUsers={setDeviceUsers}
+                onChangeRate={setDeviceRate}
+                onSave={saveDeviceProfile}
+                onRemove={() => setDeviceRemoving(p)}
+              />
             ))}
           </View>
         ) : null}

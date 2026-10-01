@@ -2,6 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import type { MetricsSummary, SessionStats } from './api';
 import { buildMetricsCsvRows, rowsToCsv } from './metricsCsvRows';
+import { reportSilent } from './report';
 
 // Builds a CSV of the sales report (revenue + per-plan breakdown) and hands it
 // to the OS share sheet — the "Exporter CSV" action of the Rapport screen.
@@ -14,16 +15,21 @@ export async function exportMetricsCsv(
   periodLabel: string,
   sessionStats?: SessionStats,
 ): Promise<void> {
-  const csv = rowsToCsv(buildMetricsCsvRows(data, periodLabel, sessionStats));
+  try {
+    const csv = rowsToCsv(buildMetricsCsvRows(data, periodLabel, sessionStats));
 
-  const uri = `${FileSystem.cacheDirectory}rapport-ventes.csv`;
-  await FileSystem.writeAsStringAsync(uri, csv, {
-    encoding: FileSystem.EncodingType.UTF8,
-  });
-  if (await Sharing.isAvailableAsync()) {
-    await Sharing.shareAsync(uri, {
-      mimeType: 'text/csv',
-      dialogTitle: 'Exporter le rapport CSV',
+    const uri = `${FileSystem.cacheDirectory}rapport-ventes.csv`;
+    await FileSystem.writeAsStringAsync(uri, csv, {
+      encoding: FileSystem.EncodingType.UTF8,
     });
+    if (await Sharing.isAvailableAsync()) {
+      await Sharing.shareAsync(uri, {
+        mimeType: 'text/csv',
+        dialogTitle: 'Exporter le rapport CSV',
+      });
+    }
+  } catch (err) {
+    reportSilent('metricsCsv.export', err, { periodLabel });
+    throw err;
   }
 }

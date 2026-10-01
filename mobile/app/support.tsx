@@ -216,6 +216,9 @@ function TicketDetail({
               paddingBottom: space.xxl,
             }}
             inverted={false}
+            initialNumToRender={15}
+            maxToRenderPerBatch={15}
+            windowSize={7}
           />
           {ticket?.status !== 'CLOSED' ? (
             <View
@@ -412,6 +415,9 @@ export default function SupportScreen() {
           gap: space.md,
           paddingBottom: navHeight,
         }}
+        initialNumToRender={15}
+        maxToRenderPerBatch={15}
+        windowSize={7}
         ListHeaderComponent={
           <FadeIn>
             <Row style={{ justifyContent: 'space-between', marginBottom: space.md }}>

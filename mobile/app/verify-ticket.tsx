@@ -5,7 +5,9 @@ import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { api, type VoucherVerificationResult } from '@/src/lib/api';
+import { reportSilent } from '@/src/lib/report';
 import { describeError } from '@/src/lib/errors';
+import { fmtDateFull, fmtDurationHMS } from '@/src/lib/format';
 import {
   Button,
   Card,
@@ -34,14 +36,14 @@ type Verdict = {
 };
 
 
+/** Durée totale d'un plan, en HH:MM:SS (au-delà de 24h si besoin). */
 function fmtDuration(min: number): string {
-  if (min % 1440 === 0) return `${min / 1440} j`;
-  if (min % 60 === 0) return `${min / 60} h`;
-  return `${min} min`;
+  return fmtDurationHMS(min * 60);
 }
 
+/** JJ/MM/AAAA HH:MM:SS, format unique pour toutes les dates de cet écran. */
 function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleString('fr-FR');
+  return fmtDateFull(iso);
 }
 
 function fmtBytes(raw: string): string {
@@ -157,6 +159,7 @@ export default function VerifyTicketScreen() {
           result: null as never,
         });
       } else {
+        reportSilent('verify-ticket.verify', e, { routerId });
         setError(described.message);
       }
     } finally {
@@ -292,6 +295,7 @@ export default function VerifyTicketScreen() {
                 }}
               >
                 <InfoRow label={t('verifyTicket.code')} value={r.code} />
+                <InfoRow label={t('verifyTicket.state')} value={t(`verifyTicket.voucherStatus.${r.status}`)} />
                 <InfoRow label={t('verifyTicket.plan')} value={r.planName} />
                 <InfoRow label={t('tickets.duration', { duration: fmtDuration(r.durationMinutes) })} value={fmtDuration(r.durationMinutes)} />
                 <InfoRow
@@ -304,7 +308,7 @@ export default function VerifyTicketScreen() {
                   <InfoRow label={t('verifyTicket.source')} value={t('verifyTicket.sourceLegacy')} color={theme.warning} />
                 ) : null}
                 {r.deliveredAt ? (
-                  <InfoRow label={t('verifyTicket.deliveredAt')} value={fmtDate(r.deliveredAt)} />
+                  <InfoRow label={t('verifyTicket.createdAt')} value={fmtDate(r.deliveredAt)} />
                 ) : null}
                 {r.activatedAt ? (
                   <InfoRow label={t('verifyTicket.firstConnection')} value={fmtDate(r.activatedAt)} />
@@ -312,6 +316,20 @@ export default function VerifyTicketScreen() {
                 {r.expiresAt ? (
                   <InfoRow label={t('verifyTicket.expiresAt')} value={fmtDate(r.expiresAt)} />
                 ) : null}
+                {r.activatedAt ? (
+                  <InfoRow
+                    label={t('verifyTicket.consumedDuration')}
+                    value={fmtDurationHMS(
+                      (new Date(s?.terminatedAt ?? Date.now()).getTime() -
+                        new Date(r.activatedAt).getTime()) /
+                        1000,
+                    )}
+                  />
+                ) : null}
+                <InfoRow
+                  label={t('verifyTicket.totalDuration')}
+                  value={fmtDurationHMS(r.durationMinutes * 60)}
+                />
               </View>
             ) : null}
 

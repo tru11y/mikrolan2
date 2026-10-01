@@ -12,6 +12,7 @@ import {
   Prisma,
   RemotePeerStatus,
   EventOutcome,
+  SessionStatus,
   VoucherBatchStatus,
   VoucherStatus,
 } from '@prisma/client';
@@ -41,6 +42,31 @@ type CodeFormatOptions = {
   codeLength: number;
   codeFormat: 'ALPHANUMERIC' | 'NUMERIC';
 };
+
+export interface BatchDeletionPreview {
+  batchId: string | null;
+  total: number;
+  /** Jamais utilisés (GENERATED) ou déjà annulés (REVOKED) — supprimables. */
+  eligible: number;
+  /**
+   * Déjà activés (ACTIVE) mais sans Session ouverte en ce moment — conservés
+   * pour ne jamais perdre de revenu déjà comptabilisé, pas parce qu'un client
+   * est connecté.
+   */
+  keptForHistory: number;
+  /** ACTIVE avec une Session actuellement ouverte — client connecté maintenant. */
+  connectedNow: number;
+}
+
+export interface BulkDeletionResult {
+  analyzed: number;
+  deleted: number;
+  /** = keptForHistory + connectedNow ci-dessous. */
+  protectedActive: number;
+  keptForHistory: number;
+  connectedNow: number;
+  routerCleanupFailed: number;
+}
 
 const VOUCHER_PUBLIC = {
   id: true,
@@ -515,6 +541,22 @@ export class VoucherService {
       throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.VOUCHER_ALREADY_REVOKED, 'Voucher déjà révoqué');
     }
 
+    // Verrou logique atomique sur le statut : même mécanisme que la promotion
+    // GENERATED→ACTIVE (sessions.service.ts). Si le client vient de se
+    // connecter, ce UPDATE conditionnel ne touche aucune ligne (count 0) et
+    // on refuse plutôt que de révoquer un ticket utilisé.
+    const claim = await this.prisma.voucher.updateMany({
+      where: { id, status: { not: VoucherStatus.ACTIVE } },
+      data: { status: VoucherStatus.REVOKED, revokedAt: new Date() },
+    });
+    if (claim.count === 0) {
+      throw new BusinessException(
+        HttpStatus.CONFLICT,
+        ErrorCode.VOUCHER_ACTIVE_PROTECTED,
+        'Ce ticket a déjà été activé — révocation refusée (un ticket déjà utilisé ne peut plus être annulé).',
+      );
+    }
+
     // Remove from the router only over the tunnel (REMOTE). For LOCAL routers the
     // client removes it over the LAN; DB state stays authoritative regardless.
     let routerWarning: Prisma.InputJsonObject | null = null;
@@ -534,19 +576,17 @@ export class VoucherService {
       }
     }
 
-    await this.prisma.voucher.updateMany({
-      where: { id },
-      data: { status: VoucherStatus.REVOKED, revokedAt: new Date() },
-    });
     if (routerWarning) await this.eventLog.warning(AuditAction.REVOKE, 'Voucher', id, { routerId: voucher.routerId, ...routerWarning });
     else await this.eventLog.success(AuditAction.REVOKE, 'Voucher', id, { routerId: voucher.routerId });
     return { revoked: true };
   }
 
   /**
-   * Permanent delete — any status (GENERATED/ACTIVE/USED/EXPIRED/REVOKED).
-   * Best-effort removal from the router itself (same pattern as revoke()),
-   * then the DB row and its Session go away for good.
+   * Permanent delete — GENERATED/REVOKED uniquement. Un voucher ACTIVE n'est
+   * jamais supprimé, qu'un client soit connecté ou non : son revenu est déjà
+   * compté dans les rapports (voir revenue.service.ts), le supprimer
+   * détruirait cet historique. Voir le verrou logique ci-dessous, identique
+   * à celui de revoke().
    */
   async remove(id: string) {
     const voucher = await this.prisma.voucher.findFirst({
@@ -559,6 +599,28 @@ export class VoucherService {
       },
     });
     if (!voucher) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.VOUCHER_NOT_FOUND, 'Ticket introuvable.');
+
+    // Le UPDATE conditionnel réclame la ligne de façon atomique avant toute
+    // suppression : si le statut est passé à ACTIVE entre-temps (client qui
+    // vient de se connecter), `claim.count` vaut 0 et rien n'est jamais
+    // supprimé — ni la Session, ni le Voucher, ni l'utilisateur RouterOS.
+    const deleted = await this.prisma.$transaction(async (tx) => {
+      const claim = await tx.voucher.updateMany({
+        where: { id, status: { not: VoucherStatus.ACTIVE } },
+        data: { status: VoucherStatus.REVOKED, revokedAt: new Date() },
+      });
+      if (claim.count === 0) return false;
+      await tx.session.deleteMany({ where: { voucherId: id } });
+      await tx.voucher.delete({ where: { id } });
+      return true;
+    });
+    if (!deleted) {
+      throw new BusinessException(
+        HttpStatus.CONFLICT,
+        ErrorCode.VOUCHER_ACTIVE_PROTECTED,
+        'Ce ticket a déjà été activé — suppression refusée (conservé pour l\'historique des ventes, ou en cours d\'utilisation).',
+      );
+    }
 
     let routerWarning: Prisma.InputJsonObject | null = null;
     if (voucher.mikrotikId && voucher.router.mode === ManagementMode.REMOTE) {
@@ -576,31 +638,173 @@ export class VoucherService {
         routerWarning = { ...describeFailure(err), errorCode: ErrorCode.VOUCHER_DELETE_ROUTER_UNREACHABLE };
       }
     }
-
-    await this.prisma.$transaction(async (tx) => {
-      await tx.session.deleteMany({ where: { voucherId: id } });
-      await tx.voucher.delete({ where: { id } });
-    });
     if (routerWarning) await this.eventLog.warning(AuditAction.DELETE, 'Voucher', id, { routerId: voucher.routerId, ...routerWarning });
     else await this.eventLog.success(AuditAction.DELETE, 'Voucher', id, { routerId: voucher.routerId });
     return { deleted: true };
   }
 
-  /** Permanent delete of a batch and every voucher (+ session) it contains. */
-  async removeBatch(batchId: string) {
+  /**
+   * Répartition par statut d'un lot, calculée avant toute suppression — sert
+   * à afficher trois compteurs distincts avant que l'opérateur confirme :
+   * "X seront supprimés / Y déjà vendus conservés (historique) / Z clients
+   * connectés maintenant, protégés".
+   */
+  async previewBatchDeletion(batchId: string): Promise<BatchDeletionPreview> {
+    const batch = await this.prisma.voucherBatch.findFirst({ where: { id: batchId }, select: { id: true } });
+    if (!batch) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.BATCH_NOT_FOUND, 'Lot introuvable.');
+    return this.previewDeletion({ batchId });
+  }
+
+  /** Même calcul que previewBatchDeletion(), pour tous les tickets d'un routeur. */
+  async previewRouterCleanup(routerId: string): Promise<Omit<BatchDeletionPreview, 'batchId'>> {
+    const { batchId: _batchId, ...rest } = await this.previewDeletion({ routerId });
+    return rest;
+  }
+
+  private async previewDeletion(where: { batchId?: string; routerId?: string }): Promise<BatchDeletionPreview> {
+    const grouped = await this.prisma.voucher.groupBy({
+      by: ['status'],
+      where,
+      _count: { _all: true },
+    });
+    const total = grouped.reduce((sum, g) => sum + g._count._all, 0);
+    const totalActive = grouped.find((g) => g.status === VoucherStatus.ACTIVE)?._count._all ?? 0;
+    // Session ouverte maintenant = client connecté. Un ACTIVE sans Session
+    // ouverte a déjà été utilisé (revenu déjà compté) mais n'est plus
+    // connecté — deux raisons différentes de ne jamais le supprimer.
+    const connectedNow = await this.prisma.voucher.count({
+      where: { ...where, status: VoucherStatus.ACTIVE, session: { status: SessionStatus.ACTIVE } },
+    });
+    return {
+      batchId: where.batchId ?? null,
+      total,
+      eligible: total - totalActive,
+      keptForHistory: totalActive - connectedNow,
+      connectedNow,
+    };
+  }
+
+  /**
+   * Permanent delete of a batch and every eligible voucher (+ session) it
+   * contains. Les vouchers ACTIVE (déjà vendus, connectés ou non) sont
+   * toujours conservés, même si `previewBatchDeletion()` les comptait comme
+   * protégés il y a un instant : le verrou logique est réévalué au commit.
+   */
+  async removeBatch(batchId: string): Promise<BulkDeletionResult> {
     const batch = await this.prisma.voucherBatch.findFirst({
       where: { id: batchId },
       select: { id: true },
     });
     if (!batch) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.BATCH_NOT_FOUND, 'Lot introuvable.');
 
-    await this.prisma.$transaction(async (tx) => {
-      await tx.session.deleteMany({ where: { voucher: { batchId } } });
-      await tx.voucher.deleteMany({ where: { batchId } });
-      await tx.voucherBatch.delete({ where: { id: batchId } });
+    const result = await this.removeEligible({ batchId });
+    await this.eventLog[result.protectedActive > 0 || result.routerCleanupFailed > 0 ? 'partialSuccess' : 'success'](
+      AuditAction.DELETE,
+      'VoucherBatch',
+      batchId,
+      { ...result },
+    );
+    return result;
+  }
+
+  /** "Nettoyer les tickets" — même règle que removeBatch(), à l'échelle d'un routeur. */
+  async removeAllEligible(routerId: string): Promise<BulkDeletionResult> {
+    const result = await this.removeEligible({ routerId });
+    await this.eventLog[result.protectedActive > 0 || result.routerCleanupFailed > 0 ? 'partialSuccess' : 'success'](
+      AuditAction.DELETE,
+      'Router',
+      routerId,
+      { ...result },
+    );
+    return result;
+  }
+
+  private async removeEligible(scope: { batchId?: string; routerId?: string }): Promise<BulkDeletionResult> {
+    const candidates = await this.prisma.voucher.findMany({
+      where: scope,
+      select: {
+        id: true,
+        status: true,
+        batchId: true,
+        mikrotikId: true,
+        routerId: true,
+        router: { select: { mode: true } },
+        session: { select: { status: true } },
+      },
     });
-    await this.eventLog.success(AuditAction.DELETE, 'VoucherBatch', batchId);
-    return { deleted: true };
+    const analyzed = candidates.length;
+    const eligibleIds = candidates
+      .filter((v) => v.status !== VoucherStatus.ACTIVE)
+      .map((v) => v.id);
+
+    const deletedIds = await this.prisma.$transaction(async (tx) => {
+      if (!eligibleIds.length) return [] as string[];
+      // Réclame chaque ligne éligible avant de la supprimer, sous la même
+      // garantie que remove()/revoke() : un voucher promu ACTIVE entre le
+      // snapshot `candidates` et ce commit n'est jamais réclamé.
+      await tx.voucher.updateMany({
+        where: { id: { in: eligibleIds }, status: { not: VoucherStatus.ACTIVE } },
+        data: { status: VoucherStatus.REVOKED, revokedAt: new Date() },
+      });
+      const claimed = await tx.voucher.findMany({
+        where: { id: { in: eligibleIds }, status: VoucherStatus.REVOKED },
+        select: { id: true },
+      });
+      const ids = claimed.map((v) => v.id);
+      await tx.session.deleteMany({ where: { voucherId: { in: ids } } });
+      await tx.voucher.deleteMany({ where: { id: { in: ids } } });
+
+      const affectedBatchIds = [
+        ...new Set(
+          candidates
+            .filter((v) => v.batchId && ids.includes(v.id))
+            .map((v) => v.batchId as string),
+        ),
+      ];
+      for (const bId of affectedBatchIds) {
+        const remaining = await tx.voucher.count({ where: { batchId: bId } });
+        if (remaining === 0) await tx.voucherBatch.delete({ where: { id: bId } });
+      }
+      return ids;
+    });
+
+    const deleted = new Set(deletedIds);
+    let routerCleanupFailed = 0;
+    for (const v of candidates) {
+      if (!deleted.has(v.id)) continue;
+      if (v.mikrotikId && v.router.mode === ManagementMode.REMOTE) {
+        try {
+          await this.remote.run(v.routerId, (client) => removeHotspotUser(client, v.mikrotikId as string));
+        } catch (err) {
+          routerCleanupFailed += 1;
+          this.logger.warn({
+            errorCode: 'VOUCHER_BULK_DELETE_ROUTER_UNREACHABLE',
+            voucherId: v.id,
+            routerId: v.routerId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    }
+
+    // Parmi les protégés (status ACTIVE, jamais réclamés ci-dessus) : ceux
+    // avec une Session encore ouverte sont connectés maintenant, les autres
+    // sont juste déjà vendus (revenu déjà compté, conservés pour l'historique).
+    let connectedNow = 0;
+    for (const v of candidates) {
+      if (deleted.has(v.id)) continue;
+      if (v.session?.status === SessionStatus.ACTIVE) connectedNow += 1;
+    }
+    const protectedActive = analyzed - deleted.size;
+
+    return {
+      analyzed,
+      deleted: deleted.size,
+      protectedActive,
+      connectedNow,
+      keptForHistory: protectedActive - connectedNow,
+      routerCleanupFailed,
+    };
   }
 
   private async uniqueCodes(

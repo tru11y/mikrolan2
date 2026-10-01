@@ -1,7 +1,9 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type PropsWithChildren,
@@ -79,10 +81,13 @@ export function AppLockProvider({ children }: PropsWithChildren) {
     };
   }, [userId]);
 
-  async function setEnabled(value: boolean): Promise<void> {
-    setEnabledState(value);
-    if (userId) await setStoredValue(PREF_KEY(userId), value ? 'true' : 'false');
-  }
+  const setEnabled = useCallback(
+    async (value: boolean): Promise<void> => {
+      setEnabledState(value);
+      if (userId) await setStoredValue(PREF_KEY(userId), value ? 'true' : 'false');
+    },
+    [userId],
+  );
 
   const active = isAuthenticated && supported && enabled;
 
@@ -135,8 +140,13 @@ export function AppLockProvider({ children }: PropsWithChildren) {
     return () => sub.remove();
   }, [locked]);
 
+  const value = useMemo(
+    () => ({ supported, enabled, setEnabled }),
+    [supported, enabled, setEnabled],
+  );
+
   return (
-    <AppLockContext.Provider value={{ supported, enabled, setEnabled }}>
+    <AppLockContext.Provider value={value}>
       {children}
       <Modal visible={locked} animationType="fade" statusBarTranslucent>
         <View style={{ flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 }}>
