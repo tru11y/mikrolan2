@@ -127,6 +127,8 @@ export type RouterItem = {
   lastHeartbeat: string | null;
   ticketTemplate: TicketTemplate | null;
   pushNotifications: boolean;
+  /** Le serveur détient des identifiants RouterOS chiffrés (jamais le secret). */
+  hasCredentials?: boolean;
   createdAt: string;
   updatedAt: string;
 };

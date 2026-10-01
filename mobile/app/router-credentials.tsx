@@ -86,6 +86,7 @@ export default function RouterCredentialsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [syncState, setSyncState] = useState<SyncState>('idle');
+  const [syncFailed, setSyncFailed] = useState(false);
 
   useEffect(() => {
     if (!routerId || loaded) return;
@@ -172,15 +173,23 @@ export default function RouterCredentialsScreen() {
         password,
       };
       await saveLocalCredentials(routerId, creds);
+      qc.invalidateQueries({ queryKey: ['router-local-creds', routerId] });
       try {
         await api.routers.update(routerId, {
           credentials: { username, password },
           localAddress: `${address.trim()}:${portNum}`,
         });
+        setSyncFailed(false);
       } catch (err) {
+        // Pas de succès silencieux : le LAN fonctionne, mais le serveur n'a pas
+        // les identifiants. On reste sur l'écran avec une action de nouvel essai
+        // (idempotent : update des mêmes identifiants).
         reportSilent('router-credentials.sync-to-server', err, { routerId });
+        setSyncFailed(true);
+        return;
       }
-      qc.invalidateQueries({ queryKey: ['router-local-creds', routerId] });
+      qc.invalidateQueries({ queryKey: ['router', routerId] });
+      qc.invalidateQueries({ queryKey: ['routers'] });
       router.back();
     } catch (e) {
       setError(extractErrorMessage(e));
@@ -254,6 +263,17 @@ export default function RouterCredentialsScreen() {
             </FadeIn>
 
             {error ? <Banner tone="danger">{error}</Banner> : null}
+            {syncFailed ? (
+              <Banner tone="warning">
+                <View style={{ gap: 8 }}>
+                  <Text style={{ color: theme.text, fontSize: 13 }}>
+                    {t('routerDetail.credsNotSyncedDetail')}
+                  </Text>
+                  <Button title={t('routerDetail.credsRetrySync')} variant="ghost" onPress={save} loading={saving} />
+                  <Button title={t('common.close')} variant="ghost" onPress={() => router.back()} />
+                </View>
+              </Banner>
+            ) : null}
 
             {/* Connection fields */}
             <FadeIn delay={100}>

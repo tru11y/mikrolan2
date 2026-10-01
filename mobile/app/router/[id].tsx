@@ -26,6 +26,7 @@ import { getWifiInfo, sameSubnet24 } from '@/src/lib/lanBinder';
 import { reportLanSessions } from '@/src/lib/sessionSync';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
 import { useRouterLive } from '@/src/hooks/use-router-live';
+import { classifyLiveFailure, liveHealthState } from '@/src/lib/credentialSync';
 import { useSseLive } from '@/src/providers/live-events-provider';
 import {
   Badge,
@@ -161,6 +162,20 @@ function StatSquare({
         {label}
       </Text>
     </Press>
+  );
+}
+
+function StatusLine({ label, state, text }: { label: string; state: 'ok' | 'warn' | 'bad'; text: string }) {
+  const theme = useTheme();
+  const color = state === 'ok' ? theme.success : state === 'warn' ? theme.warning : theme.danger;
+  const mark = state === 'ok' ? '✅' : state === 'warn' ? '⚠️' : '❌';
+  return (
+    <Row>
+      <Text style={{ color: theme.textMuted, fontSize: type.caption }}>{label}</Text>
+      <Text style={{ color, fontSize: type.caption, fontWeight: '700' }}>
+        {mark} {text}
+      </Text>
+    </Row>
   );
 }
 
@@ -381,6 +396,48 @@ export default function RouterDetailScreen() {
   // remplace l'ancien appel direct `remoteSystemResource` + le polling propre
   // à `router-active-sessions`. Le LAN (ci-dessous) reste inchangé et prioritaire.
   const live = useRouterLive(id, Boolean(id) && remoteActive);
+
+  // Identifiants RouterOS : le serveur (credEncrypted) est la source durable pour
+  // un tenant payant. Backfill sûr : push local → serveur UNIQUEMENT si le serveur
+  // n'en a pas (`hasCredentials === false`), jamais pour écraser un secret existant.
+  const [credSync, setCredSync] = useState<'idle' | 'syncing' | 'failed'>('idle');
+  const [noLocalCreds, setNoLocalCreds] = useState(false);
+  const backfillTried = useRef(false);
+  const pushCredsToServer = useCallback(async () => {
+    if (!id) return;
+    setCredSync('syncing');
+    try {
+      const creds = await getLocalCredentials(id);
+      if (!creds) {
+        setNoLocalCreds(true);
+        setCredSync('idle');
+        return;
+      }
+      setNoLocalCreds(false);
+      await api.routers.update(id, {
+        credentials: { username: creds.username, password: creds.password },
+      });
+      await qc.invalidateQueries({ queryKey: ['router', id] });
+      await qc.invalidateQueries({ queryKey: ['routers'] });
+      setCredSync('idle');
+    } catch (e) {
+      reportSilent('router.credentials-backfill', e, { routerId: id });
+      setCredSync('failed');
+    }
+  }, [id, qc]);
+
+  const serverHasCreds = query.data?.hasCredentials;
+  useEffect(() => {
+    if (!id || !isPro || serverHasCreds !== false || backfillTried.current) return;
+    backfillTried.current = true;
+    void pushCredsToServer();
+  }, [id, isPro, serverHasCreds, pushCredsToServer]);
+
+  const liveFailure = classifyLiveFailure(
+    live.error
+      ? { errorCode: describeError(live.error).errorCode, message: describeError(live.error).message }
+      : { message: live.data?.lastError ?? null },
+  );
 
   // ── Mode Diagnostic (durée limitée, actions dangereuses) ──
   const DIAG_DURATION_MS = 5 * 60 * 1000;
@@ -674,6 +731,71 @@ export default function RouterDetailScreen() {
               />
             </View>
           </Banner>
+        ) : null}
+        {isPro ? (
+          <Card>
+            <StatusLine
+              label={t('routerDetail.statusCredentials')}
+              state={
+                liveFailure === 'creds-invalid'
+                  ? 'bad'
+                  : serverHasCreds === true
+                    ? 'ok'
+                    : 'warn'
+              }
+              text={
+                liveFailure === 'creds-invalid'
+                  ? t('routerDetail.credsInvalid')
+                  : serverHasCreds === true
+                    ? t('routerDetail.credsSynced')
+                    : credSync === 'syncing'
+                      ? t('routerDetail.credsSyncing')
+                      : noLocalCreds
+                        ? t('routerDetail.credsMissing')
+                        : t('routerDetail.credsNotSynced')
+              }
+            />
+            <StatusLine
+              label={t('routerDetail.statusTunnel')}
+              state={remoteActive && liveFailure !== 'tunnel' ? 'ok' : remoteBusy ? 'warn' : liveFailure === 'tunnel' ? 'bad' : 'warn'}
+              text={
+                remoteActive && liveFailure !== 'tunnel'
+                  ? t('routerDetail.tunnelActive')
+                  : remoteBusy
+                    ? t('routerDetail.tunnelConfiguring')
+                    : liveFailure === 'tunnel'
+                      ? t('routerDetail.tunnelDown')
+                      : t('routerDetail.tunnelInactive')
+              }
+            />
+            {remoteActive ? (
+              <StatusLine
+                label={t('routerDetail.statusLive')}
+                state={liveHealthState(live.data) === 'fresh' ? 'ok' : liveHealthState(live.data) === 'stale' ? 'warn' : 'bad'}
+                text={
+                  liveHealthState(live.data) === 'fresh'
+                    ? t('routerDetail.liveFresh')
+                    : liveHealthState(live.data) === 'stale'
+                      ? t('routerDetail.liveStale')
+                      : t('routerDetail.liveNone')
+                }
+              />
+            ) : null}
+            {serverHasCreds === false && credSync !== 'syncing' && !noLocalCreds ? (
+              <Banner tone="warning">
+                <View style={{ gap: space.sm }}>
+                  <Text style={{ color: theme.text, fontSize: type.body }}>
+                    {t('routerDetail.credsNotSyncedDetail')}
+                  </Text>
+                  <Button
+                    title={t('routerDetail.credsRetrySync')}
+                    variant="ghost"
+                    onPress={() => void pushCredsToServer()}
+                  />
+                </View>
+              </Banner>
+            ) : null}
+          </Card>
         ) : null}
         <Card>
           <Row style={{ gap: space.md, alignItems: 'flex-start' }}>
