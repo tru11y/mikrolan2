@@ -200,7 +200,7 @@ export default function RouterDetailScreen() {
   useFocusEffect(
     useCallback(() => {
       const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-        router.navigate('/(tabs)/routeurs');
+        router.dismissTo('/(tabs)/routeurs');
         return true;
       });
       return () => sub.remove();
