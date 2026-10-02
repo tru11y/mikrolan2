@@ -1,7 +1,7 @@
 import { memo, useCallback, useMemo } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, type Href } from 'expo-router';
+import { useRouter, useSegments, type Href } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
@@ -10,7 +10,8 @@ import { useActiveRouter } from '@/src/providers/active-router-provider';
 import { icon, radius, space, type, withAlpha, type IoniconName } from './ui';
 import { useTheme } from '@/src/providers/theme-provider';
 
-type Tab = { key: string; labelKey: string; icon: IoniconName; href: Href };
+// `scope`: 'tabs' = écran du navigateur Tabs de (tabs)/_layout ; 'root' = écran du Root Stack.
+type Tab = { key: string; labelKey: string; icon: IoniconName; href: Href; scope: 'tabs' | 'root' };
 
 const TAB_ROW = space.sm - 2 + icon.md + 2 + type.micro + 6 + space.sm; // ≈ 50
 const ROUTER_STRIP = space.sm - 2 + type.micro + 6 + space.sm - 2 + 1; // ≈ 27
@@ -29,18 +30,20 @@ export function useBottomNavHeight(): number {
 }
 
 const GLOBAL_TABS: Tab[] = [
-  { key: 'index', labelKey: 'bottomNav.home', icon: 'home-outline', href: '/(tabs)' },
+  { key: 'index', labelKey: 'bottomNav.home', icon: 'home-outline', href: '/(tabs)', scope: 'tabs' },
   {
     key: 'routeurs',
     labelKey: 'bottomNav.routers',
     icon: 'hardware-chip-outline',
     href: '/(tabs)/routeurs',
+    scope: 'tabs',
   },
   {
     key: 'account',
     labelKey: 'bottomNav.settings',
     icon: 'person-outline',
     href: '/(tabs)/account',
+    scope: 'tabs',
   },
 ];
 
@@ -54,30 +57,35 @@ function routerTabs(routerId: string): Tab[] {
       labelKey: 'bottomNav.home',
       icon: 'home-outline',
       href: `/router/${routerId}` as Href,
+      scope: 'root',
     },
     {
       key: 'plans',
       labelKey: 'bottomNav.plans',
       icon: 'layers-outline',
       href: { pathname: '/plans', params: { routerId } } as Href,
+      scope: 'root',
     },
     {
       key: 'tickets',
       labelKey: 'bottomNav.tickets',
       icon: 'ticket-outline',
       href: { pathname: '/generate-vouchers', params: { routerId } } as Href,
+      scope: 'root',
     },
     {
       key: 'fichiers',
       labelKey: 'bottomNav.files',
       icon: 'folder-outline',
       href: { pathname: '/fichiers', params: { routerId } } as Href,
+      scope: 'root',
     },
     {
       key: 'rapport',
       labelKey: 'bottomNav.report',
       icon: 'bar-chart-outline',
       href: { pathname: '/(tabs)/rapport', params: { routerId } } as Href,
+      scope: 'tabs',
     },
   ];
 }
@@ -91,6 +99,7 @@ export const BottomNav = memo(function BottomNav({ active }: { active?: string }
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const inTabs = useSegments()[0] === '(tabs)';
   const { activeRouterId, clearActiveRouter } = useActiveRouter();
 
   const activeRouterQuery = useQuery({
@@ -104,7 +113,13 @@ export const BottomNav = memo(function BottomNav({ active }: { active?: string }
     [activeRouterId],
   );
 
-  const navigateTo = useCallback((href: Href) => router.navigate(href), [router]);
+  // Entre onglets du même Tabs navigator, `navigate` bascule d'onglet sans rien empiler.
+  // Vers/depuis le Root Stack, `navigate` empilait un écran par tap (OOM) : `dismissTo`
+  // revient à l'écran déjà présent dans la pile, sinon l'ouvre une seule fois.
+  const navigateTo = useCallback(
+    (tab: Tab) => (tab.scope === 'tabs' && inTabs ? router.navigate(tab.href) : router.dismissTo(tab.href)),
+    [router, inTabs],
+  );
 
   async function exitRouterMode() {
     await clearActiveRouter();
@@ -165,7 +180,7 @@ export const BottomNav = memo(function BottomNav({ active }: { active?: string }
             <Pressable
               key={tab.key}
               accessibilityLabel={label}
-              onPress={() => navigateTo(tab.href)}
+              onPress={() => navigateTo(tab)}
               style={{ flex: 1, alignItems: 'center', gap: 2, paddingVertical: 0 }}
             >
               <Ionicons
