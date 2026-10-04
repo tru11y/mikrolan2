@@ -2,12 +2,11 @@ export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErr
 import { reportSilent } from '@/src/lib/report';
 import { useCallback, useState } from 'react';
 import { BackHandler, RefreshControl, ScrollView, View, Text, Pressable } from 'react-native';
-import { Link, Redirect, useFocusEffect, useRouter } from 'expo-router';
+import { Link, useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { api, extractErrorMessage, type Me, type RouterHealth, type RouterItem } from '@/src/lib/api';
-import { useActiveRouter } from '@/src/providers/active-router-provider';
 import { useAuth } from '@/src/providers/auth-provider';
 import { useSseLive } from '@/src/providers/live-events-provider';
 import { getLocalCredentials } from '@/src/lib/router-credentials';
@@ -146,7 +145,6 @@ export default function MaisonScreen() {
   const theme = useTheme();
   const { t } = useTranslation();
   const router = useRouter();
-  const { isReady, activeRouterId } = useActiveRouter();
   const navHeight = useBottomNavHeight();
   const { entitlement } = useAuth();
   const sseLive = useSseLive();
@@ -257,12 +255,6 @@ export default function MaisonScreen() {
     routers.refetch();
     metrics.refetch();
     me.refetch();
-  }
-
-  // A router is already selected (persisted or just activated): Maison becomes
-  // its dashboard and the bottom nav switches to router-connected mode.
-  if (isReady && activeRouterId) {
-    return <Redirect href={`/router/${activeRouterId}`} />;
   }
 
   return (

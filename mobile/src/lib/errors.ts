@@ -40,13 +40,13 @@ function readIssues(payload: unknown): FieldErrors {
 const ERROR_CODE_MESSAGES: Record<string, string> = {
   INTERNAL_ERROR: 'Erreur interne du serveur. L\'équipe MikroLan a été alertée, réessayez dans un instant.',
   ROUTER_AUTH_FAILED: 'Authentification RouterOS échouée. Vérifiez les identifiants du routeur.',
-  ROUTER_UNREACHABLE: 'Routeur injoignable. Vérifiez la connexion WireGuard.',
+  ROUTER_UNREACHABLE: 'Le routeur met trop de temps à répondre.',
   ROUTER_REBOOT_FAILED: 'Le redémarrage du routeur a échoué.',
   ROUTER_LIMIT_REACHED: 'Limite de routeurs atteinte. Passez à une formule supérieure.',
   ROUTER_CREDS_MISSING: 'Identifiants du routeur manquants.',
   ROUTER_CREDS_INVALID: 'Identifiants du routeur invalides.',
   VOUCHER_LIMIT_REACHED: 'Limite de tickets/mois atteinte. Passez à une formule supérieure.',
-  VOUCHER_PUSH_FAILED: 'Certains tickets n\'ont pas pu être envoyés au routeur.',
+  VOUCHER_PUSH_FAILED: 'Les tickets n\'ont pas pu être enregistrés sur le routeur.',
   VOUCHER_REVOKE_ROUTER_UNREACHABLE: 'Ticket révoqué en base, mais le routeur est injoignable.',
   VOUCHER_DELETE_ROUTER_UNREACHABLE: 'Ticket supprimé en base, mais le routeur est injoignable.',
   USER_LIMIT_REACHED: 'Limite d\'utilisateurs atteinte. Passez à une formule supérieure.',
@@ -109,7 +109,7 @@ export function describeError(error: unknown): DescribedError {
         }
       });
       return {
-        message: 'Pas de connexion au serveur. Vérifiez votre réseau.',
+        message: 'Impossible de joindre le serveur MikroLan.',
         retryable: true,
         errorCode: 'NETWORK_ERROR',
         context,

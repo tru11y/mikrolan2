@@ -16,3 +16,6 @@
 ## CI
 - **CI MOBILE JOB MUST RUN EXPO LINT** — le job « Mobile — Lint / Type-check » n'exécute que `tsc --noEmit`.
 - **AdminAuditTab.tsx orphelin** — extrait tel quel de l'ancien `admin.tsx` (où `AuditTab` n'était déjà jamais rendu) ; non branché à l'onglet `audit`.
+
+## P2
+- **TICKET ACTION BUTTON RESPONSIVE LAYOUT** — sur l'écran Fichiers, « Révoquer » et « Supprimer » passent sur deux lignes (« Révoque/r », « Supprim/er ») dans la rangée d'actions d'un ticket. Non bloquant RC.
