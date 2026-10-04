@@ -757,13 +757,13 @@ export default function RouterDetailScreen() {
             />
             <StatusLine
               label={t('routerDetail.statusTunnel')}
-              state={remoteActive && liveFailure !== 'tunnel' ? 'ok' : remoteBusy ? 'warn' : liveFailure === 'tunnel' ? 'bad' : 'warn'}
+              state={remoteActive ? 'ok' : remoteBusy || liveFailure !== 'tunnel-down' ? 'warn' : 'bad'}
               text={
-                remoteActive && liveFailure !== 'tunnel'
+                remoteActive
                   ? t('routerDetail.tunnelActive')
                   : remoteBusy
                     ? t('routerDetail.tunnelConfiguring')
-                    : liveFailure === 'tunnel'
+                    : liveFailure === 'tunnel-down'
                       ? t('routerDetail.tunnelDown')
                       : t('routerDetail.tunnelInactive')
               }
@@ -771,11 +771,19 @@ export default function RouterDetailScreen() {
             {remoteActive ? (
               <StatusLine
                 label={t('routerDetail.statusLive')}
-                state={liveHealthState(live.data) === 'fresh' ? 'ok' : liveHealthState(live.data) === 'stale' ? 'warn' : 'bad'}
+                state={
+                  liveHealthState(live.data) === 'fresh'
+                    ? 'ok'
+                    : liveHealthState(live.data) === 'stale' || liveFailure === 'routeros-slow'
+                      ? 'warn'
+                      : 'bad'
+                }
                 text={
                   liveHealthState(live.data) === 'fresh'
                     ? t('routerDetail.liveFresh')
-                    : liveHealthState(live.data) === 'stale'
+                    : liveFailure === 'routeros-slow'
+                      ? t('routerDetail.liveSlow')
+                      : liveHealthState(live.data) === 'stale'
                       ? t('routerDetail.liveStale')
                       : t('routerDetail.liveNone')
                 }
