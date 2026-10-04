@@ -725,7 +725,8 @@ export type VoucherPushParams = {
 export type GenerateResult = {
   batchId: string;
   batchSeq: number;
-  batchStatus: 'COMPLETED' | 'PARTIAL_SUCCESS' | 'FAILED';
+  // Reflète exactement le backend : routeur LOCAL => `GENERATING` (le mobile doit pousser en LAN).
+  batchStatus: 'GENERATING' | 'COMPLETED' | 'PARTIAL_SUCCESS' | 'FAILED';
   pushedByServer: boolean;
   pushedCount: number;
   totalCount: number;

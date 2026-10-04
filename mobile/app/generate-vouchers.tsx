@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { describeError } from '@/src/lib/errors';
 import { getLocalCredentials } from '@/src/lib/router-credentials';
 import { PartialPushError, pushVouchersLan } from '@/src/services/mikrotik-lan/hotspotLan';
+import { finalGenerationOutcome, shouldPushViaLan } from '@/src/lib/voucherGeneration';
 import { reportSilent, swallow } from '@/src/lib/report';
 import { TicketCard } from '@/src/components/TicketCard';
 import { printTickets, printTicketsDirect } from '@/src/lib/ticketsPdf';
@@ -328,17 +329,14 @@ export default function GenerateVouchersScreen() {
     }
 
     setLastBatchSeq(res.batchSeq);
-    let outcome: GenOutcome =
-      res.batchStatus === 'COMPLETED' ? 'SUCCESS'
-      : res.batchStatus === 'PARTIAL_SUCCESS' ? 'PARTIAL_SUCCESS'
-      : 'FAILED';
 
     let pushedCount = res.pushedCount;
     let failureMessage: string | null = null;
     // LAN : seuls les tickets que le routeur a confirmés sont distribuables.
     const confirmedIds = new Set<string>();
 
-    if (outcome === 'SUCCESS' && !res.pushedByServer && res.push) {
+    const lanPush = shouldPushViaLan(res) ? res.push : undefined;
+    if (lanPush) {
       const reportFailure = (reason: string, code: string, pushed: number) =>
         api.routers
           .reportPushFailure(routerId, {
@@ -354,30 +352,32 @@ export default function GenerateVouchersScreen() {
           failureMessage = t('tickets.localCredsRequired');
           pushedCount = 0;
           await reportFailure(failureMessage, 'ROUTER_CREDS_MISSING', 0);
-          outcome = 'FAILED';
         } else {
-          const items = await pushVouchersLan(creds, res.vouchers, res.push);
-          for (const it of items) confirmedIds.add(it.id);
+          const items = await pushVouchersLan(creds, res.vouchers, lanPush);
           pushedCount = items.length;
           await api.routers.confirmVouchers(routerId, {
             batchId: res.batchId,
             items,
           });
+          // Un succès LAN n'est acquis qu'une fois confirmPush passé (mikrotikId écrit côté
+          // backend) : seulement alors le ticket est provisionné et distribuable.
+          for (const it of items) confirmedIds.add(it.id);
         }
       } catch (e) {
         const described = describeError(e);
         failureMessage = axios.isAxiosError(e) ? described.message : t('tickets.lanPushFailed');
         if (e instanceof PartialPushError) {
-          for (const it of e.pushed) confirmedIds.add(it.id);
-          pushedCount = e.pushed.length;
+          const pushed = e.pushed;
+          pushedCount = pushed.length;
           await api.routers
-            .confirmVouchers(routerId, { batchId: res.batchId, items: e.pushed })
+            .confirmVouchers(routerId, { batchId: res.batchId, items: pushed })
+            .then(() => {
+              for (const it of pushed) confirmedIds.add(it.id);
+            })
             .catch(swallow('generate.confirm-partial'));
-          outcome = 'PARTIAL_SUCCESS';
         } else {
           pushedCount = 0;
           await reportFailure(described.message, described.errorCode ?? (e instanceof Error ? e.name : 'LAN_PUSH_FAILED'), 0);
-          outcome = 'FAILED';
         }
       }
     }
@@ -387,8 +387,7 @@ export default function GenerateVouchersScreen() {
     const usable = res.pushedByServer
       ? res.vouchers.filter((v) => v.provisioned === true)
       : res.vouchers.filter((v) => confirmedIds.has(v.id));
-    if (usable.length === 0) outcome = 'FAILED';
-    else if (usable.length < res.totalCount) outcome = 'PARTIAL_SUCCESS';
+    const outcome: GenOutcome = finalGenerationOutcome(res.totalCount, usable.length);
     pushedCount = usable.length;
 
     setLastOutcome(outcome);
