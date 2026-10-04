@@ -74,9 +74,10 @@ export class VouchersController {
     @Param('id', ParseUUIDPipe) id: string,
     @Query('status') status?: string,
     @Query('batchId') batchId?: string,
+    @Query('includeUnprovisioned') includeUnprovisioned?: string,
   ) {
     const s = this.asStatus(status);
-    return this.vouchers.list(id, s, batchId);
+    return this.vouchers.list(id, s, batchId, includeUnprovisioned === 'true');
   }
 
   @Get('batches')
