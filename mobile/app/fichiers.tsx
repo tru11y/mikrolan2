@@ -22,6 +22,7 @@ import { Badge, Banner, Button, ConfirmDialog, Empty, Press, Subtitle, Title,
 import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
+import { lotState, plural } from '@/src/lib/lotState';
 
 const STATUS_TONE: Record<
   VoucherItem['status'],
@@ -105,6 +106,46 @@ function ActionButton({
   );
 }
 
+function LotStatus({
+  batch,
+  t,
+}: {
+  batch: VoucherBatch;
+  t: (key: string, opts?: Record<string, unknown>) => string;
+}) {
+  const theme = useTheme();
+  const { state, available, missing } = lotState(batch);
+  const line = { color: theme.textMuted, fontSize: 13 } as const;
+  if (state === 'generating') return <Text style={line}>{t('fichiers.lotGenerating')}</Text>;
+  if (state === 'empty') return <Text style={line}>{t('fichiers.lotEmpty')}</Text>;
+  if (state === 'completed') {
+    return (
+      <Text style={{ ...line, color: theme.success, fontWeight: '700' }}>
+        {plural(t, 'fichiers.lotAvailable', available)}
+      </Text>
+    );
+  }
+  if (state === 'partial') {
+    return (
+      <View style={{ gap: 2 }}>
+        <Text style={{ ...line, color: theme.warning, fontWeight: '700' }}>{t('fichiers.lotPartialTitle')}</Text>
+        <Text style={line}>
+          {plural(t, 'fichiers.lotPartialDetail', available, { requested: batch.quantity })}
+        </Text>
+        <Text style={line}>{plural(t, 'fichiers.lotMissing', missing)}</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={{ gap: 2 }}>
+      <Text style={{ ...line, color: theme.danger, fontWeight: '700' }}>{t('fichiers.lotFailedTitle')}</Text>
+      <Text style={line}>{t('fichiers.lotFailedDetail', { requested: batch.quantity })}</Text>
+      <Text style={line}>{t('fichiers.lotFailedNotReady')}</Text>
+      <Text style={line}>{t('fichiers.lotFailedReason')}</Text>
+    </View>
+  );
+}
+
 // Tickets montés à la fois : chaque TicketCard coûte ~25 vues + un QR SVG (~1 Mo natif).
 const VOUCHERS_PAGE = 20;
 
@@ -148,8 +189,8 @@ export default function FichiersScreen() {
     enabled: Boolean(routerId),
   });
   const vouchersQuery = useQuery({
-    queryKey: ['vouchers', routerId],
-    queryFn: () => api.routers.listVouchers(routerId),
+    queryKey: ['vouchers', routerId, 'all'],
+    queryFn: () => api.routers.listVouchers(routerId, { includeUnprovisioned: true }),
     enabled: Boolean(routerId),
   });
 
@@ -174,11 +215,13 @@ export default function FichiersScreen() {
     setError(null);
     setBusy({ batchId: batch.id, kind });
     try {
-      const codes = await api.routers.listVouchers(routerId, {
-        batchId: batch.id,
-      });
+      // Jamais de distribution d'un ticket non provisionné : le backend ne renvoie
+      // que les provisionnés par défaut, et on re-filtre ici (strictement `true`).
+      const codes = (await api.routers.listVouchers(routerId, { batchId: batch.id })).filter(
+        (v) => v.provisioned === true,
+      );
       if (!codes.length) {
-        setError('Ce lot ne contient aucun code.');
+        setError(t('fichiers.lotNoDistributable'));
         return;
       }
       const opts = buildPdfOpts(batch, codes.map((v) => ({ code: v.code })));
@@ -425,9 +468,7 @@ export default function FichiersScreen() {
                           {routerName}
                         </Text>
                       ) : null}
-                      <Text style={{ color: theme.textMuted, fontSize: 13 }}>
-                        {b.generated} tickets
-                      </Text>
+                      <LotStatus batch={b} t={t} />
                       <Text style={{ color: theme.textMuted, fontSize: 12 }}>
                         {fmtDateFull(b.createdAt)}
                       </Text>
@@ -449,7 +490,8 @@ export default function FichiersScreen() {
                     </Press>
                   </View>
 
-                  {/* Actions row */}
+                  {/* Distribution : uniquement si au moins un ticket provisionné */}
+                  {lotState(b).available > 0 && lotState(b).state !== 'generating' ? (
                   <View style={{ flexDirection: 'row', gap: 8 }}>
                     <ActionButton
                       icon="share-outline"
@@ -476,6 +518,7 @@ export default function FichiersScreen() {
                       loading={isActive && busy?.kind === 'download'}
                     />
                   </View>
+                  ) : null}
                 </View>
               );
             })
@@ -505,24 +548,39 @@ export default function FichiersScreen() {
         }
         renderItem={({ item: v }) => {
               const plan = plansQuery.data?.find((p) => p.id === v.planId);
+              const provisioned = v.provisioned === true;
               return (
                 <View style={{ gap: 8 }}>
-                  <TicketCard
-                    code={v.code}
-                    planName={plan?.name ?? ''}
-                    priceXof={plan?.priceXof ?? 0}
-                    durationLabel={plan ? fmtDuration(plan.durationMinutes) : ''}
-                    compact
-                  />
+                  {provisioned ? (
+                    <TicketCard
+                      code={v.code}
+                      planName={plan?.name ?? ''}
+                      priceXof={plan?.priceXof ?? 0}
+                      durationLabel={plan ? fmtDuration(plan.durationMinutes) : ''}
+                      compact
+                    />
+                  ) : (
+                    // Ticket non enregistré sur le routeur : ni code, ni QR, ni action de distribution.
+                    <View style={{ backgroundColor: theme.surface, borderRadius: 12, padding: 14, gap: 4 }}>
+                      <Text style={{ color: theme.warning, fontSize: 14, fontWeight: '700' }}>
+                        {t('fichiers.voucherUnavailable')}
+                      </Text>
+                      <Text style={{ color: theme.textMuted, fontSize: 13 }}>
+                        {t('fichiers.voucherNotProvisioned')}
+                      </Text>
+                    </View>
+                  )}
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                     <Badge label={v.status} tone={STATUS_TONE[v.status]} />
-                    <View style={{ flex: 1 }}>
-                      <Button
-                        title={t('common.share')}
-                        variant="ghost"
-                        onPress={() => shareCodes([v])}
-                      />
-                    </View>
+                    {provisioned ? (
+                      <View style={{ flex: 1 }}>
+                        <Button
+                          title={t('common.share')}
+                          variant="ghost"
+                          onPress={() => shareCodes([v])}
+                        />
+                      </View>
+                    ) : null}
                     {v.status !== 'REVOKED' && v.status !== 'ACTIVE' ? (
                       <View style={{ flex: 1 }}>
                         <Button

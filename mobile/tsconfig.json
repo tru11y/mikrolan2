@@ -15,6 +15,7 @@
   "exclude": [
     "src/lib/metricsCsvRows.test.ts",
     "src/hooks/use-router-live.test.ts",
-    "src/lib/voucherGeneration.test.ts"
+    "src/lib/voucherGeneration.test.ts",
+    "src/lib/lotState.test.ts"
   ]
 }
