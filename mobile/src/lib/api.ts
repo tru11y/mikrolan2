@@ -286,6 +286,12 @@ export type VoucherItem = {
   expiresAt: string | null;
   usedAt: string | null;
   createdAt: string;
+  /**
+   * Décidé par le backend : le ticket est confirmé côté RouterOS (seul un ticket
+   * provisionné peut être distribué). Un voucher présent en base ou GENERATED ne
+   * prouve rien.
+   */
+  provisioned: boolean;
 };
 
 export type VoucherLookupResult = VoucherItem & {
@@ -631,14 +637,21 @@ export type VoucherBatchStatus =
   | 'PENDING'
   | 'GENERATING'
   | 'COMPLETED'
+  | 'PARTIAL_SUCCESS'
   | 'FAILED';
 export type VoucherBatch = {
   id: string;
   seq: number;
   planId: string;
   routerId: string;
+  /** Demandés. */
   quantity: number;
+  /** Compteur de workflow historique : NE PAS l'afficher comme nombre de tickets. */
   generated: number;
+  /** Tickets réellement présents en base. */
+  voucherCount: number;
+  /** Tickets confirmés côté RouterOS = réellement disponibles. */
+  provisionedCount: number;
   status: VoucherBatchStatus;
   createdAt: string;
   completedAt: string | null;
@@ -1265,7 +1278,7 @@ export const api = {
     },
     async listVouchers(
       id: string,
-      params?: { status?: VoucherStatus; batchId?: string },
+      params?: { status?: VoucherStatus; batchId?: string; includeUnprovisioned?: boolean },
     ): Promise<VoucherItem[]> {
       const res = await apiClient.get<ApiEnvelope<VoucherItem[]>>(
         `/routers/${id}/vouchers`,

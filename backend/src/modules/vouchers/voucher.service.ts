@@ -72,6 +72,8 @@ const VOUCHER_PUBLIC = {
   id: true,
   code: true,
   password: true,
+  // Lu uniquement pour décider `provisioned` côté serveur : jamais renvoyé tel quel.
+  mikrotikId: true,
   status: true,
   planId: true,
   routerId: true,
@@ -80,6 +82,29 @@ const VOUCHER_PUBLIC = {
   usedAt: true,
   createdAt: true,
 } satisfies Prisma.VoucherSelect;
+
+/**
+ * Règle métier : un voucher n'est distribuable que si MikroLan a la preuve qu'il
+ * existe côté RouterOS, c.-à-d. `mikrotikId` renseigné (REMOTE : retour de
+ * /ip/hotspot/user/add ; LOCAL : confirmPush du mobile). Une ligne en base ou
+ * le statut GENERATED ne prouvent rien.
+ */
+export function isProvisioned(v: { mikrotikId?: string | null }): boolean {
+  return typeof v.mikrotikId === 'string' && v.mikrotikId.length > 0;
+}
+
+/** Filtre SQL équivalent à `isProvisioned` (la chaîne vide est un id invalide). */
+const PROVISIONED_WHERE = {
+  NOT: [{ mikrotikId: null }, { mikrotikId: '' }],
+} satisfies Prisma.VoucherWhereInput;
+
+/** Projection publique : `provisioned` est décidé ici, le mikrotikId n'est jamais exposé. */
+function toPublicVoucher<T extends { mikrotikId: string | null }>(
+  v: T,
+): Omit<T, 'mikrotikId'> & { provisioned: boolean } {
+  const { mikrotikId, ...rest } = v;
+  return { ...rest, provisioned: isProvisioned({ mikrotikId }) };
+}
 
 // RouterOS push parameters — returned to the client for LOCAL (free) routers so
 // the mobile app can push the users over the LAN itself (no tunnel needed).
@@ -299,6 +324,7 @@ export class VoucherService {
         select: { status: true, generated: true },
       }),
     ]);
+    const publicVouchers = vouchers.map(toPublicVoucher);
     return {
       batchId: batch.id,
       batchSeq: batch.seq,
@@ -307,7 +333,10 @@ export class VoucherService {
       pushedCount: updatedBatch?.generated ?? 0,
       totalCount: codes.length,
       push: peer ? undefined : push,
-      vouchers,
+      // Push serveur : seuls les vouchers confirmés RouterOS sont distribuables (les autres
+      // restent en base pour diagnostic). Chemin LAN : le mobile a besoin de TOUS les codes
+      // pour les pousser lui-même puis confirmer (confirmPush => mikrotikId).
+      vouchers: peer ? publicVouchers.filter((v) => v.provisioned) : publicVouchers,
     };
   }
 
@@ -398,17 +427,29 @@ export class VoucherService {
     });
   }
 
-  list(routerId?: string, status?: VoucherStatus, batchId?: string) {
-    return this.prisma.voucher.findMany({
+  /**
+   * Par défaut, seuls les vouchers provisionnés sont retournés : un ancien client ne
+   * reçoit jamais un ticket non enregistré sur le routeur comme s'il était prêt.
+   * `includeUnprovisioned` (nouveau mobile / audit) les ajoute avec `provisioned: false`.
+   */
+  async list(
+    routerId?: string,
+    status?: VoucherStatus,
+    batchId?: string,
+    includeUnprovisioned = false,
+  ) {
+    const rows = await this.prisma.voucher.findMany({
       where: {
         ...(routerId ? { routerId } : {}),
         ...(status ? { status } : {}),
         ...(batchId ? { batchId } : {}),
+        ...(includeUnprovisioned ? {} : PROVISIONED_WHERE),
       },
       select: VOUCHER_PUBLIC,
       orderBy: { createdAt: 'desc' },
       take: 500,
     });
+    return rows.map(toPublicVoucher);
   }
 
   // Point lookup for the counter-side "vérifier un ticket" flow — must not
@@ -427,7 +468,7 @@ export class VoucherService {
     if (!voucher) {
       throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.VOUCHER_NOT_FOUND, 'Ce code n\'a pas été émis pour ce routeur.');
     }
-    return voucher;
+    return toPublicVoucher(voucher);
   }
 
   async verifyVoucherForOperator(dto: VerifyVoucherDto) {
@@ -468,9 +509,11 @@ export class VoucherService {
       throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.VOUCHER_NOT_FOUND, 'Code inconnu ou non attribué à ce routeur.');
     }
 
+    const provisioned = isProvisioned(voucher);
     const canLogin =
-      voucher.status === VoucherStatus.GENERATED ||
-      voucher.status === VoucherStatus.ACTIVE;
+      provisioned &&
+      (voucher.status === VoucherStatus.GENERATED ||
+        voucher.status === VoucherStatus.ACTIVE);
 
     const session = voucher.session
       ? {
@@ -490,6 +533,7 @@ export class VoucherService {
       code: voucher.code,
       status: voucher.status,
       canLogin,
+      provisioned,
       planName: voucher.plan.name,
       durationMinutes: voucher.plan.durationMinutes,
       priceXof: voucher.plan.priceXof,
@@ -499,14 +543,16 @@ export class VoucherService {
       usedAt: voucher.usedAt?.toISOString() ?? null,
       expiresAt: voucher.expiresAt?.toISOString() ?? null,
       session,
-      message: canLogin
-        ? 'Ticket valide — connexion autorisée.'
-        : `Ticket ${voucher.status.toLowerCase()} — connexion refusée.`,
+      message: !provisioned
+        ? 'Ce ticket n\'a pas encore été enregistré sur le routeur.'
+        : canLogin
+          ? 'Ticket valide — connexion autorisée.'
+          : `Ticket ${voucher.status.toLowerCase()} — connexion refusée.`,
     };
   }
 
-  listBatches(routerId?: string) {
-    return this.prisma.voucherBatch.findMany({
+  async listBatches(routerId?: string) {
+    const batches = await this.prisma.voucherBatch.findMany({
       where: routerId ? { routerId } : {},
       select: {
         id: true,
@@ -523,6 +569,31 @@ export class VoucherService {
       orderBy: { createdAt: 'desc' },
       take: 200,
     });
+    if (!batches.length) return [];
+    // Nombres réels (pas `generated`, simple compteur de workflow) : tickets en base et
+    // tickets confirmés côté RouterOS.
+    const batchIds = batches.map((b) => b.id);
+    const [all, ready] = await Promise.all([
+      this.prisma.voucher.groupBy({
+        by: ['batchId'],
+        where: { batchId: { in: batchIds } },
+        _count: { _all: true },
+      }),
+      this.prisma.voucher.groupBy({
+        by: ['batchId'],
+        where: { batchId: { in: batchIds }, ...PROVISIONED_WHERE },
+        _count: { _all: true },
+      }),
+    ]);
+    const countOf = (rows: { batchId: string | null; _count: { _all: number } }[]) =>
+      new Map(rows.map((r) => [r.batchId, r._count._all]));
+    const allBy = countOf(all);
+    const readyBy = countOf(ready);
+    return batches.map((b) => ({
+      ...b,
+      voucherCount: allBy.get(b.id) ?? 0,
+      provisionedCount: readyBy.get(b.id) ?? 0,
+    }));
   }
 
   async revoke(id: string) {

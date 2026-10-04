@@ -195,13 +195,17 @@
     "summaryTitle": "Review before generating",
     "batchLabel": "Batch #{{seq}}",
     "completedTitle": "{{count}} tickets created successfully",
-    "partialTitle": "{{pushed}} tickets created out of {{total}}. {{failed}} could not be sent to the router.",
+    "partialTitle": "{{pushed}} tickets available out of {{total}}. {{failed}} could not be registered on the router.",
     "failedTitle": "Could not create the tickets.",
     "viewTickets": "View",
     "hideTickets": "Hide",
     "printDirect": "Print",
     "newBatch": "New batch",
-    "lanPushFailed": "Could not send the tickets to the router. Make sure you are on the router's Wi-Fi, then try again."
+    "lanPushFailed": "Could not send the tickets to the router. Make sure you are on the router's Wi-Fi, then try again.",
+    "provisionFailed": "The tickets could not be registered on the router.",
+    "availableOfTotal": "{{available}} available out of {{total}}",
+    "generateTimeout": "The server is taking longer than expected to finish creating the batch. Check the batch status in Files before creating a new batch.",
+    "viewFiles": "View Files"
   },
   "verifyTicket": {
     "title": "Verify a ticket",

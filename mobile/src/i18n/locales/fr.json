@@ -195,13 +195,17 @@
     "summaryTitle": "Vérification avant génération",
     "batchLabel": "Lot #{{seq}}",
     "completedTitle": "{{count}} tickets créés avec succès",
-    "partialTitle": "{{pushed}} tickets créés sur {{total}}. {{failed}} n'ont pas pu être envoyés au routeur.",
+    "partialTitle": "{{pushed}} tickets disponibles sur {{total}}. {{failed}} n'ont pas pu être enregistrés sur le routeur.",
     "failedTitle": "Impossible de créer les tickets.",
     "viewTickets": "Voir",
     "hideTickets": "Masquer",
     "printDirect": "Imprimer",
     "newBatch": "Nouveau lot",
-    "lanPushFailed": "Impossible d'envoyer les tickets au routeur. Vérifiez que vous êtes connecté au Wi-Fi du routeur, puis réessayez."
+    "lanPushFailed": "Impossible d'envoyer les tickets au routeur. Vérifiez que vous êtes connecté au Wi-Fi du routeur, puis réessayez.",
+    "provisionFailed": "Les tickets n'ont pas pu être enregistrés sur le routeur.",
+    "availableOfTotal": "{{available}} disponible(s) sur {{total}}",
+    "generateTimeout": "Le serveur met plus de temps que prévu à terminer la création. Vérifiez l'état du lot dans Fichiers avant de créer un nouveau lot.",
+    "viewFiles": "Voir Fichiers"
   },
   "verifyTicket": {
     "title": "Vérifier un ticket",

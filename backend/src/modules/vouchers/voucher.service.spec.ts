@@ -92,6 +92,7 @@ const VOUCHER_ROW = {
   id: 'v-1',
   code: 'ABCD1234',
   password: 'ABCD1234',
+  mikrotikId: '*1A', // ticket réellement créé côté RouterOS (règle « provisionné »)
   status: VoucherStatus.GENERATED,
   planId: 'plan-1',
   routerId: 'router-1',
