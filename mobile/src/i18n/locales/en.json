@@ -735,6 +735,7 @@
     "liveFresh": "Up to date",
     "liveStale": "Stale",
     "liveNone": "No data",
+    "liveSlow": "Router slow / RouterOS API not responding",
     "credsNotSyncedDetail": "The router works locally, but its credentials have not been synced with MikroLan yet.",
     "credsRetrySync": "Retry sync",
     "editCredentials": "Edit router credentials",
