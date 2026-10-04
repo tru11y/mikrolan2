@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { describeError } from '@/src/lib/errors';
 import { getLocalCredentials } from '@/src/lib/router-credentials';
 import { PartialPushError, pushVouchersLan } from '@/src/services/mikrotik-lan/hotspotLan';
+import { finalGenerationOutcome, shouldPushViaLan } from '@/src/lib/voucherGeneration';
 import { reportSilent, swallow } from '@/src/lib/report';
 import { TicketCard } from '@/src/components/TicketCard';
 import { printTickets, printTicketsDirect } from '@/src/lib/ticketsPdf';
@@ -98,12 +99,14 @@ function BatchResult({
   pushed,
   total,
   failureMessage,
+  uncertain,
   showTickets,
   onToggleTickets,
   onPrintPdf,
   onPrintDirect,
   onShare,
   onNewBatch,
+  onOpenFiles,
   printBusy,
   printDirectBusy,
 }: {
@@ -116,7 +119,9 @@ function BatchResult({
   pushed: number;
   total: number;
   failureMessage: string | null;
+  uncertain: boolean;
   showTickets: boolean;
+  onOpenFiles: () => void;
   onToggleTickets: () => void;
   onPrintPdf: () => void;
   onPrintDirect: () => void;
@@ -128,7 +133,9 @@ function BatchResult({
   const failed = outcome === 'FAILED';
   const partial = outcome === 'PARTIAL_SUCCESS';
   const tone = failed ? 'danger' : partial ? 'warning' : 'success';
-  const title = failed
+  const title = uncertain
+    ? t('tickets.generateTimeout')
+    : failed
     ? t('tickets.failedTitle')
     : partial
       ? t('tickets.partialTitle', { pushed, total, failed: total - pushed })
@@ -138,8 +145,13 @@ function BatchResult({
     <Banner tone={tone}>
       <View style={{ gap: 10 }}>
         <Text style={{ color: theme.text, fontSize: 14, fontWeight: '700' }}>{title}</Text>
-        {failed && failureMessage ? (
+        {failed && !uncertain && failureMessage ? (
           <Text style={{ color: theme.textMuted, fontSize: 12 }}>{failureMessage}</Text>
+        ) : null}
+        {failed && !uncertain && total > 0 ? (
+          <Text style={{ color: theme.textMuted, fontSize: 12 }}>
+            {t('tickets.availableOfTotal', { available: pushed, total })}
+          </Text>
         ) : null}
         {!failed ? (
           <View style={{ gap: 4 }}>
@@ -158,9 +170,14 @@ function BatchResult({
         ) : null}
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {failed ? (
-            <View style={{ flex: 1 }}>
-              <Button title={t('tickets.newBatch')} onPress={onNewBatch} />
-            </View>
+            <>
+              <View style={{ flex: 1 }}>
+                <Button title={t('tickets.viewFiles')} onPress={onOpenFiles} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Button title={t('common.close')} variant="ghost" onPress={onNewBatch} />
+              </View>
+            </>
           ) : (
             <>
               <View style={{ flex: 1, minWidth: '30%' }}>
@@ -229,6 +246,8 @@ export default function GenerateVouchersScreen() {
   const [lastPushed, setLastPushed] = useState(0);
   const [lastTotal, setLastTotal] = useState(0);
   const [lastFailureMessage, setLastFailureMessage] = useState<string | null>(null);
+  // Délai dépassé côté client : le lot a peut-être été créé côté serveur, issue inconnue.
+  const [lastUncertain, setLastUncertain] = useState(false);
 
   const selectedPlan = plansQuery.data?.find((p) => p.id === planId) ?? null;
   const totalValueXof = (selectedPlan?.priceXof ?? 0) * quantity;
@@ -287,6 +306,7 @@ export default function GenerateVouchersScreen() {
     setBusy(true);
     setLastOutcome(null);
     setLastFailureMessage(null);
+    setLastUncertain(false);
     setShowTickets(false);
     let res: GenerateResult | null = null;
     try {
@@ -296,22 +316,27 @@ export default function GenerateVouchersScreen() {
       });
     } catch (e) {
       reportSilent('generate-vouchers.generate', e, { routerId, planId, quantity });
+      const described = describeError(e);
+      const timedOut = described.errorCode === 'TIMEOUT';
       setLastOutcome('FAILED');
-      setLastFailureMessage(describeError(e).message);
+      setLastUncertain(timedOut);
+      setLastTotal(0);
+      setLastPushed(0);
+      setLastFailureMessage(timedOut ? t('tickets.generateTimeout') : described.message);
+      setJustGenerated(null);
       setBusy(false);
       return;
     }
 
     setLastBatchSeq(res.batchSeq);
-    let outcome: GenOutcome =
-      res.batchStatus === 'COMPLETED' ? 'SUCCESS'
-      : res.batchStatus === 'PARTIAL_SUCCESS' ? 'PARTIAL_SUCCESS'
-      : 'FAILED';
 
     let pushedCount = res.pushedCount;
     let failureMessage: string | null = null;
+    // LAN : seuls les tickets que le routeur a confirmés sont distribuables.
+    const confirmedIds = new Set<string>();
 
-    if (outcome === 'SUCCESS' && !res.pushedByServer && res.push) {
+    const lanPush = shouldPushViaLan(res) ? res.push : undefined;
+    if (lanPush) {
       const reportFailure = (reason: string, code: string, pushed: number) =>
         api.routers
           .reportPushFailure(routerId, {
@@ -327,42 +352,55 @@ export default function GenerateVouchersScreen() {
           failureMessage = t('tickets.localCredsRequired');
           pushedCount = 0;
           await reportFailure(failureMessage, 'ROUTER_CREDS_MISSING', 0);
-          outcome = 'FAILED';
         } else {
-          const items = await pushVouchersLan(creds, res.vouchers, res.push);
+          const items = await pushVouchersLan(creds, res.vouchers, lanPush);
           pushedCount = items.length;
           await api.routers.confirmVouchers(routerId, {
             batchId: res.batchId,
             items,
           });
+          // Un succès LAN n'est acquis qu'une fois confirmPush passé (mikrotikId écrit côté
+          // backend) : seulement alors le ticket est provisionné et distribuable.
+          for (const it of items) confirmedIds.add(it.id);
         }
       } catch (e) {
         const described = describeError(e);
         failureMessage = axios.isAxiosError(e) ? described.message : t('tickets.lanPushFailed');
         if (e instanceof PartialPushError) {
-          pushedCount = e.pushed.length;
+          const pushed = e.pushed;
+          pushedCount = pushed.length;
           await api.routers
-            .confirmVouchers(routerId, { batchId: res.batchId, items: e.pushed })
+            .confirmVouchers(routerId, { batchId: res.batchId, items: pushed })
+            .then(() => {
+              for (const it of pushed) confirmedIds.add(it.id);
+            })
             .catch(swallow('generate.confirm-partial'));
-          outcome = 'PARTIAL_SUCCESS';
         } else {
           pushedCount = 0;
           await reportFailure(described.message, described.errorCode ?? (e instanceof Error ? e.name : 'LAN_PUSH_FAILED'), 0);
-          outcome = 'FAILED';
         }
       }
     }
 
+    // Règle métier : un ticket n'est distribuable que s'il est confirmé côté RouterOS.
+    // Push serveur : le backend ne renvoie comme `provisioned` que les confirmés.
+    const usable = res.pushedByServer
+      ? res.vouchers.filter((v) => v.provisioned === true)
+      : res.vouchers.filter((v) => confirmedIds.has(v.id));
+    const outcome: GenOutcome = finalGenerationOutcome(res.totalCount, usable.length);
+    pushedCount = usable.length;
+
     setLastOutcome(outcome);
     setLastPushed(pushedCount);
     setLastTotal(res.totalCount);
-    setLastFailureMessage(failureMessage);
-    setJustGenerated(res.vouchers);
+    setLastFailureMessage(outcome === 'FAILED' ? (failureMessage ?? t('tickets.provisionFailed')) : failureMessage);
+    // Jamais de ticket non provisionné dans les actions de distribution (partage, PDF, impression).
+    setJustGenerated(usable);
     await qc.invalidateQueries({ queryKey: ['vouchers', routerId] });
     await qc.invalidateQueries({ queryKey: ['batches', routerId] });
 
-    if (outputFormat === 'pdf' && selectedPlan && res.vouchers.length) {
-      await printBatch(res.vouchers, selectedPlan);
+    if (outputFormat === 'pdf' && selectedPlan && usable.length) {
+      await printBatch(usable, selectedPlan);
     }
     setBusy(false);
   }
@@ -371,6 +409,7 @@ export default function GenerateVouchersScreen() {
     setJustGenerated(null);
     setLastOutcome(null);
     setLastFailureMessage(null);
+    setLastUncertain(false);
     setShowTickets(false);
   }
 
@@ -825,6 +864,8 @@ export default function GenerateVouchersScreen() {
             pushed={lastPushed}
             total={lastTotal}
             failureMessage={lastFailureMessage}
+            uncertain={lastUncertain}
+            onOpenFiles={() => router.push({ pathname: '/fichiers', params: { routerId } })}
             showTickets={showTickets}
             onToggleTickets={() => setShowTickets((v) => !v)}
             onPrintPdf={() => justGenerated && selectedPlan && printBatch(justGenerated, selectedPlan)}
