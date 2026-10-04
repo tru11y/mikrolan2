@@ -8,9 +8,14 @@ import type { RouterLiveData } from '@/src/lib/api';
  */
 
 export type LiveHealthState = 'fresh' | 'stale' | 'none';
-export type LiveFailureKind = 'creds-invalid' | 'creds-missing' | 'tunnel' | 'other' | null;
+export type LiveFailureKind = 'creds-invalid' | 'creds-missing' | 'tunnel-down' | 'routeros-slow' | 'other' | null;
 
-/** Distingue identifiants invalides / tunnel indisponible / autre, sans les mélanger. */
+/**
+ * Classe l'échec de la lecture LIVE (RouterGateway). Ne dit RIEN de l'état du
+ * tunnel WireGuard, sauf via le code structuré TUNNEL_NOT_PROVISIONED (pas de
+ * RemotePeer actif) : l'état Tunnel de l'UI vient de `RemotePeer.status`, jamais
+ * d'un message texte. Un timeout / « injoignable » = API RouterOS lente (RB951).
+ */
 export function classifyLiveFailure(input: {
   errorCode?: string | null;
   message?: string | null;
@@ -19,14 +24,8 @@ export function classifyLiveFailure(input: {
   const msg = (input.message ?? '').toLowerCase();
   if (code === 'ROUTER_CREDS_INVALID' || msg.includes('identifiants routeros incorrects')) return 'creds-invalid';
   if (code === 'ROUTER_CREDS_MISSING' || msg.includes('identifiants routeros non configurés')) return 'creds-missing';
-  if (
-    code === 'TUNNEL_NOT_PROVISIONED' ||
-    code === 'ROUTER_UNREACHABLE' ||
-    msg.includes('tunnel') ||
-    msg.includes('injoignable')
-  ) {
-    return 'tunnel';
-  }
+  if (code === 'TUNNEL_NOT_PROVISIONED') return 'tunnel-down';
+  if (code === 'ROUTER_UNREACHABLE' || msg.includes('injoignable') || msg.includes('timeout')) return 'routeros-slow';
   return input.errorCode || input.message ? 'other' : null;
 }
 

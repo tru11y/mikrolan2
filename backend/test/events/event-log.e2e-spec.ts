@@ -128,6 +128,75 @@ describe('EventLog unifié (e2e)', () => {
     expect(row.metadata).toMatchObject({ confirmed: 2, totalCount: 4 });
   });
 
+  // Contrat consommé par le mobile pour un routeur LOCAL : le lot arrive en GENERATING, le
+  // téléphone pousse en LAN puis confirme ; seul un ticket confirmé (mikrotikId) est distribuable.
+  describe('génération LAN — provisionnement (contrat mobile)', () => {
+    const generateLan = async (quantity: number) => {
+      const gen = await request(app.getHttpServer())
+        .post(`/api/routers/${routerId}/vouchers/generate`)
+        .set(auth(owner))
+        .send({ planId, quantity })
+        .expect(200);
+      return gen.body.data as { batchId: string; batchStatus: string; pushedByServer: boolean; push?: unknown; vouchers: { id: string }[] };
+    };
+    const listed = async (batchId: string, includeUnprovisioned = false) =>
+      (
+        await request(app.getHttpServer())
+          .get(`/api/routers/${routerId}/vouchers`)
+          .query({ batchId, ...(includeUnprovisioned ? { includeUnprovisioned: 'true' } : {}) })
+          .set(auth(owner))
+          .expect(200)
+      ).body.data as { id: string; provisioned: boolean }[];
+    const batchCounts = async (batchId: string) => {
+      const res = await request(app.getHttpServer()).get(`/api/routers/${routerId}/vouchers/batches`).set(auth(owner)).expect(200);
+      return (res.body.data as { id: string; status: string; voucherCount: number; provisionedCount: number }[]).find((b) => b.id === batchId);
+    };
+    const confirm = (batchId: string, ids: string[]) =>
+      request(app.getHttpServer())
+        .post(`/api/routers/${routerId}/vouchers/confirm`)
+        .set(auth(owner))
+        .send({ batchId, items: ids.map((id, i) => ({ id, mikrotikId: `*L${i}` })) })
+        .expect(200);
+
+    it('COMPLETED : GENERATING + push présent, rien de distribuable avant confirm, 10/10 après', async () => {
+      const gen = await generateLan(10);
+      expect(gen).toMatchObject({ batchStatus: 'GENERATING', pushedByServer: false });
+      expect(gen.push).toBeDefined();
+      expect(await listed(gen.batchId)).toHaveLength(0);
+
+      await confirm(gen.batchId, gen.vouchers.map((v) => v.id));
+
+      const ready = await listed(gen.batchId);
+      expect(ready).toHaveLength(10);
+      expect(ready.every((v) => v.provisioned)).toBe(true);
+      expect(await batchCounts(gen.batchId)).toMatchObject({ status: 'COMPLETED', voucherCount: 10, provisionedCount: 10 });
+    });
+
+    it('PARTIAL_SUCCESS : 10 préparés, 8 confirmés => 8 distribuables, 10 visibles avec includeUnprovisioned', async () => {
+      const gen = await generateLan(10);
+      await confirm(gen.batchId, gen.vouchers.slice(0, 8).map((v) => v.id));
+
+      expect(await listed(gen.batchId)).toHaveLength(8);
+      const audit = await listed(gen.batchId, true);
+      expect(audit).toHaveLength(10);
+      expect(audit.filter((v) => !v.provisioned)).toHaveLength(2);
+      expect(await batchCounts(gen.batchId)).toMatchObject({ status: 'PARTIAL_SUCCESS', voucherCount: 10, provisionedCount: 8 });
+    });
+
+    it('FAILED : 10 préparés, 0 confirmé (push-failure) => 0 distribuable, lot FAILED', async () => {
+      const gen = await generateLan(10);
+      await request(app.getHttpServer())
+        .post(`/api/routers/${routerId}/vouchers/push-failure`)
+        .set(auth(owner))
+        .send({ batchId: gen.batchId, reason: 'Routeur injoignable (timeout)', errorCode: 'LanUnreachableError' })
+        .expect(200);
+
+      expect(await listed(gen.batchId)).toHaveLength(0);
+      expect(await listed(gen.batchId, true)).toHaveLength(10);
+      expect(await batchCounts(gen.batchId)).toMatchObject({ status: 'FAILED', voucherCount: 10, provisionedCount: 0 });
+    });
+  });
+
   it('coffre PDF : dépôt SUCCESS, refus de type FAILED, téléchargement SUCCESS, introuvable FAILED', async () => {
     const base = `/api/routers/${routerId}/vouchers`;
     const pdf = Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF');
