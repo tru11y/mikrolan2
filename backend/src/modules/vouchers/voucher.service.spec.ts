@@ -153,13 +153,13 @@ describe('VoucherService', () => {
       expect(result.canLogin).toBe(true);
     });
 
-    it('throws UnauthorizedException for unknown code', async () => {
+    it('unknown code is a business 404 (VOUCHER_NOT_FOUND), never a 401 that would log the operator out', async () => {
       const { service, prisma } = makeService();
       prisma.voucher.findFirst.mockResolvedValue(null);
 
       await expect(
         service.verifyVoucherForOperator({ ticket: 'FAKE-CODE' }),
-      ).rejects.toMatchObject({ status: 401 });
+      ).rejects.toMatchObject({ status: 404, errorCode: 'VOUCHER_NOT_FOUND' });
     });
 
     it('returns canLogin: false for REVOKED voucher', async () => {

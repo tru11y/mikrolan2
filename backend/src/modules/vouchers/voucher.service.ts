@@ -506,7 +506,9 @@ export class VoucherService {
     });
 
     if (!voucher) {
-      throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.VOUCHER_NOT_FOUND, 'Code inconnu ou non attribué à ce routeur.');
+      // 404, jamais 401 : côté mobile un 401 signifie « JWT opérateur invalide » et déconnecte la
+      // session. Un ticket inconnu est une réponse métier, la session de l'opérateur reste intacte.
+      throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.VOUCHER_NOT_FOUND, 'Code inconnu ou non attribué à ce routeur.');
     }
 
     const provisioned = isProvisioned(voucher);
