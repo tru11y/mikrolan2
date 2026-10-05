@@ -223,12 +223,16 @@ export class RouterOsApiClient {
         p.resolve(p.rows);
       } else if (reply === '!trap' || reply === '!fatal') {
         const row = parseRow(words.slice(1));
-        // Diagnostic: full sentence + full trap words, so a future RouterOS
-        // rejection is readable straight from `docker logs` instead of
-        // guessing from just row.message (see mikrolan2 TTL anti-tether bug).
+        // Allowlist only: the sent sentence carries `=name=`/`=password=`
+        // (login, hotspot users) and must never reach stdout/journald/Sentry.
+        const command = p.words[0] ?? '';
         console.error(
           '[RouterOsApiClient] trap',
-          JSON.stringify({ sent: p.words, trap: words }),
+          JSON.stringify(
+            command === '/login'
+              ? { errorCode: 'ROUTEROS_AUTH_FAILED', command }
+              : { command, reply, category: row.category, message: row.message },
+          ),
         );
         this.pending = null;
         p.reject(new RouterOsApiError(row.message ?? 'Erreur RouterOS'));
