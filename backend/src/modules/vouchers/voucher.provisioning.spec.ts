@@ -1,8 +1,8 @@
-import { ManagementMode, VoucherStatus } from '@prisma/client';
+import { ManagementMode, SessionStatus, VoucherStatus } from '@prisma/client';
 import { makeEventLogStub } from '../../common/testing/event-log.stub';
 import { addHotspotUser } from '../../common/routeros/hotspot.ops';
 import { applyTenantScope } from '../../prisma/prisma.service';
-import { VoucherService, isProvisioned } from './voucher.service';
+import { VoucherService, computeExpiresAt, isProvisioned, ticketState } from './voucher.service';
 
 jest.mock('../../common/context/tenant-context', () => ({
   getTenantContext: jest.fn(() => ({ tenantId: 'tenant-1', userId: 'user-1', role: 'ADMIN' })),
@@ -269,5 +269,106 @@ describe('generate — what the operator receives as distributable tickets', () 
     expect(res.push).toBeDefined();
     expect(res.vouchers).toHaveLength(3);
     expect(res.vouchers.every((v) => v.provisioned === false)).toBe(true);
+  });
+});
+
+describe('computeExpiresAt / ticketState — expiration = première connexion + durée du forfait', () => {
+  const S = VoucherStatus;
+  const T0 = new Date('2026-10-05T09:12:00Z');
+  const minutes = (n: number) => n * 60_000;
+
+  it('jamais utilisé : aucune expiration (la validité n\'a pas commencé), état AVAILABLE', () => {
+    expect(computeExpiresAt(null, 4320)).toBeNull();
+    expect(ticketState({ status: S.GENERATED, provisioned: true, expiresAt: null, now: T0 })).toBe('AVAILABLE');
+  });
+
+  it('activé : expiresAt = usedAt + durée (Plan.durationMinutes), jamais deviné depuis le nom du forfait', () => {
+    expect(computeExpiresAt(T0, 4320)!.toISOString()).toBe('2026-10-08T09:12:00.000Z'); // 3 jours
+    expect(computeExpiresAt(T0, 1440)!.toISOString()).toBe('2026-10-06T09:12:00.000Z'); // 24 h
+  });
+
+  it('B. première connexion il y a 2 h, durée 24 h => IN_USE, expiration correcte, ~22 h restantes', () => {
+    const now = new Date(T0.getTime() + minutes(120));
+    const exp = computeExpiresAt(T0, 1440)!;
+    expect(ticketState({ status: S.ACTIVE, provisioned: true, expiresAt: exp, now })).toBe('IN_USE');
+    expect((exp.getTime() - now.getTime()) / 3_600_000).toBe(22);
+  });
+
+  it('C. première connexion il y a 2 j, durée 1 j => EXPIRED', () => {
+    const now = new Date(T0.getTime() + minutes(2 * 1440));
+    expect(ticketState({ status: S.ACTIVE, provisioned: true, expiresAt: computeExpiresAt(T0, 1440), now })).toBe('EXPIRED');
+  });
+
+  it('D. révoqué garde la priorité même avec 2 jours théoriques restants', () => {
+    const now = new Date(T0.getTime() + minutes(60));
+    expect(ticketState({ status: S.REVOKED, provisioned: true, expiresAt: computeExpiresAt(T0, 4320), now })).toBe('REVOKED');
+  });
+
+  it('E. non provisionné => UNAVAILABLE, jamais ressuscité par le calcul de durée', () => {
+    const now = new Date(T0.getTime() + minutes(60));
+    expect(ticketState({ status: S.ACTIVE, provisioned: false, expiresAt: computeExpiresAt(T0, 4320), now })).toBe('UNAVAILABLE');
+  });
+
+  it('statuts stockés EXPIRED / USED respectés', () => {
+    expect(ticketState({ status: S.EXPIRED, provisioned: true, expiresAt: null, now: T0 })).toBe('EXPIRED');
+    expect(ticketState({ status: S.USED, provisioned: true, expiresAt: null, now: T0 })).toBe('ENDED');
+  });
+
+  it('une expiration persistée par la logique métier prime sur le calcul', () => {
+    const persisted = new Date('2026-12-31T00:00:00Z');
+    expect(computeExpiresAt(T0, 60, persisted)).toBe(persisted);
+  });
+});
+
+describe('verifyVoucherForOperator — réponse enrichie', () => {
+  const row = (over: Record<string, unknown>) => ({
+    ...rows('x', 1, 1)[0],
+    plan: { id: 'plan-1', name: '3 jours', priceXof: 2000, durationMinutes: 4320 },
+    router: { id: 'router-1', identity: 'MT-01', alias: 'FREEDOM HOME' },
+    session: null,
+    ...over,
+  });
+
+  it('A. jamais utilisé : AVAILABLE, pas d\'expiration, durée technique 3 j en secondes, routeur et dates lisibles, aucun secret', async () => {
+    const { service, prisma } = makeService();
+    prisma.voucher.findFirst.mockResolvedValue(row({}));
+    const res = await service.verifyVoucherForOperator({ ticket: 'CODEx0' });
+    expect(res).toMatchObject({ state: 'AVAILABLE', canLogin: true, provisioned: true, routerName: 'FREEDOM HOME', planName: '3 jours', durationMinutes: 4320, durationSeconds: 259200, usedAt: null, expiresAt: null });
+    expect(res.createdAt).toBe(NOW.toISOString());
+    expect(typeof res.serverNow).toBe('string');
+    expect(JSON.stringify(res)).not.toMatch(/mikrotikId|credEncrypted|password/i);
+  });
+
+  it('en cours : IN_USE, expiresAt = première connexion + durée du forfait', async () => {
+    const used = new Date(Date.now() - 2 * 3_600_000); // il y a 2 h
+    const { service, prisma } = makeService();
+    prisma.voucher.findFirst.mockResolvedValue(
+      row({ status: VoucherStatus.ACTIVE, usedAt: used, plan: { id: 'plan-1', name: '24 h', priceXof: 500, durationMinutes: 1440 }, session: { status: SessionStatus.ACTIVE, startedAt: used, lastSeenAt: used, terminatedAt: null, bytesIn: BigInt(1), bytesOut: BigInt(2), macAddress: null, ipAddress: null } }),
+    );
+    const res = await service.verifyVoucherForOperator({ ticket: 'CODEx0' });
+    expect(res).toMatchObject({ state: 'IN_USE', canLogin: true, usedAt: used.toISOString(), expiresAt: new Date(used.getTime() + 24 * 3_600_000).toISOString() });
+  });
+
+  it('C. expiré : EXPIRED, canLogin=false, message cohérent', async () => {
+    const used = new Date(Date.now() - 2 * 86_400_000); // il y a 2 j, forfait 1 j
+    const { service, prisma } = makeService();
+    prisma.voucher.findFirst.mockResolvedValue(row({ status: VoucherStatus.ACTIVE, usedAt: used, plan: { id: 'plan-1', name: '1 jour', priceXof: 300, durationMinutes: 1440 } }));
+    const res = await service.verifyVoucherForOperator({ ticket: 'CODEx0' });
+    expect(res).toMatchObject({ state: 'EXPIRED', canLogin: false });
+    expect(res.message).toBe('Ticket expiré — connexion refusée.');
+  });
+
+  it('E. non provisionné : UNAVAILABLE, canLogin=false, message explicite (pas « valide »)', async () => {
+    const { service, prisma } = makeService();
+    prisma.voucher.findFirst.mockResolvedValue(row({ mikrotikId: null }));
+    const res = await service.verifyVoucherForOperator({ ticket: 'CODEx0' });
+    expect(res).toMatchObject({ state: 'UNAVAILABLE', canLogin: false, provisioned: false });
+    expect(res.message).toBe("Ce ticket n'a pas encore été enregistré sur le routeur.");
+  });
+
+  it('D. révoqué : REVOKED, canLogin=false', async () => {
+    const { service, prisma } = makeService();
+    prisma.voucher.findFirst.mockResolvedValue(row({ status: VoucherStatus.REVOKED }));
+    expect(await service.verifyVoucherForOperator({ ticket: 'CODEx0' })).toMatchObject({ state: 'REVOKED', canLogin: false });
   });
 });

@@ -1,5 +1,5 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ScrollView, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,7 +7,8 @@ import { useTranslation } from 'react-i18next';
 import { api, type VoucherVerificationResult } from '@/src/lib/api';
 import { reportSilent } from '@/src/lib/report';
 import { describeError } from '@/src/lib/errors';
-import { fmtDateFull, fmtDurationHMS } from '@/src/lib/format';
+import { fmtDateFull } from '@/src/lib/format';
+import { effectiveState, fmtDayTime, fmtPlanDuration, fmtRemaining, remainingMs, verdictSpec, type VerdictSpec } from '@/src/lib/ticketVerification';
 import {
   Button,
   Card,
@@ -27,21 +28,9 @@ import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
-type Verdict = {
-  tone: 'valid' | 'used' | 'invalid';
-  icon: IoniconName;
-  title: string;
-  detail: string;
-  result: VoucherVerificationResult;
-};
+type Verdict = VerdictSpec & { result: VoucherVerificationResult; titleText: string; detailText: string };
 
-
-/** Durée totale d'un plan, en HH:MM:SS (au-delà de 24h si besoin). */
-function fmtDuration(min: number): string {
-  return fmtDurationHMS(min * 60);
-}
-
-/** JJ/MM/AAAA HH:MM:SS, format unique pour toutes les dates de cet écran. */
+/** JJ/MM/AAAA HH:MM:SS, format des dates de session de cet écran. */
 function fmtDate(iso: string): string {
   return fmtDateFull(iso);
 }
@@ -52,62 +41,6 @@ function fmtBytes(raw: string): string {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} Ko`;
   if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} Mo`;
   return `${(n / (1024 * 1024 * 1024)).toFixed(2)} Go`;
-}
-
-function verdictFor(r: VoucherVerificationResult, t: (key: string, opts?: Record<string, unknown>) => string): Verdict {
-  const expired =
-    r.status === 'EXPIRED' ||
-    (r.expiresAt != null && new Date(r.expiresAt).getTime() < Date.now());
-
-  if (r.status === 'REVOKED') {
-    return {
-      tone: 'invalid',
-      icon: 'ban-outline',
-      title: t('verifyTicket.cancelled'),
-      detail: t('verifyTicket.cancelledDetail'),
-      result: r,
-    };
-  }
-  if (expired) {
-    return {
-      tone: 'invalid',
-      icon: 'time-outline',
-      title: t('verifyTicket.expired'),
-      detail: r.expiresAt
-        ? t('verifyTicket.expiredAt', { date: fmtDate(r.expiresAt) })
-        : t('verifyTicket.expiredGeneric'),
-      result: r,
-    };
-  }
-  if (r.status === 'USED') {
-    return {
-      tone: 'used',
-      icon: 'checkmark-done-outline',
-      title: t('verifyTicket.used'),
-      detail: r.activatedAt
-        ? t('verifyTicket.usedAt', { date: fmtDate(r.activatedAt) })
-        : t('verifyTicket.usedGeneric'),
-      result: r,
-    };
-  }
-  if (r.status === 'ACTIVE') {
-    return {
-      tone: 'used',
-      icon: 'wifi-outline',
-      title: t('verifyTicket.inUse'),
-      detail: r.activatedAt
-        ? t('verifyTicket.inUseAt', { date: fmtDate(r.activatedAt) })
-        : t('verifyTicket.inUseGeneric'),
-      result: r,
-    };
-  }
-  return {
-    tone: 'valid',
-    icon: 'shield-checkmark-outline',
-    title: t('verifyTicket.valid'),
-    detail: r.message || t('verifyTicket.validDetail'),
-    result: r,
-  };
 }
 
 function InfoRow({ label, value, color }: { label: string; value: string; color?: string }) {
@@ -137,6 +70,9 @@ export default function VerifyTicketScreen() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [verdict, setVerdict] = useState<Verdict | null>(null);
+  // Compteur local : mis à jour sans aucune requête réseau.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [clockOffsetMs, setClockOffsetMs] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   async function verify() {
@@ -147,15 +83,21 @@ export default function VerifyTicketScreen() {
     setVerdict(null);
     try {
       const result = await api.vouchers.verify(wanted, undefined, routerId);
-      setVerdict(verdictFor(result, t));
+      const spec = verdictSpec(result.state);
+      const serverMs = Date.parse(result.serverNow);
+      setClockOffsetMs(Number.isNaN(serverMs) ? 0 : serverMs - Date.now());
+      setNowMs(Date.now());
+      setVerdict({ ...spec, titleText: t(`verifyTicket.${spec.title}`), detailText: t(`verifyTicket.${spec.detail}`), result });
     } catch (e) {
       const described = describeError(e);
       if (described.status === 401 || described.status === 404) {
         setVerdict({
           tone: 'invalid',
-          icon: 'close-circle-outline',
-          title: t('verifyTicket.unknown'),
-          detail: t('verifyTicket.unknownDetail'),
+          icon: 'ban-outline',
+          title: 'states.UNAVAILABLE',
+          detail: 'stateDetails.UNAVAILABLE',
+          titleText: t('verifyTicket.unknown'),
+          detailText: t('verifyTicket.unknownDetail'),
           result: null as never,
         });
       } else {
@@ -167,13 +109,25 @@ export default function VerifyTicketScreen() {
     }
   }
 
+  useEffect(() => {
+    if (!verdict?.result) return;
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, [verdict]);
+
   const toneColor: Record<Verdict['tone'], string> = {
     valid: theme.success,
     used: theme.warning,
     invalid: theme.danger,
   };
-  const accent = verdict ? toneColor[verdict.tone] : theme.primary;
   const r = verdict?.result;
+  const remaining = r ? remainingMs({ expiresAt: r.expiresAt, durationSeconds: r.durationSeconds, nowMs, clockOffsetMs }) : 0;
+  const eff = r ? effectiveState(r.state, r.usedAt, remaining) : null;
+  const shown: Verdict | null =
+    verdict && r && eff && eff !== r.state
+      ? { ...verdictSpec(eff), result: r, titleText: t(`verifyTicket.${verdictSpec(eff).title}`), detailText: t(`verifyTicket.${verdictSpec(eff).detail}`) }
+      : verdict;
+  const accent = shown ? toneColor[shown.tone] : theme.primary;
   const s = r?.session;
 
   return (
@@ -248,7 +202,7 @@ export default function VerifyTicketScreen() {
           </Card>
         ) : null}
 
-        {verdict ? (
+        {shown ? (
           <Card style={{ gap: space.md, borderColor: withAlpha(accent, 0.5) }}>
             <Row style={{ gap: space.md, justifyContent: 'flex-start' }}>
               <View
@@ -261,7 +215,7 @@ export default function VerifyTicketScreen() {
                   justifyContent: 'center',
                 }}
               >
-                <Ionicons name={verdict.icon} size={26} color={accent} />
+                <Ionicons name={shown.icon} size={26} color={accent} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text
@@ -271,7 +225,7 @@ export default function VerifyTicketScreen() {
                     fontWeight: weight.bold,
                   }}
                 >
-                  {verdict.title}
+                  {shown.titleText}
                 </Text>
                 <Text
                   style={{
@@ -280,7 +234,7 @@ export default function VerifyTicketScreen() {
                     marginTop: 2,
                   }}
                 >
-                  {verdict.detail}
+                  {shown.detailText}
                 </Text>
               </View>
             </Row>
@@ -295,41 +249,38 @@ export default function VerifyTicketScreen() {
                 }}
               >
                 <InfoRow label={t('verifyTicket.code')} value={r.code} />
-                <InfoRow label={t('verifyTicket.state')} value={t(`verifyTicket.voucherStatus.${r.status}`)} />
-                <InfoRow label={t('verifyTicket.plan')} value={r.planName} />
-                <InfoRow label={t('tickets.duration', { duration: fmtDuration(r.durationMinutes) })} value={fmtDuration(r.durationMinutes)} />
-                <InfoRow
-                  label={t('verifyTicket.price')}
-                  value={`${r.priceXof.toLocaleString('fr-FR')} FCFA`}
-                  color={theme.success}
-                />
                 {r.routerName ? <InfoRow label={t('verifyTicket.router')} value={r.routerName} /> : null}
+                <InfoRow
+                  label={t('verifyTicket.plan')}
+                  value={`${r.planName} · ${fmtPlanDuration(r.durationMinutes)} · ${r.priceXof.toLocaleString('fr-FR')} FCFA`}
+                />
+                {fmtDayTime(r.createdAt) ? <InfoRow label={t('verifyTicket.createdAt')} value={fmtDayTime(r.createdAt) as string} /> : null}
+                <InfoRow
+                  label={t('verifyTicket.firstConnection')}
+                  value={fmtDayTime(r.usedAt) ?? t('verifyTicket.neverUsed')}
+                />
+                {eff !== 'REVOKED' && eff !== 'UNAVAILABLE' ? (
+                  <>
+                    <InfoRow
+                      label={t('verifyTicket.expiresAt')}
+                      value={r.expiresAt ? (fmtDayTime(r.expiresAt) ?? '—') : t('verifyTicket.afterFirstConnection')}
+                    />
+                    <InfoRow
+                      label={t('verifyTicket.remaining')}
+                      value={fmtRemaining(remaining, t('verifyTicket.expiredShort'))}
+                      color={remaining <= 0 && r.expiresAt ? theme.danger : undefined}
+                    />
+                  </>
+                ) : null}
+                <InfoRow label={t('verifyTicket.state')} value={t(`verifyTicket.${shown.title}`)} />
+                <InfoRow
+                  label={t('verifyTicket.provisioning')}
+                  value={r.provisioned ? t('verifyTicket.provisioned') : t('verifyTicket.notProvisioned')}
+                  color={r.provisioned ? theme.success : theme.warning}
+                />
                 {r.source === 'LEGACY' ? (
                   <InfoRow label={t('verifyTicket.source')} value={t('verifyTicket.sourceLegacy')} color={theme.warning} />
                 ) : null}
-                {r.deliveredAt ? (
-                  <InfoRow label={t('verifyTicket.createdAt')} value={fmtDate(r.deliveredAt)} />
-                ) : null}
-                {r.activatedAt ? (
-                  <InfoRow label={t('verifyTicket.firstConnection')} value={fmtDate(r.activatedAt)} />
-                ) : null}
-                {r.expiresAt ? (
-                  <InfoRow label={t('verifyTicket.expiresAt')} value={fmtDate(r.expiresAt)} />
-                ) : null}
-                {r.activatedAt ? (
-                  <InfoRow
-                    label={t('verifyTicket.consumedDuration')}
-                    value={fmtDurationHMS(
-                      (new Date(s?.terminatedAt ?? Date.now()).getTime() -
-                        new Date(r.activatedAt).getTime()) /
-                        1000,
-                    )}
-                  />
-                ) : null}
-                <InfoRow
-                  label={t('verifyTicket.totalDuration')}
-                  value={fmtDurationHMS(r.durationMinutes * 60)}
-                />
               </View>
             ) : null}
 
@@ -377,20 +328,6 @@ export default function VerifyTicketScreen() {
               </View>
             ) : null}
 
-            {r?.advice ? (
-              <Text
-                style={{
-                  color: theme.textMuted,
-                  fontSize: type.caption,
-                  fontStyle: 'italic',
-                  paddingTop: space.sm,
-                  borderTopWidth: 1,
-                  borderTopColor: theme.border,
-                }}
-              >
-                {r.advice}
-              </Text>
-            ) : null}
           </Card>
         ) : null}
       </ScrollView>

@@ -19,3 +19,5 @@
 
 ## P2
 - **TICKET ACTION BUTTON RESPONSIVE LAYOUT** — sur l'écran Fichiers, « Révoquer » et « Supprimer » passent sur deux lignes (« Révoque/r », « Supprim/er ») dans la rangée d'actions d'un ticket. Non bloquant RC.
+- **VOUCHER DURATION SNAPSHOT** — « Vérifier un ticket » calcule `expiresAt = usedAt + Plan.durationMinutes` avec la durée ACTUELLE du forfait. Un ticket généré avec un forfait de 24 h puis dont le forfait est édité à 48 h afficherait 48 h. Cible : snapshot de la durée sur le voucher à la génération.
+- **CALENDAR EXPIRATION VS ROUTEROS LIMIT-UPTIME** — l'expiration affichée est calendaire (`usedAt + durée`) alors que `limit-uptime` RouterOS compte le temps de connexion cumulé. Décision produit connue pour cette version, non corrigée.
