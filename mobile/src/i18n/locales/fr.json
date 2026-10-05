@@ -236,7 +236,7 @@
     "sourceLegacy": "Legacy (routeur)",
     "createdAt": "Créé le",
     "firstConnection": "Première connexion",
-    "expiresAt": "Expire le",
+    "expiresAt": "Date d'expiration",
     "consumedDuration": "Durée consommée",
     "totalDuration": "Durée totale",
     "session": "Session",
@@ -261,7 +261,6 @@
     "states": {
       "AVAILABLE": "🟢 Disponible",
       "IN_USE": "🟢 En cours",
-      "USED": "⚪ Déjà utilisé",
       "ENDED": "⚪ Terminé",
       "EXPIRED": "🔴 Expiré",
       "REVOKED": "🟠 Révoqué",
@@ -269,8 +268,7 @@
     },
     "stateDetails": {
       "AVAILABLE": "Ticket enregistré sur le routeur, jamais utilisé.",
-      "IN_USE": "Une connexion est ouverte avec ce code.",
-      "USED": "Ce ticket a déjà servi. Aucune connexion ouverte actuellement.",
+      "IN_USE": "Première connexion faite : le forfait court.",
       "ENDED": "Ce ticket est consommé.",
       "EXPIRED": "Ce ticket a expiré.",
       "REVOKED": "Ce ticket a été révoqué. Ne pas accepter.",
@@ -279,7 +277,10 @@
     "neverUsed": "Jamais utilisé",
     "provisioning": "Provisionnement",
     "provisioned": "✅ Enregistré sur le routeur",
-    "notProvisioned": "⚠️ Non enregistré sur le routeur"
+    "notProvisioned": "⚠️ Non enregistré sur le routeur",
+    "remaining": "Temps restant",
+    "afterFirstConnection": "Après première connexion",
+    "expiredShort": "Expiré"
   },
   "rapport": {
     "title": "Rapport & performance",

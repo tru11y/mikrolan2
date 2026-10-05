@@ -1,5 +1,5 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ScrollView, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,7 +8,7 @@ import { api, type VoucherVerificationResult } from '@/src/lib/api';
 import { reportSilent } from '@/src/lib/report';
 import { describeError } from '@/src/lib/errors';
 import { fmtDateFull } from '@/src/lib/format';
-import { fmtDayTime, fmtPlanDuration, verdictSpec, type VerdictSpec } from '@/src/lib/ticketVerification';
+import { effectiveState, fmtDayTime, fmtPlanDuration, fmtRemaining, remainingMs, verdictSpec, type VerdictSpec } from '@/src/lib/ticketVerification';
 import {
   Button,
   Card,
@@ -43,16 +43,6 @@ function fmtBytes(raw: string): string {
   return `${(n / (1024 * 1024 * 1024)).toFixed(2)} Go`;
 }
 
-function verdictFor(r: VoucherVerificationResult, t: (key: string, opts?: Record<string, unknown>) => string): Verdict {
-  const spec = verdictSpec(r.state);
-  return {
-    ...spec,
-    titleText: t(`verifyTicket.${spec.title}`),
-    detailText: t(`verifyTicket.${spec.detail}`),
-    result: r,
-  };
-}
-
 function InfoRow({ label, value, color }: { label: string; value: string; color?: string }) {
   const theme = useTheme();
   return (
@@ -80,6 +70,9 @@ export default function VerifyTicketScreen() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [verdict, setVerdict] = useState<Verdict | null>(null);
+  // Compteur local : mis à jour sans aucune requête réseau.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [clockOffsetMs, setClockOffsetMs] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   async function verify() {
@@ -90,7 +83,11 @@ export default function VerifyTicketScreen() {
     setVerdict(null);
     try {
       const result = await api.vouchers.verify(wanted, undefined, routerId);
-      setVerdict(verdictFor(result, t));
+      const spec = verdictSpec(result.state);
+      const serverMs = Date.parse(result.serverNow);
+      setClockOffsetMs(Number.isNaN(serverMs) ? 0 : serverMs - Date.now());
+      setNowMs(Date.now());
+      setVerdict({ ...spec, titleText: t(`verifyTicket.${spec.title}`), detailText: t(`verifyTicket.${spec.detail}`), result });
     } catch (e) {
       const described = describeError(e);
       if (described.status === 401 || described.status === 404) {
@@ -112,13 +109,25 @@ export default function VerifyTicketScreen() {
     }
   }
 
+  useEffect(() => {
+    if (!verdict?.result) return;
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, [verdict]);
+
   const toneColor: Record<Verdict['tone'], string> = {
     valid: theme.success,
     used: theme.warning,
     invalid: theme.danger,
   };
-  const accent = verdict ? toneColor[verdict.tone] : theme.primary;
   const r = verdict?.result;
+  const remaining = r ? remainingMs({ expiresAt: r.expiresAt, durationSeconds: r.durationSeconds, nowMs, clockOffsetMs }) : 0;
+  const eff = r ? effectiveState(r.state, r.usedAt, remaining) : null;
+  const shown: Verdict | null =
+    verdict && r && eff && eff !== r.state
+      ? { ...verdictSpec(eff), result: r, titleText: t(`verifyTicket.${verdictSpec(eff).title}`), detailText: t(`verifyTicket.${verdictSpec(eff).detail}`) }
+      : verdict;
+  const accent = shown ? toneColor[shown.tone] : theme.primary;
   const s = r?.session;
 
   return (
@@ -193,7 +202,7 @@ export default function VerifyTicketScreen() {
           </Card>
         ) : null}
 
-        {verdict ? (
+        {shown ? (
           <Card style={{ gap: space.md, borderColor: withAlpha(accent, 0.5) }}>
             <Row style={{ gap: space.md, justifyContent: 'flex-start' }}>
               <View
@@ -206,7 +215,7 @@ export default function VerifyTicketScreen() {
                   justifyContent: 'center',
                 }}
               >
-                <Ionicons name={verdict.icon} size={26} color={accent} />
+                <Ionicons name={shown.icon} size={26} color={accent} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text
@@ -216,7 +225,7 @@ export default function VerifyTicketScreen() {
                     fontWeight: weight.bold,
                   }}
                 >
-                  {verdict.titleText}
+                  {shown.titleText}
                 </Text>
                 <Text
                   style={{
@@ -225,7 +234,7 @@ export default function VerifyTicketScreen() {
                     marginTop: 2,
                   }}
                 >
-                  {verdict.detailText}
+                  {shown.detailText}
                 </Text>
               </View>
             </Row>
@@ -250,7 +259,20 @@ export default function VerifyTicketScreen() {
                   label={t('verifyTicket.firstConnection')}
                   value={fmtDayTime(r.usedAt) ?? t('verifyTicket.neverUsed')}
                 />
-                <InfoRow label={t('verifyTicket.state')} value={t(`verifyTicket.${verdict.title}`)} />
+                {eff !== 'REVOKED' && eff !== 'UNAVAILABLE' ? (
+                  <>
+                    <InfoRow
+                      label={t('verifyTicket.expiresAt')}
+                      value={r.expiresAt ? (fmtDayTime(r.expiresAt) ?? '—') : t('verifyTicket.afterFirstConnection')}
+                    />
+                    <InfoRow
+                      label={t('verifyTicket.remaining')}
+                      value={fmtRemaining(remaining, t('verifyTicket.expiredShort'))}
+                      color={remaining <= 0 && r.expiresAt ? theme.danger : undefined}
+                    />
+                  </>
+                ) : null}
+                <InfoRow label={t('verifyTicket.state')} value={t(`verifyTicket.${shown.title}`)} />
                 <InfoRow
                   label={t('verifyTicket.provisioning')}
                   value={r.provisioned ? t('verifyTicket.provisioned') : t('verifyTicket.notProvisioned')}
