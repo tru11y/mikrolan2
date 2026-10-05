@@ -146,6 +146,12 @@ export default function SessionsScreen() {
   const sessionsLoading = remoteMode ? live.isLoading : query.isLoading;
   const sessionsError = remoteMode ? live.isError : query.isError;
   const sessionsErrorObj: unknown = remoteMode ? live.error : query.error;
+  // Snapshot absent côté VPS (liste jamais lue) ≠ « aucune session » : on ne conclut jamais 0 sans lecture confirmée.
+  const sessionsUnknown = remoteMode && !live.isLoading && live.data != null && live.data.sessions == null;
+  const sessionsAgeSec =
+    remoteMode && live.data?.sessionsAgeMs != null
+      ? Math.max(0, Math.round((live.data.sessionsAgeMs + (Date.now() - live.dataUpdatedAt)) / 1000))
+      : null;
 
   const localCredsPresentQuery = useQuery({
     queryKey: ['router-local-creds', routerId],
@@ -377,8 +383,14 @@ export default function SessionsScreen() {
         {error ? <Banner tone="danger">{error}</Banner> : null}
         {sessionsError ? <Banner tone="warning">{extractErrorMessage(sessionsErrorObj)}</Banner> : null}
         {unreliableEmpty ? <Banner tone="warning">{t('sessions.unreliableWarning')}</Banner> : null}
+        {remoteMode && sessionsAgeSec !== null ? (
+          <Text style={{ color: theme.textMuted, fontSize: 11, textAlign: 'center' }}>
+            {t('routerDetail.updatedAgo', { s: sessionsAgeSec })}
+          </Text>
+        ) : null}
+        {remoteMode && live.data?.stale && !sessionsUnknown ? <Banner tone="warning">{t('routerDetail.dataNotRefreshed')}</Banner> : null}
 
-        {sessionsLoading ? (
+        {sessionsLoading || sessionsUnknown ? (
           <Text style={{ color: theme.textMuted, fontSize: type.body, textAlign: 'center', paddingVertical: space.xl }}>{t('sessions.readingRouter')}</Text>
         ) : !filtered.length ? (
           <Empty icon="people-outline" text={t('sessions.noSession')} />
