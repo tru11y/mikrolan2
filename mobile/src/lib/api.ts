@@ -710,6 +710,12 @@ export type RouterLiveData = {
   routerId: string;
   lastSuccessAt: number;
   health: 'ONLINE' | 'OFFLINE' | 'UNKNOWN';
+  routerOsState?: 'RESPONSIVE' | 'SLOW' | 'UNREACHABLE' | 'UNKNOWN';
+  tunnelState?: 'ACTIVE' | 'DOWN' | 'UNKNOWN';
+  sessionsUpdatedAt?: number | null;
+  statsUpdatedAt?: number | null;
+  sessionsAgeMs?: number | null;
+  statsAgeMs?: number | null;
   cpuPercent: number | null;
   memoryUsedMb: number | null;
   memoryTotalMb: number | null;

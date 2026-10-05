@@ -12,6 +12,7 @@ export interface RouterLiveEventPayload {
   snapshot?: RouterLiveData;
   sessionCount?: number;
   sessions?: LiveSession[];
+  reason?: 'SLOW' | 'UNREACHABLE';
 }
 
 export function mergeEvent(prev: RouterLiveData | undefined, event: RouterLiveEventPayload): RouterLiveData | undefined {
@@ -41,7 +42,7 @@ export function mergeEvent(prev: RouterLiveData | undefined, event: RouterLiveEv
       // Un refresh vient d'échouer : la dernière donnée reste affichée, mais
       // signalée périmée — jamais un écran vide ni un blocage en OFFLINE tant
       // qu'aucune confirmation n'est arrivée (nuance stale ≠ offline, §9).
-      return prev ? { ...prev, stale: true, refreshing: false, lastError: 'Routeur injoignable' } : prev;
+      return prev ? { ...prev, stale: true, refreshing: false, lastError: event.reason === 'SLOW' ? 'Le routeur répond lentement' : 'Routeur injoignable' } : prev;
     case 'ROUTER_LIVE_RECOVERED':
       return prev; // le ROUTER_STATS qui suit immédiatement porte la vraie donnée
     default:
