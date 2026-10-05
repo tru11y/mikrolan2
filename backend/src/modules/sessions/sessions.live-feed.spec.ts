@@ -97,6 +97,49 @@ describe('Phase 1A — sessions live alimentées par syncActivations', () => {
     expect(businessCalls().created).toBe(12);
   });
 
+  it('B3. publication qui lève : aucune activation, prix ni Session perdus (payloads identiques au flag OFF)', async () => {
+    delete process.env['ROUTER_LIVE_SYNC_PUBLISH_ENABLED'];
+    await build().sync();
+    const offPromote = mockPrisma.voucher.updateMany.mock.calls.map((c) => c[0]);
+    const offCreate = mockPrisma.session.create.mock.calls.map((c) => c[0]);
+
+    jest.clearAllMocks();
+    mockPrisma.session.findMany.mockResolvedValue([]);
+    mockPrisma.voucher.findMany.mockResolvedValue(vouchers(13));
+    mockPrisma.voucher.updateMany.mockResolvedValue({ count: 1 });
+    mockPrisma.session.create.mockResolvedValue({});
+    mockPrisma.notification.create.mockResolvedValue({ id: 'n1' });
+    mockRemote.run.mockResolvedValue(rows(12));
+    process.env['ROUTER_LIVE_SYNC_PUBLISH_ENABLED'] = 'true';
+    const { gateway, sync } = build();
+    jest.spyOn(gateway, 'publishSessions').mockImplementation(() => {
+      throw new Error('live cassé');
+    });
+    expect(await sync()).toBe('ok');
+
+    const onPromote = mockPrisma.voucher.updateMany.mock.calls.map((c) => c[0]);
+    expect(onPromote).toHaveLength(12);
+    expect(onPromote.map((c) => c.data.priceXofAtActivation)).toEqual(Array(12).fill(500));
+    expect(onPromote.map((c) => c.data.priceSnapshotSource)).toEqual(Array(12).fill('EXACT'));
+    const strip = (x: { data: Record<string, unknown> }[]) => x.map((c) => ({ ...c, data: { ...c.data, usedAt: 0, lastSeenAt: 0 } }));
+    expect(strip(onPromote)).toEqual(strip(offPromote));
+    expect(strip(mockPrisma.session.create.mock.calls.map((c) => c[0]))).toEqual(strip(offCreate));
+    expect(mockPrisma.notification.create).toHaveBeenCalledTimes(12);
+  });
+
+  it('B4. lecture RouterOS en échec ET noteSyncReadFailure qui lève : erreur d origine gérée comme avant', async () => {
+    const { gateway, sync } = build();
+    jest.spyOn(gateway, 'noteSyncReadFailure').mockImplementation(() => {
+      throw new Error('live cassé');
+    });
+    mockRemote.run.mockRejectedValue(new Error('Routeur injoignable (timeout)'));
+    const warn = jest.spyOn(Logger.prototype, 'warn');
+    expect(await sync()).toBe('failed');
+    expect(mockPrisma.voucher.updateMany).not.toHaveBeenCalled();
+    const msgs = warn.mock.calls.map((c) => String(c[0]));
+    expect(msgs.some((m) => m.startsWith('Activation sync failed for router r1: Routeur injoignable (timeout)'))).toBe(true);
+  });
+
   it('B2. gateway absent (module live indisponible) : syncActivations inchangé', async () => {
     const svc = new SessionsService(mockPrisma as never, mockRemote as never, mockEvents as never, mockNotifications as never);
     const status = await (svc as unknown as { syncRouter(r: { id: string; tenantId: string }): Promise<string> }).syncRouter({ id: 'r1', tenantId: 't1' });
