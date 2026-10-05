@@ -1,8 +1,9 @@
 import { Controller, MessageEvent, NotFoundException, Param, ParseUUIDPipe, Sse } from '@nestjs/common';
-import type { Observable } from 'rxjs';
+import { defer, finalize, type Observable } from 'rxjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NoEnvelope } from '../../common/decorators/no-envelope.decorator';
 import { RouterLiveEventsService } from './router-live-events.service';
+import { RouterGatewayService } from './router-gateway.service';
 
 /**
  * Flux temps réel éphémère (§8 du cadrage) : `ROUTER_STATS`, `SESSION_COUNT_CHANGED`,
@@ -15,6 +16,7 @@ export class RouterLiveEventsController {
   constructor(
     private readonly liveEvents: RouterLiveEventsService,
     private readonly prisma: PrismaService,
+    private readonly gateway: RouterGatewayService,
   ) {}
 
   @Sse()
@@ -25,6 +27,10 @@ export class RouterLiveEventsController {
     // d'un routeur qui n'est pas le sien.
     const router = await this.prisma.router.findFirst({ where: { id, deletedAt: null }, select: { id: true } });
     if (!router) throw new NotFoundException('Routeur introuvable');
-    return this.liveEvents.stream(id);
+    // Un abonné SSE = un écran ouvert : le collecteur accélère la cadence HOT tant qu'il y en a.
+    return defer(() => {
+      const release = this.gateway.watch(id);
+      return this.liveEvents.stream(id).pipe(finalize(release));
+    });
   }
 }

@@ -18,7 +18,7 @@ export type RouterLiveEvent =
   | { type: 'ROUTER_STATS'; routerId: string; snapshot: RouterLiveSnapshot }
   | { type: 'SESSION_COUNT_CHANGED'; routerId: string; sessionCount: number }
   | { type: 'SESSIONS_CHANGED'; routerId: string; sessions: LiveSession[] }
-  | { type: 'ROUTER_LIVE_STALE'; routerId: string }
+  | { type: 'ROUTER_LIVE_STALE'; routerId: string; reason?: 'SLOW' | 'UNREACHABLE' }
   | { type: 'ROUTER_LIVE_RECOVERED'; routerId: string };
 
 @Injectable()
