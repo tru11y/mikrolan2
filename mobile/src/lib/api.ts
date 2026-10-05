@@ -577,6 +577,8 @@ export type VoucherSessionInfo = {
   ipAddress: string | null;
 };
 
+import type { TicketState } from './ticketVerification';
+
 export type VoucherVerificationResult = {
   source: 'SAAS' | 'LEGACY';
   voucherId: string | null;
@@ -588,12 +590,18 @@ export type VoucherVerificationResult = {
   durationMinutes: number;
   priceXof: number;
   routerName: string | null;
-  deliveredAt: string | null;
-  activatedAt: string | null;
+  /** Date de création du ticket. */
+  createdAt: string;
+  /** Première connexion réelle (écrite une seule fois par la synchronisation), null = jamais utilisé. */
+  usedAt: string | null;
+  /** Toujours null aujourd'hui : MikroLan ne persiste pas d'expiration (non affiché). */
   expiresAt: string | null;
+  /** Confirmé côté RouterOS (décidé par le backend). */
+  provisioned: boolean;
+  /** État métier calculé par le backend (voir ticketVerification.ts). */
+  state: TicketState;
   session: VoucherSessionInfo | null;
   message: string;
-  advice: string;
 };
 
 export type UserProfile = {
