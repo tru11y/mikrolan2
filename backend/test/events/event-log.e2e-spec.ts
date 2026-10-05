@@ -319,4 +319,33 @@ describe('EventLog unifié (e2e)', () => {
       await request(app.getHttpServer()).get('/api/admin/audit').set(auth(owner)).expect(403);
     });
   });
+
+  // « Vérifier un ticket » : réponse enrichie lue uniquement en base (aucun appel RouterOS).
+  describe('vérification comptoir — état métier et dates', () => {
+    it('non provisionné => UNAVAILABLE ; confirmé => AVAILABLE ; dates et noms lisibles, pas de secret', async () => {
+      const gen = await request(app.getHttpServer())
+        .post(`/api/routers/${routerId}/vouchers/generate`)
+        .set(auth(owner))
+        .send({ planId, quantity: 1 })
+        .expect(200);
+      const { batchId, vouchers } = gen.body.data as { batchId: string; vouchers: { id: string; code: string }[] };
+      const verify = () => request(app.getHttpServer()).post('/api/vouchers/verify').set(auth(owner)).send({ ticket: vouchers[0].code }).expect(200);
+
+      const dead = (await verify()).body.data;
+      expect(dead).toMatchObject({ state: 'UNAVAILABLE', canLogin: false, provisioned: false, usedAt: null, expiresAt: null });
+      expect(dead.message).toBe("Ce ticket n'a pas encore été enregistré sur le routeur.");
+
+      await request(app.getHttpServer())
+        .post(`/api/routers/${routerId}/vouchers/confirm`)
+        .set(auth(owner))
+        .send({ batchId, items: [{ id: vouchers[0].id, mikrotikId: '*S1' }] })
+        .expect(200);
+      const live = (await verify()).body.data;
+      expect(live).toMatchObject({ state: 'AVAILABLE', canLogin: true, provisioned: true, usedAt: null });
+      expect(typeof live.routerName).toBe('string');
+      expect(typeof live.planName).toBe('string');
+      expect(Number.isNaN(Date.parse(live.createdAt))).toBe(false);
+      expect(JSON.stringify(live)).not.toMatch(/mikrotikId|credEncrypted/i);
+    });
+  });
 });

@@ -577,6 +577,8 @@ export type VoucherSessionInfo = {
   ipAddress: string | null;
 };
 
+import type { TicketState } from './ticketVerification';
+
 export type VoucherVerificationResult = {
   source: 'SAAS' | 'LEGACY';
   voucherId: string | null;
@@ -586,14 +588,24 @@ export type VoucherVerificationResult = {
   canLogin: boolean;
   planName: string;
   durationMinutes: number;
+  /** Durée technique du forfait (Plan.durationMinutes × 60), la même que `limit-uptime` envoyé au routeur. */
+  durationSeconds: number;
   priceXof: number;
   routerName: string | null;
-  deliveredAt: string | null;
-  activatedAt: string | null;
+  /** Date de création du ticket. */
+  createdAt: string;
+  /** Première connexion réelle (écrite une seule fois par la synchronisation), null = jamais utilisé. */
+  usedAt: string | null;
+  /** Première connexion + durée du forfait (calculée par le backend). Null tant que le ticket n'a jamais servi. */
   expiresAt: string | null;
+  /** Heure du serveur au moment de la réponse (correction d'écart d'horloge pour le compteur local). */
+  serverNow: string;
+  /** Confirmé côté RouterOS (décidé par le backend). */
+  provisioned: boolean;
+  /** État métier calculé par le backend (voir ticketVerification.ts). */
+  state: TicketState;
   session: VoucherSessionInfo | null;
   message: string;
-  advice: string;
 };
 
 export type UserProfile = {
