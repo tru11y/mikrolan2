@@ -506,7 +506,7 @@ export class VoucherService {
     });
 
     if (!voucher) {
-      throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.VOUCHER_NOT_FOUND, 'Code inconnu ou non attribué à ce routeur.');
+      throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.VOUCHER_NOT_FOUND, 'Code inconnu ou non attribué à ce routeur.');
     }
 
     const provisioned = isProvisioned(voucher);
