@@ -319,4 +319,62 @@ describe('EventLog unifié (e2e)', () => {
       await request(app.getHttpServer()).get('/api/admin/audit').set(auth(owner)).expect(403);
     });
   });
+
+  // Contrat HTTP de « Vérifier un ticket » : seul un problème d'authentification de l'opérateur
+  // renvoie 401 (le mobile déconnecte alors la session). Toute réponse métier garde la session.
+  describe('vérification comptoir — contrat HTTP (401 = authentification uniquement)', () => {
+    const verify = (body: Record<string, unknown>, headers: Record<string, string>) =>
+      request(app.getHttpServer()).post('/api/vouchers/verify').set(headers).send(body);
+
+    it('ticket inexistant avec un JWT valide : 404 VOUCHER_NOT_FOUND, pas 401', async () => {
+      const res = await verify({ ticket: 'ZZZZ9999' }, auth(owner)).expect(404);
+      expect(res.body).toMatchObject({ success: false, errorCode: 'VOUCHER_NOT_FOUND' });
+    });
+
+    it('JWT absent ou invalide : 401 (vraie authentification), sans errorCode métier', async () => {
+      const none = await verify({ ticket: 'ZZZZ9999' }, {}).expect(401);
+      const bad = await verify({ ticket: 'ZZZZ9999' }, { Authorization: 'Bearer invalid.token.value' }).expect(401);
+      expect(none.body.errorCode).toBeUndefined();
+      expect(bad.body.errorCode).toBeUndefined();
+    });
+
+    it('ticket non provisionné : 200, canLogin=false, message explicite ; une fois confirmé : canLogin=true', async () => {
+      const gen = await request(app.getHttpServer())
+        .post(`/api/routers/${routerId}/vouchers/generate`)
+        .set(auth(owner))
+        .send({ planId, quantity: 1 })
+        .expect(200);
+      const { batchId, vouchers } = gen.body.data as { batchId: string; vouchers: { id: string; code: string }[] };
+
+      const dead = await verify({ ticket: vouchers[0].code }, auth(owner)).expect(200);
+      expect(dead.body.data).toMatchObject({ canLogin: false, provisioned: false });
+      expect(dead.body.data.message).toBe("Ce ticket n'a pas encore été enregistré sur le routeur.");
+
+      await request(app.getHttpServer())
+        .post(`/api/routers/${routerId}/vouchers/confirm`)
+        .set(auth(owner))
+        .send({ batchId, items: [{ id: vouchers[0].id, mikrotikId: '*V1' }] })
+        .expect(200);
+      const live = await verify({ ticket: vouchers[0].code }, auth(owner)).expect(200);
+      expect(live.body.data).toMatchObject({ canLogin: true, provisioned: true });
+    });
+
+    it('ticket révoqué : 200 avec canLogin=false (réponse métier, session intacte)', async () => {
+      const gen = await request(app.getHttpServer())
+        .post(`/api/routers/${routerId}/vouchers/generate`)
+        .set(auth(owner))
+        .send({ planId, quantity: 1 })
+        .expect(200);
+      const { batchId, vouchers } = gen.body.data as { batchId: string; vouchers: { id: string; code: string }[] };
+      await request(app.getHttpServer())
+        .post(`/api/routers/${routerId}/vouchers/confirm`)
+        .set(auth(owner))
+        .send({ batchId, items: [{ id: vouchers[0].id, mikrotikId: '*V2' }] })
+        .expect(200);
+      await request(app.getHttpServer()).post(`/api/routers/${routerId}/vouchers/${vouchers[0].id}/revoke`).set(auth(owner)).expect(200);
+
+      const res = await verify({ ticket: vouchers[0].code }, auth(owner)).expect(200);
+      expect(res.body.data).toMatchObject({ canLogin: false, status: 'REVOKED' });
+    });
+  });
 });
