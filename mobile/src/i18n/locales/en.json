@@ -257,7 +257,29 @@
       "USED": "Used",
       "EXPIRED": "Expired",
       "REVOKED": "Revoked"
-    }
+    },
+    "states": {
+      "AVAILABLE": "🟢 Available",
+      "IN_USE": "🟢 In use",
+      "USED": "⚪ Already used",
+      "ENDED": "⚪ Finished",
+      "EXPIRED": "🔴 Expired",
+      "REVOKED": "🟠 Revoked",
+      "UNAVAILABLE": "⚠️ Ticket not available"
+    },
+    "stateDetails": {
+      "AVAILABLE": "Ticket registered on the router, never used.",
+      "IN_USE": "A connection is open with this code.",
+      "USED": "This ticket has been used. No connection is open right now.",
+      "ENDED": "This ticket is used up.",
+      "EXPIRED": "This ticket has expired.",
+      "REVOKED": "This ticket was revoked. Do not accept it.",
+      "UNAVAILABLE": "This ticket has not been registered on the router yet."
+    },
+    "neverUsed": "Never used",
+    "provisioning": "Provisioning",
+    "provisioned": "✅ Registered on the router",
+    "notProvisioned": "⚠️ Not registered on the router"
   },
   "rapport": {
     "title": "Report & performance",
