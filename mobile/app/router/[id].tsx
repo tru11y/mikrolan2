@@ -7,7 +7,7 @@ import { Alert, BackHandler, ScrollView, Text, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, extractErrorMessage } from '@/src/lib/api';
+import { api, extractErrorMessage, type RouterItem } from '@/src/lib/api';
 import { useAuth } from '@/src/providers/auth-provider';
 import {
   withApi,
@@ -26,7 +26,8 @@ import { getWifiInfo, sameSubnet24 } from '@/src/lib/lanBinder';
 import { reportLanSessions } from '@/src/lib/sessionSync';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
 import { useRouterLive } from '@/src/hooks/use-router-live';
-import { classifyLiveFailure, liveHealthState } from '@/src/lib/credentialSync';
+import { classifyLiveFailure } from '@/src/lib/credentialSync';
+import { cpuValue, memoryPercent, sessionsState, statsState } from '@/src/lib/liveDisplay';
 import { useSseLive } from '@/src/providers/live-events-provider';
 import {
   Badge,
@@ -59,14 +60,14 @@ const POLL_MS = 15_000;
 // ligne — évite qu'un échec passager bascule l'écran entier.
 const OFFLINE_GRACE_MS = 180_000;
 
-function memPercent(res: SystemResource): number {
+function memPercent(res: SystemResource): number | null {
   const rec = res as unknown as Record<string, string>;
   const total = Number(rec['total-memory']);
-  const free = Number(rec['free-memory']);
+  const free = rec['free-memory'] === '' || rec['free-memory'] == null ? NaN : Number(rec['free-memory']);
   if (Number.isFinite(total) && total > 0 && Number.isFinite(free)) {
-    return Math.round(((total - free) / total) * 100);
+    return memoryPercent(total - free, total);
   }
-  return 0;
+  return null;
 }
 
 // Une jauge, pas un historique : la version précédente dessinait huit barres
@@ -77,11 +78,11 @@ function Gauge({
   color,
 }: {
   label: string;
-  value: number;
+  value: number | null;
   color: string;
 }) {
   const theme = useTheme();
-  const pct = Math.max(0, Math.min(100, value));
+  const pct = value == null ? 0 : Math.max(0, Math.min(100, value));
   return (
     <View
       style={{
@@ -97,7 +98,7 @@ function Gauge({
           {label}
         </Text>
         <Text style={{ color, fontWeight: '700', fontSize: type.caption }}>
-          {pct}%
+          {value == null ? '—' : `${pct}%`}
         </Text>
       </Row>
       <View
@@ -213,6 +214,9 @@ export default function RouterDetailScreen() {
     enabled: Boolean(id),
     refetchInterval: sseLive ? false : POLL_MS,
     placeholderData: keepPreviousData,
+    // Premier rendu immédiat depuis la liste déjà en cache (refetch quand même : initialDataUpdatedAt = 0).
+    initialData: () => qc.getQueryData<RouterItem[]>(['routers'])?.find((x) => x.id === id),
+    initialDataUpdatedAt: 0,
   });
 
   const remoteQuery = useQuery({
@@ -391,11 +395,15 @@ export default function RouterDetailScreen() {
   const lastSeenRef = useRef<number | null>(null);
 
   const remoteActive = remoteQuery.data?.status === 'ACTIVE';
+  // Statut du tunnel pas encore chargé : jamais présenté comme « Non activé ».
+  const tunnelUnknown = isPro && remoteQuery.data == null && !remoteQuery.isError;
 
   // Source unique REMOTE (CPU/RAM/uptime/sessions), mutualisée côté serveur —
   // remplace l'ancien appel direct `remoteSystemResource` + le polling propre
   // à `router-active-sessions`. Le LAN (ci-dessous) reste inchangé et prioritaire.
-  const live = useRouterLive(id, Boolean(id) && remoteActive);
+  // Le snapshot VPS ne dépend que du routerId : on le demande dès le montage (en parallèle de remoteStatus),
+  // sans attendre la confirmation du tunnel. Désactivé seulement si le statut distant est connu et non ACTIVE.
+  const live = useRouterLive(id, Boolean(id) && isPro && (remoteQuery.data ? remoteActive : true));
 
   // Identifiants RouterOS : le serveur (credEncrypted) est la source durable pour
   // un tenant payant. Backfill sûr : push local → serveur UNIQUEMENT si le serveur
@@ -757,37 +765,44 @@ export default function RouterDetailScreen() {
             />
             <StatusLine
               label={t('routerDetail.statusTunnel')}
-              state={remoteActive ? 'ok' : remoteBusy || liveFailure !== 'tunnel-down' ? 'warn' : 'bad'}
+              state={remoteActive ? 'ok' : tunnelUnknown || remoteBusy || liveFailure !== 'tunnel-down' ? 'warn' : 'bad'}
               text={
                 remoteActive
                   ? t('routerDetail.tunnelActive')
-                  : remoteBusy
+                  : tunnelUnknown
+                    ? t('routerDetail.tunnelChecking')
+                    : remoteBusy
                     ? t('routerDetail.tunnelConfiguring')
                     : liveFailure === 'tunnel-down'
                       ? t('routerDetail.tunnelDown')
                       : t('routerDetail.tunnelInactive')
               }
             />
-            {remoteActive ? (
-              <StatusLine
-                label={t('routerDetail.statusLive')}
-                state={
-                  liveHealthState(live.data) === 'fresh'
-                    ? 'ok'
-                    : liveHealthState(live.data) === 'stale' || liveFailure === 'routeros-slow'
-                      ? 'warn'
-                      : 'bad'
-                }
-                text={
-                  liveHealthState(live.data) === 'fresh'
-                    ? t('routerDetail.liveFresh')
-                    : liveFailure === 'routeros-slow'
-                      ? t('routerDetail.liveSlow')
-                      : liveHealthState(live.data) === 'stale'
-                      ? t('routerDetail.liveStale')
-                      : t('routerDetail.liveNone')
-                }
-              />
+            {isPro && !(remoteQuery.data && !remoteActive) ? (
+              <>
+                <StatusLine
+                  label={t('routerDetail.statusSessions')}
+                  state={sessionsState(live.data) === 'fresh' ? 'ok' : 'warn'}
+                  text={
+                    sessionsState(live.data) === 'fresh'
+                      ? t('routerDetail.liveFresh')
+                      : sessionsState(live.data) === 'stale' || liveFailure === 'routeros-slow'
+                        ? t('routerDetail.dataNotRefreshed')
+                        : t('routerDetail.sessionsUnknown')
+                  }
+                />
+                <StatusLine
+                  label={t('routerDetail.statusPerf')}
+                  state={statsState(live.data) === 'fresh' ? 'ok' : 'warn'}
+                  text={
+                    statsState(live.data) === 'fresh'
+                      ? t('routerDetail.liveFresh')
+                      : statsState(live.data) === 'stale'
+                        ? t('routerDetail.liveStale')
+                        : t('routerDetail.perfPending')
+                  }
+                />
+              </>
             ) : null}
             {serverHasCreds === false && credSync !== 'syncing' && !noLocalCreds ? (
               <Banner tone="warning">
@@ -863,7 +878,7 @@ export default function RouterDetailScreen() {
           </Row>
         </Card>
 
-        {!isOffline && resource ? (
+        {!isOffline && (resource || live.data) ? (
           <Card>
             <Row style={{ gap: space.xs + 2, justifyContent: 'flex-start' }}>
               <Ionicons name="pulse-outline" size={icon.sm} color={theme.primaryMuted} />
@@ -880,12 +895,12 @@ export default function RouterDetailScreen() {
             <Row style={{ gap: space.sm + 2, alignItems: 'stretch' }}>
               <Gauge
                 label={t('routerDetail.cpu')}
-                value={Number(resource['cpu-load']) || 0}
+                value={cpuValue(resource?.['cpu-load'])}
                 color={theme.primaryMuted}
               />
               <Gauge
                 label={t('routerDetail.memory')}
-                value={memPercent(resource)}
+                value={resource ? memPercent(resource) : null}
                 color={theme.gold}
               />
             </Row>
@@ -1007,7 +1022,7 @@ export default function RouterDetailScreen() {
             icon="people"
             color={theme.success}
             value={(() => {
-              const n = remoteActive ? live.data?.sessionCount : activeSessionsQuery.data;
+              const n = live.data?.sessionCount ?? (remoteActive ? undefined : activeSessionsQuery.data);
               return n == null ? '—' : `${n}`;
             })()}
             label={t('routerDetail.actifs')}
