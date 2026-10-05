@@ -98,6 +98,35 @@ const PROVISIONED_WHERE = {
   NOT: [{ mikrotikId: null }, { mikrotikId: '' }],
 } satisfies Prisma.VoucherWhereInput;
 
+/**
+ * État métier d'un ticket pour l'écran « Vérifier un ticket », calculé uniquement depuis la base
+ * (aucun appel RouterOS). `Voucher.expiresAt` n'est jamais écrit et `limit-uptime` compte le temps
+ * de connexion cumulé : on ne déduit donc JAMAIS « expiré » d'une date, seulement du statut stocké.
+ */
+export type TicketState =
+  | 'AVAILABLE' // provisionné, jamais utilisé
+  | 'IN_USE' // une session est ouverte maintenant
+  | 'USED' // déjà utilisé, pas connecté actuellement
+  | 'ENDED' // statut USED (consommé)
+  | 'EXPIRED' // statut EXPIRED
+  | 'REVOKED'
+  | 'UNAVAILABLE'; // non provisionné sur le routeur
+
+export function ticketState(v: {
+  status: VoucherStatus;
+  provisioned: boolean;
+  session?: { status: SessionStatus } | null;
+}): TicketState {
+  if (v.status === VoucherStatus.REVOKED) return 'REVOKED';
+  if (!v.provisioned) return 'UNAVAILABLE';
+  if (v.status === VoucherStatus.EXPIRED) return 'EXPIRED';
+  if (v.status === VoucherStatus.USED) return 'ENDED';
+  if (v.status === VoucherStatus.ACTIVE) {
+    return v.session?.status === SessionStatus.ACTIVE ? 'IN_USE' : 'USED';
+  }
+  return 'AVAILABLE';
+}
+
 /** Projection publique : `provisioned` est décidé ici, le mikrotikId n'est jamais exposé. */
 function toPublicVoucher<T extends { mikrotikId: string | null }>(
   v: T,
@@ -534,6 +563,7 @@ export class VoucherService {
       status: voucher.status,
       canLogin,
       provisioned,
+      state: ticketState({ status: voucher.status, provisioned, session: voucher.session }),
       planName: voucher.plan.name,
       durationMinutes: voucher.plan.durationMinutes,
       priceXof: voucher.plan.priceXof,

@@ -1,8 +1,8 @@
-import { ManagementMode, VoucherStatus } from '@prisma/client';
+import { ManagementMode, SessionStatus, VoucherStatus } from '@prisma/client';
 import { makeEventLogStub } from '../../common/testing/event-log.stub';
 import { addHotspotUser } from '../../common/routeros/hotspot.ops';
 import { applyTenantScope } from '../../prisma/prisma.service';
-import { VoucherService, isProvisioned } from './voucher.service';
+import { VoucherService, isProvisioned, ticketState } from './voucher.service';
 
 jest.mock('../../common/context/tenant-context', () => ({
   getTenantContext: jest.fn(() => ({ tenantId: 'tenant-1', userId: 'user-1', role: 'ADMIN' })),
@@ -269,5 +269,72 @@ describe('generate — what the operator receives as distributable tickets', () 
     expect(res.push).toBeDefined();
     expect(res.vouchers).toHaveLength(3);
     expect(res.vouchers.every((v) => v.provisioned === false)).toBe(true);
+  });
+});
+
+describe('ticketState — état métier affiché par « Vérifier un ticket » (base de données uniquement)', () => {
+  const S = VoucherStatus;
+  it('A. jamais utilisé et provisionné => AVAILABLE', () => {
+    expect(ticketState({ status: S.GENERATED, provisioned: true, session: null })).toBe('AVAILABLE');
+  });
+  it('B. ACTIVE avec session ouverte => IN_USE ; session terminée => USED (pas « expiré »)', () => {
+    expect(ticketState({ status: S.ACTIVE, provisioned: true, session: { status: SessionStatus.ACTIVE } })).toBe('IN_USE');
+    expect(ticketState({ status: S.ACTIVE, provisioned: true, session: { status: SessionStatus.TERMINATED } })).toBe('USED');
+    expect(ticketState({ status: S.ACTIVE, provisioned: true, session: null })).toBe('USED');
+  });
+  it('C. EXPIRED / USED stockés => EXPIRED / ENDED (jamais déduits d\'une date)', () => {
+    expect(ticketState({ status: S.EXPIRED, provisioned: true })).toBe('EXPIRED');
+    expect(ticketState({ status: S.USED, provisioned: true })).toBe('ENDED');
+  });
+  it('D. révoqué => REVOKED, même non provisionné', () => {
+    expect(ticketState({ status: S.REVOKED, provisioned: true })).toBe('REVOKED');
+    expect(ticketState({ status: S.REVOKED, provisioned: false })).toBe('REVOKED');
+  });
+  it('E. non provisionné => UNAVAILABLE, jamais AVAILABLE', () => {
+    expect(ticketState({ status: S.GENERATED, provisioned: false })).toBe('UNAVAILABLE');
+    expect(ticketState({ status: S.ACTIVE, provisioned: false, session: { status: SessionStatus.ACTIVE } })).toBe('UNAVAILABLE');
+  });
+});
+
+describe('verifyVoucherForOperator — réponse enrichie', () => {
+  const row = (over: Record<string, unknown>) => ({
+    ...rows('x', 1, 1)[0],
+    plan: { id: 'plan-1', name: '3 jours', priceXof: 2000, durationMinutes: 4320 },
+    router: { id: 'router-1', identity: 'MT-01', alias: 'FREEDOM HOME' },
+    session: null,
+    ...over,
+  });
+
+  it('jamais utilisé : state AVAILABLE, usedAt/expiresAt nuls, dates et noms lisibles, aucun secret', async () => {
+    const { service, prisma } = makeService();
+    prisma.voucher.findFirst.mockResolvedValue(row({}));
+    const res = await service.verifyVoucherForOperator({ ticket: 'CODEx0' });
+    expect(res).toMatchObject({ state: 'AVAILABLE', canLogin: true, provisioned: true, routerName: 'FREEDOM HOME', planName: '3 jours', durationMinutes: 4320, usedAt: null, expiresAt: null });
+    expect(res.createdAt).toBe(NOW.toISOString());
+    expect(JSON.stringify(res)).not.toMatch(/mikrotikId|credEncrypted|password/i);
+  });
+
+  it('en cours : state IN_USE avec la vraie première connexion (usedAt) et la session', async () => {
+    const used = new Date('2026-10-05T09:12:00Z');
+    const { service, prisma } = makeService();
+    prisma.voucher.findFirst.mockResolvedValue(
+      row({ status: VoucherStatus.ACTIVE, usedAt: used, session: { status: SessionStatus.ACTIVE, startedAt: used, lastSeenAt: used, terminatedAt: null, bytesIn: BigInt(1), bytesOut: BigInt(2), macAddress: null, ipAddress: null } }),
+    );
+    const res = await service.verifyVoucherForOperator({ ticket: 'CODEx0' });
+    expect(res).toMatchObject({ state: 'IN_USE', canLogin: true, usedAt: used.toISOString() });
+  });
+
+  it('non provisionné : state UNAVAILABLE, canLogin=false, message explicite (pas « valide »)', async () => {
+    const { service, prisma } = makeService();
+    prisma.voucher.findFirst.mockResolvedValue(row({ mikrotikId: null }));
+    const res = await service.verifyVoucherForOperator({ ticket: 'CODEx0' });
+    expect(res).toMatchObject({ state: 'UNAVAILABLE', canLogin: false, provisioned: false });
+    expect(res.message).toBe("Ce ticket n'a pas encore été enregistré sur le routeur.");
+  });
+
+  it('révoqué : state REVOKED, canLogin=false', async () => {
+    const { service, prisma } = makeService();
+    prisma.voucher.findFirst.mockResolvedValue(row({ status: VoucherStatus.REVOKED }));
+    expect(await service.verifyVoucherForOperator({ ticket: 'CODEx0' })).toMatchObject({ state: 'REVOKED', canLogin: false });
   });
 });
