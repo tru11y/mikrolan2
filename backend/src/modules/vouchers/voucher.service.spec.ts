@@ -153,13 +153,37 @@ describe('VoucherService', () => {
       expect(result.canLogin).toBe(true);
     });
 
-    it('throws UnauthorizedException for unknown code', async () => {
+    it('unknown code is a business 404, never a 401 (a 401 logs the operator out)', async () => {
       const { service, prisma } = makeService();
       prisma.voucher.findFirst.mockResolvedValue(null);
 
-      await expect(
-        service.verifyVoucherForOperator({ ticket: 'FAKE-CODE' }),
-      ).rejects.toMatchObject({ status: 401 });
+      const err = await service
+        .verifyVoucherForOperator({ ticket: 'FAKE-CODE' })
+        .catch((e: unknown) => e);
+
+      expect(err).toMatchObject({ status: 404 });
+    });
+
+    it.each([VoucherStatus.REVOKED, VoucherStatus.EXPIRED, VoucherStatus.USED])(
+      '%s ticket resolves with a verdict instead of throwing',
+      async (status) => {
+        const { service, prisma } = makeService();
+        prisma.voucher.findFirst.mockResolvedValue({ ...VOUCHER_ROW, status });
+
+        const result = await service.verifyVoucherForOperator({ ticket: 'ABCD1234' });
+
+        expect(result.canLogin).toBe(false);
+        expect(result.status).toBe(status);
+      },
+    );
+
+    it('unprovisioned ticket resolves with canLogin=false instead of throwing', async () => {
+      const { service, prisma } = makeService();
+      prisma.voucher.findFirst.mockResolvedValue({ ...VOUCHER_ROW, mikrotikId: null });
+
+      const result = await service.verifyVoucherForOperator({ ticket: 'ABCD1234' });
+
+      expect(result.canLogin).toBe(false);
     });
 
     it('returns canLogin: false for REVOKED voucher', async () => {
