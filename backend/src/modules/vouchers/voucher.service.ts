@@ -98,6 +98,50 @@ const PROVISIONED_WHERE = {
   NOT: [{ mikrotikId: null }, { mikrotikId: '' }],
 } satisfies Prisma.VoucherWhereInput;
 
+/**
+ * État métier d'un ticket pour l'écran « Vérifier un ticket », calculé uniquement depuis la base
+ * (aucun appel RouterOS). Les états explicites gardent la priorité sur le calcul de durée :
+ * un ticket révoqué ou non provisionné n'est jamais « ressuscité » par un temps restant théorique.
+ */
+export type TicketState =
+  | 'AVAILABLE' // provisionné, jamais utilisé
+  | 'IN_USE' // première connexion faite et durée du forfait non écoulée
+  | 'ENDED' // statut USED stocké (consommé)
+  | 'EXPIRED' // statut EXPIRED stocké, ou durée écoulée depuis la première connexion
+  | 'REVOKED'
+  | 'UNAVAILABLE'; // non provisionné sur le routeur
+
+/**
+ * Expiration = première connexion (`Voucher.usedAt`, écrit une seule fois à la première détection
+ * de connexion) + durée du forfait (`Plan.durationMinutes`, la valeur envoyée au routeur comme
+ * `limit-uptime` à la génération). Jamais utilisé : pas d'expiration (la validité n'a pas commencé).
+ */
+export function computeExpiresAt(
+  usedAt: Date | null | undefined,
+  durationMinutes: number,
+  persisted?: Date | null,
+): Date | null {
+  if (persisted) return persisted; // une date persistée par la logique métier prime (aucune aujourd'hui)
+  if (!usedAt) return null;
+  return new Date(usedAt.getTime() + durationMinutes * 60_000);
+}
+
+export function ticketState(v: {
+  status: VoucherStatus;
+  provisioned: boolean;
+  expiresAt: Date | null;
+  now: Date;
+}): TicketState {
+  if (v.status === VoucherStatus.REVOKED) return 'REVOKED';
+  if (!v.provisioned) return 'UNAVAILABLE';
+  if (v.status === VoucherStatus.EXPIRED) return 'EXPIRED';
+  if (v.status === VoucherStatus.USED) return 'ENDED';
+  if (v.status === VoucherStatus.ACTIVE) {
+    return v.expiresAt && v.expiresAt.getTime() <= v.now.getTime() ? 'EXPIRED' : 'IN_USE';
+  }
+  return 'AVAILABLE';
+}
+
 /** Projection publique : `provisioned` est décidé ici, le mikrotikId n'est jamais exposé. */
 function toPublicVoucher<T extends { mikrotikId: string | null }>(
   v: T,
@@ -510,8 +554,13 @@ export class VoucherService {
     }
 
     const provisioned = isProvisioned(voucher);
+    const now = new Date();
+    const expiresAt = computeExpiresAt(voucher.usedAt, voucher.plan.durationMinutes, voucher.expiresAt);
+    const state = ticketState({ status: voucher.status, provisioned, expiresAt, now });
+    // Un ticket dont la durée est écoulée n'est plus utilisable, même si son statut stocké est encore ACTIVE.
     const canLogin =
       provisioned &&
+      state !== 'EXPIRED' &&
       (voucher.status === VoucherStatus.GENERATED ||
         voucher.status === VoucherStatus.ACTIVE);
 
@@ -534,20 +583,25 @@ export class VoucherService {
       status: voucher.status,
       canLogin,
       provisioned,
+      state,
+      serverNow: now.toISOString(),
       planName: voucher.plan.name,
       durationMinutes: voucher.plan.durationMinutes,
+      durationSeconds: voucher.plan.durationMinutes * 60,
       priceXof: voucher.plan.priceXof,
       routerName: voucher.router?.alias ?? voucher.router?.identity ?? null,
       routerId: voucher.router?.id ?? null,
       createdAt: voucher.createdAt.toISOString(),
       usedAt: voucher.usedAt?.toISOString() ?? null,
-      expiresAt: voucher.expiresAt?.toISOString() ?? null,
+      expiresAt: expiresAt?.toISOString() ?? null,
       session,
       message: !provisioned
         ? 'Ce ticket n\'a pas encore été enregistré sur le routeur.'
-        : canLogin
-          ? 'Ticket valide — connexion autorisée.'
-          : `Ticket ${voucher.status.toLowerCase()} — connexion refusée.`,
+        : state === 'EXPIRED'
+          ? 'Ticket expiré — connexion refusée.'
+          : canLogin
+            ? 'Ticket valide — connexion autorisée.'
+            : `Ticket ${voucher.status.toLowerCase()} — connexion refusée.`,
     };
   }
 
