@@ -297,6 +297,26 @@ export class SessionsService {
     }));
   }
 
+  /**
+   * Réutilise la liste déjà lue pour le CA (aucune lecture en plus). Best effort : une erreur
+   * ici ne doit JAMAIS faire échouer syncActivations ni entrer dans le résultat CA.
+   */
+  private publishLive(routerId: string, active: ApiRow[]): void {
+    try {
+      this.gateway?.publishSessions(routerId, active);
+    } catch (e) {
+      this.logger.warn(`live publish failed routerId=${routerId}: ${(e as Error).message}`);
+    }
+  }
+
+  private noteLiveReadFailure(routerId: string, err: unknown): void {
+    try {
+      this.gateway?.noteSyncReadFailure(routerId, err);
+    } catch (e) {
+      this.logger.warn(`live failure note failed routerId=${routerId}: ${(e as Error).message}`);
+    }
+  }
+
   /** Une seule lecture RouterOS en cours par routeur ; le verrou est toujours libéré. */
   private async syncRouter(router: {
     id: string;
@@ -310,6 +330,7 @@ export class SessionsService {
     const start = Date.now();
     this.logger.log(`sync router START routerId=${router.id}`);
     let status: 'ok' | 'failed' = 'ok';
+    let routerRead = false;
     try {
       await withDeadline(
         tenantStore.run({}, async () => {
@@ -324,11 +345,13 @@ export class SessionsService {
             (c) => listActive(c),
             { retries: 1 },
           );
+          routerRead = true;
           await this.reconcileActive(
             router.id,
             router.tenantId,
             active.map(mapActive),
           );
+          this.publishLive(router.id, active);
         }),
         SYNC_ROUTER_DEADLINE_MS,
         `Activation sync ${router.id}`,
@@ -338,6 +361,7 @@ export class SessionsService {
       this.logger.warn(
         `Activation sync failed for router ${router.id}: ${(e as Error).message}`,
       );
+      if (!routerRead) this.noteLiveReadFailure(router.id, e);
     } finally {
       this.syncRoutersInFlight.delete(router.id);
       this.logger.log(
