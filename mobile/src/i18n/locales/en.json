@@ -236,7 +236,7 @@
     "sourceLegacy": "Legacy (router)",
     "createdAt": "Created on",
     "firstConnection": "First connection",
-    "expiresAt": "Expires on",
+    "expiresAt": "Expiration date",
     "consumedDuration": "Time used",
     "totalDuration": "Total duration",
     "session": "Session",
@@ -261,7 +261,6 @@
     "states": {
       "AVAILABLE": "🟢 Available",
       "IN_USE": "🟢 In use",
-      "USED": "⚪ Already used",
       "ENDED": "⚪ Finished",
       "EXPIRED": "🔴 Expired",
       "REVOKED": "🟠 Revoked",
@@ -269,8 +268,7 @@
     },
     "stateDetails": {
       "AVAILABLE": "Ticket registered on the router, never used.",
-      "IN_USE": "A connection is open with this code.",
-      "USED": "This ticket has been used. No connection is open right now.",
+      "IN_USE": "First connection made: the plan is running.",
       "ENDED": "This ticket is used up.",
       "EXPIRED": "This ticket has expired.",
       "REVOKED": "This ticket was revoked. Do not accept it.",
@@ -279,7 +277,10 @@
     "neverUsed": "Never used",
     "provisioning": "Provisioning",
     "provisioned": "✅ Registered on the router",
-    "notProvisioned": "⚠️ Not registered on the router"
+    "notProvisioned": "⚠️ Not registered on the router",
+    "remaining": "Time left",
+    "afterFirstConnection": "After first connection",
+    "expiredShort": "Expired"
   },
   "rapport": {
     "title": "Report & performance",
