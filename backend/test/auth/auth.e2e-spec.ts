@@ -113,6 +113,26 @@ describe('Auth (e2e)', () => {
     });
   });
 
+  describe('POST /api/vouchers/verify', () => {
+    it('unknown ticket is 404 VOUCHER_NOT_FOUND, invalid JWT stays 401', async () => {
+      const u = await signupUser(app);
+      const login = await loginUser(app, u.email, u.password);
+
+      const unknown = await request(app.getHttpServer())
+        .post('/api/vouchers/verify')
+        .set('Authorization', `Bearer ${login.accessToken}`)
+        .send({ ticket: 'ZZ-SYNTH-0000' })
+        .expect(404);
+      expect(unknown.body.errorCode).toBe('VOUCHER_NOT_FOUND');
+
+      await request(app.getHttpServer())
+        .post('/api/vouchers/verify')
+        .set('Authorization', 'Bearer not-a-valid-jwt')
+        .send({ ticket: 'ZZ-SYNTH-0000' })
+        .expect(401);
+    });
+  });
+
   describe('Password reset flow', () => {
     it('request always returns 200 (prevents email enumeration)', async () => {
       await request(app.getHttpServer())
