@@ -22,7 +22,7 @@ import {
   parseAddress,
 } from '@/src/lib/router-credentials';
 import { listActiveLan } from '@/src/services/mikrotik-lan/hotspotLan';
-import { getWifiInfo, sameSubnet24 } from '@/src/lib/lanBinder';
+import { lanBlockMessageKey, resolveVerifiedLanRoute, verifiedLanCreds, type LanState as LanProofState } from '@/src/lib/lanRouting';
 import { reportLanSessions } from '@/src/lib/sessionSync';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
 import { useRouterLive } from '@/src/hooks/use-router-live';
@@ -286,17 +286,14 @@ export default function RouterDetailScreen() {
         const synced = await api.routers.listSessions(id);
         return synced.length || null;
       }
-      const wifi = await getWifiInfo();
-      const onRouterLan =
-        !!wifi &&
-        (creds.host === wifi.gateway || sameSubnet24(creds.host, wifi.ipAddress));
-      if (!onRouterLan) {
-        // Hors du Wi-Fi du routeur : dernier compte synchronisé en DB.
+      const route = await resolveVerifiedLanRoute(id);
+      if (!route.creds) {
+        // Pas le LAN de CE routeur (autre hotspot, 4G, identité non vérifiée) : dernier compte synchronisé en DB.
         const synced = await api.routers.listSessions(id);
         return synced.length || null;
       }
-      const list = await listActiveLan(creds);
-      void reportLanSessions(id, list);
+      const list = await listActiveLan(route.creds);
+      void reportLanSessions(id, list, route.observedIdentity);
       return list.length;
     },
   });
@@ -348,11 +345,13 @@ export default function RouterDetailScreen() {
     setRemoteBusy(true);
     setRemoteMsg(null);
     try {
-      const creds = await getLocalCredentials(id);
+      // Provisionnement WireGuard : JAMAIS sur un MikroTik dont l'identité n'est pas vérifiée pour ce routerId.
+      const route = await resolveVerifiedLanRoute(id);
+      const creds = route.creds;
       if (!creds) {
         setRemoteMsg({
           tone: 'danger',
-          text: t('routerDetail.localCredsRequired'),
+          text: route.state === 'NO_CREDS' ? t('routerDetail.localCredsRequired') : t('routerDetail.lanOutOfReach'),
         });
         return;
       }
@@ -388,6 +387,8 @@ export default function RouterDetailScreen() {
   type LanState = 'idle' | 'loading' | 'ok' | 'no-creds' | 'error';
   const [lanState, setLanState] = useState<LanState>('idle');
   const lanStateRef = useRef<LanState>('idle');
+  // Résultat de la preuve d'identité LAN (jamais déduit du sous-réseau) : explique « hors de portée ».
+  const [lanBlock, setLanBlock] = useState<LanProofState>('NO_LAN');
   // Horodatage du dernier contact réussi : un routeur n'est déclaré hors
   // ligne qu'après OFFLINE_GRACE_MS sans le moindre signe de vie. Un échec
   // isolé (Wi-Fi qui bascule, paquet perdu, routeur occupé) ne doit pas
@@ -500,14 +501,9 @@ export default function RouterDetailScreen() {
                     setDiagBusy(true);
                     let viaLan = false;
                     try {
-                      const creds = await getLocalCredentials(id!);
-                      const wifi = await getWifiInfo();
-                      const onLan =
-                        !!creds &&
-                        !!wifi &&
-                        (creds.host === wifi.gateway ||
-                          sameSubnet24(creds.host, wifi.ipAddress));
-                      if (creds && onLan) {
+                      // Reboot LAN : JAMAIS sans identité VERIFIED (sinon on pourrait redémarrer un autre MikroTik).
+                      const creds = await verifiedLanCreds(id!);
+                      if (creds) {
                         viaLan = true;
                         await withApi(creds, (c) => c.reboot());
                       } else if (remoteActive) {
@@ -555,14 +551,8 @@ export default function RouterDetailScreen() {
                   onPress: async () => {
                     setDiagBusy(true);
                     try {
-                      const creds = await getLocalCredentials(id!);
-                      const wifi = await getWifiInfo();
-                      const onLan =
-                        !!creds &&
-                        !!wifi &&
-                        (creds.host === wifi.gateway ||
-                          sameSubnet24(creds.host, wifi.ipAddress));
-                      if (!(creds && onLan)) {
+                      const creds = await verifiedLanCreds(id!);
+                      if (!creds) {
                         void traceRouterEvent(id!, 'HOTSPOT_RESET', 'FAILED', new Error('Routeur hors du LAN du téléphone'));
                         toast.error(t('routerDetail.resetHotspotFailed'));
                         return;
@@ -615,13 +605,10 @@ export default function RouterDetailScreen() {
       setLanStateSafe('ok');
     };
 
-    const creds = await getLocalCredentials(id);
-    const wifi = await getWifiInfo();
-    const onRouterLan =
-      !!creds &&
-      !!wifi &&
-      (creds.host === wifi.gateway || sameSubnet24(creds.host, wifi.ipAddress));
-    if (creds && onRouterLan) {
+    const route = await resolveVerifiedLanRoute(id);
+    setLanBlock(route.state);
+    const creds = route.creds;
+    if (creds) {
       try {
         markReachable('lan', await withApi(creds, (c) => c.systemResource()));
         return;
@@ -637,7 +624,7 @@ export default function RouterDetailScreen() {
       return;
     }
 
-    if (!creds && !remoteActive) {
+    if (route.state === 'NO_CREDS' && !remoteActive) {
       setLanStateSafe('no-creds');
       return;
     }
@@ -803,6 +790,9 @@ export default function RouterDetailScreen() {
                   }
                 />
               </>
+            ) : null}
+            {query.data?.mode === 'LOCAL' && !remoteActive && !tunnelUnknown && lanBlock !== 'VERIFIED' && lanBlock !== 'NO_CREDS' && lanBlockMessageKey(lanBlock) ? (
+              <Banner tone="warning">{t(lanBlockMessageKey(lanBlock) as string)}</Banner>
             ) : null}
             {serverHasCreds === false && credSync !== 'syncing' && !noLocalCreds ? (
               <Banner tone="warning">

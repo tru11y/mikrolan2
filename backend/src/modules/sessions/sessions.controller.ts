@@ -48,6 +48,6 @@ export class SessionsController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(syncLanSessionsSchema)) dto: SyncLanSessionsDto,
   ) {
-    return this.sessions.syncFromLan(id, dto.active);
+    return this.sessions.syncFromLan(id, dto.active, dto.observedRouterIdentity);
   }
 }

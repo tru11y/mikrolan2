@@ -8,7 +8,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type Plan, type VoucherItem, type GenerateResult } from '@/src/lib/api';
 import { useTranslation } from 'react-i18next';
 import { describeError } from '@/src/lib/errors';
-import { getLocalCredentials } from '@/src/lib/router-credentials';
+import { lanBlockMessageKey, resolveVerifiedLanRoute } from '@/src/lib/lanRouting';
 import { PartialPushError, pushVouchersLan } from '@/src/services/mikrotik-lan/hotspotLan';
 import { finalGenerationOutcome, shouldPushViaLan } from '@/src/lib/voucherGeneration';
 import { reportSilent, swallow } from '@/src/lib/report';
@@ -303,6 +303,21 @@ export default function GenerateVouchersScreen() {
       toast.error(t('tickets.quantityRange', { max: MAX_QUANTITY }));
       return;
     }
+    // Routeur LOCAL : on exige la preuve d'identité AVANT de créer un lot (sinon un lot serait créé côté
+    // serveur puis poussé sur un autre MikroTik joignable à la même adresse LAN).
+    if (routerQuery.data?.mode === 'LOCAL') {
+      const route = await resolveVerifiedLanRoute(routerId);
+      if (route.state !== 'VERIFIED') {
+        const key =
+          route.state === 'NO_CREDS'
+            ? 'tickets.localCredsRequired'
+            : route.state === 'MISMATCH' || route.state === 'NO_LAN'
+              ? 'tickets.lanMismatchBlock'
+              : (lanBlockMessageKey(route.state) ?? 'tickets.lanMismatchBlock');
+        toast.error(t(key));
+        return;
+      }
+    }
     setBusy(true);
     setLastOutcome(null);
     setLastFailureMessage(null);
@@ -336,6 +351,7 @@ export default function GenerateVouchersScreen() {
     const confirmedIds = new Set<string>();
 
     const lanPush = shouldPushViaLan(res) ? res.push : undefined;
+    let observedIdentity: string | undefined;
     if (lanPush) {
       const reportFailure = (reason: string, code: string, pushed: number) =>
         api.routers
@@ -347,17 +363,22 @@ export default function GenerateVouchersScreen() {
           })
           .catch(swallow('generate.report-push-failure'));
       try {
-        const creds = await getLocalCredentials(routerId);
+        // Jamais de push LAN sans identité VERIFIED pour CE routerId.
+        const route = await resolveVerifiedLanRoute(routerId);
+        const creds = route.creds;
+        observedIdentity = route.observedIdentity ?? undefined;
         if (!creds) {
-          failureMessage = t('tickets.localCredsRequired');
+          failureMessage =
+            route.state === 'NO_CREDS' ? t('tickets.localCredsRequired') : t('tickets.lanMismatchBlock');
           pushedCount = 0;
-          await reportFailure(failureMessage, 'ROUTER_CREDS_MISSING', 0);
+          await reportFailure(failureMessage, route.state === 'NO_CREDS' ? 'ROUTER_CREDS_MISSING' : 'LAN_IDENTITY_NOT_VERIFIED', 0);
         } else {
           const items = await pushVouchersLan(creds, res.vouchers, lanPush);
           pushedCount = items.length;
           await api.routers.confirmVouchers(routerId, {
             batchId: res.batchId,
             items,
+            observedRouterIdentity: observedIdentity,
           });
           // Un succès LAN n'est acquis qu'une fois confirmPush passé (mikrotikId écrit côté
           // backend) : seulement alors le ticket est provisionné et distribuable.
@@ -370,7 +391,7 @@ export default function GenerateVouchersScreen() {
           const pushed = e.pushed;
           pushedCount = pushed.length;
           await api.routers
-            .confirmVouchers(routerId, { batchId: res.batchId, items: pushed })
+            .confirmVouchers(routerId, { batchId: res.batchId, items: pushed, observedRouterIdentity: observedIdentity })
             .then(() => {
               for (const it of pushed) confirmedIds.add(it.id);
             })

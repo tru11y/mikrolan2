@@ -12,9 +12,12 @@ import { api, type LiveSession } from './api';
 export async function reportLanSessions(
   routerId: string,
   active: LiveSession[],
+  observedRouterIdentity: string | null,
 ): Promise<void> {
+  // Aucun rapport sans preuve que la liste vient bien du MikroTik de ce routerId (voir lanRouting).
+  if (!observedRouterIdentity) return;
   try {
-    await api.routers.syncSessions(routerId, active);
+    await api.routers.syncSessions(routerId, active, observedRouterIdentity);
   } catch (e) {
     // Offline, or the router flipped to REMOTE between reads: retried on next read.
     reportSilent('session-sync', e, { routerId });

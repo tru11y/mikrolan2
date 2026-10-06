@@ -3,6 +3,7 @@ import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/error-codes';
 import { Interval } from '@nestjs/schedule';
 import {
+  AuditAction,
   ManagementMode,
   NotificationType,
   RemotePeerStatus,
@@ -14,6 +15,8 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { EventLogService } from '../events/event-log.service';
+import { assertObservedRouterIdentity } from '../../common/routeros/router-identity.guard';
 import { RemoteRouterService } from '../remote-access/remote-router.service';
 import { listActive, removeActive } from '../../common/routeros/hotspot.ops';
 import type { ApiRow } from '../../common/routeros/routeros-api.client';
@@ -69,6 +72,7 @@ export class SessionsService {
     private readonly events: EventsService,
     private readonly notifications: NotificationsService,
     @Optional() private readonly gateway?: RouterGatewayService,
+    @Optional() private readonly eventLog?: EventLogService,
   ) {}
 
   /** P0 Realtime Router — Phase 1. OFF par défaut : comportement actuel inchangé. */
@@ -377,11 +381,20 @@ export class SessionsService {
    * it here. Without this, a free (LOCAL) operator's revenue, clients and
    * per-plan breakdown stay at zero forever.
    */
-  async syncFromLan(routerId: string, active: LiveSession[]) {
+  async syncFromLan(routerId: string, active: LiveSession[], observedRouterIdentity?: string) {
     const router = await this.getRouter(routerId);
     if (router.mode === ManagementMode.REMOTE) {
       throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.SESSION_DISCONNECT_FAILED, 'Routeur distant : les sessions sont synchronisées par le serveur');
     }
+    // AVANT toute mutation (clôture de Session, activation de Voucher, CA) : la liste doit provenir
+    // du MikroTik associé à ce routerId, pas d'un autre routeur au même adresse LAN.
+    await assertObservedRouterIdentity({
+      routerId,
+      expectedIdentity: router.identity,
+      observedRouterIdentity,
+      operation: 'LAN_SESSION_SYNC',
+      audit: (reason, meta) => this.eventLog?.warning(AuditAction.REJECT, 'Router', routerId, { reason, ...meta }, { tenantId: router.tenantId }),
+    });
     await this.reconcileActive(routerId, router.tenantId, active);
     return { synced: active.length };
   }
@@ -454,7 +467,7 @@ export class SessionsService {
   private async getRouter(routerId: string) {
     const router = await this.prisma.router.findFirst({
       where: { id: routerId, deletedAt: null },
-      select: { id: true, mode: true, tenantId: true },
+      select: { id: true, mode: true, tenantId: true, identity: true },
     });
     if (!router) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.ROUTER_NOT_FOUND, 'Routeur introuvable — il a peut-être été supprimé.');
     return router;
