@@ -20,6 +20,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RemoteRouterService } from '../remote-access/remote-router.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { EventLogService, describeFailure } from '../events/event-log.service';
+import { assertObservedRouterIdentity } from '../../common/routeros/router-identity.guard';
 import {
   addHotspotUser,
   ensureUserProfile,
@@ -386,6 +387,19 @@ export class VoucherService {
 
   /** LOCAL path: the client pushed the users over the LAN and reports the ids. */
   async confirmPush(routerId: string, dto: ConfirmVouchersDto) {
+    // AVANT toute écriture : les mikrotikId confirmés doivent venir du MikroTik de CE routerId.
+    const target = await this.prisma.router.findFirst({
+      where: { id: routerId, deletedAt: null },
+      select: { identity: true, tenantId: true },
+    });
+    if (!target) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.ROUTER_NOT_FOUND, 'Routeur introuvable — il a peut-être été supprimé.');
+    await assertObservedRouterIdentity({
+      routerId,
+      expectedIdentity: target.identity,
+      observedRouterIdentity: dto.observedRouterIdentity,
+      operation: 'LAN_VOUCHER_CONFIRM',
+      audit: (reason, meta) => this.eventLog.warning(AuditAction.REJECT, 'Router', routerId, { reason, ...meta }, { tenantId: target.tenantId }),
+    });
     for (const item of dto.items) {
       await this.prisma.voucher.updateMany({
         where: { id: item.id, routerId },

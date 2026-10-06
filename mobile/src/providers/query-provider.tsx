@@ -7,6 +7,7 @@ import {
   QueryClientProvider,
 } from '@tanstack/react-query';
 import NetInfo from '@react-native-community/netinfo';
+import { invalidateLanProofs } from '@/src/lib/lanRouting';
 import { Sentry } from '@/src/lib/sentry';
 
 const queryClient = new QueryClient({
@@ -28,6 +29,8 @@ const queryClient = new QueryClient({
 
 onlineManager.setEventListener((setOnline) => {
   return NetInfo.addEventListener((state) => {
+    // Wi-Fi / passerelle / connexion changés : toute preuve d'identité LAN est caduque.
+    invalidateLanProofs();
     const online = !!state.isConnected;
     setOnline(online);
     Sentry.addBreadcrumb({
@@ -43,6 +46,7 @@ onlineManager.setEventListener((setOnline) => {
 function useFocusRefetch() {
   useEffect(() => {
     const sub = AppState.addEventListener('change', (status) => {
+      if (status === 'active') invalidateLanProofs();
       if (Platform.OS !== 'web') {
         focusManager.setFocused(status === 'active');
       }

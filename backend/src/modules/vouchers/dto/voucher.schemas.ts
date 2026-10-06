@@ -21,6 +21,7 @@ export const confirmVouchersSchema = z
       )
       .min(1)
       .max(500),
+    observedRouterIdentity: z.string().min(1).max(128).optional(),
   })
   .strict();
 export type ConfirmVouchersDto = z.infer<typeof confirmVouchersSchema>;

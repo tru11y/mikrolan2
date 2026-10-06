@@ -20,7 +20,7 @@ import {
   listActiveLan,
 } from '@/src/services/mikrotik-lan/hotspotLan';
 import { getLocalCredentials } from '@/src/lib/router-credentials';
-import { getWifiInfo, sameSubnet24 } from '@/src/lib/lanBinder';
+import { verifiedLanCreds } from '@/src/lib/lanRouting';
 import {
   Banner,
   Button,
@@ -65,13 +65,7 @@ function TypeDot({ type }: { type: IpBindingType }) {
 }
 
 async function lanCreds(routerId: string) {
-  const creds = await getLocalCredentials(routerId);
-  if (!creds) return null;
-  const wifi = await getWifiInfo();
-  const onLan =
-    !!wifi &&
-    (creds.host === wifi.gateway || sameSubnet24(creds.host, wifi.ipAddress));
-  return onLan ? creds : null;
+  return verifiedLanCreds(routerId);
 }
 
 export default function IpBindingsScreen() {
