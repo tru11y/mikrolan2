@@ -11,7 +11,7 @@ import { useSseLive } from '@/src/providers/live-events-provider';
 import { reportSilent } from '@/src/lib/report';
 import { useRouterLive } from '@/src/hooks/use-router-live';
 import { reportLanSessions } from '@/src/lib/sessionSync';
-import { getWifiInfo, sameSubnet24 } from '@/src/lib/lanBinder';
+import { lanBlockMessageKey, resolveVerifiedLanRoute, type LanState } from '@/src/lib/lanRouting';
 import { fmtDurationHMS, parseRouterOsUptime } from '@/src/lib/format';
 import {
   listActiveLan,
@@ -69,12 +69,9 @@ const POLL_MS = 15_000;
 
 type SortKey = 'name' | 'data' | 'uptime';
 
+// Credentials LAN UNIQUEMENT si l'identité du MikroTik joint est celle de ce routerId (voir lanRouting).
 async function lanCredentials(routerId: string) {
-  const creds = await getLocalCredentials(routerId);
-  if (!creds) return null;
-  const wifi = await getWifiInfo();
-  const onRouterLan = !!wifi && (creds.host === wifi.gateway || sameSubnet24(creds.host, wifi.ipAddress));
-  return onRouterLan ? creds : null;
+  return (await resolveVerifiedLanRoute(routerId)).creds;
 }
 
 function parseBytes(v: string): number {
@@ -119,6 +116,7 @@ export default function SessionsScreen() {
   // avec l'écran Routeur (même queryKey `['router-live', id]`) — plus de
   // polling indépendant à 15 s ici, `useRouterLive` gère SSE + repli 30 s.
   const [remoteMode, setRemoteMode] = useState(false);
+  const [lanState, setLanState] = useState<LanState>('NO_LAN');
   const live = useRouterLive(routerId, Boolean(routerId) && remoteMode);
 
   const query = useQuery({
@@ -130,11 +128,13 @@ export default function SessionsScreen() {
     refetchInterval: remoteMode ? POLL_MS : sseLive ? 30_000 : POLL_MS,
     placeholderData: keepPreviousData,
     queryFn: async (): Promise<LiveSession[]> => {
-      const creds = await lanCredentials(routerId);
+      const route = await resolveVerifiedLanRoute(routerId);
+      setLanState(route.state);
+      const creds = route.creds;
       if (creds) {
         setRemoteMode(false);
         const active = await listActiveLan(creds);
-        void reportLanSessions(routerId, active);
+        void reportLanSessions(routerId, active, route.observedIdentity);
         return active;
       }
       setRemoteMode(true);
@@ -381,7 +381,11 @@ export default function SessionsScreen() {
         </FadeIn>
 
         {error ? <Banner tone="danger">{error}</Banner> : null}
-        {sessionsError ? <Banner tone="warning">{extractErrorMessage(sessionsErrorObj)}</Banner> : null}
+        {remoteMode && sessionsError && lanBlockMessageKey(lanState) ? (
+          <Banner tone="warning">{t(lanBlockMessageKey(lanState) as string)}</Banner>
+        ) : sessionsError ? (
+          <Banner tone="warning">{extractErrorMessage(sessionsErrorObj)}</Banner>
+        ) : null}
         {unreliableEmpty ? <Banner tone="warning">{t('sessions.unreliableWarning')}</Banner> : null}
         {remoteMode && sessionsAgeSec !== null ? (
           <Text style={{ color: theme.textMuted, fontSize: 11, textAlign: 'center' }}>
