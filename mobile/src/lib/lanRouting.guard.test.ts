@@ -56,3 +56,11 @@ test('les opérations LAN sensibles passent par le résolveur vérifié (jamais 
   }
   assert.ok(!/getLocalCredentials\(routerId\);\s*\n\s*if \(creds\) return listUserProfilesLan/.test(readFileSync('app/plans.tsx', 'utf8')));
 });
+
+test("withApi vérifie l'identité dans la MÊME session dès que les credentials portent expectedIdentity", () => {
+  const src = readFileSync('src/services/mikrotik-lan/MikroTikApiClient.ts', 'utf8');
+  assert.match(src, /verifySessionIdentity\(/, 'withApi doit appeler verifySessionIdentity');
+  assert.match(src, /expectedIdentity\?: string/, 'ApiConnectionParams doit accepter expectedIdentity');
+  // La vérification précède l'exécution de la fonction métier (après login, avant fn).
+  assert.ok(src.indexOf('verifySessionIdentity(client') < src.indexOf('return await fn(client)'));
+});

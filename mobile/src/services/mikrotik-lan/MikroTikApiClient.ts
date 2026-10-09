@@ -1,3 +1,4 @@
+import { verifySessionIdentity } from '@/src/lib/lanRouting.core';
 import { reportSilent } from '@/src/lib/report';
 import TcpSocket from 'react-native-tcp-socket';
 import { Buffer } from 'buffer';
@@ -15,6 +16,11 @@ export interface ApiConnectionParams {
   username: string;
   password: string;
   timeoutMs?: number;
+  /**
+   * Identité RouterOS (`/system/identity`) attendue pour ce routeur. Si présente, `withApi` la relit dans la
+   * MÊME session, juste après le login, et refuse d'exécuter l'action si elle diffère (voir lanRouting).
+   */
+  expectedIdentity?: string;
 }
 
 export interface SystemResource {
@@ -358,6 +364,8 @@ export async function withApi<T>(
   try {
     await client.connect();
     await client.login();
+    // Preuve d'identité dans la session qui va agir : jamais le cache d'un contrôle antérieur.
+    if (params.expectedIdentity !== undefined) await verifySessionIdentity(client, params.expectedIdentity);
     return await fn(client);
   } finally {
     client.destroy();
