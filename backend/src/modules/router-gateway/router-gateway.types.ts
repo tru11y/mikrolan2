@@ -86,3 +86,31 @@ export const COLLECTOR_OFFLINE_AFTER_FAILURES = 3;
 // ── Phase 1A : sessions alimentées par syncActivations (aucune lecture RouterOS en plus) ──
 // syncActivations ≈ 25 s : au-delà de ~1,8 cycle la donnée est annoncée « retardée » (jamais « 0 session »).
 export const SYNC_FEED_STALE_MS = 45_000;
+
+// ── Phase 1B : Stats Feed (CPU/RAM/uptime) pour un routeur déjà alimenté par syncActivations ──
+// Une seule commande `/system/resource/print` (jamais active/print), lancée juste après une synchro,
+// jamais en parallèle d'elle, jamais plus d'une fois par minute.
+export const STATS_FEED_BASE_MS = 60_000;
+export const STATS_FEED_HIGH_CPU_PERCENT = 90;
+/** CPU du routeur ≥ 90 % : cadence ÷3 (jamais plus de lectures quand le routeur souffre). */
+export const STATS_FEED_HIGH_CPU_MS = 3 * STATS_FEED_BASE_MS;
+export const STATS_FEED_SLOW_READ_MS = 5_000;
+export const STATS_FEED_SLOW_MS = 2 * STATS_FEED_BASE_MS;
+export const STATS_FEED_BACKOFF_CAP_MS = 5 * 60_000;
+/** Borne dure de la lecture : pendant ce temps, la synchro de ce routeur est différée (verrou mutuel). */
+export const STATS_FEED_DEADLINE_MS = 10_000;
+
+/** Délai avant la prochaine lecture stats ; toujours ≥ 60 s. */
+export function statsFeedNextIntervalMs(input: {
+  cpuPercent: number | null;
+  lastDurationMs: number | null;
+  failures: number;
+}): number {
+  if (input.failures > 0) {
+    return Math.min(STATS_FEED_BASE_MS * 2 ** input.failures, STATS_FEED_BACKOFF_CAP_MS);
+  }
+  let ms = STATS_FEED_BASE_MS;
+  if (input.cpuPercent !== null && input.cpuPercent >= STATS_FEED_HIGH_CPU_PERCENT) ms = STATS_FEED_HIGH_CPU_MS;
+  if (input.lastDurationMs !== null && input.lastDurationMs > STATS_FEED_SLOW_READ_MS) ms = Math.max(ms, STATS_FEED_SLOW_MS);
+  return ms;
+}
