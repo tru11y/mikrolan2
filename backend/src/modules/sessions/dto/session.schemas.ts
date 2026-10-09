@@ -24,6 +24,8 @@ export const syncLanSessionsSchema = z
           .strict(),
       )
       .max(500),
+    // Identité RouterOS réellement lue (/system/identity) sur le MikroTik joint : comparée côté serveur.
+    observedRouterIdentity: z.string().min(1).max(128).optional(),
   })
   .strict();
 export type SyncLanSessionsDto = z.infer<typeof syncLanSessionsSchema>;
