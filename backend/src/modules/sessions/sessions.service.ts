@@ -313,6 +313,33 @@ export class SessionsService {
     }
   }
 
+  /** Phase 1B — best effort : jamais d'effet sur syncActivations, même si le module live est absent ou lève. */
+  private statsReadBlocksSync(routerId: string): boolean {
+    try {
+      if (!this.gateway?.isStatsReadInFlight(routerId)) return false;
+      this.gateway.noteSyncDeferred(routerId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private liveSyncStarted(routerId: string): void {
+    try {
+      this.gateway?.syncStarted(routerId);
+    } catch (e) {
+      this.logger.warn(`live sync-start note failed routerId=${routerId}: ${(e as Error).message}`);
+    }
+  }
+
+  private liveSyncFinished(routerId: string, tenantId: string): void {
+    try {
+      this.gateway?.syncFinished(routerId, tenantId);
+    } catch (e) {
+      this.logger.warn(`live sync-finish note failed routerId=${routerId}: ${(e as Error).message}`);
+    }
+  }
+
   private noteLiveReadFailure(routerId: string, err: unknown): void {
     try {
       this.gateway?.noteSyncReadFailure(routerId, err);
@@ -330,7 +357,13 @@ export class SessionsService {
       this.logger.warn(`sync router SKIPPED_ALREADY_RUNNING routerId=${router.id}`);
       return 'skipped';
     }
+    // Verrou mutuel Phase 1B : une lecture stats de ce routeur est en vol (≤ 10 s) — on diffère ce tick.
+    if (this.statsReadBlocksSync(router.id)) {
+      this.logger.log(`sync router DEFERRED_STATS_READ routerId=${router.id}`);
+      return 'skipped';
+    }
     this.syncRoutersInFlight.add(router.id);
+    this.liveSyncStarted(router.id);
     const start = Date.now();
     this.logger.log(`sync router START routerId=${router.id}`);
     let status: 'ok' | 'failed' = 'ok';
@@ -371,6 +404,7 @@ export class SessionsService {
       this.logger.log(
         `sync router END routerId=${router.id} status=${status} durationMs=${Date.now() - start}`,
       );
+      this.liveSyncFinished(router.id, router.tenantId);
     }
     return status;
   }
