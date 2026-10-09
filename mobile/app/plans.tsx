@@ -12,7 +12,7 @@ import {
   type UserProfile,
 } from '@/src/lib/api';
 import { getLocalCredentials } from '@/src/lib/router-credentials';
-import { getWifiInfo, sameSubnet24 } from '@/src/lib/lanBinder';
+import { verifiedLanCreds } from '@/src/lib/lanRouting';
 import {
   listUserProfilesLan,
   removeUserProfileLan,
@@ -70,7 +70,7 @@ export default function PlansScreen() {
   const deviceProfilesQuery = useQuery({
     queryKey: ['device-profiles', routerId],
     queryFn: async (): Promise<RouterProfile[]> => {
-      const creds = await getLocalCredentials(routerId);
+      const creds = await verifiedLanCreds(routerId);
       if (creds) return listUserProfilesLan(creds);
       const profiles = await api.routers.listUserProfiles(routerId);
       return profiles.map((p: UserProfile) => ({
@@ -252,13 +252,7 @@ export default function PlansScreen() {
    * épinglé ailleurs échoue, et peut faire tomber l'app.
    */
   async function lanCredentials() {
-    const creds = await getLocalCredentials(routerId);
-    if (!creds) return null;
-    const wifi = await getWifiInfo();
-    const onRouterLan =
-      !!wifi &&
-      (creds.host === wifi.gateway || sameSubnet24(creds.host, wifi.ipAddress));
-    return onRouterLan ? creds : null;
+    return verifiedLanCreds(routerId);
   }
 
   function startEditDevice(p: RouterProfile) {

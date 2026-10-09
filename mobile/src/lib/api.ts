@@ -1267,6 +1267,8 @@ export const api = {
       payload: {
         batchId: string;
         items: { id: string; mikrotikId: string }[];
+        /** Identité RouterOS réellement lue sur le MikroTik joint (le serveur la compare à celle du routeur). */
+        observedRouterIdentity?: string;
       },
     ): Promise<{ confirmed: number }> {
       const res = await apiClient.post<ApiEnvelope<{ confirmed: number }>>(
@@ -1429,10 +1431,11 @@ export const api = {
     async syncSessions(
       id: string,
       active: LiveSession[],
+      observedRouterIdentity?: string | null,
     ): Promise<{ synced: number }> {
       const res = await apiClient.post<ApiEnvelope<{ synced: number }>>(
         `/routers/${id}/sessions/sync`,
-        { active },
+        observedRouterIdentity ? { active, observedRouterIdentity } : { active },
       );
       return unwrap(res);
     },
