@@ -163,7 +163,8 @@ describe('Phase 1B — sonde stats (E2E avec faux RouterOS)', () => {
     expect(await prisma.session.count({ where: { routerId } })).toBe(1);
 
     // La sonde part 4 s après la synchro
-    await waitFor(() => count('/system/resource/print') >= 1, 9_000);
+    // Le serveur a reçu la commande ≠ le snapshot est déjà à jour : on attend l'application des stats.
+    await waitFor(() => gateway.peek(routerId)?.cpuPercent === 29, 9_000);
     expect(count('/system/resource/print')).toBe(1);
     expect(count('/ip/hotspot/active/print')).toBe(1); // la SEULE lecture des sessions = celle de la synchro CA
 
