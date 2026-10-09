@@ -1,10 +1,15 @@
 import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { UserRole } from '@prisma/client';
+import { setTenantContext, tenantStore } from '../../common/context/tenant-context';
+import { withDeadline } from '../../common/utils/with-deadline';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/error-codes';
 import { RemoteRouterService } from '../remote-access/remote-router.service';
 import { listActive } from '../../common/routeros/hotspot.ops';
 import { RouterLiveEventsService } from './router-live-events.service';
 import {
+  STATS_FEED_DEADLINE_MS,
+  statsFeedNextIntervalMs,
   SYNC_FEED_STALE_MS,
   GATEWAY_FRESH_MS,
   GATEWAY_MAX_STALE_MS,
@@ -48,6 +53,11 @@ export interface RouterKpis {
   /** Listes de sessions reçues de syncActivations (une lecture active/print → CA + live). */
   syncPublishCount: number;
   syncReadFailures: number;
+  /** Phase 1B : lectures `/system/resource/print` du Stats Feed réussies / en échec. */
+  statsFeedReads: number;
+  statsFeedFailures: number;
+  /** Ticks syncActivations différés (verrou mutuel) parce qu'une lecture stats était en vol. */
+  syncDeferredForStats: number;
 }
 
 const newKpis = (): RouterKpis => ({
@@ -64,6 +74,9 @@ const newKpis = (): RouterKpis => ({
   queueDepth: 0,
   syncPublishCount: 0,
   syncReadFailures: 0,
+  statsFeedReads: 0,
+  statsFeedFailures: 0,
+  syncDeferredForStats: 0,
 });
 
 interface ReadPlan {
@@ -87,6 +100,12 @@ interface Entry {
   kpis: RouterKpis;
   /** Dernière erreur RouterOS vue par syncActivations (état API, jamais l'état du tunnel). */
   syncError?: string;
+  /** Phase 1B — verrou mutuel avec syncActivations : une lecture de ce routeur à la fois. */
+  syncBusy: boolean;
+  statsInflight: boolean;
+  statsNextDueAt: number;
+  statsFailures: number;
+  statsLastDurationMs: number | null;
 }
 
 /**
@@ -115,7 +134,17 @@ export class RouterGatewayService {
   private entry(routerId: string): Entry {
     let e = this.entries.get(routerId);
     if (!e) {
-      e = { sessionWatchers: 0, managed: false, failures: 0, kpis: newKpis() };
+      e = {
+        sessionWatchers: 0,
+        managed: false,
+        failures: 0,
+        kpis: newKpis(),
+        syncBusy: false,
+        statsInflight: false,
+        statsNextDueAt: 0,
+        statsFailures: 0,
+        statsLastDurationMs: null,
+      };
       this.entries.set(routerId, e);
     }
     return e;
@@ -227,6 +256,116 @@ export class RouterGatewayService {
       }
     } catch (e) {
       this.logger.warn('gateway.noteSyncReadFailure failed routerId=' + routerId + ' err=' + (e as Error).message);
+    }
+  }
+
+  // ── Phase 1B : Stats Feed ────────────────────────────────────────────────────────────────
+  // CPU/RAM/uptime d'un routeur dont les sessions viennent déjà de syncActivations : UNE commande
+  // `/system/resource/print`, lancée juste APRÈS la fin d'une synchro de ce routeur (donc jamais en
+  // parallèle d'elle), au plus toutes les 60 s (×3 si CPU ≥ 90 %, backoff exponentiel en cas d'échec).
+  // Aucune lecture active/print, aucun lecteur HTTP/SSE ne peut la déclencher.
+
+  statsFeedEnabled(routerId: string): boolean {
+    return process.env['ROUTER_LIVE_STATS_FEED_ENABLED'] === 'true' && this.syncFeedEnabled(routerId);
+  }
+
+  /** Vrai pendant une lecture stats : syncActivations diffère alors ce routeur (verrou mutuel). */
+  isStatsReadInFlight(routerId: string): boolean {
+    return this.entries.get(routerId)?.statsInflight ?? false;
+  }
+
+  noteSyncDeferred(routerId: string): void {
+    this.entry(routerId).kpis.syncDeferredForStats += 1;
+  }
+
+  /** syncActivations démarre une lecture de ce routeur : aucune lecture stats ne peut démarrer. */
+  syncStarted(routerId: string): void {
+    if (!this.statsFeedEnabled(routerId)) return;
+    this.entry(routerId).syncBusy = true;
+  }
+
+  /** syncActivations a fini (succès ou échec) : libère le verrou et tente la lecture stats si elle est due. */
+  syncFinished(routerId: string, tenantId: string): void {
+    if (!this.statsFeedEnabled(routerId)) return;
+    const entry = this.entry(routerId);
+    entry.syncBusy = false;
+    this.maybeStartStatsRead(routerId, tenantId, entry);
+  }
+
+  private maybeStartStatsRead(routerId: string, tenantId: string, entry: Entry): void {
+    try {
+      if (entry.syncBusy || entry.statsInflight || entry.inflight) return;
+      // Pas de snapshot (redémarrage) ou synchro en difficulté : on ne charge pas un routeur qui souffre.
+      if (!entry.value || entry.syncError !== undefined) return;
+      const now = Date.now();
+      if (now < entry.statsNextDueAt) return;
+      entry.statsInflight = true;
+      void this.readStatsOnly(routerId, tenantId, entry, now);
+    } catch (e) {
+      entry.statsInflight = false;
+      this.logger.warn('gateway.statsFeed start failed routerId=' + routerId + ' err=' + (e as Error).message);
+    }
+  }
+
+  private async readStatsOnly(routerId: string, tenantId: string, entry: Entry, t0: number): Promise<void> {
+    entry.kpis.physicalConnectionsOpened += 1;
+    try {
+      const rows = await withDeadline(
+        tenantStore.run({}, () => {
+          setTenantContext({ tenantId, userId: 'system-stats-feed', role: UserRole.OWNER });
+          return this.remote.run(
+            routerId,
+            (c) =>
+              this.timed(entry, () =>
+                c.command([
+                  '/system/resource/print',
+                  '=.proplist=cpu-load,total-memory,free-memory,uptime,version,board-name',
+                ]),
+              ),
+            { timeoutMs: STATS_FEED_DEADLINE_MS, retries: 0 },
+          );
+        }),
+        STATS_FEED_DEADLINE_MS + 2_000,
+        `Stats feed ${routerId}`,
+      );
+      const res = rows[0] ?? {};
+      if (!res['cpu-load'] && !res['total-memory']) throw new Error('resource vide');
+      const now = Date.now();
+      const total = res['total-memory'] ? Math.round(parseInt(res['total-memory'], 10) / 1048576) : null;
+      const free = res['free-memory'] ? Math.round(parseInt(res['free-memory'], 10) / 1048576) : null;
+      const cpu = res['cpu-load'] ? Number(res['cpu-load']) : null;
+      const cur = entry.value;
+      if (cur) {
+        // Seules les stats changent : sessions, âge des sessions et état RouterOS restent ceux de la synchro.
+        entry.value = {
+          ...cur,
+          statsUpdatedAt: now,
+          cpuPercent: cpu,
+          memoryUsedMb: total !== null && free !== null ? total - free : null,
+          memoryTotalMb: total,
+          uptime: res['uptime'] ?? null,
+          rosVersion: res['version'] ?? cur.rosVersion,
+          boardName: res['board-name'] ?? cur.boardName,
+        };
+      }
+      const durationMs = now - t0;
+      entry.statsFailures = 0;
+      entry.statsLastDurationMs = durationMs;
+      entry.statsNextDueAt = t0 + statsFeedNextIntervalMs({ cpuPercent: cpu, lastDurationMs: durationMs, failures: 0 });
+      entry.kpis.statsFeedReads += 1;
+      this.log('stats-feed', routerId, { status: 'DONE', durationMs, cpuPercent: cpu, nextInMs: entry.statsNextDueAt - t0 });
+      if (entry.value) this.liveEvents.emit({ type: 'ROUTER_STATS', routerId, snapshot: this.toResult(entry, false) });
+    } catch (e) {
+      const durationMs = Date.now() - t0;
+      entry.statsFailures += 1;
+      entry.statsLastDurationMs = durationMs;
+      entry.statsNextDueAt = t0 + statsFeedNextIntervalMs({ cpuPercent: null, lastDurationMs: durationMs, failures: entry.statsFailures });
+      entry.kpis.statsFeedFailures += 1;
+      this.noteFailureKind(entry, e);
+      // Un échec stats n'est ni un tunnel coupé ni un échec de synchro : santé et sessions inchangées.
+      this.log('stats-feed', routerId, { status: 'ERROR', durationMs, error: (e as Error).message, failures: entry.statsFailures });
+    } finally {
+      entry.statsInflight = false;
     }
   }
 
