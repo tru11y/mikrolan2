@@ -48,6 +48,13 @@ export interface RouterKpis {
   /** Listes de sessions reçues de syncActivations (une lecture active/print → CA + live). */
   syncPublishCount: number;
   syncReadFailures: number;
+  /** Phase 1B — sonde stats (/system/resource) : lectures tentées, écartées, échouées, mises en « shed », abandonnées par la deadline dure. */
+  statsProbeCount: number;
+  statsProbeSkipped: number;
+  statsProbeFailures: number;
+  statsShedCount: number;
+  statsProbeDurationMs: number | null;
+  collisionAborted: number;
 }
 
 const newKpis = (): RouterKpis => ({
@@ -64,7 +71,22 @@ const newKpis = (): RouterKpis => ({
   queueDepth: 0,
   syncPublishCount: 0,
   syncReadFailures: 0,
+  statsProbeCount: 0,
+  statsProbeSkipped: 0,
+  statsProbeFailures: 0,
+  statsShedCount: 0,
+  statsProbeDurationMs: null,
+  collisionAborted: 0,
 });
+
+/** Abonné aux événements de la synchro CA (lecture seule) : la sonde stats s'y accroche sans toucher au CA. */
+export interface SyncFeedListener {
+  published(routerId: string): void;
+  syncFailed(routerId: string): void;
+}
+
+export type StatsState = 'PENDING' | 'FRESH' | 'STALE' | 'SHED';
+const STATS_STALE_MS = 5 * 60_000;
 
 interface ReadPlan {
   /** 'list' = liste complète (+ compteur) ; 'count' = compteur seul. */
@@ -87,6 +109,8 @@ interface Entry {
   kpis: RouterKpis;
   /** Dernière erreur RouterOS vue par syncActivations (état API, jamais l'état du tunnel). */
   syncError?: string;
+  /** Phase 1B : la sonde stats est suspendue (routeur lent/chargé) ; reprise après 3 syncs calmes. */
+  statsShed: boolean;
 }
 
 /**
@@ -106,6 +130,7 @@ interface Entry {
 export class RouterGatewayService {
   private readonly logger = new Logger(RouterGatewayService.name);
   private readonly entries = new Map<string, Entry>();
+  private readonly syncListeners = new Set<SyncFeedListener>();
 
   constructor(
     private readonly remote: RemoteRouterService,
@@ -115,7 +140,7 @@ export class RouterGatewayService {
   private entry(routerId: string): Entry {
     let e = this.entries.get(routerId);
     if (!e) {
-      e = { sessionWatchers: 0, managed: false, failures: 0, kpis: newKpis() };
+      e = { sessionWatchers: 0, managed: false, failures: 0, kpis: newKpis(), statsShed: false };
       this.entries.set(routerId, e);
     }
     return e;
@@ -203,6 +228,7 @@ export class RouterGatewayService {
         this.liveEvents.emit({ type: 'SESSION_COUNT_CHANGED', routerId, sessionCount: sessions.length });
         this.liveEvents.emit({ type: 'SESSIONS_CHANGED', routerId, sessions });
       }
+      this.notifySync('published', routerId);
     } catch (e) {
       this.logger.warn('gateway.publishSessions failed routerId=' + routerId + ' err=' + (e as Error).message);
     }
@@ -225,9 +251,66 @@ export class RouterGatewayService {
         entry.value = { ...entry.value, routerOsState: slow ? 'SLOW' : 'UNREACHABLE' };
         this.liveEvents.emit({ type: 'ROUTER_LIVE_STALE', routerId, reason: slow ? 'SLOW' : 'UNREACHABLE' });
       }
+      this.notifySync('syncFailed', routerId);
     } catch (e) {
       this.logger.warn('gateway.noteSyncReadFailure failed routerId=' + routerId + ' err=' + (e as Error).message);
     }
+  }
+
+  /** S'abonne aux publications/échecs de la synchro CA. Les erreurs d'un abonné ne remontent jamais. */
+  onSyncEvent(listener: SyncFeedListener): () => void {
+    this.syncListeners.add(listener);
+    return () => this.syncListeners.delete(listener);
+  }
+
+  private notifySync(kind: keyof SyncFeedListener, routerId: string): void {
+    for (const l of this.syncListeners) {
+      try {
+        l[kind](routerId);
+      } catch (e) {
+        this.logger.warn('gateway.syncListener failed routerId=' + routerId + ' err=' + (e as Error).message);
+      }
+    }
+  }
+
+  /**
+   * Phase 1B : intègre une lecture `/system/resource` (WARM) au snapshot SANS toucher aux sessions ni à
+   * `lastSuccessAt`/`routerOsState` (ils restent pilotés par la synchro CA). Ne lève jamais.
+   */
+  applyStats(routerId: string, res: ApiRow): boolean {
+    try {
+      const entry = this.entries.get(routerId);
+      if (!entry?.value) return false;
+      const total = res['total-memory'] ? Math.round(parseInt(res['total-memory'], 10) / 1048576) : null;
+      const free = res['free-memory'] ? Math.round(parseInt(res['free-memory'], 10) / 1048576) : null;
+      const cpu = res['cpu-load'] !== undefined && res['cpu-load'] !== '' ? Number(res['cpu-load']) : null;
+      entry.value = {
+        ...entry.value,
+        statsUpdatedAt: Date.now(),
+        cpuPercent: cpu !== null && Number.isFinite(cpu) ? cpu : entry.value.cpuPercent,
+        memoryTotalMb: total ?? entry.value.memoryTotalMb,
+        memoryUsedMb: total !== null && free !== null ? total - free : entry.value.memoryUsedMb,
+        uptime: res['uptime'] ?? entry.value.uptime,
+        rosVersion: res['version'] ?? entry.value.rosVersion,
+        boardName: res['board-name'] ?? entry.value.boardName,
+      };
+      this.liveEvents.emit({ type: 'ROUTER_STATS', routerId, snapshot: this.toResult(entry, false) });
+      return true;
+    } catch (e) {
+      this.logger.warn('gateway.applyStats failed routerId=' + routerId + ' err=' + (e as Error).message);
+      return false;
+    }
+  }
+
+  /** Compteurs de la sonde stats (mutation contrôlée par RouterStatsProbe uniquement). */
+  statsProbeKpis(routerId: string): RouterKpis {
+    return this.entry(routerId).kpis;
+  }
+
+  setStatsShed(routerId: string, shed: boolean): void {
+    const e = this.entry(routerId);
+    if (shed && !e.statsShed) e.kpis.statsShedCount += 1;
+    e.statsShed = shed;
   }
 
   private signature(list: LiveSession[] | null): string {
@@ -248,7 +331,7 @@ export class RouterGatewayService {
     this.entry(routerId).kpis.backoffCount += 1;
   }
 
-  kpis(routerId: string): RouterKpis & { sessionsAgeMs: number | null; statsAgeMs: number | null; watcherCount: number } {
+  kpis(routerId: string): RouterKpis & { sessionsAgeMs: number | null; statsAgeMs: number | null; watcherCount: number; statsState: StatsState } {
     const e = this.entry(routerId);
     const now = Date.now();
     const v = e.value;
@@ -257,6 +340,7 @@ export class RouterGatewayService {
       sessionsAgeMs: v?.sessionsUpdatedAt ? now - v.sessionsUpdatedAt : null,
       statsAgeMs: v?.statsUpdatedAt ? now - v.statsUpdatedAt : null,
       watcherCount: e.sessionWatchers,
+      statsState: e.statsShed ? 'SHED' : !v?.statsUpdatedAt ? 'PENDING' : now - v.statsUpdatedAt > STATS_STALE_MS ? 'STALE' : 'FRESH',
     };
   }
 
