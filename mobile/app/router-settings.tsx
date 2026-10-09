@@ -14,7 +14,7 @@ import {
   getLocalCredentials,
 } from '@/src/lib/router-credentials';
 import { withApi } from '@/src/services/mikrotik-lan/MikroTikApiClient';
-import { getWifiInfo, sameSubnet24 } from '@/src/lib/lanBinder';
+import { resolveVerifiedLanRoute } from '@/src/lib/lanRouting';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
 import { useAuth } from '@/src/providers/auth-provider';
 import {
@@ -49,13 +49,9 @@ type Item = {
 // otherwise the pinned TCP socket hard-crashes the app (see router/[id].tsx),
 // and WebFig/SSH/Winbox would silently target an unreachable LAN IP.
 async function resolveAccessMode(routerId: string) {
-  const creds = await getLocalCredentials(routerId);
-  if (!creds) return { onLan: false, creds: null };
-  const wifi = await getWifiInfo();
-  const onLan =
-    !!wifi &&
-    (creds.host === wifi.gateway || sameSubnet24(creds.host, wifi.ipAddress));
-  return { onLan, creds };
+  // `onLan` = identité du MikroTik joint vérifiée pour CE routerId (jamais un simple sous-réseau commun).
+  const route = await resolveVerifiedLanRoute(routerId);
+  return { onLan: route.state === 'VERIFIED', creds: route.creds };
 }
 
 export default function RouterSettingsScreen() {

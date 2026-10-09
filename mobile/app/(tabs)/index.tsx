@@ -10,7 +10,7 @@ import { api, extractErrorMessage, type Me, type RouterHealth, type RouterItem }
 import { useAuth } from '@/src/providers/auth-provider';
 import { useSseLive } from '@/src/providers/live-events-provider';
 import { getLocalCredentials } from '@/src/lib/router-credentials';
-import { getWifiInfo, sameSubnet24 } from '@/src/lib/lanBinder';
+import { resolveVerifiedLanRoute } from '@/src/lib/lanRouting';
 import { withApi } from '@/src/services/mikrotik-lan/MikroTikApiClient';
 import { RouterStatusDot } from '@/src/components/RouterStatusDot';
 import {
@@ -173,29 +173,20 @@ export default function MaisonScreen() {
   } | null>(null);
 
   const probeLocalRouter = useCallback(async () => {
-    const wifi = await getWifiInfo();
-    if (!wifi) {
-      setLocalProbe(null);
-      return;
-    }
+    // Chaque carte exige SA preuve d'identité : seul le routeur dont `/system/identity` correspond peut
+    // consommer ce LAN (deux routeurs peuvent partager 10.10.10.1). Les autres restent sur le snapshot
+    // serveur / dernier état connu — jamais l'état d'un autre MikroTik.
     for (const r of list) {
       if (r.mode !== 'LOCAL') continue;
-      const creds = await getLocalCredentials(r.id);
-      if (!creds) continue;
-      const onLan =
-        creds.host === wifi.gateway || sameSubnet24(creds.host, wifi.ipAddress);
-      if (!onLan) continue;
       try {
-        await withApi(
-          { ...creds, timeoutMs: LOCAL_PROBE_TIMEOUT_MS },
-          (c) => c.systemResource(),
-        );
-        setLocalProbe({ routerId: r.id, health: 'ONLINE' });
+        const route = await resolveVerifiedLanRoute(r.id);
+        if (route.state === 'VERIFIED') {
+          setLocalProbe({ routerId: r.id, health: 'ONLINE' });
+          return;
+        }
       } catch (e) {
         reportSilent('home.local-probe', e, { routerId: r.id });
-        setLocalProbe({ routerId: r.id, health: 'OFFLINE' });
       }
-      return;
     }
     setLocalProbe(null);
   }, [list]);
