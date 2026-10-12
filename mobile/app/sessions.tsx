@@ -394,9 +394,10 @@ export default function SessionsScreen() {
         ) : null}
         {remoteMode && live.data?.stale && !sessionsUnknown ? <Banner tone="warning">{t('routerDetail.dataNotRefreshed')}</Banner> : null}
 
+        {/* Erreur sans aucune donnée : jamais « Aucune session active » en plus du bandeau d'erreur. */}
         {sessionsLoading || sessionsUnknown ? (
           <Text style={{ color: theme.textMuted, fontSize: type.body, textAlign: 'center', paddingVertical: space.xl }}>{t('sessions.readingRouter')}</Text>
-        ) : !filtered.length ? (
+        ) : sessionsError && !sessions.length ? null : !filtered.length ? (
           <Empty icon="people-outline" text={t('sessions.noSession')} />
         ) : (
           <View style={{ gap: 10 }}>
