@@ -34,6 +34,10 @@ jobs:
       - name: Type-check
         run: npx tsc --noEmit
 
+      # Backlog « CI MOBILE JOB MUST RUN EXPO LINT » : 0 erreur aujourd'hui (les avertissements ne bloquent pas).
+      - name: Lint
+        run: npx expo lint
+
       - name: Unit tests
         run: npx jest --no-cache --ci --coverage
         env:
