@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { formatAge, formatBytes, handshakeLine, revokeConfirmed, stateHint } from './wgDisplay.ts';
+import { formatAge, formatBytes, handshakeLine, heartbeatLine, revokeConfirmed, stateHint } from './wgDisplay.ts';
 
 test('formatAge : unités et inconnu', () => {
   assert.equal(formatAge(0), '0 s');
@@ -42,6 +42,27 @@ test('handshakeLine : jamais, jamais depuis N jours, inconnu, récent', () => {
     handshakeLine({ state: 'UNKNOWN', handshakeAgeS: null, provisionedAt: null }, now),
     'Handshake indisponible',
   );
+});
+
+test('heartbeatLine : même format humain que le handshake (jamais en minutes brutes)', () => {
+  const now = Date.parse('2026-10-16T12:00:00Z');
+  const ago = (s: number) => new Date(now - s * 1000).toISOString();
+  assert.equal(heartbeatLine(ago(350_410), now), 'heartbeat il y a 4 j'); // AZ_OPEN : 6077 min avant
+  assert.equal(heartbeatLine(ago(5840 * 60), now), 'heartbeat il y a 4 j'); // 5840 min
+  assert.equal(heartbeatLine(ago(2 * 3600 + 120), now), 'heartbeat il y a 2 h');
+  assert.equal(heartbeatLine(ago(15 * 60), now), 'heartbeat il y a 15 min');
+  assert.equal(heartbeatLine(ago(42), now), 'heartbeat il y a 42 s');
+});
+
+test('heartbeatLine : absent ou illisible, jamais « il y a — » ni NaN', () => {
+  assert.equal(heartbeatLine(null), 'aucun heartbeat');
+  assert.equal(heartbeatLine(''), 'aucun heartbeat');
+  assert.equal(heartbeatLine('pas une date'), 'aucun heartbeat');
+});
+
+test('heartbeatLine : horloge en avance (heartbeat dans le futur) donne 0 s, pas un nombre négatif', () => {
+  const now = Date.parse('2026-10-16T12:00:00Z');
+  assert.equal(heartbeatLine(new Date(now + 30_000).toISOString(), now), 'heartbeat il y a 0 s');
 });
 
 test('stateHint : une piste pour chaque état anormal, aucune pour HEALTHY/REVOKED', () => {

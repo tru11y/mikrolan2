@@ -62,6 +62,13 @@ export function handshakeLine(row: WgHandshakeInfo, nowMs: number = Date.now()):
   return row.state === 'UNKNOWN' ? 'Handshake indisponible' : 'Jamais de handshake';
 }
 
+/** `heartbeat il y a 4 j` (même format que le handshake) ; `aucun heartbeat` si absent ou illisible. */
+export function heartbeatLine(lastHeartbeat: string | null, nowMs: number = Date.now()): string {
+  const ts = lastHeartbeat ? Date.parse(lastHeartbeat) : Number.NaN;
+  if (!Number.isFinite(ts)) return 'aucun heartbeat';
+  return `heartbeat il y a ${formatAge((nowMs - ts) / 1000)}`;
+}
+
 /** Piste de diagnostic affichée sous la carte ; `null` si rien à signaler. */
 export function stateHint(row: WgHandshakeInfo): string | null {
   switch (row.state) {
