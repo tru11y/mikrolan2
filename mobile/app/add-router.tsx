@@ -109,6 +109,7 @@ export default function AddRouterScreen() {
 
   async function testLocal() {
     setError(null);
+    if (scan.kind === 'scanning') setScan({ kind: 'idle' });
     if (!address.trim()) {
       setTest({ kind: 'error', message: t('addRouter.addressRequired') });
       return;
