@@ -1,10 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { GetObjectCommand, HeadObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import {
+  GetObjectCommand,
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import type { AppConfig } from '../../config/configuration';
 
 export class ReleaseStorageUnavailableError extends Error {}
+
+export const APK_CONTENT_TYPE = 'application/vnd.android.package-archive';
+
+// Un APK de ~90 Mo sur une liaison lente : l'URL doit survivre à l'envoi.
+const UPLOAD_URL_TTL_SECONDS = 1800;
 
 /** Accès au bucket S3 privé des APK : HEAD (vérification) et URL signée de téléchargement. */
 @Injectable()
@@ -37,6 +47,32 @@ export class ReleaseStorageService {
     }
   }
 
+  /** URL de dépôt directe PC → S3 ; seul Content-Length est signé (taille imposée par S3). */
+  async presignUpload(key: string, size: number): Promise<string> {
+    const client = this.s3();
+    try {
+      return await getSignedUrl(
+        client,
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          ContentType: APK_CONTENT_TYPE,
+          ContentLength: size,
+        }),
+        { expiresIn: UPLOAD_URL_TTL_SECONDS },
+      );
+    } catch {
+      throw new ReleaseStorageUnavailableError('S3 presign failed');
+    }
+  }
+
+  /** Origine S3 à autoriser en `connect-src` pour l'upload navigateur ('' si non configuré). */
+  get uploadOrigin(): string {
+    return this.bucket && this.region
+      ? `https://${this.bucket}.s3.${this.region}.amazonaws.com`
+      : '';
+  }
+
   async presignDownload(key: string): Promise<string> {
     const client = this.s3();
     const filename = key.slice(key.lastIndexOf('/') + 1);
@@ -47,7 +83,7 @@ export class ReleaseStorageService {
           Bucket: this.bucket,
           Key: key,
           ResponseContentDisposition: `attachment; filename="${filename}"`,
-          ResponseContentType: 'application/vnd.android.package-archive',
+          ResponseContentType: APK_CONTENT_TYPE,
         }),
         { expiresIn: this.ttl },
       );
@@ -60,7 +96,12 @@ export class ReleaseStorageService {
     if (!this.bucket || !this.region) {
       throw new ReleaseStorageUnavailableError('RELEASES_S3_* non configuré');
     }
-    this.client ??= new S3Client({ region: this.region });
+    // WHEN_REQUIRED : sinon le SDK injecte un checksum du corps vide dans l'URL
+    // signée et tout envoi réel échoue.
+    this.client ??= new S3Client({
+      region: this.region,
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+    });
     return this.client;
   }
 }
