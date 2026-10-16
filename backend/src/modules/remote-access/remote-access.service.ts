@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
+import * as net from 'node:net';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/error-codes';
 import { ConfigService } from '@nestjs/config';
@@ -94,6 +95,9 @@ export class RemoteAccessService {
     if (existing && existing.status === RemotePeerStatus.ACTIVE) {
       throw new BusinessException(HttpStatus.CONFLICT, ErrorCode.REMOTE_ACCESS_ALREADY_ACTIVE, 'La gestion à distance est déjà activée pour ce routeur.');
     }
+    if (existing && existing.status === RemotePeerStatus.PENDING) {
+      throw new BusinessException(HttpStatus.CONFLICT, ErrorCode.REMOTE_ACCESS_ALREADY_ACTIVE, 'Un provisionnement est déjà en cours pour ce routeur.');
+    }
 
     // Reuse the router's existing tunnel IP/port on re-provision (previously
     // revoked) so the address stays stable and never drifts from what the
@@ -134,7 +138,7 @@ export class RemoteAccessService {
       allocatedPort,
       serverPublicKey,
       endpoint,
-      status: RemotePeerStatus.ACTIVE,
+      status: RemotePeerStatus.PENDING,
       provisionedAt: new Date(),
       revokedAt: null,
       webfigPort,
@@ -142,17 +146,11 @@ export class RemoteAccessService {
       winboxPort,
     };
 
-    await this.prisma.$transaction(async (tx) => {
-      if (existing) {
-        await tx.remotePeer.update({ where: { id: existing.id }, data });
-      } else {
-        await tx.remotePeer.create({ data: { routerId, tenantId, ...data } });
-      }
-      await tx.router.update({
-        where: { id: routerId },
-        data: { mode: ManagementMode.REMOTE },
-      });
-    });
+    if (existing) {
+      await this.prisma.remotePeer.update({ where: { id: existing.id }, data });
+    } else {
+      await this.prisma.remotePeer.create({ data: { routerId, tenantId, ...data } });
+    }
 
     await this.audit(tenantId, actorId, AuditAction.PROVISION, routerId, {
       wgIp,
@@ -212,6 +210,114 @@ export class RemoteAccessService {
       await this.audit(tenantId, actorId, AuditAction.REVOKE, routerId, {});
     }
     return { revoked: true };
+  }
+
+  activate(routerId: string, actorId: string) {
+    return this.eventLog.guard(
+      { action: AuditAction.ACTIVATE, entityType: 'Router', entityId: routerId, actor: { userId: actorId } },
+      () => this.activateInner(routerId, actorId),
+    );
+  }
+
+  private async activateInner(routerId: string, actorId: string) {
+    const tenantId = getTenantContext()?.tenantId;
+    const peer = await this.prisma.remotePeer.findFirst({ where: { routerId } });
+    if (!peer || peer.status !== RemotePeerStatus.PENDING) {
+      throw new BusinessException(
+        HttpStatus.CONFLICT,
+        ErrorCode.REMOTE_ACTIVATION_NOT_PENDING,
+        'Aucun provisionnement en attente pour ce routeur.',
+      );
+    }
+
+    const handshakes = await this.wg.latestHandshakes();
+    const lastHandshake = handshakes[peer.wgPublicKey] ?? 0;
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (lastHandshake === 0 || nowSec - lastHandshake > 150) {
+      throw new BusinessException(
+        HttpStatus.PRECONDITION_FAILED,
+        ErrorCode.REMOTE_ACTIVATION_NO_HANDSHAKE,
+        'Le tunnel WireGuard n\'a pas encore établi de connexion. Vérifiez la configuration réseau du routeur.',
+      );
+    }
+
+    const apiReachable = await this.tcpProbe(peer.wgIp, 8728, 5000);
+    if (!apiReachable) {
+      throw new BusinessException(
+        HttpStatus.PRECONDITION_FAILED,
+        ErrorCode.REMOTE_ACTIVATION_API_UNREACHABLE,
+        'Le tunnel est actif mais l\'API RouterOS (port 8728) ne répond pas.',
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.remotePeer.update({
+        where: { id: peer.id },
+        data: { status: RemotePeerStatus.ACTIVE },
+      });
+      await tx.router.update({
+        where: { id: routerId },
+        data: { mode: ManagementMode.REMOTE },
+      });
+    });
+
+    await this.audit(tenantId, actorId, AuditAction.ACTIVATE, routerId, {
+      wgIp: peer.wgIp,
+      handshakeAgeSec: nowSec - lastHandshake,
+    });
+
+    return { activated: true };
+  }
+
+  cancelProvision(routerId: string, actorId: string) {
+    return this.eventLog.guard(
+      { action: AuditAction.REVOKE, entityType: 'Router', entityId: routerId, actor: { userId: actorId } },
+      () => this.cancelProvisionInner(routerId, actorId),
+    );
+  }
+
+  private async cancelProvisionInner(routerId: string, actorId: string) {
+    const tenantId = getTenantContext()?.tenantId;
+    const peer = await this.prisma.remotePeer.findFirst({ where: { routerId } });
+    if (!peer || peer.status !== RemotePeerStatus.PENDING) {
+      throw new BusinessException(
+        HttpStatus.NOT_FOUND,
+        ErrorCode.REMOTE_ACTIVATION_NOT_PENDING,
+        'Aucun provisionnement en attente à annuler.',
+      );
+    }
+
+    try {
+      await this.wg.removePeer(peer.wgPublicKey);
+      await this.wg.removeDnat(peer.wgIp, peer.allocatedPort, {
+        webfigPort: peer.webfigPort,
+        sshPort: peer.sshPort,
+        winboxPort: peer.winboxPort,
+      });
+    } catch (err) {
+      this.logger.warn(`WireGuard cleanup on cancel failed (proceeding): ${err instanceof Error ? err.message : err}`);
+    }
+
+    await this.prisma.remotePeer.update({
+      where: { id: peer.id },
+      data: { status: RemotePeerStatus.REVOKED, revokedAt: new Date() },
+    });
+
+    await this.audit(tenantId, actorId, AuditAction.REVOKE, routerId, { cancelledProvision: true });
+    return { cancelled: true };
+  }
+
+  private tcpProbe(host: string, port: number, timeoutMs: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const socket = new net.Socket();
+      const timer = setTimeout(() => { socket.destroy(); resolve(false); }, timeoutMs);
+      socket.connect(port, host, () => {
+        clearTimeout(timer);
+        socket.destroy();
+        resolve(true);
+      });
+      socket.on('error', () => { clearTimeout(timer); socket.destroy(); resolve(false); });
+    });
   }
 
   async status(routerId: string) {

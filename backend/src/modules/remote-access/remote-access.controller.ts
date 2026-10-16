@@ -78,6 +78,26 @@ export class RemoteAccessController {
     return this.remote.revoke(id, user.userId);
   }
 
+  @Post('activate')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  activate(
+    @CurrentUser() user: TenantContext,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.remote.activate(id, user.userId);
+  }
+
+  @Post('cancel')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  cancelProvision(
+    @CurrentUser() user: TenantContext,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.remote.cancelProvision(id, user.userId);
+  }
+
   @Post('reboot')
   @Roles(UserRole.ADMIN)
   @HttpCode(200)
