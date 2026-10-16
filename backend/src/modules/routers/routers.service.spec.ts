@@ -41,8 +41,11 @@ function makePrisma() {
       fn({
         session: { deleteMany: jest.fn() },
         voucher: { deleteMany: jest.fn() },
+        voucherBatch: { deleteMany: jest.fn() },
         plan: { deleteMany: jest.fn() },
-        remotePeer: { deleteMany: jest.fn() },
+        notification: { deleteMany: jest.fn() },
+        routerTelemetry: { deleteMany: jest.fn() },
+        remotePeer: { deleteMany: jest.fn(), delete: jest.fn() },
         auditLog: { deleteMany: jest.fn() },
         router: { delete: jest.fn() },
       }),
@@ -199,6 +202,36 @@ describe('RoutersService', () => {
 
       const result = await service.update('r1', { alias: 'New Alias' });
       expect(prisma.router.update).toHaveBeenCalled();
+    });
+  });
+
+  describe('remove', () => {
+    it('deletes routerTelemetry before router to avoid FK violation', async () => {
+      const { service, prisma } = makeService();
+      prisma.router.findFirst.mockResolvedValue(ROUTER);
+      prisma.remotePeer.findFirst.mockResolvedValue(null);
+
+      const txCalls: string[] = [];
+      prisma.$transaction.mockImplementation(async (fn: any) => {
+        const tx = {
+          session: { deleteMany: jest.fn(() => { txCalls.push('session'); }) },
+          voucher: { deleteMany: jest.fn(() => { txCalls.push('voucher'); }) },
+          voucherBatch: { deleteMany: jest.fn(() => { txCalls.push('voucherBatch'); }) },
+          plan: { deleteMany: jest.fn(() => { txCalls.push('plan'); }) },
+          notification: { deleteMany: jest.fn(() => { txCalls.push('notification'); }) },
+          routerTelemetry: { deleteMany: jest.fn(() => { txCalls.push('routerTelemetry'); }) },
+          remotePeer: { delete: jest.fn(() => { txCalls.push('remotePeer'); }) },
+          router: { delete: jest.fn(() => { txCalls.push('router'); }) },
+        };
+        return fn(tx);
+      });
+
+      await service.remove('r1');
+
+      expect(txCalls).toContain('routerTelemetry');
+      const telemetryIdx = txCalls.indexOf('routerTelemetry');
+      const routerIdx = txCalls.indexOf('router');
+      expect(telemetryIdx).toBeLessThan(routerIdx);
     });
   });
 });
