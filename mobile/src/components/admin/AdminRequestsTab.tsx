@@ -42,7 +42,7 @@ export function AdminRequestsTab() {
 
   const activate = useMutation({
     mutationFn: (invoice: AdminInvoice) =>
-      api.subscriptions.activate(invoice.tenantId, invoice.periodDays),
+      api.admin.validateInvoice(invoice.id, invoice.periodDays),
     onSuccess: async () => {
       toast.success(t('admin.subscriptionActivated'));
       setConfirming(null);
