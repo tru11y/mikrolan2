@@ -4,7 +4,11 @@ import { UserRole } from '@prisma/client';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { TenantContext } from '../../common/context/tenant-context';
 import { AppReleasesController } from './app-releases.controller';
-import { createReleaseSchema, requireReleaseSchema } from './dto/app-release.schemas';
+import {
+  createReleaseSchema,
+  requireReleaseSchema,
+  uploadUrlSchema,
+} from './dto/app-release.schemas';
 
 function contextFor(method: string, role: UserRole): ExecutionContext {
   const user: TenantContext = { tenantId: 't1', userId: 'u1', role };
@@ -22,9 +26,9 @@ describe('AppReleasesController — fermeture par rôle', () => {
     (n) => n !== 'constructor',
   );
 
-  it('expose les 6 routes attendues', () => {
+  it('expose les 7 routes attendues', () => {
     expect(routes.sort()).toEqual(
-      ['activate', 'archive', 'create', 'latest', 'list', 'require'].sort(),
+      ['activate', 'archive', 'create', 'latest', 'list', 'require', 'uploadUrl'].sort(),
     );
   });
 
@@ -87,6 +91,20 @@ describe('createReleaseSchema', () => {
 
   it('refuse un champ inconnu (ex. isActive injecté)', () => {
     expect(createReleaseSchema.safeParse({ ...valid, isActive: true }).success).toBe(false);
+  });
+});
+
+describe('uploadUrlSchema', () => {
+  it('accepte une demande valide', () => {
+    expect(uploadUrlSchema.safeParse({ versionCode: 5, fileSize: 1000 }).success).toBe(true);
+  });
+  it.each([
+    { versionCode: 0, fileSize: 1 },
+    { versionCode: 5, fileSize: 0 },
+    { versionCode: 5, fileSize: 201 * 1024 * 1024 },
+    { versionCode: 5, fileSize: 1, storageKey: 'releases/android/x.apk' },
+  ])('refuse %j', (b) => {
+    expect(uploadUrlSchema.safeParse(b).success).toBe(false);
   });
 });
 

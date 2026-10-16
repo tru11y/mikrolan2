@@ -1,4 +1,5 @@
 import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import { AuditAction, Prisma, type AppRelease } from '@prisma/client';
 import { TenantContext } from '../../common/context/tenant-context';
 import { ErrorCode } from '../../common/error-codes';
@@ -6,10 +7,15 @@ import { BusinessException } from '../../common/exceptions/business.exception';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventLogService } from '../events/event-log.service';
 import {
+  APK_CONTENT_TYPE,
   ReleaseStorageService,
   ReleaseStorageUnavailableError,
 } from './release-storage.service';
-import type { CreateReleaseDto, ListReleasesQueryDto } from './dto/app-release.schemas';
+import type {
+  CreateReleaseDto,
+  ListReleasesQueryDto,
+  UploadUrlDto,
+} from './dto/app-release.schemas';
 
 export interface ReleaseView {
   id: string;
@@ -26,6 +32,13 @@ export interface ReleaseView {
   archivedAt: Date | null;
   createdAt: Date;
   createdById: string;
+  createdByEmail: string | null;
+}
+
+export interface UploadTarget {
+  storageKey: string;
+  uploadUrl: string;
+  headers: Record<string, string>;
 }
 
 export interface ReleasePage {
@@ -33,7 +46,9 @@ export interface ReleasePage {
   nextCursor: string | null;
 }
 
-export function toView(r: AppRelease): ReleaseView {
+type ReleaseRow = AppRelease & { createdBy?: { email: string } | null };
+
+export function toView(r: ReleaseRow): ReleaseView {
   return {
     id: r.id,
     versionName: r.versionName,
@@ -48,6 +63,7 @@ export function toView(r: AppRelease): ReleaseView {
     archivedAt: r.archivedAt,
     createdAt: r.createdAt,
     createdById: r.createdById,
+    createdByEmail: r.createdBy?.email ?? null,
   };
 }
 
@@ -107,9 +123,39 @@ export class AppReleasesService {
     return toView(row);
   }
 
+  /** URL signée de dépôt direct ; refuse d'emblée un versionCode déjà pris. */
+  async createUploadTarget(dto: UploadUrlDto, actor: TenantContext): Promise<UploadTarget> {
+    const existing = await this.prisma.appRelease.findUnique({
+      where: { versionCode: dto.versionCode },
+      select: { id: true },
+    });
+    if (existing) throw this.versionExists(dto.versionCode);
+
+    const storageKey = `releases/android/mikrolan-${dto.versionCode}-${randomBytes(6).toString('hex')}.apk`;
+    let uploadUrl: string;
+    try {
+      uploadUrl = await this.storage.presignUpload(storageKey, dto.fileSize);
+    } catch (err) {
+      if (err instanceof ReleaseStorageUnavailableError) {
+        throw new BusinessException(
+          HttpStatus.SERVICE_UNAVAILABLE,
+          ErrorCode.RELEASE_STORAGE_UNAVAILABLE,
+          'Stockage des APK indisponible',
+        );
+      }
+      throw err;
+    }
+    await this.audit(actor, AuditAction.UPLOAD, storageKey, {
+      versionCode: dto.versionCode,
+      fileSize: dto.fileSize,
+    });
+    return { storageKey, uploadUrl, headers: { 'Content-Type': APK_CONTENT_TYPE } };
+  }
+
   async list(query: ListReleasesQueryDto): Promise<ReleasePage> {
     const rows = await this.prisma.appRelease.findMany({
       where: query.includeArchived === 'true' ? {} : { archivedAt: null },
+      include: { createdBy: { select: { email: true } } },
       orderBy: [{ versionCode: 'desc' }, { id: 'desc' }],
       take: query.limit + 1,
       ...(query.cursor ? { cursor: { id: query.cursor }, skip: 1 } : {}),
