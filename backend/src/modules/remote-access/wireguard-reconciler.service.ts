@@ -14,6 +14,7 @@ import { EventsService } from '../events/events.service';
 import { WireGuardService } from '../../common/wireguard/wireguard.service';
 
 const RECONCILE_INTERVAL_MS = 20_000;
+const PENDING_EXPIRY_MS = 5 * 60 * 1000;
 // A router is ONLINE when its tunnel handshaked within this window. WireGuard
 // only re-handshakes every ~120s under normal keepalive-driven traffic (see
 // pushWireGuard.ts persistent-keepalive=25), so a threshold below that made a
@@ -52,6 +53,7 @@ export class WireGuardReconciler implements OnModuleInit, OnModuleDestroy {
 
   async reconcile(): Promise<void> {
     try {
+      await this.expireStalePending();
       const peers = await this.prisma.remotePeer.findMany({
         where: { status: RemotePeerStatus.ACTIVE },
         select: {
@@ -71,6 +73,31 @@ export class WireGuardReconciler implements OnModuleInit, OnModuleDestroy {
       this.logger.error(
         `WireGuard reconcile failed: ${e instanceof Error ? e.message : e}`,
       );
+    }
+  }
+
+  private async expireStalePending(): Promise<void> {
+    const cutoff = new Date(Date.now() - PENDING_EXPIRY_MS);
+    const stale = await this.prisma.remotePeer.findMany({
+      where: { status: RemotePeerStatus.PENDING, provisionedAt: { lt: cutoff } },
+      select: { id: true, wgPublicKey: true, wgIp: true, allocatedPort: true, routerId: true, webfigPort: true, sshPort: true, winboxPort: true },
+    });
+    for (const peer of stale) {
+      this.logger.warn(`Auto-revoking stale PENDING peer for router ${peer.routerId} (provisioned > 5 min ago)`);
+      try {
+        await this.wg.removePeer(peer.wgPublicKey);
+        await this.wg.removeDnat(peer.wgIp, peer.allocatedPort, {
+          webfigPort: peer.webfigPort,
+          sshPort: peer.sshPort,
+          winboxPort: peer.winboxPort,
+        });
+      } catch (err) {
+        this.logger.warn(`WG cleanup for stale peer failed: ${err instanceof Error ? err.message : err}`);
+      }
+      await this.prisma.remotePeer.update({
+        where: { id: peer.id },
+        data: { status: RemotePeerStatus.REVOKED, revokedAt: new Date() },
+      });
     }
   }
 

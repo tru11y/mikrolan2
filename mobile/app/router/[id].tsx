@@ -345,7 +345,6 @@ export default function RouterDetailScreen() {
     setRemoteBusy(true);
     setRemoteMsg(null);
     try {
-      // Provisionnement WireGuard : JAMAIS sur un MikroTik dont l'identité n'est pas vérifiée pour ce routerId.
       const route = await resolveVerifiedLanRoute(id);
       const creds = route.creds;
       if (!creds) {
@@ -355,26 +354,41 @@ export default function RouterDetailScreen() {
         });
         return;
       }
-      // Probe the router's /ip service ports BEFORE provisioning so the VPS
-      // DNAT target matches what RouterOS actually listens on. Operators
-      // routinely move `www` off 80; without this the tunnel handshakes but
-      // WebFig connects to a dead socket and the browser reports RST.
       const servicePorts = await detectServicePorts(creds);
       const bundle = await api.routers.provisionRemote(id, servicePorts);
+      setRemoteMsg({ tone: 'warning', text: t('routerDetail.provisioningPushingConfig') });
       await pushWireGuardConfig(creds, bundle);
-      // Hand the RouterOS credentials to the backend (encrypted at rest) so the
-      // server can drive the router over the tunnel via the binary API (8728).
-      // In LOCAL mode they live only on-device; PRO management needs them server-side.
+
+      setRemoteMsg({ tone: 'warning', text: t('routerDetail.provisioningWaitingTunnel') });
+      let activated = false;
+      for (let attempt = 0; attempt < 6; attempt++) {
+        await new Promise((r) => setTimeout(r, 5000));
+        try {
+          await api.routers.activateRemote(id);
+          activated = true;
+          break;
+        } catch (e) {
+          const code = (e as { response?: { data?: { errorCode?: string } } })?.response?.data?.errorCode;
+          if (code === 'REMOTE_ACTIVATION_NO_HANDSHAKE' || code === 'REMOTE_ACTIVATION_API_UNREACHABLE') {
+            continue;
+          }
+          throw e;
+        }
+      }
+
+      if (!activated) {
+        await api.routers.cancelProvision(id).catch(() => {});
+        setRemoteMsg({ tone: 'danger', text: t('routerDetail.provisioningTimeout') });
+        return;
+      }
+
       await api.routers.update(id, {
         credentials: { username: creds.username, password: creds.password },
       });
       await qc.invalidateQueries({ queryKey: ['router', id] });
       await qc.invalidateQueries({ queryKey: ['router-remote', id] });
       await qc.invalidateQueries({ queryKey: ['routers'] });
-      setRemoteMsg({
-        tone: 'success',
-        text: t('routerDetail.remoteEnabled'),
-      });
+      setRemoteMsg({ tone: 'success', text: t('routerDetail.remoteEnabled') });
     } catch (e) {
       setRemoteMsg({ tone: 'danger', text: extractErrorMessage(e) });
     } finally {
