@@ -22,9 +22,11 @@ import {
   createReleaseSchema,
   listReleasesQuerySchema,
   requireReleaseSchema,
+  uploadUrlSchema,
   type CreateReleaseDto,
   type ListReleasesQueryDto,
   type RequireReleaseDto,
+  type UploadUrlDto,
 } from './dto/app-release.schemas';
 
 /** Distribution APK — SUPER_ADMIN uniquement (fermé par défaut au niveau classe). */
@@ -34,6 +36,15 @@ import {
 @UseInterceptors(AdminBypassInterceptor)
 export class AppReleasesController {
   constructor(private readonly releases: AppReleasesService) {}
+
+  @Post('upload-url')
+  @HttpCode(200)
+  uploadUrl(
+    @Body(new ZodValidationPipe(uploadUrlSchema)) dto: UploadUrlDto,
+    @CurrentUser() actor: TenantContext,
+  ) {
+    return this.releases.createUploadTarget(dto, actor);
+  }
 
   @Post()
   create(
