@@ -3,6 +3,7 @@ import { Text, View } from 'react-native';
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query';
 import { api, type FleetRouter } from '@/src/lib/api';
 import { describeError } from '@/src/lib/errors';
+import { memoryPercent } from '@/src/lib/liveDisplay';
 import {
   Badge,
   Button,
@@ -118,7 +119,8 @@ export function AdminFleetTab() {
         <Empty icon="hardware-chip-outline" text="Aucun routeur trouvé" />
       ) : (
         items.map((r, i) => {
-          const telem = r.telemetry?.[0];
+          const telem = r.telemetry;
+          const ram = telem ? memoryPercent(telem.ramUsedMb, telem.ramTotalMb) : null;
           return (
             <FadeIn key={r.id} delay={i * 30}>
               <Card>
@@ -144,13 +146,13 @@ export function AdminFleetTab() {
                 {telem ? (
                   <Row style={{ marginTop: space.sm, gap: space.md }}>
                     <Text style={{ color: theme.textMuted, fontSize: type.micro }}>
-                      CPU {telem.cpuPercent}%
+                      CPU {telem.cpuPercent == null ? '—' : `${telem.cpuPercent}%`}
                     </Text>
                     <Text style={{ color: theme.textMuted, fontSize: type.micro }}>
-                      RAM {telem.memoryPercent}%
+                      RAM {ram == null ? '—' : `${ram}%`}
                     </Text>
                     <Text style={{ color: theme.textMuted, fontSize: type.micro }}>
-                      Up {Math.floor(telem.uptimeSeconds / 3600)}h
+                      Up {telem.uptime || '—'}
                     </Text>
                   </Row>
                 ) : null}
