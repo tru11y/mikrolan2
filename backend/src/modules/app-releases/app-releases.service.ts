@@ -220,6 +220,7 @@ export class AppReleasesService {
   async latestForTenant(): Promise<TenantReleaseView & { downloadUrl: string | null }> {
     const row = await this.prisma.appRelease.findFirst({
       where: { isActive: true, archivedAt: null },
+      orderBy: [{ versionCode: 'desc' }, { id: 'desc' }],
     });
     if (!row) throw this.notFound();
 
