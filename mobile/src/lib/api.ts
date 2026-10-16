@@ -2052,8 +2052,21 @@ export type FleetRouter = {
   syncFailCount: number;
   createdAt: string;
   tenant: { id: string; name: string; slug: string };
-  remotePeer: { status: string; wgIp: string }[] | null;
-  telemetry: { cpuPercent: number; memoryPercent: number; uptimeSeconds: number; collectedAt: string }[];
+  remotePeer: { status: string; wgIp: string } | null;
+  telemetry: FleetTelemetry | null;
+};
+
+export type FleetTelemetry = {
+  cpuPercent: number | null;
+  ramUsedMb: number | null;
+  ramTotalMb: number | null;
+  uptime: string | null;
+  rosVersion: string | null;
+  boardName: string | null;
+  hotspotActive: number | null;
+  lastErrors: unknown;
+  health: string;
+  collectedAt: string;
 };
 
 export type AdminTenant = {
