@@ -311,7 +311,7 @@ export default function RouterDetailScreen() {
   const [remoteBusy, setRemoteBusy] = useState(false);
   const [showRemoteConsent, setShowRemoteConsent] = useState(false);
   const [remoteMsg, setRemoteMsg] = useState<
-    { tone: 'success' | 'danger'; text: string } | null
+    { tone: 'success' | 'danger' | 'warning'; text: string } | null
   >(null);
   const [showCreds, setShowCreds] = useState(false);
   const [credUser, setCredUser] = useState('admin');
