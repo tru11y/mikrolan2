@@ -468,6 +468,14 @@ export default function AccountScreen() {
             subtitle={t('account.supportSubtitle')}
             onPress={() => router.push('/support')}
           />
+          <SectionSep />
+          <SettingRow
+            icon="download-outline"
+            iconColor={theme.primary}
+            title={t('account.appDownloadTitle')}
+            subtitle={t('account.appDownloadSubtitle')}
+            onPress={() => router.push('/app-download')}
+          />
           {me?.user.role === 'SUPER_ADMIN' ? (
             <>
               <SectionSep />
