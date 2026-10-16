@@ -83,6 +83,15 @@ describe('AppReleasesService — portail tenant', () => {
     expect(out).not.toHaveProperty('createdById');
   });
 
+  it('latestForTenant : tri déterministe (versionCode puis id décroissants)', async () => {
+    mockPrisma.appRelease.findFirst.mockResolvedValue(row());
+    mockStorage.presignDownload.mockResolvedValue('https://s3.test/x');
+    await build().latestForTenant();
+    expect(mockPrisma.appRelease.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: [{ versionCode: 'desc' }, { id: 'desc' }] }),
+    );
+  });
+
   it('latestForTenant : 404 sans release active', async () => {
     mockPrisma.appRelease.findFirst.mockResolvedValue(null);
     expect(await codeOf(build().latestForTenant())).toBe(ErrorCode.RELEASE_NOT_FOUND);

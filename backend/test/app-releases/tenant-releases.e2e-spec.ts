@@ -54,6 +54,9 @@ describe('Portail APK tenant — intégration réelle (PostgreSQL isolé)', () =
   afterAll(async () => {
     // DB partagée : ne pas laisser de release active aux autres suites.
     await prisma.appRelease.updateMany({ data: { isActive: false } });
+    // Les ReleaseDownload (FK RESTRICT) bloqueraient le deleteMany({}) des autres suites.
+    await prisma.releaseDownload.deleteMany({ where: { release: { versionCode: { gte: 100 } } } });
+    await prisma.appRelease.deleteMany({ where: { versionCode: { gte: 100 } } });
     await app.close();
   });
 
