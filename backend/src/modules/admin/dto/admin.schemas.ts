@@ -142,3 +142,23 @@ export const rebootConfirmSchema = z.object({
   confirmToken: z.string().uuid(),
 });
 export type RebootConfirmDto = z.infer<typeof rebootConfirmSchema>;
+
+// ── WireGuard (vue d'exploitation) ──────────────────────
+
+export const listWgPeersQuerySchema = z.object({
+  state: z
+    .enum(['HEALTHY', 'STALE', 'NEVER', 'UNKNOWN', 'PENDING', 'REVOKED', 'ERROR'])
+    .optional(),
+  q: search,
+  tenantId: z.string().uuid().optional(),
+  // Pas de curseur : l'état vient de `wg` en direct et le nombre de peers est borné par le sous-réseau.
+  limit: z.coerce.number().int().min(1).max(200).default(100),
+});
+export type ListWgPeersQueryDto = z.infer<typeof listWgPeersQuerySchema>;
+
+export const revokeWgPeerSchema = z.object({
+  reason: z.string().trim().min(3).max(200),
+  // Alias ou identité du routeur, ressaisi par l'admin : remplace un jeton de confirmation.
+  confirmName: z.string().trim().min(1).max(120),
+});
+export type RevokeWgPeerDto = z.infer<typeof revokeWgPeerSchema>;

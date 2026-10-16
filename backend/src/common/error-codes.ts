@@ -118,6 +118,9 @@ export const ErrorCode = {
 
   // ── Audit ──
   AUDIT_WRITE_FAILED: 'AUDIT_WRITE_FAILED',
+
+  // ── WireGuard (admin) ──
+  WG_CONFIRM_MISMATCH: 'WG_CONFIRM_MISMATCH',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
