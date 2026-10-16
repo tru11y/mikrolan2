@@ -27,6 +27,7 @@ import { MetricsModule } from './modules/metrics/metrics.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { EventsModule } from './modules/events/events.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { AppReleasesModule } from './modules/app-releases/app-releases.module';
 import { AccountingModule } from './modules/accounting/accounting.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { MailModule } from './modules/mail/mail.module';
@@ -60,6 +61,7 @@ import { RouterGatewayModule } from './modules/router-gateway/router-gateway.mod
     EventsModule,
     AuthModule,
     AdminModule,
+    AppReleasesModule,
     SubscriptionsModule,
     RoutersModule,
     RemoteAccessModule,
