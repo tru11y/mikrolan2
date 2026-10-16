@@ -220,6 +220,7 @@ model User {
   supportTickets       SupportTicket[]
   ticketMessages       TicketMessage[]
   auditLogs            AuditLog[]
+  appReleases          AppRelease[]
   createdAt            DateTime        @default(now())
   updatedAt            DateTime        @updatedAt
 
@@ -675,4 +676,28 @@ model PlatformConfig {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+// ─── APK RELEASES (distribution hors Play Store) ─────────
+// Table plateforme (sans tenantId) : gérée par SUPER_ADMIN uniquement.
+// Une seule release `isActive` à la fois (garantie transactionnelle).
+// `isRequired` : tout client < versionCode doit se mettre à jour ;
+// sinon le plancher est `minVersionCode`.
+model AppRelease {
+  id             String    @id @default(uuid())
+  versionName    String
+  versionCode    Int       @unique
+  minVersionCode Int
+  releaseNotes   String    @db.Text
+  fileSize       Int
+  storageKey     String    @unique
+  isActive       Boolean   @default(false)
+  isRequired     Boolean   @default(false)
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  createdById    String
+  createdBy      User      @relation(fields: [createdById], references: [id])
+
+  @@index([isActive])
+  @@index([createdAt])
 }
