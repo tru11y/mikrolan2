@@ -1732,10 +1732,10 @@ export const api = {
       });
     },
     async invoiceProofs(invoiceId: string): Promise<PaymentProof[]> {
-      const res = await apiClient.get<ApiEnvelope<PaymentProof[]>>(
+      const res = await apiClient.get<ApiEnvelope<{ proofs: PaymentProof[] }>>(
         `/admin/invoices/${invoiceId}/proofs`,
       );
-      return unwrap(res);
+      return unwrap(res).proofs;
     },
     async listTickets(
       params: { status?: string; cursor?: string; limit?: number } = {},

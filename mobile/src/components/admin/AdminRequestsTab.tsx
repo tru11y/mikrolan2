@@ -23,6 +23,7 @@ import {
 } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
 import { shortDate } from '@/src/lib/format';
+import { PaymentProofViewer } from './PaymentProofViewer';
 
 export function AdminRequestsTab() {
   const theme = useTheme();
@@ -124,6 +125,8 @@ export function AdminRequestsTab() {
                 </Text>
               </Row>
             ) : null}
+
+            <PaymentProofViewer invoiceId={inv.id} />
 
             <Button
               title={t('admin.validatePayment', { days: inv.periodDays })}
