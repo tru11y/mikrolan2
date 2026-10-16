@@ -139,6 +139,15 @@ export function AdminFleetTab() {
                     <Text style={{ color: theme.textMuted, fontSize: type.micro, marginLeft: space.lg }}>
                       {r.tenant.name} · {r.model ?? 'MikroTik'} · {r.mode}
                     </Text>
+                    <Text style={{
+                      color: r.remotePeer?.status === 'ACTIVE' ? theme.success
+                        : r.remotePeer?.status === 'ERROR' ? theme.danger
+                        : theme.textMuted,
+                      fontSize: type.micro,
+                      marginLeft: space.lg,
+                    }}>
+                      WG {r.remotePeer ? `${r.remotePeer.status} · ${r.remotePeer.wgIp}` : 'aucun'}
+                    </Text>
                   </View>
                   <Badge label={r.health} tone={r.health === 'ONLINE' ? 'success' : r.health === 'OFFLINE' ? 'danger' : 'gold'} />
                 </Row>
