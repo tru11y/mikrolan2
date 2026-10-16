@@ -51,6 +51,9 @@ export function toView(r: AppRelease): ReleaseView {
   };
 }
 
+// Clé du verrou advisory des transitions d'état des releases (arbitraire, unique au module).
+const STATE_LOCK_KEY = 7_410_001;
+
 @Injectable()
 export class AppReleasesService {
   private readonly logger = new Logger(AppReleasesService.name);
@@ -123,6 +126,7 @@ export class AppReleasesService {
   async latest(): Promise<ReleaseView & { downloadUrl: string | null }> {
     const row = await this.prisma.appRelease.findFirst({
       where: { isActive: true, archivedAt: null },
+      orderBy: [{ versionCode: 'desc' }, { id: 'desc' }],
     });
     if (!row) throw this.notFound();
 
@@ -137,49 +141,60 @@ export class AppReleasesService {
   }
 
   async activate(id: string, actor: TenantContext): Promise<ReleaseView> {
-    const release = await this.getLive(id);
-    const row = await this.prisma.$transaction(async (tx) => {
+    const row = await this.withStateLock(async (tx) => {
+      await this.getLive(tx, id);
       await tx.appRelease.updateMany({
         where: { isActive: true, id: { not: id } },
         data: { isActive: false },
       });
       return tx.appRelease.update({ where: { id }, data: { isActive: true } });
     });
-    await this.audit(actor, AuditAction.ACTIVATE, id, {
-      versionCode: release.versionCode,
-    });
+    await this.audit(actor, AuditAction.ACTIVATE, id, { versionCode: row.versionCode });
     return toView(row);
   }
 
   async setRequired(id: string, required: boolean, actor: TenantContext): Promise<ReleaseView> {
-    await this.getLive(id);
-    const row = await this.prisma.appRelease.update({
-      where: { id },
-      data: { isRequired: required },
+    const row = await this.withStateLock(async (tx) => {
+      await this.getLive(tx, id);
+      return tx.appRelease.update({ where: { id }, data: { isRequired: required } });
     });
     await this.audit(actor, AuditAction.UPDATE, id, { isRequired: required });
     return toView(row);
   }
 
   async archive(id: string, actor: TenantContext): Promise<ReleaseView> {
-    const release = await this.getLive(id);
-    if (release.isActive) {
-      throw new BusinessException(
-        HttpStatus.CONFLICT,
-        ErrorCode.RELEASE_ACTIVE_CANNOT_ARCHIVE,
-        'Activez une autre release avant d’archiver celle-ci',
-      );
-    }
-    const row = await this.prisma.appRelease.update({
-      where: { id },
-      data: { archivedAt: new Date() },
+    const row = await this.withStateLock(async (tx) => {
+      const release = await this.getLive(tx, id);
+      if (release.isActive) {
+        throw new BusinessException(
+          HttpStatus.CONFLICT,
+          ErrorCode.RELEASE_ACTIVE_CANNOT_ARCHIVE,
+          'Activez une autre release avant d’archiver celle-ci',
+        );
+      }
+      return tx.appRelease.update({ where: { id }, data: { archivedAt: new Date() } });
     });
-    await this.audit(actor, AuditAction.REVOKE, id, { versionCode: release.versionCode });
+    await this.audit(actor, AuditAction.REVOKE, id, { versionCode: row.versionCode });
     return toView(row);
   }
 
-  private async getLive(id: string): Promise<AppRelease> {
-    const row = await this.prisma.appRelease.findUnique({ where: { id } });
+  /**
+   * Toute transition d'état (activer, archiver, rendre obligatoire) s'exécute
+   * dans une transaction qui prend d'abord un verrou advisory transactionnel
+   * global : les transitions sont sérialisées et chacune relit l'état *après*
+   * avoir obtenu le verrou. Le verrou est relâché au COMMIT/ROLLBACK, donc un
+   * échec en cours de route annule tout et ne bloque personne.
+   * Filet de sécurité : l'index unique partiel `AppRelease_single_active_idx`.
+   */
+  private withStateLock<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw(Prisma.sql`SELECT pg_advisory_xact_lock(${STATE_LOCK_KEY}::bigint)`);
+      return fn(tx);
+    });
+  }
+
+  private async getLive(tx: Prisma.TransactionClient, id: string): Promise<AppRelease> {
+    const row = await tx.appRelease.findUnique({ where: { id } });
     if (!row) throw this.notFound();
     if (row.archivedAt) {
       throw new BusinessException(
