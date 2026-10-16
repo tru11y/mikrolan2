@@ -29,6 +29,14 @@ export const createReleaseSchema = z
   });
 export type CreateReleaseDto = z.infer<typeof createReleaseSchema>;
 
+export const uploadUrlSchema = z
+  .object({
+    versionCode: z.number().int().min(1).max(MAX_VERSION_CODE),
+    fileSize: z.number().int().min(1).max(MAX_APK_BYTES),
+  })
+  .strict();
+export type UploadUrlDto = z.infer<typeof uploadUrlSchema>;
+
 export const listReleasesQuerySchema = z.object({
   includeArchived: z.enum(['true', 'false']).default('false'),
   cursor: z.string().uuid().optional(),

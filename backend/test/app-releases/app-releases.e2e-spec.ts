@@ -50,6 +50,9 @@ describe('APK releases — intégration réelle (PostgreSQL isolé)', () => {
       key.includes('missing') ? null : 5000,
     );
     jest
+      .spyOn(storage, 'presignUpload')
+      .mockImplementation(async (key, size) => `https://s3.test/put/${key}?len=${size}`);
+    jest
       .spyOn(storage, 'presignDownload')
       .mockImplementation(async (key) => `https://s3.test/${key}?sig=x`);
 
@@ -159,6 +162,56 @@ describe('APK releases — intégration réelle (PostgreSQL isolé)', () => {
   it('écrit des lignes d’audit pour les actions admin', async () => {
     const count = await prisma.auditLog.count({ where: { entityType: 'AppRelease' } });
     expect(count).toBeGreaterThanOrEqual(5);
+  });
+
+  it('upload-url : 403 tenant, 409 doublon, 200 avec clé utilisable par POST', async () => {
+    const up = (b: object, token = adminToken) =>
+      request(app.getHttpServer())
+        .post('/api/admin/releases/upload-url')
+        .set('Authorization', `Bearer ${token}`)
+        .send(b);
+
+    await up({ versionCode: 30, fileSize: 5000 }, tenantToken).expect(403);
+    await up({ versionCode: 10, fileSize: 5000 }).expect(409);
+    await up({ versionCode: 30, fileSize: 0 }).expect(400);
+
+    const res = (await up({ versionCode: 30, fileSize: 5000 }).expect(200)).body;
+    const t = res.data ?? res;
+    expect(t.storageKey).toMatch(/^releases\/android\/mikrolan-30-[0-9a-f]{12}\.apk$/);
+    expect(t.uploadUrl).toContain('len=5000');
+    expect(t.headers['Content-Type']).toBe('application/vnd.android.package-archive');
+
+    await post(body(30, { storageKey: t.storageKey })).expect(201);
+  });
+
+  it('upload incomplet : taille S3 différente → 400 et rien en base', async () => {
+    const storage = app.get(ReleaseStorageService);
+    jest.spyOn(storage, 'headSize').mockResolvedValueOnce(1234);
+    await post(body(31)).expect(400);
+    expect(await prisma.appRelease.count({ where: { versionCode: 31 } })).toBe(0);
+  });
+
+  it('list expose l’e-mail de l’auteur', async () => {
+    const res = (await get('').expect(200)).body;
+    const items = (res.data ?? res).items as { createdByEmail: string | null }[];
+    expect(items.length).toBeGreaterThan(0);
+    expect(items.every((i) => typeof i.createdByEmail === 'string')).toBe(true);
+  });
+
+  it('portail : HTML/JS/CSS publics, bruts (sans enveloppe), CSP stricte', async () => {
+    const page = await request(app.getHttpServer()).get('/api/admin-portal/releases').expect(200);
+    expect(page.headers['content-type']).toContain('text/html');
+    expect(page.text).toContain('<title>Versions APK');
+    expect(page.headers['content-security-policy']).toContain("script-src 'self'");
+    expect(page.headers['content-security-policy']).not.toContain('unsafe-inline');
+    expect(page.headers['cache-control']).toBe('no-store');
+
+    const js = await request(app.getHttpServer()).get('/api/admin-portal/releases.js').expect(200);
+    expect(js.headers['content-type']).toContain('javascript');
+    expect(js.text.startsWith('(function')).toBe(true);
+
+    const css = await request(app.getHttpServer()).get('/api/admin-portal/releases.css').expect(200);
+    expect(css.headers['content-type']).toContain('text/css');
   });
 
   it('id non-UUID : 400', async () => {
