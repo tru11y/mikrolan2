@@ -169,18 +169,19 @@ enum GenerationType {
 
 // ─── TENANT (racine d'isolation) ─────────────────────────
 model Tenant {
-  id                    String          @id @default(uuid())
+  id                    String            @id @default(uuid())
   name                  String
-  slug                  String          @unique
-  status                TenantStatus    @default(ACTIVE)
+  slug                  String            @unique
+  status                TenantStatus      @default(ACTIVE)
   country               String?
   countryUpdatedAt      DateTime?
   lastCountryReminderAt DateTime?
-  timezone              String?         @default("Africa/Abidjan")
+  timezone              String?           @default("Africa/Abidjan")
   users                 User[]
   routers               Router[]
   subscription          Subscription?
   invoices              Invoice[]
+  releaseDownloads      ReleaseDownload[]
   auditLogs             AuditLog[]
   plans                 Plan[]
   voucherBatches        VoucherBatch[]
@@ -189,8 +190,8 @@ model Tenant {
   notifications         Notification[]
   supportTickets        SupportTicket[]
   ticketVaults          TicketVault[]
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @updatedAt
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
   deletedAt             DateTime?
 
   // Le back-office trie les comptes du plus récent au plus ancien et pagine
@@ -201,19 +202,19 @@ model Tenant {
 
 // ─── USER (email global unique → résout le tenant au login) ─
 model User {
-  id                   String          @id @default(uuid())
+  id                   String            @id @default(uuid())
   tenantId             String
-  tenant               Tenant          @relation(fields: [tenantId], references: [id])
-  email                String          @unique
+  tenant               Tenant            @relation(fields: [tenantId], references: [id])
+  email                String            @unique
   name                 String?
   country              String?
   passwordHash         String
-  hasPassword          Boolean         @default(true)
-  googleId             String?         @unique
-  appleId              String?         @unique
-  role                 UserRole        @default(MEMBER)
-  status               UserStatus      @default(ACTIVE)
-  notificationsEnabled Boolean         @default(true)
+  hasPassword          Boolean           @default(true)
+  googleId             String?           @unique
+  appleId              String?           @unique
+  role                 UserRole          @default(MEMBER)
+  status               UserStatus        @default(ACTIVE)
+  notificationsEnabled Boolean           @default(true)
   pushToken            String? // Expo push token pour les notifications OS
   lastLoginAt          DateTime? // dernière authentification réussie (vue admin)
   refreshTokens        RefreshToken[]
@@ -221,8 +222,9 @@ model User {
   ticketMessages       TicketMessage[]
   auditLogs            AuditLog[]
   appReleases          AppRelease[]
-  createdAt            DateTime        @default(now())
-  updatedAt            DateTime        @updatedAt
+  releaseDownloads     ReleaseDownload[]
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
 
   @@index([tenantId])
   @@index([tenantId, createdAt])
@@ -684,20 +686,38 @@ model PlatformConfig {
 // `isRequired` : tout client < versionCode doit se mettre à jour ;
 // sinon le plancher est `minVersionCode`.
 model AppRelease {
-  id             String    @id @default(uuid())
+  id             String            @id @default(uuid())
   versionName    String
-  versionCode    Int       @unique
+  versionCode    Int               @unique
   minVersionCode Int
-  releaseNotes   String    @db.Text
+  releaseNotes   String            @db.Text
   fileSize       Int
-  storageKey     String    @unique
-  isActive       Boolean   @default(false)
-  isRequired     Boolean   @default(false)
+  storageKey     String            @unique
+  isActive       Boolean           @default(false)
+  isRequired     Boolean           @default(false)
   archivedAt     DateTime?
-  createdAt      DateTime  @default(now())
+  createdAt      DateTime          @default(now())
   createdById    String
-  createdBy      User      @relation(fields: [createdById], references: [id])
+  createdBy      User              @relation(fields: [createdById], references: [id])
+  downloads      ReleaseDownload[]
 
   @@index([isActive])
   @@index([createdAt])
+}
+
+/// Trace append-only d'un téléchargement d'APK par un utilisateur d'un tenant.
+model ReleaseDownload {
+  id           String     @id @default(uuid())
+  releaseId    String
+  release      AppRelease @relation(fields: [releaseId], references: [id])
+  tenantId     String
+  tenant       Tenant     @relation(fields: [tenantId], references: [id])
+  userId       String
+  user         User       @relation(fields: [userId], references: [id])
+  downloadedAt DateTime   @default(now())
+
+  @@index([releaseId])
+  @@index([tenantId])
+  @@index([userId])
+  @@index([downloadedAt])
 }

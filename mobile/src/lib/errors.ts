@@ -49,6 +49,10 @@ const ERROR_CODE_MESSAGES: Record<string, string> = {
   VOUCHER_PUSH_FAILED: 'Les tickets n\'ont pas pu être enregistrés sur le routeur.',
   VOUCHER_REVOKE_ROUTER_UNREACHABLE: 'Ticket révoqué en base, mais le routeur est injoignable.',
   VOUCHER_DELETE_ROUTER_UNREACHABLE: 'Ticket supprimé en base, mais le routeur est injoignable.',
+  RELEASE_NOT_FOUND: "Aucune version de l'application n'est disponible pour le moment.",
+  RELEASE_INACTIVE: "Cette version n'est plus disponible. Actualisez pour obtenir la dernière.",
+  RELEASE_FILE_MISSING: 'Le fichier de cette version est introuvable. Réessayez plus tard.',
+  RELEASE_STORAGE_UNAVAILABLE: 'Le stockage des applications est momentanément indisponible.',
   USER_LIMIT_REACHED: 'Limite d\'utilisateurs atteinte. Passez à une formule supérieure.',
 };
 
