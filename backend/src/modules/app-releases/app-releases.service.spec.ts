@@ -17,7 +17,11 @@ const mockPrisma: Record<string, any> = {
   },
   $transaction: jest.fn((fn: (tx: typeof mockPrisma) => Promise<unknown>) => fn(mockPrisma)),
 };
-const mockStorage = { headSize: jest.fn(), presignDownload: jest.fn() };
+const mockStorage = {
+  headSize: jest.fn(),
+  presignDownload: jest.fn(),
+  presignUpload: jest.fn(),
+};
 const eventLog = makeEventLogStub();
 
 const build = () => new AppReleasesService(mockPrisma as any, mockStorage as any, eventLog as any);
@@ -103,6 +107,58 @@ describe('AppReleasesService.create', () => {
   it('renvoie 503 si le stockage est indisponible', async () => {
     mockStorage.headSize.mockRejectedValue(new ReleaseStorageUnavailableError('down'));
     expect(await codeOf(build().create(dto, actor))).toBe(ErrorCode.RELEASE_STORAGE_UNAVAILABLE);
+  });
+});
+
+describe('AppReleasesService.createUploadTarget', () => {
+  const req = { versionCode: 41, fileSize: 5000 };
+
+  it('renvoie une clé conforme et une URL signée, et audite', async () => {
+    mockStorage.presignUpload.mockResolvedValue('https://s3/put');
+
+    const out = await build().createUploadTarget(req, actor);
+
+    expect(out.storageKey).toMatch(/^releases\/android\/mikrolan-41-[0-9a-f]{12}\.apk$/);
+    expect(out.uploadUrl).toBe('https://s3/put');
+    expect(out.headers['Content-Type']).toBe('application/vnd.android.package-archive');
+    expect(mockStorage.presignUpload).toHaveBeenCalledWith(out.storageKey, 5000);
+    expect(eventLog.success).toHaveBeenCalledWith(
+      'UPLOAD', 'AppRelease', out.storageKey, expect.any(Object), expect.any(Object),
+    );
+  });
+
+  it('la clé générée est acceptée par le schéma de création', async () => {
+    mockStorage.presignUpload.mockResolvedValue('u');
+    const { createReleaseSchema } = await import('./dto/app-release.schemas');
+    const out = await build().createUploadTarget(req, actor);
+    expect(
+      createReleaseSchema.safeParse({ ...dto, versionCode: 41, storageKey: out.storageKey }).success,
+    ).toBe(true);
+  });
+
+  it('refuse un versionCode déjà utilisé avant tout envoi (409)', async () => {
+    mockPrisma.appRelease.findUnique.mockResolvedValue({ id: 'x' });
+    expect(await codeOf(build().createUploadTarget(req, actor))).toBe(ErrorCode.RELEASE_VERSION_EXISTS);
+    expect(mockStorage.presignUpload).not.toHaveBeenCalled();
+  });
+
+  it('503 si le stockage est indisponible', async () => {
+    mockStorage.presignUpload.mockRejectedValue(new ReleaseStorageUnavailableError('down'));
+    expect(await codeOf(build().createUploadTarget(req, actor))).toBe(ErrorCode.RELEASE_STORAGE_UNAVAILABLE);
+  });
+});
+
+describe('AppReleasesService.list (auteur)', () => {
+  it('expose l’e-mail de l’auteur, null s’il est absent', async () => {
+    mockPrisma.appRelease.findMany.mockResolvedValue([
+      row({ id: 'a', createdBy: { email: 'root@x.io' } }),
+      row({ id: 'b' }),
+    ]);
+    const page = await build().list({ includeArchived: 'false', limit: 25 });
+    expect(page.items.map((i) => i.createdByEmail)).toEqual(['root@x.io', null]);
+    expect(mockPrisma.appRelease.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ include: { createdBy: { select: { email: true } } } }),
+    );
   });
 });
 
