@@ -32,6 +32,7 @@ import { AdminAccountsTab } from '@/src/components/admin/AdminAccountsTab';
 import { AdminTicketsTab } from '@/src/components/admin/AdminTicketsTab';
 import { AdminTiersTab } from '@/src/components/admin/AdminTiersTab';
 import { AdminConfigTab } from '@/src/components/admin/AdminConfigTab';
+import { AdminAuditTab } from '@/src/components/admin/AdminAuditTab';
 
 function useTabs(): { key: Tab; label: string; icon: any }[] {
   const { t } = useTranslation();
@@ -42,6 +43,7 @@ function useTabs(): { key: Tab; label: string; icon: any }[] {
     { key: 'comptes', label: t('admin.accounts'), icon: 'people-outline' },
     { key: 'tickets', label: t('admin.sav'), icon: 'chatbubbles-outline' },
     { key: 'formules', label: t('admin.formulas'), icon: 'pricetags-outline' },
+    { key: 'audit', label: 'Audit', icon: 'receipt-outline' },
     { key: 'config', label: t('admin.config'), icon: 'settings-outline' },
   ];
 }
@@ -173,6 +175,7 @@ export default function AdminScreen() {
         {tab === 'comptes' ? <AdminAccountsTab /> : null}
         {tab === 'tickets' ? <AdminTicketsTab /> : null}
         {tab === 'formules' ? <AdminTiersTab /> : null}
+        {tab === 'audit' ? <AdminAuditTab /> : null}
         {tab === 'config' ? <AdminConfigTab /> : null}
       </ScrollView>
       <BottomNav active="account" />
