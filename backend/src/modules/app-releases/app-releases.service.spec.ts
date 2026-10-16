@@ -15,6 +15,7 @@ const mockPrisma: Record<string, any> = {
     update: jest.fn(),
     updateMany: jest.fn(),
   },
+  $executeRaw: jest.fn().mockResolvedValue(1),
   $transaction: jest.fn((fn: (tx: typeof mockPrisma) => Promise<unknown>) => fn(mockPrisma)),
 };
 const mockStorage = { headSize: jest.fn(), presignDownload: jest.fn() };
@@ -144,7 +145,46 @@ describe('AppReleasesService.activate', () => {
   it('409 si la release est archivée, sans aucune écriture', async () => {
     mockPrisma.appRelease.findUnique.mockResolvedValue(row({ archivedAt: new Date() }));
     expect(await codeOf(build().activate('rel-1', actor))).toBe(ErrorCode.RELEASE_ARCHIVED);
-    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    expect(mockPrisma.appRelease.updateMany).not.toHaveBeenCalled();
+    expect(mockPrisma.appRelease.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('AppReleasesService — verrou de transitions', () => {
+  const order: string[] = [];
+  beforeEach(() => {
+    order.length = 0;
+    mockPrisma.$executeRaw.mockImplementation(async () => { order.push('lock'); return 1; });
+    mockPrisma.appRelease.findUnique.mockImplementation(async () => { order.push('read'); return row(); });
+    mockPrisma.appRelease.update.mockImplementation(async () => { order.push('write'); return row({ isActive: true }); });
+  });
+  afterEach(() => {
+    mockPrisma.$executeRaw.mockReset().mockResolvedValue(1);
+    mockPrisma.appRelease.findUnique.mockReset();
+    mockPrisma.appRelease.update.mockReset();
+  });
+
+  it.each([
+    ['activate', (s: AppReleasesService) => s.activate('rel-1', actor)],
+    ['setRequired', (s: AppReleasesService) => s.setRequired('rel-1', true, actor)],
+    ['archive', (s: AppReleasesService) => s.archive('rel-1', actor)],
+  ])('%s : verrou pris AVANT la relecture de l’état, dans une seule transaction', async (_n, call) => {
+    await call(build());
+    expect(order.slice(0, 2)).toEqual(['lock', 'read']);
+    expect(order[order.length - 1]).toBe('write');
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('le verrou advisory transactionnel est bien demandé', async () => {
+    await build().activate('rel-1', actor);
+    const sql = mockPrisma.$executeRaw.mock.calls[0][0];
+    expect(sql.strings.join('')).toContain('pg_advisory_xact_lock');
+  });
+
+  it('un échec dans la transaction se propage et n’audite pas', async () => {
+    mockPrisma.appRelease.update.mockRejectedValue(new Error('boom'));
+    await expect(build().activate('rel-1', actor)).rejects.toThrow('boom');
+    expect(eventLog.success).not.toHaveBeenCalled();
   });
 });
 
@@ -203,6 +243,7 @@ describe('AppReleasesService.latest', () => {
 
     expect(mockPrisma.appRelease.findFirst).toHaveBeenCalledWith({
       where: { isActive: true, archivedAt: null },
+      orderBy: [{ versionCode: 'desc' }, { id: 'desc' }],
     });
     expect(out.downloadUrl).toBe('https://s3/signed');
     expect(out.effectiveMinVersionCode).toBe(30);
