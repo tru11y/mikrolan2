@@ -66,6 +66,12 @@ const envSchema = z.object({
   SMTP_PASS: z.string().default(''),
   SMTP_FROM: z.string().default('MikroLan <noreply@mikrolan.net>'),
 
+  // ─── APK releases — S3 privé (désactivé si bucket ou région vide) ──
+  // Credentials : chaîne par défaut AWS (AWS_ACCESS_KEY_ID/… ou profil).
+  RELEASES_S3_BUCKET: z.string().default(''),
+  RELEASES_S3_REGION: z.string().default(''),
+  RELEASES_URL_TTL: z.coerce.number().int().min(30).max(3600).default(300),
+
   // ─── OAuth (optional — disabled if blank) ──
   GOOGLE_CLIENT_ID: z.string().default(''),
 });
