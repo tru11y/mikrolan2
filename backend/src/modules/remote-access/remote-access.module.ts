@@ -15,6 +15,6 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
     WireGuardService,
     WireGuardReconciler,
   ],
-  exports: [RemoteRouterService],
+  exports: [RemoteRouterService, WireGuardService],
 })
 export class RemoteAccessModule {}
