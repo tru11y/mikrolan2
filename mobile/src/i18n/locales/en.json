@@ -1092,5 +1092,19 @@
     "noPdfs": "No archived PDF for this batch.",
     "empty": "No ticket batches generated.",
     "openFailed": "Could not open the PDF."
+  },
+  "versionGate": {
+    "requiredTitle": "Update required",
+    "requiredDetail": "This version of MikroLan is no longer supported. Install the latest version to continue.",
+    "installed": "Installed version",
+    "minimum": "Minimum version",
+    "latest": "Latest version",
+    "download": "Download the update",
+    "recheck": "Check again",
+    "cachedNote": "Information saved during your last connection.",
+    "bannerTitle": "New version available",
+    "bannerDetail": "MikroLan {{version}} is available.",
+    "bannerAction": "Update",
+    "dismiss": "Dismiss"
   }
 }
