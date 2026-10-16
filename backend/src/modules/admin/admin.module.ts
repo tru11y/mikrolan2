@@ -5,10 +5,11 @@ import { RemoteAccessModule } from '../remote-access/remote-access.module';
 import { TelemetryModule } from '../telemetry/telemetry.module';
 import { AdminController } from './admin.controller';
 import { AdminService } from './admin.service';
+import { AdminWireGuardService } from './admin-wireguard.service';
 
 @Module({
   imports: [SubscriptionsModule, NotificationsModule, RemoteAccessModule, TelemetryModule],
   controllers: [AdminController],
-  providers: [AdminService],
+  providers: [AdminService, AdminWireGuardService],
 })
 export class AdminModule {}

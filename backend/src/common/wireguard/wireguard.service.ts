@@ -38,6 +38,35 @@ const DEFAULT_SERVICE_PORTS: ServicePorts = {
   winboxPort: 8291,
 };
 
+export type LivePeer = {
+  endpoint: string | null;
+  /** Unix seconds; 0 = jamais. */
+  latestHandshake: number;
+  rxBytes: number;
+  txBytes: number;
+};
+
+/**
+ * Parse `wg show <iface> dump` : la 1re ligne décrit l'interface (4 champs), chaque
+ * ligne suivante un peer (8 champs séparés par des tabulations).
+ */
+export function parseWgDump(stdout: string): Record<string, LivePeer> {
+  const out: Record<string, LivePeer> = {};
+  for (const line of stdout.split('\n')) {
+    const f = line.split('\t');
+    if (f.length < 8) continue;
+    const [publicKey, , endpoint, , handshake, rx, tx] = f;
+    if (!publicKey) continue;
+    out[publicKey] = {
+      endpoint: endpoint && endpoint !== '(none)' ? endpoint : null,
+      latestHandshake: Number(handshake) || 0,
+      rxBytes: Number(rx) || 0,
+      txBytes: Number(tx) || 0,
+    };
+  }
+  return out;
+}
+
 @Injectable()
 export class WireGuardService implements OnModuleInit {
   private readonly logger = new Logger(WireGuardService.name);
@@ -141,6 +170,13 @@ export class WireGuardService implements OnModuleInit {
       if (pk && ts) out[pk] = Number(ts);
     }
     return out;
+  }
+
+  /** État live de chaque peer (handshake, endpoint, trafic) en un seul appel `wg`. */
+  async livePeers(): Promise<Record<string, LivePeer>> {
+    if (!this.enabled) return {};
+    const { stdout } = await exec('wg', ['show', this.iface, 'dump']);
+    return parseWgDump(stdout);
   }
 
   // ── DNAT port forwarding (WebFig / SSH / Winbox) ────────────────────────

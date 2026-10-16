@@ -27,16 +27,19 @@ import {
 } from '../subscriptions/dto/tier.schemas';
 import { AdminBypassInterceptor } from '../../common/interceptors/admin-bypass.interceptor';
 import { AdminService } from './admin.service';
+import { AdminWireGuardService } from './admin-wireguard.service';
 import {
   adminTicketMessageSchema,
   listAuditQuerySchema,
   listFleetQuerySchema,
   listInvoicesQuerySchema,
   listTenantsQuerySchema,
+  listWgPeersQuerySchema,
   listTenantRoutersQuerySchema,
   listTicketsQuerySchema,
   listUsersQuerySchema,
   rejectInvoiceSchema,
+  revokeWgPeerSchema,
   setTenantStatusSchema,
   setTicketStatusSchema,
   setUserStatusSchema,
@@ -50,7 +53,9 @@ import {
   type ListTenantRoutersQueryDto,
   type ListTicketsQueryDto,
   type ListUsersQueryDto,
+  type ListWgPeersQueryDto,
   type RejectInvoiceDto,
+  type RevokeWgPeerDto,
   type SetTenantStatusDto,
   type SetTicketStatusDto,
   type SetUserStatusDto,
@@ -79,6 +84,7 @@ export class AdminController {
     private readonly admin: AdminService,
     private readonly tiers: TiersService,
     private readonly remoteRouter: RemoteRouterService,
+    private readonly adminWg: AdminWireGuardService,
   ) {}
 
   // ── Comptes clients ────────────────────────────────────
@@ -287,6 +293,34 @@ export class AdminController {
     @Query(new ZodValidationPipe(listFleetQuerySchema)) query: ListFleetQueryDto,
   ) {
     return this.admin.listFleet(query);
+  }
+
+  // ── WireGuard (vue d'exploitation cross-tenant) ───────
+
+  @Get('wireguard/peers')
+  listWireguardPeers(
+    @Query(new ZodValidationPipe(listWgPeersQuerySchema)) query: ListWgPeersQueryDto,
+  ) {
+    return this.adminWg.listPeers(query);
+  }
+
+  @Post('wireguard/peers/:routerId/resync')
+  @HttpCode(200)
+  resyncWireguardPeer(
+    @Param('routerId', ParseUUIDPipe) routerId: string,
+    @CurrentUser() actor: TenantContext,
+  ) {
+    return this.adminWg.resync(routerId, actor);
+  }
+
+  @Post('wireguard/peers/:routerId/revoke')
+  @HttpCode(200)
+  revokeWireguardPeer(
+    @Param('routerId', ParseUUIDPipe) routerId: string,
+    @Body(new ZodValidationPipe(revokeWgPeerSchema)) dto: RevokeWgPeerDto,
+    @CurrentUser() actor: TenantContext,
+  ) {
+    return this.adminWg.revoke(routerId, dto, actor);
   }
 
   // ── Router diagnostics (P0-05/P0-06) ──────────────────

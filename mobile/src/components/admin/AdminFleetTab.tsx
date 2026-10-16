@@ -23,6 +23,7 @@ import {
   withAlpha,
 } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
+import { AdminWireGuardTab } from './AdminWireGuardTab';
 
 function healthColor(health: string, theme: any): string {
   if (health === 'ONLINE') return theme.success;
@@ -30,7 +31,7 @@ function healthColor(health: string, theme: any): string {
   return theme.gold;
 }
 
-export function AdminFleetTab() {
+function FleetRoutersView() {
   const theme = useTheme();
   const toast = useToast();
   const [filter, setFilter] = useState<string | undefined>(undefined);
@@ -210,6 +211,49 @@ export function AdminFleetTab() {
         onConfirm={() => reboot.mutate()}
         onCancel={() => { setDiagRouter(null); setConfirmToken(null); }}
       />
+    </View>
+  );
+}
+
+const FLEET_VIEWS = [
+  { key: 'routers', label: 'Routeurs' },
+  { key: 'wireguard', label: 'WireGuard' },
+] as const;
+
+export function AdminFleetTab() {
+  const theme = useTheme();
+  const [view, setView] = useState<(typeof FLEET_VIEWS)[number]['key']>('routers');
+
+  return (
+    <View style={{ gap: space.md }}>
+      <Row style={{ gap: space.sm }}>
+        {FLEET_VIEWS.map((v) => (
+          <Press
+            key={v.key}
+            accessibilityRole="tab"
+            accessibilityLabel={v.label}
+            onPress={() => setView(v.key)}
+            style={{
+              flex: 1,
+              backgroundColor: view === v.key ? withAlpha(theme.primary, 0.1) : theme.surfaceAlt,
+              borderRadius: radius.md,
+              paddingVertical: space.sm + 2,
+              alignItems: 'center',
+            }}
+          >
+            <Text
+              style={{
+                color: view === v.key ? theme.primary : theme.textMuted,
+                fontSize: type.body,
+                fontWeight: '700',
+              }}
+            >
+              {v.label}
+            </Text>
+          </Press>
+        ))}
+      </Row>
+      {view === 'routers' ? <FleetRoutersView /> : <AdminWireGuardTab />}
     </View>
   );
 }
