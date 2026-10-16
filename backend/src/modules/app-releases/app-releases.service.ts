@@ -49,6 +49,9 @@ export interface TenantReleaseView {
 
 export const HISTORY_SIZE = 5;
 
+/** Clé du verrou consultatif PostgreSQL qui sérialise les changements d'état des releases. */
+export const RELEASE_STATE_LOCK_KEY = 726_001;
+
 export function toTenantView(r: AppRelease): TenantReleaseView {
   return {
     id: r.id,
@@ -151,9 +154,7 @@ export class AppReleasesService {
 
   /** Release active + URL signée de courte durée (null si le stockage est indisponible). */
   async latest(): Promise<ReleaseView & { downloadUrl: string | null }> {
-    const row = await this.prisma.appRelease.findFirst({
-      where: { isActive: true, archivedAt: null },
-    });
+    const row = await this.findActive();
     if (!row) throw this.notFound();
 
     let downloadUrl: string | null = null;
@@ -168,9 +169,7 @@ export class AppReleasesService {
 
   /** Release active côté tenant : métadonnées + URL signée (null si stockage indisponible). */
   async latestForTenant(): Promise<TenantReleaseView & { downloadUrl: string | null }> {
-    const row = await this.prisma.appRelease.findFirst({
-      where: { isActive: true, archivedAt: null },
-    });
+    const row = await this.findActive();
     if (!row) throw this.notFound();
 
     let downloadUrl: string | null = null;
@@ -219,49 +218,73 @@ export class AppReleasesService {
   }
 
   async activate(id: string, actor: TenantContext): Promise<ReleaseView> {
-    const release = await this.getLive(id);
-    const row = await this.prisma.$transaction(async (tx) => {
+    const { row, versionCode } = await this.withReleaseLock(async (tx) => {
+      const release = await this.getLive(id, tx);
       await tx.appRelease.updateMany({
         where: { isActive: true, id: { not: id } },
         data: { isActive: false },
       });
-      return tx.appRelease.update({ where: { id }, data: { isActive: true } });
+      const updated = await tx.appRelease.update({ where: { id }, data: { isActive: true } });
+      return { row: updated, versionCode: release.versionCode };
     });
-    await this.audit(actor, AuditAction.ACTIVATE, id, {
-      versionCode: release.versionCode,
-    });
+    await this.audit(actor, AuditAction.ACTIVATE, id, { versionCode });
     return toView(row);
   }
 
   async setRequired(id: string, required: boolean, actor: TenantContext): Promise<ReleaseView> {
-    await this.getLive(id);
-    const row = await this.prisma.appRelease.update({
-      where: { id },
-      data: { isRequired: required },
+    const row = await this.withReleaseLock(async (tx) => {
+      await this.getLive(id, tx);
+      return tx.appRelease.update({ where: { id }, data: { isRequired: required } });
     });
     await this.audit(actor, AuditAction.UPDATE, id, { isRequired: required });
     return toView(row);
   }
 
   async archive(id: string, actor: TenantContext): Promise<ReleaseView> {
-    const release = await this.getLive(id);
-    if (release.isActive) {
-      throw new BusinessException(
-        HttpStatus.CONFLICT,
-        ErrorCode.RELEASE_ACTIVE_CANNOT_ARCHIVE,
-        'Activez une autre release avant d’archiver celle-ci',
-      );
-    }
-    const row = await this.prisma.appRelease.update({
-      where: { id },
-      data: { archivedAt: new Date() },
+    const { row, versionCode } = await this.withReleaseLock(async (tx) => {
+      const release = await this.getLive(id, tx);
+      if (release.isActive) {
+        throw new BusinessException(
+          HttpStatus.CONFLICT,
+          ErrorCode.RELEASE_ACTIVE_CANNOT_ARCHIVE,
+          'Activez une autre release avant d’archiver celle-ci',
+        );
+      }
+      const updated = await tx.appRelease.update({
+        where: { id },
+        data: { archivedAt: new Date() },
+      });
+      return { row: updated, versionCode: release.versionCode };
     });
-    await this.audit(actor, AuditAction.REVOKE, id, { versionCode: release.versionCode });
+    await this.audit(actor, AuditAction.REVOKE, id, { versionCode });
     return toView(row);
   }
 
-  private async getLive(id: string): Promise<AppRelease> {
-    const row = await this.prisma.appRelease.findUnique({ where: { id } });
+  /**
+   * Toutes les mutations d'état (activate / require / archive) passent par un verrou
+   * consultatif transactionnel : elles sont sérialisées, et l'état est relu SOUS verrou.
+   * Filet de sécurité : l'index unique partiel `AppRelease_single_active` (migration).
+   */
+  private withReleaseLock<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(${RELEASE_STATE_LOCK_KEY})`;
+      return fn(tx);
+    });
+  }
+
+  /** Release active, déterministe même si l'invariant « une seule active » était violé. */
+  private findActive(): Promise<AppRelease | null> {
+    return this.prisma.appRelease.findFirst({
+      where: { isActive: true, archivedAt: null },
+      orderBy: [{ versionCode: 'desc' }, { id: 'desc' }],
+    });
+  }
+
+  private async getLive(
+    id: string,
+    db: Pick<Prisma.TransactionClient, 'appRelease'> = this.prisma,
+  ): Promise<AppRelease> {
+    const row = await db.appRelease.findUnique({ where: { id } });
     if (!row) throw this.notFound();
     if (row.archivedAt) {
       throw new BusinessException(

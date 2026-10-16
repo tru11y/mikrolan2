@@ -15,6 +15,7 @@ const mockPrisma: Record<string, any> = {
     update: jest.fn(),
     updateMany: jest.fn(),
   },
+  $executeRaw: jest.fn().mockResolvedValue(0),
   $transaction: jest.fn((fn: (tx: typeof mockPrisma) => Promise<unknown>) => fn(mockPrisma)),
 };
 const mockStorage = { headSize: jest.fn(), presignDownload: jest.fn() };
@@ -144,7 +145,8 @@ describe('AppReleasesService.activate', () => {
   it('409 si la release est archivée, sans aucune écriture', async () => {
     mockPrisma.appRelease.findUnique.mockResolvedValue(row({ archivedAt: new Date() }));
     expect(await codeOf(build().activate('rel-1', actor))).toBe(ErrorCode.RELEASE_ARCHIVED);
-    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    expect(mockPrisma.appRelease.update).not.toHaveBeenCalled();
+    expect(mockPrisma.appRelease.updateMany).not.toHaveBeenCalled();
   });
 });
 
@@ -203,6 +205,7 @@ describe('AppReleasesService.latest', () => {
 
     expect(mockPrisma.appRelease.findFirst).toHaveBeenCalledWith({
       where: { isActive: true, archivedAt: null },
+      orderBy: [{ versionCode: 'desc' }, { id: 'desc' }],
     });
     expect(out.downloadUrl).toBe('https://s3/signed');
     expect(out.effectiveMinVersionCode).toBe(30);
@@ -246,6 +249,42 @@ describe('AppReleasesService.list', () => {
     await build().list({ includeArchived: 'true', limit: 25 });
     expect(mockPrisma.appRelease.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: {} }),
+    );
+  });
+});
+
+describe('AppReleasesService — verrou de concurrence', () => {
+  const lockedBeforeRead = async (run: () => Promise<unknown>) => {
+    const order: string[] = [];
+    mockPrisma.$executeRaw.mockImplementation(async () => {
+      order.push('lock');
+      return [];
+    });
+    mockPrisma.appRelease.findUnique.mockImplementation(async () => {
+      order.push('read');
+      return row();
+    });
+    mockPrisma.appRelease.update.mockResolvedValue(row());
+    await run();
+    return order;
+  };
+
+  it.each([
+    ['activate', () => build().activate('rel-1', actor)],
+    ['archive', () => build().archive('rel-1', actor)],
+    ['setRequired', () => build().setRequired('rel-1', true, actor)],
+  ])('%s : verrou pris AVANT la relecture de l’état, dans la transaction', async (_n, run) => {
+    const order = await lockedBeforeRead(run);
+    expect(order.slice(0, 2)).toEqual(['lock', 'read']);
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('latest : tri déterministe (versionCode puis id décroissants)', async () => {
+    mockPrisma.appRelease.findFirst.mockResolvedValue(row({ isActive: true }));
+    mockStorage.presignDownload.mockResolvedValue('https://s3.test/x');
+    await build().latest();
+    expect(mockPrisma.appRelease.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: [{ versionCode: 'desc' }, { id: 'desc' }] }),
     );
   });
 });
