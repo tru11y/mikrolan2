@@ -1,0 +1,82 @@
+import { useEffect, useState } from 'react';
+import Constants from 'expo-constants';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/src/lib/api';
+import { describeError } from '@/src/lib/errors';
+import { reportSilent } from '@/src/lib/report';
+import { parseVersionCode } from '@/src/lib/releaseDownload';
+import { getStoredValue, setStoredValue } from '@/src/lib/storage';
+import { useAuth } from '@/src/providers/auth-provider';
+import {
+  decideVersion,
+  deserializePolicy,
+  parsePolicy,
+  resolvePolicy,
+  serializePolicy,
+  VERSION_POLICY_KEY,
+  type VersionPolicy,
+} from '@/src/lib/versionPolicy';
+
+/**
+ * Version installée vs dernière / minimale publiées. Même clé de cache que l'écran
+ * « Téléchargement de l'application » : une seule requête `/releases/latest`.
+ *
+ * Fail-open : erreur réseau ou serveur → dernière politique connue (stockée), sinon
+ * aucune action. Un serveur qui répond « aucune release » (404) annule tout blocage.
+ * L'endpoint exige une session : le contrôle s'applique dès la connexion.
+ */
+export function useVersionPolicy() {
+  const { isAuthenticated } = useAuth();
+  const [cached, setCached] = useState<VersionPolicy | null>(null);
+
+  const installedCode = parseVersionCode(
+    Constants.nativeBuildVersion ?? Constants.expoConfig?.android?.versionCode,
+  );
+
+  useEffect(() => {
+    let alive = true;
+    getStoredValue(VERSION_POLICY_KEY)
+      .then((raw) => {
+        if (alive) setCached(deserializePolicy(raw));
+      })
+      .catch((e) => reportSilent('version-policy.cache-read', e));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const query = useQuery({
+    queryKey: ['releases', 'latest'],
+    queryFn: api.releases.latest,
+    enabled: isAuthenticated,
+    staleTime: 5 * 60_000,
+    retry: 1,
+  });
+
+  const live = query.data ? parsePolicy(query.data) : null;
+  const liveCode = live?.versionCode;
+  const liveMin = live?.minVersionCode;
+  const liveName = live?.versionName;
+
+  useEffect(() => {
+    if (liveCode === undefined || liveMin === undefined) return;
+    const next: VersionPolicy = { versionCode: liveCode, minVersionCode: liveMin, versionName: liveName ?? '' };
+    setCached(next);
+    setStoredValue(VERSION_POLICY_KEY, serializePolicy(next)).catch((e) =>
+      reportSilent('version-policy.cache-write', e),
+    );
+  }, [liveCode, liveMin, liveName]);
+
+  const noRelease = query.isError && describeError(query.error).status === 404;
+  const policy = noRelease ? null : resolvePolicy(live, cached);
+  const decision = isAuthenticated ? decideVersion(installedCode, policy) : 'ok';
+
+  return {
+    decision,
+    policy,
+    installedCode,
+    fromCache: live === null && policy !== null,
+    isFetching: query.isFetching,
+    refetch: query.refetch,
+  };
+}
