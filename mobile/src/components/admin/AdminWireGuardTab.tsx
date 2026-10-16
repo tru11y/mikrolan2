@@ -6,6 +6,7 @@ import { describeError } from '@/src/lib/errors';
 import {
   formatBytes,
   handshakeLine,
+  heartbeatLine,
   revokeConfirmed,
   stateHint,
   WG_STATE_META,
@@ -74,9 +75,6 @@ const PeerCard = memo(function PeerCard({
   const meta = WG_STATE_META[peer.state];
   const color = toneColor(meta.tone, theme);
   const hint = stateHint(peer);
-  const heartbeatAgeS = peer.lastHeartbeat
-    ? Math.max(0, (Date.now() - Date.parse(peer.lastHeartbeat)) / 1000)
-    : null;
   const muted = { color: theme.textMuted, fontSize: type.micro } as const;
 
   return (
@@ -106,7 +104,7 @@ const PeerCard = memo(function PeerCard({
       </Text>
       <Text style={muted}>
         ↓ {formatBytes(peer.rxBytes)} · ↑ {formatBytes(peer.txBytes)}
-        {heartbeatAgeS != null ? ` · heartbeat il y a ${Math.round(heartbeatAgeS / 60)} min` : ' · aucun heartbeat'}
+        {` · ${heartbeatLine(peer.lastHeartbeat)}`}
       </Text>
 
       {hint ? (
