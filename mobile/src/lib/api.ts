@@ -1523,6 +1523,24 @@ export const api = {
     },
   },
 
+  releases: {
+    /** Release active + URL signée de courte durée (à redemander à chaque téléchargement). */
+    async latest(): Promise<LatestAppRelease> {
+      const res = await apiClient.get<ApiEnvelope<LatestAppRelease>>('/releases/latest');
+      return unwrap(res);
+    },
+    async history(): Promise<AppRelease[]> {
+      const res = await apiClient.get<ApiEnvelope<AppRelease[]>>('/releases/history');
+      return unwrap(res);
+    },
+    async logDownload(releaseId: string): Promise<{ id: string }> {
+      const res = await apiClient.post<ApiEnvelope<{ id: string }>>(
+        `/releases/${releaseId}/download-log`,
+      );
+      return unwrap(res);
+    },
+  },
+
   subscriptions: {
     /** Grille tarifaire publiée par le super admin. */
     async tiers(): Promise<Tier[]> {
@@ -1996,6 +2014,21 @@ export type TenantStatus = 'ACTIVE' | 'SUSPENDED' | 'DELETED';
 export type UserStatus = 'ACTIVE' | 'SUSPENDED' | 'DELETED';
 
 export type Page<T> = { items: T[]; nextCursor: string | null };
+
+export type AppRelease = {
+  id: string;
+  versionName: string;
+  versionCode: number;
+  /** Version minimale tolérée (= versionCode si la release est obligatoire). */
+  minVersionCode: number;
+  releaseNotes: string;
+  fileSize: number;
+  publishedAt: string;
+  isActive: boolean;
+  isRequired: boolean;
+};
+
+export type LatestAppRelease = AppRelease & { downloadUrl: string | null };
 
 export type TierFeature = { label: string; included: boolean };
 
