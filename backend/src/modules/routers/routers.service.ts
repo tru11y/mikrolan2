@@ -288,6 +288,7 @@ export class RoutersService {
       await tx.voucherBatch.deleteMany({ where: { routerId } });
       await tx.plan.deleteMany({ where: { routerId } });
       await tx.notification.deleteMany({ where: { routerId } });
+      await tx.routerTelemetry.deleteMany({ where: { routerId } });
       if (peer) await tx.remotePeer.delete({ where: { id: peer.id } });
       await tx.router.delete({ where: { id: routerId } });
     });
