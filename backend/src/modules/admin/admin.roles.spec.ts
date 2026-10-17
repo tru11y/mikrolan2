@@ -56,6 +56,9 @@ describe('AdminController — fermeture par rôle', () => {
         'createTier',
         'updateTier',
         'archiveTier',
+        'listWireguardPeers',
+        'resyncWireguardPeer',
+        'revokeWireguardPeer',
       ]),
     );
   });
