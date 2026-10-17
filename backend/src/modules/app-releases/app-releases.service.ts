@@ -46,6 +46,36 @@ export interface ReleasePage {
   nextCursor: string | null;
 }
 
+/** Vue tenant : jamais de storageKey ni de createdById. */
+export interface TenantReleaseView {
+  id: string;
+  versionName: string;
+  versionCode: number;
+  /** Version minimale tolérée (versionCode si la release est obligatoire). */
+  minVersionCode: number;
+  releaseNotes: string;
+  fileSize: number;
+  publishedAt: Date;
+  isActive: boolean;
+  isRequired: boolean;
+}
+
+export const HISTORY_SIZE = 5;
+
+export function toTenantView(r: AppRelease): TenantReleaseView {
+  return {
+    id: r.id,
+    versionName: r.versionName,
+    versionCode: r.versionCode,
+    minVersionCode: r.isRequired ? r.versionCode : r.minVersionCode,
+    releaseNotes: r.releaseNotes,
+    fileSize: r.fileSize,
+    publishedAt: r.createdAt,
+    isActive: r.isActive,
+    isRequired: r.isRequired,
+  };
+}
+
 type ReleaseRow = AppRelease & { createdBy?: { email: string } | null };
 
 export function toView(r: ReleaseRow): ReleaseView {
@@ -184,6 +214,59 @@ export class AppReleasesService {
       this.logger.warn('Stockage APK indisponible : downloadUrl omis');
     }
     return { ...toView(row), downloadUrl };
+  }
+
+  /** Release active côté tenant : métadonnées + URL signée (null si stockage indisponible). */
+  async latestForTenant(): Promise<TenantReleaseView & { downloadUrl: string | null }> {
+    const row = await this.prisma.appRelease.findFirst({
+      where: { isActive: true, archivedAt: null },
+      orderBy: [{ versionCode: 'desc' }, { id: 'desc' }],
+    });
+    if (!row) throw this.notFound();
+
+    let downloadUrl: string | null = null;
+    try {
+      // Une URL signée vers un fichier disparu donnerait une page d'erreur XML : on vérifie d'abord.
+      if ((await this.storage.headSize(row.storageKey)) === null) {
+        throw new BusinessException(
+          HttpStatus.NOT_FOUND,
+          ErrorCode.RELEASE_FILE_MISSING,
+          'Le fichier de cette version est introuvable',
+        );
+      }
+      downloadUrl = await this.storage.presignDownload(row.storageKey);
+    } catch (err) {
+      if (!(err instanceof ReleaseStorageUnavailableError)) throw err;
+      this.logger.warn('Stockage APK indisponible : downloadUrl omis');
+    }
+    return { ...toTenantView(row), downloadUrl };
+  }
+
+  async history(): Promise<TenantReleaseView[]> {
+    const rows = await this.prisma.appRelease.findMany({
+      where: { archivedAt: null },
+      orderBy: [{ versionCode: 'desc' }, { id: 'desc' }],
+      take: HISTORY_SIZE,
+    });
+    return rows.map(toTenantView);
+  }
+
+  /** Trace un téléchargement. Seule la release active et non archivée est téléchargeable. */
+  async logDownload(id: string, actor: TenantContext): Promise<{ id: string }> {
+    const release = await this.prisma.appRelease.findUnique({ where: { id } });
+    if (!release || release.archivedAt) throw this.notFound();
+    if (!release.isActive) {
+      throw new BusinessException(
+        HttpStatus.CONFLICT,
+        ErrorCode.RELEASE_INACTIVE,
+        'Cette version n’est plus disponible au téléchargement',
+      );
+    }
+    const row = await this.prisma.releaseDownload.create({
+      data: { releaseId: id, tenantId: actor.tenantId, userId: actor.userId },
+      select: { id: true },
+    });
+    return row;
   }
 
   async activate(id: string, actor: TenantContext): Promise<ReleaseView> {
