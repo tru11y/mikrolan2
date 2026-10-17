@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
-import Constants from 'expo-constants';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/src/lib/api';
 import { describeError } from '@/src/lib/errors';
 import { reportSilent } from '@/src/lib/report';
-import { parseVersionCode } from '@/src/lib/releaseDownload';
+import { getInstalledVersionCode } from '@/src/lib/installedVersion';
 import { getStoredValue, setStoredValue } from '@/src/lib/storage';
 import { useAuth } from '@/src/providers/auth-provider';
 import {
@@ -31,9 +30,7 @@ export function useVersionPolicy() {
   const { isAuthenticated } = useAuth();
   const [cached, setCached] = useState<VersionPolicy | null>(null);
 
-  const installedCode = parseVersionCode(
-    Constants.nativeBuildVersion ?? Constants.expoConfig?.android?.versionCode,
-  );
+  const installedCode = getInstalledVersionCode();
 
   useEffect(() => {
     let alive = true;

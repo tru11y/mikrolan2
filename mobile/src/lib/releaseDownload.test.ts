@@ -6,6 +6,7 @@ import {
   logFailureBlocksDownload,
   nextDownloadStep,
   parseVersionCode,
+  resolveInstalledVersionCode,
 } from './releaseDownload.ts';
 
 // node --test src/lib/releaseDownload.test.ts
@@ -45,4 +46,24 @@ test('logFailureBlocksDownload : seuls 404/409 bloquent', () => {
   assert.equal(logFailureBlocksDownload(404), true);
   assert.equal(logFailureBlocksDownload(500), false);
   assert.equal(logFailureBlocksDownload(null), false);
+});
+
+test('version installée : le natif "39" l’emporte sur app.json 37 (bug A56)', () => {
+  assert.equal(resolveInstalledVersionCode({ native: '39', config: 37 }), 39);
+});
+
+test('version installée : natif absent → repli app.json 37', () => {
+  assert.equal(resolveInstalledVersionCode({ native: null, config: 37 }), 37);
+  assert.equal(resolveInstalledVersionCode({ config: 37 }), 37);
+});
+
+test('version installée : ordre natif > constants > app.json', () => {
+  assert.equal(resolveInstalledVersionCode({ native: '39', constantsNative: '38', config: 37 }), 39);
+  assert.equal(resolveInstalledVersionCode({ native: null, constantsNative: '40', config: 37 }), 40);
+});
+
+test('version installée : source illisible ignorée, tout illisible → null (ni bannière ni blocage)', () => {
+  assert.equal(resolveInstalledVersionCode({ native: 'abc', config: 37 }), 37);
+  assert.equal(resolveInstalledVersionCode({ native: '0', constantsNative: '', config: undefined }), null);
+  assert.equal(resolveInstalledVersionCode({}), null);
 });

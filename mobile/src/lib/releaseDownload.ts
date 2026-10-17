@@ -19,6 +19,20 @@ export function parseVersionCode(raw: string | number | null | undefined): numbe
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
+export type VersionCodeSources = {
+  /** `expo-application` : versionCode réel du manifeste Android. */
+  native?: string | number | null;
+  /** `expo-constants` (déprécié, absent sur Android SDK 54). */
+  constantsNative?: string | number | null;
+  /** app.json : peut diverger de build.gradle, uniquement en dernier recours. */
+  config?: string | number | null;
+};
+
+/** Première source lisible, par ordre de fiabilité : natif réel > constants > app.json. */
+export function resolveInstalledVersionCode(s: VersionCodeSources): number | null {
+  return parseVersionCode(s.native) ?? parseVersionCode(s.constantsNative) ?? parseVersionCode(s.config);
+}
+
 /** 12_582_912 → "12,0 Mo" (base 1024, format français). */
 export function fmtBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return '—';
