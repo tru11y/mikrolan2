@@ -8,12 +8,13 @@ import { parseVersionCode } from '@/src/lib/releaseDownload';
 import { getStoredValue, setStoredValue } from '@/src/lib/storage';
 import { useAuth } from '@/src/providers/auth-provider';
 import {
-  decideVersion,
+  classifyLatestFailure,
   deserializePolicy,
+  evaluateGate,
   parsePolicy,
-  resolvePolicy,
   serializePolicy,
   VERSION_POLICY_KEY,
+  type LatestOutcome,
   type VersionPolicy,
 } from '@/src/lib/versionPolicy';
 
@@ -21,8 +22,9 @@ import {
  * Version installée vs dernière / minimale publiées. Même clé de cache que l'écran
  * « Téléchargement de l'application » : une seule requête `/releases/latest`.
  *
- * Fail-open : erreur réseau ou serveur → dernière politique connue (stockée), sinon
- * aucune action. Un serveur qui répond « aucune release » (404) annule tout blocage.
+ * Fail-open strict : seule une réponse fraîche et valide, avec lien de téléchargement, peut
+ * bloquer. Erreur réseau, timeout, 500, réponse invalide ou lien absent → jamais de blocage ;
+ * le cache ne produit au plus qu'une bannière. Un 404 (« aucune release ») annule tout.
  * L'endpoint exige une session : le contrôle s'applique dès la connexion.
  */
 export function useVersionPolicy() {
@@ -67,15 +69,23 @@ export function useVersionPolicy() {
     );
   }, [liveCode, liveMin, liveName]);
 
-  const noRelease = query.isError && describeError(query.error).status === 404;
-  const policy = noRelease ? null : resolvePolicy(live, cached);
-  const decision = isAuthenticated ? decideVersion(installedCode, policy) : 'ok';
+  let latest: LatestOutcome;
+  if (query.isError) {
+    latest = { kind: classifyLatestFailure(describeError(query.error).status) };
+  } else if (query.data) {
+    latest = { kind: 'live', policy: live, downloadable: Boolean(query.data.downloadUrl) };
+  } else {
+    latest = { kind: 'unavailable' };
+  }
+  const gate = isAuthenticated
+    ? evaluateGate(installedCode, latest, cached)
+    : { decision: 'ok' as const, policy: null, downloadUnavailable: false, fromCache: false };
 
   return {
-    decision,
-    policy,
+    decision: gate.decision,
+    policy: gate.policy,
     installedCode,
-    fromCache: live === null && policy !== null,
+    downloadUnavailable: gate.downloadUnavailable,
     isFetching: query.isFetching,
     refetch: query.refetch,
   };

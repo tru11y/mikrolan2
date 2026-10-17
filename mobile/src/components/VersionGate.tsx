@@ -35,7 +35,7 @@ export function VersionGate() {
   const router = useRouter();
   const pathname = usePathname();
   const insets = useSafeAreaInsets();
-  const { decision, policy, installedCode, fromCache, isFetching, refetch } = useVersionPolicy();
+  const { decision, policy, installedCode, downloadUnavailable, isFetching, refetch } = useVersionPolicy();
   const [dismissed, setDismissed] = useState(false);
 
   const onDownloadScreen = pathname.startsWith(DOWNLOAD_ROUTE);
@@ -104,12 +104,6 @@ export function VersionGate() {
               onPress={() => void refetch()}
             />
           </View>
-
-          {fromCache ? (
-            <Text style={{ color: theme.textMuted, fontSize: type.micro, textAlign: 'center' }}>
-              {t('versionGate.cachedNote')}
-            </Text>
-          ) : null}
         </ScrollView>
       </View>
     );
@@ -139,14 +133,18 @@ export function VersionGate() {
             {t('versionGate.bannerTitle')}
           </Text>
           <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
-            {t('versionGate.bannerDetail', { version: policy.versionName || String(policy.versionCode) })}
+            {downloadUnavailable
+              ? t('versionGate.downloadUnavailable')
+              : t('versionGate.bannerDetail', { version: policy.versionName || String(policy.versionCode) })}
           </Text>
         </View>
-        <Press accessibilityLabel={t('versionGate.bannerAction')} onPress={() => router.push(DOWNLOAD_ROUTE)}>
-          <Text style={{ color: theme.primary, fontSize: type.body, fontWeight: '700' }}>
-            {t('versionGate.bannerAction')}
-          </Text>
-        </Press>
+        {downloadUnavailable ? null : (
+          <Press accessibilityLabel={t('versionGate.bannerAction')} onPress={() => router.push(DOWNLOAD_ROUTE)}>
+            <Text style={{ color: theme.primary, fontSize: type.body, fontWeight: '700' }}>
+              {t('versionGate.bannerAction')}
+            </Text>
+          </Press>
+        )}
         <Press accessibilityLabel={t('versionGate.dismiss')} onPress={() => setDismissed(true)}>
           <Ionicons name="close" size={icon.md} color={theme.textMuted} />
         </Press>

@@ -1101,7 +1101,7 @@
     "latest": "Latest version",
     "download": "Download the update",
     "recheck": "Check again",
-    "cachedNote": "Information saved during your last connection.",
+    "downloadUnavailable": "Download temporarily unavailable",
     "bannerTitle": "New version available",
     "bannerDetail": "MikroLan {{version}} is available.",
     "bannerAction": "Update",
