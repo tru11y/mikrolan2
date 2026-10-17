@@ -3,6 +3,7 @@ import { Text, View } from 'react-native';
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query';
 import { api, type FleetRouter } from '@/src/lib/api';
 import { describeError } from '@/src/lib/errors';
+import { memoryPercent } from '@/src/lib/liveDisplay';
 import {
   Badge,
   Button,
@@ -22,6 +23,7 @@ import {
   withAlpha,
 } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
+import { AdminWireGuardTab } from './AdminWireGuardTab';
 
 function healthColor(health: string, theme: any): string {
   if (health === 'ONLINE') return theme.success;
@@ -29,7 +31,7 @@ function healthColor(health: string, theme: any): string {
   return theme.gold;
 }
 
-export function AdminFleetTab() {
+function FleetRoutersView() {
   const theme = useTheme();
   const toast = useToast();
   const [filter, setFilter] = useState<string | undefined>(undefined);
@@ -118,7 +120,8 @@ export function AdminFleetTab() {
         <Empty icon="hardware-chip-outline" text="Aucun routeur trouvé" />
       ) : (
         items.map((r, i) => {
-          const telem = r.telemetry?.[0];
+          const telem = r.telemetry;
+          const ram = telem ? memoryPercent(telem.ramUsedMb, telem.ramTotalMb) : null;
           return (
             <FadeIn key={r.id} delay={i * 30}>
               <Card>
@@ -137,6 +140,15 @@ export function AdminFleetTab() {
                     <Text style={{ color: theme.textMuted, fontSize: type.micro, marginLeft: space.lg }}>
                       {r.tenant.name} · {r.model ?? 'MikroTik'} · {r.mode}
                     </Text>
+                    <Text style={{
+                      color: r.remotePeer?.status === 'ACTIVE' ? theme.success
+                        : r.remotePeer?.status === 'ERROR' ? theme.danger
+                        : theme.textMuted,
+                      fontSize: type.micro,
+                      marginLeft: space.lg,
+                    }}>
+                      WG {r.remotePeer ? `${r.remotePeer.status} · ${r.remotePeer.wgIp}` : 'aucun'}
+                    </Text>
                   </View>
                   <Badge label={r.health} tone={r.health === 'ONLINE' ? 'success' : r.health === 'OFFLINE' ? 'danger' : 'gold'} />
                 </Row>
@@ -144,13 +156,13 @@ export function AdminFleetTab() {
                 {telem ? (
                   <Row style={{ marginTop: space.sm, gap: space.md }}>
                     <Text style={{ color: theme.textMuted, fontSize: type.micro }}>
-                      CPU {telem.cpuPercent}%
+                      CPU {telem.cpuPercent == null ? '—' : `${telem.cpuPercent}%`}
                     </Text>
                     <Text style={{ color: theme.textMuted, fontSize: type.micro }}>
-                      RAM {telem.memoryPercent}%
+                      RAM {ram == null ? '—' : `${ram}%`}
                     </Text>
                     <Text style={{ color: theme.textMuted, fontSize: type.micro }}>
-                      Up {Math.floor(telem.uptimeSeconds / 3600)}h
+                      Up {telem.uptime || '—'}
                     </Text>
                   </Row>
                 ) : null}
@@ -199,6 +211,49 @@ export function AdminFleetTab() {
         onConfirm={() => reboot.mutate()}
         onCancel={() => { setDiagRouter(null); setConfirmToken(null); }}
       />
+    </View>
+  );
+}
+
+const FLEET_VIEWS = [
+  { key: 'routers', label: 'Routeurs' },
+  { key: 'wireguard', label: 'WireGuard' },
+] as const;
+
+export function AdminFleetTab() {
+  const theme = useTheme();
+  const [view, setView] = useState<(typeof FLEET_VIEWS)[number]['key']>('routers');
+
+  return (
+    <View style={{ gap: space.md }}>
+      <Row style={{ gap: space.sm }}>
+        {FLEET_VIEWS.map((v) => (
+          <Press
+            key={v.key}
+            accessibilityRole="tab"
+            accessibilityLabel={v.label}
+            onPress={() => setView(v.key)}
+            style={{
+              flex: 1,
+              backgroundColor: view === v.key ? withAlpha(theme.primary, 0.1) : theme.surfaceAlt,
+              borderRadius: radius.md,
+              paddingVertical: space.sm + 2,
+              alignItems: 'center',
+            }}
+          >
+            <Text
+              style={{
+                color: view === v.key ? theme.primary : theme.textMuted,
+                fontSize: type.body,
+                fontWeight: '700',
+              }}
+            >
+              {v.label}
+            </Text>
+          </Press>
+        ))}
+      </Row>
+      {view === 'routers' ? <FleetRoutersView /> : <AdminWireGuardTab />}
     </View>
   );
 }

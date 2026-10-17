@@ -11,6 +11,7 @@ import {
 } from '@/src/lib/storage';
 import { errorMessage } from '@/src/lib/errors';
 import { swallow } from '@/src/lib/report';
+import type { WgPeerState } from '@/src/lib/wgDisplay';
 
 const ACCESS_TOKEN_KEY = 'mikrolan_access_token';
 const REFRESH_TOKEN_KEY = 'mikrolan_refresh_token';
@@ -1798,6 +1799,30 @@ export const api = {
       });
       return unwrap(res);
     },
+    async wgPeers(
+      params: { state?: WgPeerState; q?: string; tenantId?: string; limit?: number } = {},
+    ): Promise<WgPeersResponse> {
+      const res = await apiClient.get<ApiEnvelope<WgPeersResponse>>('/admin/wireguard/peers', {
+        params,
+      });
+      return unwrap(res);
+    },
+    async wgResync(routerId: string): Promise<{ resynced: true }> {
+      const res = await apiClient.post<ApiEnvelope<{ resynced: true }>>(
+        `/admin/wireguard/peers/${routerId}/resync`,
+      );
+      return unwrap(res);
+    },
+    async wgRevoke(
+      routerId: string,
+      body: { reason: string; confirmName: string },
+    ): Promise<{ revoked: true; wgRemoved: boolean }> {
+      const res = await apiClient.post<ApiEnvelope<{ revoked: true; wgRemoved: boolean }>>(
+        `/admin/wireguard/peers/${routerId}/revoke`,
+        body,
+      );
+      return unwrap(res);
+    },
     async enterDiagnostic(
       tenantId: string,
       routerId: string,
@@ -2052,8 +2077,57 @@ export type FleetRouter = {
   syncFailCount: number;
   createdAt: string;
   tenant: { id: string; name: string; slug: string };
-  remotePeer: { status: string; wgIp: string }[] | null;
-  telemetry: { cpuPercent: number; memoryPercent: number; uptimeSeconds: number; collectedAt: string }[];
+  remotePeer: { status: string; wgIp: string } | null;
+  telemetry: FleetTelemetry | null;
+};
+
+export type FleetTelemetry = {
+  cpuPercent: number | null;
+  ramUsedMb: number | null;
+  ramTotalMb: number | null;
+  uptime: string | null;
+  rosVersion: string | null;
+  boardName: string | null;
+  hotspotActive: number | null;
+  lastErrors: unknown;
+  health: string;
+  collectedAt: string;
+};
+
+export type WgPeerRow = {
+  id: string;
+  status: 'PENDING' | 'ACTIVE' | 'REVOKED' | 'ERROR';
+  state: WgPeerState;
+  tenant: { id: string; name: string };
+  router: { id: string; alias: string | null; identity: string; health: string; mode: string };
+  wgIp: string;
+  allocatedPort: number;
+  provisionedAt: string | null;
+  revokedAt: string | null;
+  lastHandshakeAt: string | null;
+  handshakeAgeS: number | null;
+  rxBytes: number | null;
+  txBytes: number | null;
+  clientEndpoint: string | null;
+  lastHeartbeat: string | null;
+};
+
+export type WgPeersResponse = {
+  items: WgPeerRow[];
+  total: number;
+  summary: {
+    total: number;
+    healthy: number;
+    stale: number;
+    never: number;
+    unknown: number;
+    pending: number;
+    revoked: number;
+    error: number;
+    wgEnabled: boolean;
+    liveAvailable: boolean;
+    drift: { liveNotInDb: number; dbActiveNotLive: number };
+  };
 };
 
 export type AdminTenant = {
