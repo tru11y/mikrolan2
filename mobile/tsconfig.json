@@ -20,6 +20,7 @@
     "src/lib/lanRouting.guard.test.ts",
     "src/lib/voucherGeneration.test.ts",
     "src/lib/lotState.test.ts",
-    "src/lib/ticketVerification.test.ts"
+    "src/lib/ticketVerification.test.ts",
+    "src/lib/wgDisplay.test.ts"
   ]
 }
