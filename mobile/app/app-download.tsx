@@ -1,18 +1,17 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
 import { useRef, useState } from 'react';
 import { Linking, ScrollView, Text, View } from 'react-native';
-import Constants from 'expo-constants';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type AppRelease } from '@/src/lib/api';
 import { describeError } from '@/src/lib/errors';
 import { reportSilent } from '@/src/lib/report';
+import { getInstalledVersionCode, getInstalledVersionName } from '@/src/lib/installedVersion';
 import {
   fmtBytes,
   installedState,
   logFailureBlocksDownload,
   nextDownloadStep,
-  parseVersionCode,
   type InstalledState,
 } from '@/src/lib/releaseDownload';
 import {
@@ -92,10 +91,8 @@ export default function AppDownloadScreen() {
   const latestQuery = useQuery({ queryKey: ['releases', 'latest'], queryFn: api.releases.latest });
   const historyQuery = useQuery({ queryKey: ['releases', 'history'], queryFn: api.releases.history });
 
-  const installedCode = parseVersionCode(
-    Constants.nativeBuildVersion ?? Constants.expoConfig?.android?.versionCode,
-  );
-  const installedName = Constants.expoConfig?.version ?? '—';
+  const installedCode = getInstalledVersionCode();
+  const installedName = getInstalledVersionName();
   const latest = latestQuery.data;
   const state = latest ? installedState(installedCode, latest) : null;
 
