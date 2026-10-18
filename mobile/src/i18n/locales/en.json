@@ -845,6 +845,7 @@
     "webfigSubtitle": "RouterOS web administration interface",
     "remoteNotEnabled": "Remote management not enabled for this router.",
     "remoteNotEnabledShort": "Remote management not enabled.",
+    "remoteOpenFailed": "Could not open remote access. Try again.",
     "sshAccess": "SSH access",
     "sshSubtitle": "Command-line terminal",
     "noSshClient": "No SSH client detected.",
