@@ -140,3 +140,41 @@ export const PRIVACY_HTML = `<!DOCTYPE html>
 <h2>10. Contact</h2>
 <p>Pour toute question : <a href="mailto:solqueflo.balley@epitech.eu">solqueflo.balley@epitech.eu</a></p>
 </body></html>`;
+
+export const REMOTE_ACCESS_HTML = `<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Autorisation d'accès distant — MikroLan</title>${STYLE}</head><body>
+<h1>Autorisation d'accès distant aux routeurs</h1>
+<p class="meta">Version du 18 octobre 2026 — Annexe aux Conditions Générales</p>
+
+<h2>1. Autorisation expresse</h2>
+<p>Le Client autorise expressément, de manière préalable, éclairée et révocable, l'Éditeur de MikroLan à accéder à distance aux routeurs MikroTik qu'il enregistre dans le service, aux seules fins et dans les limites décrites ci-dessous. Hors de ce cadre, tout accès est interdit.</p>
+<p>Le Client déclare et garantit être propriétaire des routeurs ou titulaire des droits d'administration nécessaires, avoir obtenu les autorisations de tiers requises, et fournir des identifiants valides, dédiés au service et dont il a la maîtrise.</p>
+
+<h2>2. Finalités autorisées</h2>
+<ul>
+  <li>Provisionner et maintenir le tunnel WireGuard entre le routeur et l'infrastructure MikroLan.</li>
+  <li>Lire l'état et la télémétrie du routeur (CPU, mémoire, version RouterOS, uptime, état du hotspot, erreurs).</li>
+  <li>Créer, modifier, synchroniser ou supprimer, à la demande du Client via le service, les profils, utilisateurs hotspot, tickets, liaisons IP et paramètres nécessaires aux fonctions choisies.</li>
+  <li>Réaliser des opérations de diagnostic et de support à la demande du Client.</li>
+  <li>Assurer la sécurité et l'intégrité du service.</li>
+</ul>
+
+<h2>3. Limites</h2>
+<p>L'Éditeur s'interdit de modifier la configuration du routeur en dehors des finalités ci-dessus ou de la demande du Client, de capturer ou d'enregistrer le contenu des communications des utilisateurs finaux, de consulter des données sans lien avec le service, et de communiquer les identifiants à des tiers (hors sous-traitants soumis aux mêmes garanties).</p>
+
+<h2>4. Sécurité et traçabilité</h2>
+<ul>
+  <li>Les identifiants sont chiffrés (AES-256-GCM) et jamais journalisés en clair.</li>
+  <li>L'accès passe par un tunnel WireGuard authentifié.</li>
+  <li>Les opérations d'administration sont horodatées et journalisées (journal d'audit conservé 12 mois).</li>
+</ul>
+
+<h2>5. Responsabilité du Client</h2>
+<p>Le Client maintient ses routeurs à jour, conserve une sauvegarde de sa configuration avant toute opération majeure, et reste responsable de sa configuration réseau et de la sécurité de ses équipements.</p>
+
+<h2>6. Durée, retrait et révocation</h2>
+<p>L'autorisation dure tant que l'offre PRO est active. Le Client peut la révoquer à tout moment (Mon compte > Accès distant > Révoquer l'autorisation). L'Éditeur coupe alors immédiatement les tunnels WireGuard et efface les identifiants des routeurs sous 7 jours. L'autorisation prend fin automatiquement à la résiliation du contrat ou à la suppression du compte.</p>
+
+<h2>7. Droit applicable</h2>
+<p>Droit ivoirien.</p>
+</body></html>`;

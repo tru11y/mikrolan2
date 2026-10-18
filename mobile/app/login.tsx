@@ -34,6 +34,7 @@ import {
   withAlpha,
 } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
+import { ConsentCheckbox } from '@/src/components/ConsentCheckbox';
 
 export default function LoginScreen() {
   const theme = useTheme();
@@ -58,6 +59,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [country, setCountry] = useState('');
+  const [acceptedLegal, setAcceptedLegal] = useState(false);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [baseUrl, setBaseUrl] = useState(apiBaseUrl);
@@ -109,7 +111,7 @@ export default function LoginScreen() {
   const canSubmit =
     email.trim().length > 3 &&
     password.length >= (mode === 'signup' ? 10 : 1) &&
-    (mode === 'login' || tenantName.trim().length >= 2);
+    (mode === 'login' || (tenantName.trim().length >= 2 && acceptedLegal));
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -224,29 +226,29 @@ export default function LoginScreen() {
             />
 
             {mode === 'signup' ? (
-              <Text
-                style={{
-                  color: theme.textMuted,
-                  fontSize: type.micro,
-                  textAlign: 'center',
-                }}
+              <ConsentCheckbox
+                checked={acceptedLegal}
+                onToggle={() => setAcceptedLegal((v) => !v)}
+                accessibilityLabel={t('login.signupLegal')}
               >
-                {t('login.signupLegal')}{' '}
-                <Text
-                  style={{ textDecorationLine: 'underline' }}
-                  onPress={() => Linking.openURL('https://api.mikrolan.net/api/legal/terms')}
-                >
-                  {t('login.termsOfUse')}
-                </Text>{' '}
-                {t('login.and')}{' '}
-                <Text
-                  style={{ textDecorationLine: 'underline' }}
-                  onPress={() => Linking.openURL('https://api.mikrolan.net/api/legal/privacy')}
-                >
-                  {t('common.privacyPolicy')}
+                <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
+                  {t('login.signupLegal')}{' '}
+                  <Text
+                    style={{ textDecorationLine: 'underline' }}
+                    onPress={() => Linking.openURL('https://api.mikrolan.net/api/legal/terms')}
+                  >
+                    {t('login.termsOfUse')}
+                  </Text>{' '}
+                  {t('login.and')}{' '}
+                  <Text
+                    style={{ textDecorationLine: 'underline' }}
+                    onPress={() => Linking.openURL('https://api.mikrolan.net/api/legal/privacy')}
+                  >
+                    {t('common.privacyPolicy')}
+                  </Text>
+                  .
                 </Text>
-                .
-              </Text>
+              </ConsentCheckbox>
             ) : null}
 
             {googleAuthAvailable ? (

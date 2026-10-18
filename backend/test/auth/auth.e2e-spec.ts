@@ -3,14 +3,18 @@ import { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { createTestApp } from '../helpers/app.helper';
 import { signupUser, loginUser } from '../helpers/auth.helper';
 import { MailService } from '../../src/modules/mail/mail.service';
+import { PrismaService } from '../../src/prisma/prisma.service';
+import { LEGAL_VERSIONS } from '../../src/modules/legal/legal.versions';
 
 describe('Auth (e2e)', () => {
   let app: NestFastifyApplication;
   let mailService: MailService;
+  let prisma: PrismaService;
 
   beforeAll(async () => {
     app = await createTestApp();
     mailService = app.get(MailService);
+    prisma = app.get(PrismaService);
   });
 
   afterAll(async () => {
@@ -25,6 +29,8 @@ describe('Auth (e2e)', () => {
           tenantName: 'Acme',
           email: `acme-${Date.now()}@test.com`,
           password: 'SecurePass123!',
+          termsVersion: LEGAL_VERSIONS.terms,
+          privacyVersion: LEGAL_VERSIONS.privacy,
         })
         .expect(201);
 
@@ -38,7 +44,13 @@ describe('Auth (e2e)', () => {
 
       await request(app.getHttpServer())
         .post('/api/auth/signup')
-        .send({ tenantName: 'Dup', email, password: 'SecurePass123!' })
+        .send({
+          tenantName: 'Dup',
+          email,
+          password: 'SecurePass123!',
+          termsVersion: LEGAL_VERSIONS.terms,
+          privacyVersion: LEGAL_VERSIONS.privacy,
+        })
         .expect(409);
     });
 
@@ -49,8 +61,64 @@ describe('Auth (e2e)', () => {
           tenantName: 'X',
           email: `short-${Date.now()}@test.com`,
           password: 'abc',
+          termsVersion: LEGAL_VERSIONS.terms,
+          privacyVersion: LEGAL_VERSIONS.privacy,
         })
         .expect(400);
+    });
+
+    it('rejects signup without legal acceptance with 400', async () => {
+      await request(app.getHttpServer())
+        .post('/api/auth/signup')
+        .send({
+          tenantName: 'NoConsent',
+          email: `noconsent-${Date.now()}@test.com`,
+          password: 'SecurePass123!',
+        })
+        .expect(400);
+    });
+
+    it('rejects a stale legal version with 409 and creates no account', async () => {
+      const email = `stale-${Date.now()}@test.com`;
+      await request(app.getHttpServer())
+        .post('/api/auth/signup')
+        .send({
+          tenantName: 'Stale',
+          email,
+          password: 'SecurePass123!',
+          termsVersion: '1999-01-01',
+          privacyVersion: LEGAL_VERSIONS.privacy,
+        })
+        .expect(409);
+      await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ email, password: 'SecurePass123!' })
+        .expect(401);
+    });
+
+    it('records the accepted versions on the user', async () => {
+      const u = await signupUser(app);
+      const row = await prisma.user.findUniqueOrThrow({ where: { email: u.email.toLowerCase() } });
+      expect(row.termsVersion).toBe(LEGAL_VERSIONS.terms);
+      expect(row.privacyVersion).toBe(LEGAL_VERSIONS.privacy);
+      expect(row.termsAcceptedAt).toBeInstanceOf(Date);
+      expect(row.privacyAcceptedAt).toBeInstanceOf(Date);
+    });
+  });
+
+  describe('POST /api/auth/legal-consent', () => {
+    it('refuses a stale version then accepts the current one', async () => {
+      const u = await signupUser(app);
+      await request(app.getHttpServer())
+        .post('/api/auth/legal-consent')
+        .set('Authorization', `Bearer ${u.accessToken}`)
+        .send({ termsVersion: '1999-01-01', privacyVersion: LEGAL_VERSIONS.privacy })
+        .expect(409);
+      await request(app.getHttpServer())
+        .post('/api/auth/legal-consent')
+        .set('Authorization', `Bearer ${u.accessToken}`)
+        .send({ termsVersion: LEGAL_VERSIONS.terms, privacyVersion: LEGAL_VERSIONS.privacy })
+        .expect(200);
     });
   });
 
