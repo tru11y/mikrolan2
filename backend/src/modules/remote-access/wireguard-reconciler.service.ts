@@ -21,6 +21,18 @@ const RECONCILE_INTERVAL_MS = 20_000;
 // "routeur injoignable" toast on the mobile app on each false transition.
 const HANDSHAKE_FRESH_S = 150;
 
+/** Seuls les peers dont la fenêtre d'accès est encore ouverte ont des règles DNAT. */
+export function openAccessWindows<
+  T extends { accessOpenUntil: Date | null; accessSourceIp: string | null },
+>(peers: T[], now: Date): (T & { accessSourceIp: string })[] {
+  return peers.filter(
+    (p): p is T & { accessSourceIp: string } =>
+      p.accessSourceIp !== null &&
+      p.accessOpenUntil !== null &&
+      p.accessOpenUntil.getTime() > now.getTime(),
+  );
+}
+
 /**
  * Keeps the wg-mgmt interface in sync with the DB (source of truth). Runtime
  * `wg set` peers do not survive a wg/VPS restart, which silently makes every
@@ -62,16 +74,26 @@ export class WireGuardReconciler implements OnModuleInit, OnModuleDestroy {
           webfigPort: true,
           sshPort: true,
           winboxPort: true,
+          accessOpenUntil: true,
+          accessSourceIp: true,
         },
       });
       await this.wg.syncPeers(peers);
-      await this.wg.syncDnat(peers);
+      await this.wg.syncDnat(openAccessWindows(peers, new Date()));
+      await this.closeExpiredWindows();
       await this.updateHealth(peers);
     } catch (e) {
       this.logger.error(
         `WireGuard reconcile failed: ${e instanceof Error ? e.message : e}`,
       );
     }
+  }
+
+  private async closeExpiredWindows(): Promise<void> {
+    await this.prisma.remotePeer.updateMany({
+      where: { accessOpenUntil: { lte: new Date() } },
+      data: { accessOpenUntil: null, accessSourceIp: null },
+    });
   }
 
   /**

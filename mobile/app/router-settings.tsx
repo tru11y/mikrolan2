@@ -89,6 +89,24 @@ export default function RouterSettingsScreen() {
     enabled: Boolean(routerId) && isPro,
   });
 
+  // Les ports WebFig/SSH/Winbox du VPS ne sont ouverts que sur demande, pour
+  // l'IP de ce téléphone et quelques minutes : on ouvre juste avant d'utiliser.
+  async function openRemoteAccess() {
+    try {
+      const res = await api.routers.openRemoteAccess(routerId);
+      void remoteQuery.refetch();
+      return res.accessUrls;
+    } catch {
+      setSheet({
+        icon: 'alert-circle-outline',
+        title: 'WebFig / SSH / Winbox',
+        message: t('routerSettings.remoteOpenFailed'),
+        actions: [{ label: t('common.close'), variant: 'cancel', onPress: closeSheet }],
+      });
+      return undefined;
+    }
+  }
+
   const [alias, setAlias] = useState('');
   const [pushEnabled, setPushEnabled] = useState(true);
   const [aliasBusy, setAliasBusy] = useState(false);
@@ -258,8 +276,9 @@ export default function RouterSettingsScreen() {
             subtitle: t('routerSettings.webfigSubtitle'),
             icon: 'globe-outline' as IoniconName,
             color: theme.primary,
-            onPress: () => {
-              const urls = remoteQuery.data?.accessUrls;
+            onPress: async () => {
+              const urls = await openRemoteAccess();
+              if (urls === undefined) return;
               if (urls?.webfig) {
                 Linking.openURL(urls.webfig.url);
               } else {
@@ -278,8 +297,9 @@ export default function RouterSettingsScreen() {
             subtitle: t('routerSettings.sshSubtitle'),
             icon: 'terminal-outline' as IoniconName,
             color: theme.primaryMuted,
-            onPress: () => {
-              const urls = remoteQuery.data?.accessUrls;
+            onPress: async () => {
+              const urls = await openRemoteAccess();
+              if (urls === undefined) return;
               if (!urls?.ssh) {
                 setSheet({
                   icon: 'terminal-outline',
@@ -329,8 +349,9 @@ export default function RouterSettingsScreen() {
             subtitle: t('routerSettings.winboxSubtitle'),
             icon: 'cube-outline' as IoniconName,
             color: theme.gold,
-            onPress: () => {
-              const urls = remoteQuery.data?.accessUrls;
+            onPress: async () => {
+              const urls = await openRemoteAccess();
+              if (urls === undefined) return;
               if (!urls?.winbox) {
                 setSheet({
                   icon: 'cube-outline',
