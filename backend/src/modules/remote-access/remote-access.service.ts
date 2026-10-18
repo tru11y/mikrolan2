@@ -114,11 +114,6 @@ export class RemoteAccessService {
 
     try {
       await this.wg.addPeer(keys.publicKey, wgIp);
-      await this.wg.addDnat(wgIp, allocatedPort, {
-        webfigPort,
-        sshPort,
-        winboxPort,
-      });
     } catch (err) {
       this.logger.warn(`WireGuard provision failed for router ${routerId}: ${err instanceof Error ? err.message : err}`);
       const failure = new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, ErrorCode.ROUTER_PROVISION_FAILED, "Impossible d'activer la gestion à distance pour le moment. Réessayez plus tard.");
@@ -137,6 +132,8 @@ export class RemoteAccessService {
       status: RemotePeerStatus.ACTIVE,
       provisionedAt: new Date(),
       revokedAt: null,
+      accessOpenUntil: null,
+      accessSourceIp: null,
       webfigPort,
       sshPort,
       winboxPort,
@@ -189,7 +186,7 @@ export class RemoteAccessService {
         webfigPort: peer.webfigPort,
         sshPort: peer.sshPort,
         winboxPort: peer.winboxPort,
-      });
+      }, peer.accessSourceIp);
     } catch (err) {
       this.logger.warn(`WireGuard peer removal failed (proceeding with DB revocation): ${err instanceof Error ? err.message : err}`);
       wgRemovalFailure = { ...describeFailure(err), errorCode: ErrorCode.WG_PEER_REMOVAL_FAILED };
@@ -198,7 +195,12 @@ export class RemoteAccessService {
     await this.prisma.$transaction(async (tx) => {
       await tx.remotePeer.update({
         where: { id: peer.id },
-        data: { status: RemotePeerStatus.REVOKED, revokedAt: new Date() },
+        data: {
+          status: RemotePeerStatus.REVOKED,
+          revokedAt: new Date(),
+          accessOpenUntil: null,
+          accessSourceIp: null,
+        },
       });
       await tx.router.update({
         where: { id: routerId },
@@ -227,29 +229,108 @@ export class RemoteAccessService {
         webfigPort: true,
         sshPort: true,
         winboxPort: true,
+        accessOpenUntil: true,
+        accessSourceIp: true,
       },
     });
     if (!peer) return { status: 'NONE' as const };
 
-    const vpsIp = this.wg.vpsPublicIp;
+    const { accessSourceIp, ...publicPeer } = peer;
+    const windowOpen =
+      accessSourceIp !== null &&
+      peer.accessOpenUntil !== null &&
+      peer.accessOpenUntil.getTime() > Date.now();
     const accessUrls =
-      peer.status === 'ACTIVE' && vpsIp
-        ? {
-            webfig: { url: `http://${vpsIp}:${peer.allocatedPort}`, port: peer.allocatedPort },
-            ssh: {
-              host: vpsIp,
-              port: peer.allocatedPort + SSH_PORT_OFFSET,
-              command: `ssh admin@${vpsIp} -p ${peer.allocatedPort + SSH_PORT_OFFSET}`,
-            },
-            winbox: {
-              host: vpsIp,
-              port: peer.allocatedPort + WINBOX_PORT_OFFSET,
-              address: `${vpsIp}:${peer.allocatedPort + WINBOX_PORT_OFFSET}`,
-            },
-          }
+      peer.status === 'ACTIVE' && windowOpen
+        ? this.buildAccessUrls(peer.allocatedPort)
         : null;
 
-    return { ...peer, accessUrls };
+    return { ...publicPeer, accessUrls };
+  }
+
+  /**
+   * Ouvre pour `durationMinutes` l'accès WebFig/SSH/Winbox depuis `sourceIp`
+   * uniquement. Un nouvel appel remplace la fenêtre précédente (autre IP
+   * incluse). L'expiration est appliquée par le reconciler.
+   */
+  openAccess(routerId: string, actorId: string, sourceIp: string, durationMinutes: number) {
+    return this.eventLog.guard({ action: AuditAction.CONNECT, entityType: 'Router', entityId: routerId, actor: { userId: actorId } }, () => this.openAccessInner(routerId, actorId, sourceIp, durationMinutes));
+  }
+
+  private async openAccessInner(routerId: string, actorId: string, sourceIp: string, durationMinutes: number) {
+    const tenantId = getTenantContext()?.tenantId;
+    if (!tenantId || !(await this.subscriptions.isRemoteAllowed(tenantId))) {
+      throw new BusinessException(HttpStatus.FORBIDDEN, ErrorCode.SUBSCRIPTION_TIER_INSUFFICIENT, 'La gestion à distance nécessite un abonnement payant actif.');
+    }
+    const peer = await this.prisma.remotePeer.findFirst({ where: { routerId } });
+    if (!peer || peer.status !== RemotePeerStatus.ACTIVE) {
+      throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.REMOTE_ACCESS_NOT_FOUND, 'Aucun accès à distance actif pour ce routeur.');
+    }
+
+    const ports = { webfigPort: peer.webfigPort, sshPort: peer.sshPort, winboxPort: peer.winboxPort };
+    const expiresAt = new Date(Date.now() + durationMinutes * 60_000);
+    try {
+      await this.wg.removeDnat(peer.wgIp, peer.allocatedPort, ports, peer.accessSourceIp);
+      await this.wg.addDnat(peer.wgIp, peer.allocatedPort, ports, sourceIp);
+    } catch (err) {
+      this.logger.warn(`Open access failed for router ${routerId}: ${err instanceof Error ? err.message : err}`);
+      throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, ErrorCode.ROUTER_PROVISION_FAILED, "Impossible d'ouvrir l'accès à distance pour le moment. Réessayez plus tard.");
+    }
+    await this.prisma.remotePeer.update({
+      where: { id: peer.id },
+      data: { accessOpenUntil: expiresAt, accessSourceIp: sourceIp },
+    });
+
+    await this.audit(tenantId, actorId, AuditAction.CONNECT, routerId, {
+      sourceIp,
+      expiresAt: expiresAt.toISOString(),
+    });
+    return { expiresAt, accessUrls: this.buildAccessUrls(peer.allocatedPort) };
+  }
+
+  closeAccess(routerId: string, actorId: string) {
+    return this.eventLog.guard({ action: AuditAction.DISCONNECT, entityType: 'Router', entityId: routerId, actor: { userId: actorId } }, () => this.closeAccessInner(routerId, actorId));
+  }
+
+  private async closeAccessInner(routerId: string, actorId: string) {
+    const tenantId = getTenantContext()?.tenantId;
+    const peer = await this.prisma.remotePeer.findFirst({ where: { routerId } });
+    if (!peer) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.REMOTE_ACCESS_NOT_FOUND, 'Aucun accès à distance actif pour ce routeur.');
+
+    try {
+      await this.wg.removeDnat(peer.wgIp, peer.allocatedPort, {
+        webfigPort: peer.webfigPort,
+        sshPort: peer.sshPort,
+        winboxPort: peer.winboxPort,
+      }, peer.accessSourceIp);
+    } catch (err) {
+      // La base prime : le reconciler purgera les règles résiduelles au prochain cycle.
+      this.logger.warn(`Close access: iptables removal failed (reconciler will prune): ${err instanceof Error ? err.message : err}`);
+    }
+    await this.prisma.remotePeer.update({
+      where: { id: peer.id },
+      data: { accessOpenUntil: null, accessSourceIp: null },
+    });
+    await this.audit(tenantId, actorId, AuditAction.DISCONNECT, routerId, {});
+    return { closed: true };
+  }
+
+  private buildAccessUrls(allocatedPort: number) {
+    const vpsIp = this.wg.vpsPublicIp;
+    if (!vpsIp) return null;
+    return {
+      webfig: { url: `http://${vpsIp}:${allocatedPort}`, port: allocatedPort },
+      ssh: {
+        host: vpsIp,
+        port: allocatedPort + SSH_PORT_OFFSET,
+        command: `ssh admin@${vpsIp} -p ${allocatedPort + SSH_PORT_OFFSET}`,
+      },
+      winbox: {
+        host: vpsIp,
+        port: allocatedPort + WINBOX_PORT_OFFSET,
+        address: `${vpsIp}:${allocatedPort + WINBOX_PORT_OFFSET}`,
+      },
+    };
   }
 
   /**
