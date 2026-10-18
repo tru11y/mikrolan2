@@ -1092,5 +1092,19 @@
     "noPdfs": "Aucun PDF archivé pour ce lot.",
     "empty": "Aucun lot de tickets généré.",
     "openFailed": "Impossible d'ouvrir le PDF."
+  },
+  "versionGate": {
+    "requiredTitle": "Mise à jour obligatoire",
+    "requiredDetail": "Cette version de MikroLan n'est plus prise en charge. Installez la dernière version pour continuer.",
+    "installed": "Version installée",
+    "minimum": "Version minimale",
+    "latest": "Dernière version",
+    "download": "Télécharger la mise à jour",
+    "recheck": "Vérifier à nouveau",
+    "downloadUnavailable": "Téléchargement momentanément indisponible",
+    "bannerTitle": "Nouvelle version disponible",
+    "bannerDetail": "MikroLan {{version}} est disponible.",
+    "bannerAction": "Mettre à jour",
+    "dismiss": "Fermer"
   }
 }

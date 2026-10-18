@@ -20,7 +20,7 @@ import { useTheme } from '@/src/providers/theme-provider';
 
 // Écrans qui restent accessibles une fois l'essai terminé : le client doit
 // pouvoir se connecter, voir son compte et payer.
-const OPEN_ROUTES = ['/login', '/pro', '/(tabs)/account', '/account'];
+const OPEN_ROUTES = ['/login', '/pro', '/(tabs)/account', '/account', '/app-download'];
 
 const LOCKED_FEATURE_ICONS: { icon: Parameters<typeof IconChip>[0]['name']; key: string }[] = [
   { icon: 'hardware-chip-outline', key: 'paywall.yourRouters' },
