@@ -47,14 +47,40 @@ export type Me = {
     notificationsEnabled: boolean;
     hasPassword: boolean;
     googleId: string | null;
+    termsVersion: string | null;
+    privacyVersion: string | null;
   };
-  tenant: { id: string; name: string; slug: string; status: string; country: string | null; lastCountryReminderAt: string | null };
+  tenant: {
+    id: string;
+    name: string;
+    slug: string;
+    status: string;
+    country: string | null;
+    lastCountryReminderAt: string | null;
+    remoteAccessAcceptedAt: string | null;
+    remoteAccessVersion: string | null;
+  };
   subscription: {
     plan: SubscriptionPlan;
     status: string;
     currentPeriodEnd: string | null;
   } | null;
   entitlement: Entitlement;
+  /** Versions courantes des textes légaux — comparées à ce que l'utilisateur a accepté. */
+  legal: LegalVersions;
+};
+
+export type LegalVersions = {
+  terms: string;
+  privacy: string;
+  remoteAccess: string;
+};
+
+export type RemoteAccessAuthorization = {
+  accepted: boolean;
+  acceptedAt: string | null;
+  acceptedVersion: string | null;
+  currentVersion: string;
 };
 
 /**
@@ -948,19 +974,52 @@ apiClient.interceptors.response.use(
 );
 
 export const api = {
+  legal: {
+    async versions(): Promise<LegalVersions> {
+      const res = await apiClient.get<ApiEnvelope<LegalVersions>>('/legal/versions');
+      return unwrap(res);
+    },
+  },
+  remoteAccess: {
+    async authorization(): Promise<RemoteAccessAuthorization> {
+      const res = await apiClient.get<ApiEnvelope<RemoteAccessAuthorization>>(
+        '/remote-access/authorization',
+      );
+      return unwrap(res);
+    },
+    async accept(version: string): Promise<RemoteAccessAuthorization> {
+      const res = await apiClient.post<ApiEnvelope<RemoteAccessAuthorization>>(
+        '/remote-access/authorization/accept',
+        { version },
+      );
+      return unwrap(res);
+    },
+    async revoke(): Promise<{ revoked: boolean; revokedPeers: number }> {
+      const res = await apiClient.post<ApiEnvelope<{ revoked: boolean; revokedPeers: number }>>(
+        '/remote-access/authorization/revoke',
+      );
+      return unwrap(res);
+    },
+  },
   auth: {
     async signup(
       tenantName: string,
       email: string,
       password: string,
+      legal: { termsVersion: string; privacyVersion: string },
       country?: string,
     ): Promise<AuthTokens> {
       const res = await apiClient.post<ApiEnvelope<AuthTokens>>('/auth/signup', {
         tenantName,
         email,
         password,
+        ...legal,
         ...(country && { country }),
       });
+      return unwrap(res);
+    },
+    async acceptLegal(legal: { termsVersion: string; privacyVersion: string }): Promise<{ accepted: boolean }> {
+      const res = await apiClient.post<ApiEnvelope<{ accepted: boolean }>>('/auth/legal-consent', legal);
       return unwrap(res);
     },
     async login(email: string, password: string): Promise<AuthTokens> {

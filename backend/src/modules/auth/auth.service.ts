@@ -12,6 +12,7 @@ import {
   Prisma,
   SubscriptionPlan,
   SubscriptionStatus,
+  TenantStatus,
   UserRole,
   UserStatus,
 } from '@prisma/client';
@@ -27,7 +28,9 @@ import {
 } from '../subscriptions/subscriptions.service';
 import { MailService } from '../mail/mail.service';
 import { logAndContinue } from '../../common/utils/log-and-continue';
+import { LEGAL_VERSIONS } from '../legal/legal.versions';
 import {
+  AcceptLegalDto,
   ChangePasswordDto,
   ConfirmPasswordResetDto,
   DeleteAccountDto,
@@ -49,6 +52,28 @@ const ARGON: argon2.Options = {
   timeCost: 3,
   parallelism: 4,
 };
+
+function assertCurrentLegalVersions(dto: AcceptLegalDto): void {
+  if (
+    dto.termsVersion !== LEGAL_VERSIONS.terms ||
+    dto.privacyVersion !== LEGAL_VERSIONS.privacy
+  ) {
+    throw new BusinessException(
+      HttpStatus.CONFLICT,
+      ErrorCode.LEGAL_VERSION_MISMATCH,
+      'Les conditions ont été mises à jour. Relisez-les puis réessayez.',
+    );
+  }
+}
+
+function legalAcceptanceData(now: Date) {
+  return {
+    termsAcceptedAt: now,
+    termsVersion: LEGAL_VERSIONS.terms,
+    privacyAcceptedAt: now,
+    privacyVersion: LEGAL_VERSIONS.privacy,
+  };
+}
 
 function slugify(name: string): string {
   const base = name
@@ -86,6 +111,7 @@ export class AuthService {
   }
 
   async signup(dto: SignupDto): Promise<TokenPair> {
+    assertCurrentLegalVersions(dto);
     const passwordHash = await argon2.hash(dto.password, ARGON);
     // Essai gratuit ouvert à l'inscription : l'app entière est utilisable en
     // local pendant TRIAL_DAYS, puis tout se verrouille jusqu'au passage PRO.
@@ -120,6 +146,7 @@ export class AuthService {
             role: UserRole.OWNER,
             status: UserStatus.ACTIVE,
             ...(dto.country && { country: dto.country }),
+            ...legalAcceptanceData(now),
           },
         });
       });
@@ -190,11 +217,22 @@ export class AuthService {
           notificationsEnabled: true,
           hasPassword: true,
           googleId: true,
+          termsVersion: true,
+          privacyVersion: true,
         },
       }),
       this.prisma.tenant.findUnique({
         where: { id: tenantId },
-        select: { id: true, name: true, slug: true, status: true, country: true, lastCountryReminderAt: true },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          status: true,
+          country: true,
+          lastCountryReminderAt: true,
+          remoteAccessAcceptedAt: true,
+          remoteAccessVersion: true,
+        },
       }),
       this.prisma.subscription.findUnique({
         where: { tenantId },
@@ -207,7 +245,16 @@ export class AuthService {
       user.role === 'SUPER_ADMIN'
         ? { tier: 'PRO' as const, localAllowed: true, remoteAllowed: true, endsAt: null, daysLeft: null, tierKey: null, routerLimit: null }
         : await this.subscriptions.getEntitlement(tenantId);
-    return { user, tenant, subscription, entitlement };
+    return { user, tenant, subscription, entitlement, legal: LEGAL_VERSIONS };
+  }
+
+  async acceptLegal(userId: string, dto: AcceptLegalDto): Promise<{ accepted: true }> {
+    assertCurrentLegalVersions(dto);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: legalAcceptanceData(new Date()),
+    });
+    return { accepted: true };
   }
 
   async updateProfile(userId: string, tenantId: string, dto: UpdateProfileDto) {
@@ -626,13 +673,27 @@ export class AuthService {
       );
     }
 
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { status: UserStatus.DELETED },
-    });
-    await this.prisma.refreshToken.updateMany({
-      where: { userId, revoked: false },
-      data: { revoked: true },
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: { status: UserStatus.DELETED, deletedAt: now },
+      });
+      await tx.refreshToken.updateMany({
+        where: { userId, revoked: false },
+        data: { revoked: true },
+      });
+      // Dernier utilisateur actif : le tenant est supprimé avec lui. Ses accès
+      // WireGuard sont coupés par ComplianceCron, ses données anonymisées à J+30.
+      const remaining = await tx.user.count({
+        where: { tenantId: user.tenantId, status: UserStatus.ACTIVE },
+      });
+      if (remaining === 0) {
+        await tx.tenant.update({
+          where: { id: user.tenantId },
+          data: { status: TenantStatus.DELETED, deletedAt: now },
+        });
+      }
     });
   }
 }

@@ -57,7 +57,7 @@
     "forgotPassword": "Mot de passe oublié ?",
     "submitLogin": "Se connecter",
     "submitSignup": "Créer mon compte",
-    "signupLegal": "En créant un compte, vous acceptez les",
+    "signupLegal": "J'ai lu et j'accepte les",
     "termsOfUse": "conditions d'utilisation",
     "and": "et la",
     "continueWithGoogle": "Continuer avec Google",
@@ -1106,5 +1106,27 @@
     "bannerDetail": "MikroLan {{version}} est disponible.",
     "bannerAction": "Mettre à jour",
     "dismiss": "Fermer"
+  },
+  "legal": {
+    "consentTitle": "Conditions mises à jour",
+    "consentIntro": "Pour continuer à utiliser MikroLan, lisez et acceptez nos conditions d'utilisation et notre politique de confidentialité.",
+    "readTerms": "Lire les conditions d'utilisation",
+    "readPrivacy": "Lire la politique de confidentialité",
+    "consentCheckbox": "J'ai lu et j'accepte les conditions d'utilisation et la politique de confidentialité.",
+    "consentAccept": "Accepter et continuer",
+    "consentLogout": "Se déconnecter",
+    "remoteTitle": "Autorisation d'accès distant",
+    "remoteBody": "Pour gérer vos routeurs à distance, MikroLan établit un tunnel sécurisé (WireGuard) vers chaque routeur et conserve ses identifiants chiffrés. Cet accès est limité à la fourniture du service et révocable à tout moment.",
+    "remoteRead": "Lire l'autorisation complète",
+    "remoteCheckbox": "J'autorise MikroLan à accéder à distance à mes routeurs dans les conditions décrites, et je confirme en être propriétaire ou y être habilité.",
+    "remoteAccept": "J'autorise",
+    "remoteCancel": "Annuler",
+    "remoteOwnerOnly": "Seul le propriétaire du compte peut accorder cette autorisation. Demandez-lui de l'activer.",
+    "remoteAuthTitle": "Autorisation d'accès distant",
+    "remoteAuthSubtitle": "Accordée — MikroLan peut gérer vos routeurs à distance",
+    "remoteRevoke": "Révoquer l'autorisation",
+    "remoteRevokeWarning": "Les accès distants de tous vos routeurs seront coupés immédiatement et leurs identifiants effacés sous 7 jours. Vous pourrez réactiver la gestion à distance plus tard.",
+    "remoteRevokeConfirm": "Révoquer et couper les accès",
+    "remoteRevoked": "Autorisation révoquée. Les accès distants sont coupés."
   }
 }

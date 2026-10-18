@@ -2,6 +2,7 @@ import request from 'supertest';
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { UserRole } from '@prisma/client';
 import { PrismaService } from '../../src/prisma/prisma.service';
+import { LEGAL_VERSIONS } from '../../src/modules/legal/legal.versions';
 
 export async function signupUser(
   app: NestFastifyApplication,
@@ -15,6 +16,8 @@ export async function signupUser(
     tenantName: overrides.tenantName ?? 'Test Tenant',
     email: overrides.email ?? `test-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`,
     password: overrides.password ?? 'SecurePass123!',
+    termsVersion: LEGAL_VERSIONS.terms,
+    privacyVersion: LEGAL_VERSIONS.privacy,
   };
   const res = await request(app.getHttpServer())
     .post('/api/auth/signup')

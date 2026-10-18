@@ -15,6 +15,7 @@ import { CryptoModule } from './common/crypto/crypto.module';
 import { RedisModule } from './common/redis/redis.module';
 import { HealthModule } from './modules/health/health.module';
 import { LegalModule } from './modules/legal/legal.module';
+import { ComplianceModule } from './modules/compliance/compliance.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { RoutersModule } from './modules/routers/routers.module';
 import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
@@ -65,6 +66,7 @@ import { RouterGatewayModule } from './modules/router-gateway/router-gateway.mod
     SubscriptionsModule,
     RoutersModule,
     RemoteAccessModule,
+    ComplianceModule,
     PlansModule,
     HotspotModule,
     VouchersModule,

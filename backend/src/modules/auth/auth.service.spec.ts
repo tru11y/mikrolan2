@@ -2,6 +2,7 @@ import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { UserRole, UserStatus, SubscriptionPlan, SubscriptionStatus } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { AuthService } from './auth.service';
+import { LEGAL_VERSIONS } from '../legal/legal.versions';
 
 // ─── Mocks ───────────────────────────────────────────────
 const mockPrisma = {
@@ -10,10 +11,12 @@ const mockPrisma = {
     findFirst: jest.fn(),
     update: jest.fn().mockResolvedValue({}),
     create: jest.fn(),
+    count: jest.fn(),
   },
   tenant: {
     create: jest.fn(),
     findUnique: jest.fn(),
+    update: jest.fn().mockResolvedValue({}),
   },
   subscription: { findUnique: jest.fn() },
   refreshToken: { updateMany: jest.fn().mockResolvedValue({}) },
@@ -72,6 +75,7 @@ function buildService() {
 
 // ─── Shared fixtures ─────────────────────────────────────
 const PASSWORD = 'P@ssw0rd123!';
+const LEGAL = { termsVersion: LEGAL_VERSIONS.terms, privacyVersion: LEGAL_VERSIONS.privacy };
 let PASSWORD_HASH: string;
 
 beforeAll(async () => {
@@ -96,6 +100,7 @@ describe('AuthService', () => {
         tenantName: 'Café WiFi',
         email: 'Owner@Test.com',
         password: PASSWORD,
+        ...LEGAL,
       });
 
       expect(result).toEqual({ accessToken: 'at', refreshToken: 'rt', expiresIn: 900 });
@@ -112,6 +117,41 @@ describe('AuthService', () => {
       );
     });
 
+    it('stores the accepted legal versions and timestamps on the user', async () => {
+      const service = buildService();
+      mockPrisma.tenant.create.mockResolvedValue({ id: 't1' });
+      mockPrisma.user.create.mockResolvedValue({ id: 'u1', tenantId: 't1', role: UserRole.OWNER });
+
+      await service.signup({ tenantName: 'Café', email: 'a@b.com', password: PASSWORD, ...LEGAL });
+
+      expect(mockPrisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            termsVersion: LEGAL_VERSIONS.terms,
+            privacyVersion: LEGAL_VERSIONS.privacy,
+            termsAcceptedAt: expect.any(Date),
+            privacyAcceptedAt: expect.any(Date),
+          }),
+        }),
+      );
+    });
+
+    it('rejects a stale legal version with 409 before creating anything', async () => {
+      const service = buildService();
+
+      await expect(
+        service.signup({
+          tenantName: 'X',
+          email: 'a@b.com',
+          password: PASSWORD,
+          termsVersion: '1999-01-01',
+          privacyVersion: LEGAL_VERSIONS.privacy,
+        }),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(mockPrisma.tenant.create).not.toHaveBeenCalled();
+      expect(mockPrisma.user.create).not.toHaveBeenCalled();
+    });
+
     it('throws ConflictException on duplicate email (P2002)', async () => {
       const service = buildService();
       const p2002 = Object.assign(new Error(), { code: 'P2002' });
@@ -122,7 +162,7 @@ describe('AuthService', () => {
       mockPrisma.$transaction.mockRejectedValueOnce(p2002);
 
       await expect(
-        service.signup({ tenantName: 'X', email: 'dup@t.com', password: PASSWORD }),
+        service.signup({ tenantName: 'X', email: 'dup@t.com', password: PASSWORD, ...LEGAL }),
       ).rejects.toMatchObject({ status: 409 });
     });
   });
@@ -300,6 +340,83 @@ describe('AuthService', () => {
       const result = await service.logout('some-rt');
       expect(mockTokens.revoke).toHaveBeenCalledWith('some-rt');
       expect(result).toEqual({ revoked: true });
+    });
+  });
+
+  describe('acceptLegal', () => {
+    it('records current versions', async () => {
+      const service = buildService();
+
+      await service.acceptLegal('u1', LEGAL);
+
+      expect(mockPrisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'u1' },
+        data: expect.objectContaining({
+          termsVersion: LEGAL_VERSIONS.terms,
+          privacyVersion: LEGAL_VERSIONS.privacy,
+          termsAcceptedAt: expect.any(Date),
+          privacyAcceptedAt: expect.any(Date),
+        }),
+      });
+    });
+
+    it('rejects an outdated version with 409', async () => {
+      const service = buildService();
+
+      await expect(
+        service.acceptLegal('u1', { termsVersion: LEGAL_VERSIONS.terms, privacyVersion: '1999-01-01' }),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(mockPrisma.user.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deleteAccount', () => {
+    const user = { id: 'u1', tenantId: 't1', hasPassword: true, passwordHash: '' };
+
+    beforeAll(async () => {
+      user.passwordHash = await argon2.hash(PASSWORD, { type: argon2.argon2id });
+    });
+
+    it('stamps deletedAt, revokes tokens and soft-deletes the tenant when no active user remains', async () => {
+      const service = buildService();
+      mockPrisma.user.findFirst.mockResolvedValue(user);
+      mockPrisma.user.count.mockResolvedValue(0);
+
+      await service.deleteAccount('u1', { password: PASSWORD });
+
+      expect(mockPrisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'u1' },
+        data: { status: UserStatus.DELETED, deletedAt: expect.any(Date) },
+      });
+      expect(mockPrisma.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { userId: 'u1', revoked: false },
+        data: { revoked: true },
+      });
+      expect(mockPrisma.tenant.update).toHaveBeenCalledWith({
+        where: { id: 't1' },
+        data: { status: 'DELETED', deletedAt: expect.any(Date) },
+      });
+    });
+
+    it('keeps the tenant when other active users remain', async () => {
+      const service = buildService();
+      mockPrisma.user.findFirst.mockResolvedValue(user);
+      mockPrisma.user.count.mockResolvedValue(2);
+
+      await service.deleteAccount('u1', { password: PASSWORD });
+
+      expect(mockPrisma.user.update).toHaveBeenCalled();
+      expect(mockPrisma.tenant.update).not.toHaveBeenCalled();
+    });
+
+    it('does not delete anything on a wrong password', async () => {
+      const service = buildService();
+      mockPrisma.user.findFirst.mockResolvedValue(user);
+
+      await expect(service.deleteAccount('u1', { password: 'wrong-password' })).rejects.toMatchObject({
+        status: 401,
+      });
+      expect(mockPrisma.user.update).not.toHaveBeenCalled();
     });
   });
 });

@@ -131,6 +131,10 @@ export const ErrorCode = {
 
   // ── WireGuard (admin) ──
   WG_CONFIRM_MISMATCH: 'WG_CONFIRM_MISMATCH',
+
+  // ── Conformité légale ──
+  LEGAL_VERSION_MISMATCH: 'LEGAL_VERSION_MISMATCH',
+  REMOTE_ACCESS_AUTH_REQUIRED: 'REMOTE_ACCESS_AUTH_REQUIRED',
 } as const;
 
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
