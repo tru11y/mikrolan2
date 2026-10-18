@@ -57,7 +57,7 @@
     "forgotPassword": "Forgot password?",
     "submitLogin": "Sign in",
     "submitSignup": "Create my account",
-    "signupLegal": "By creating an account, you agree to the",
+    "signupLegal": "I have read and accept the",
     "termsOfUse": "terms of use",
     "and": "and the",
     "continueWithGoogle": "Continue with Google",
@@ -1106,5 +1106,27 @@
     "bannerDetail": "MikroLan {{version}} is available.",
     "bannerAction": "Update",
     "dismiss": "Dismiss"
+  },
+  "legal": {
+    "consentTitle": "Terms updated",
+    "consentIntro": "To keep using MikroLan, please read and accept our terms of use and privacy policy.",
+    "readTerms": "Read the terms of use",
+    "readPrivacy": "Read the privacy policy",
+    "consentCheckbox": "I have read and accept the terms of use and the privacy policy.",
+    "consentAccept": "Accept and continue",
+    "consentLogout": "Sign out",
+    "remoteTitle": "Remote access authorization",
+    "remoteBody": "To manage your routers remotely, MikroLan sets up a secure tunnel (WireGuard) to each router and stores its credentials encrypted. This access is limited to providing the service and can be revoked at any time.",
+    "remoteRead": "Read the full authorization",
+    "remoteCheckbox": "I authorize MikroLan to access my routers remotely under the described conditions, and I confirm I own them or am entitled to administer them.",
+    "remoteAccept": "I authorize",
+    "remoteCancel": "Cancel",
+    "remoteOwnerOnly": "Only the account owner can grant this authorization. Ask them to enable it.",
+    "remoteAuthTitle": "Remote access authorization",
+    "remoteAuthSubtitle": "Granted — MikroLan can manage your routers remotely",
+    "remoteRevoke": "Revoke authorization",
+    "remoteRevokeWarning": "Remote access to all your routers will be cut immediately and their credentials erased within 7 days. You can re-enable remote management later.",
+    "remoteRevokeConfirm": "Revoke and cut access",
+    "remoteRevoked": "Authorization revoked. Remote access is cut."
   }
 }

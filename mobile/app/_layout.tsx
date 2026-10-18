@@ -11,6 +11,7 @@ import { LiveEventsProvider } from '@/src/providers/live-events-provider';
 import { PushNotificationsProvider } from '@/src/providers/push-notifications-provider';
 import { PaywallLock } from '@/src/components/PaywallLock';
 import { VersionGate } from '@/src/components/VersionGate';
+import { LegalConsentGate } from '@/src/components/LegalConsentGate';
 import { ErrorBoundary } from '@/src/components/ErrorBoundary';
 import { ToastProvider } from '@/src/components/ui';
 import { ThemeProvider, useTheme, useThemeMode } from '@/src/providers/theme-provider';
@@ -55,6 +56,7 @@ function AppContent() {
         />
       </Stack>
       <PaywallLock />
+      <LegalConsentGate />
       <VersionGate />
     </>
   );

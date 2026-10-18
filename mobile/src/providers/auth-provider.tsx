@@ -56,6 +56,9 @@ type AuthContextValue = {
   entitlement: Entitlement;
   /** L'essai est terminé et aucun forfait n'est actif. */
   isLocked: boolean;
+  /** Les CGU / la politique publiées ne sont pas celles que l'utilisateur a acceptées. */
+  needsLegalConsent: boolean;
+  acceptLegal: () => Promise<void>;
   apiBaseUrl: string;
   error: string | null;
   clearError: () => void;
@@ -162,7 +165,18 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setIsBusy(true);
     setError(null);
     try {
-      await setAuthTokens(await api.auth.signup(tenantName, email, password, country));
+      // L'écran d'inscription n'envoie le formulaire qu'une fois la case cochée ;
+      // on enregistre la version publiée au moment de l'envoi.
+      const legal = await api.legal.versions();
+      await setAuthTokens(
+        await api.auth.signup(
+          tenantName,
+          email,
+          password,
+          { termsVersion: legal.terms, privacyVersion: legal.privacy },
+          country,
+        ),
+      );
       await afterAuth();
     } catch (e) {
       setError(extractErrorMessage(e));
@@ -238,6 +252,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
     setMe(await api.auth.me());
   }
 
+  async function acceptLegal(): Promise<void> {
+    const legal = me?.legal;
+    if (!legal) return;
+    await api.auth.acceptLegal({ termsVersion: legal.terms, privacyVersion: legal.privacy });
+    setMe(await api.auth.me());
+  }
+
   async function updateApiBaseUrl(value: string): Promise<void> {
     setApiBaseUrlState(await setApiBaseUrl(value));
   }
@@ -255,6 +276,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
     voucherMonthlyLimit: null,
   };
 
+  const needsLegalConsent = Boolean(
+    me?.legal &&
+      (me.user.termsVersion !== me.legal.terms ||
+        me.user.privacyVersion !== me.legal.privacy),
+  );
+
   const contextValue = useMemo<AuthContextValue>(
     () => ({
       isReady,
@@ -264,6 +291,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
       isPro: entitlement.tier === 'PRO',
       entitlement,
       isLocked: entitlement.tier === 'LOCKED',
+      needsLegalConsent,
+      acceptLegal,
       apiBaseUrl,
       error,
       clearError: () => setError(null),
@@ -279,7 +308,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       refreshProfile,
       updateApiBaseUrl,
     }),
-    [apiBaseUrl, entitlement, error, isBusy, isReady, me, promptGoogle],
+    [apiBaseUrl, entitlement, error, isBusy, isReady, me, needsLegalConsent, promptGoogle],
   );
 
   return (

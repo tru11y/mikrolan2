@@ -15,6 +15,7 @@ import { TenantContext } from '../../common/context/tenant-context';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { AuthService } from './auth.service';
 import {
+  acceptLegalSchema,
   appleOAuthSchema,
   changePasswordSchema,
   confirmPasswordResetSchema,
@@ -28,6 +29,7 @@ import {
   signupSchema,
   updateNotificationsSchema,
   updateProfileSchema,
+  type AcceptLegalDto,
   type AppleOAuthDto,
   type ChangePasswordDto,
   type ConfirmPasswordResetDto,
@@ -176,6 +178,15 @@ export class AuthController {
   @HttpCode(200)
   unregisterPushToken(@CurrentUser() user: TenantContext) {
     return this.auth.unregisterPushToken(user.userId);
+  }
+
+  @Post('legal-consent')
+  @HttpCode(200)
+  acceptLegal(
+    @CurrentUser() user: TenantContext,
+    @Body(new ZodValidationPipe(acceptLegalSchema)) dto: AcceptLegalDto,
+  ) {
+    return this.auth.acceptLegal(user.userId, dto);
   }
 
   @Post('logout-all')
