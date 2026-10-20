@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createLanResolver, isGenericIdentity, TTL_VERIFIED_MS, type LanDeps } from './lanRouting.core.ts';
+import { createLanResolver, isGenericIdentity, LanIdentityMismatchError, TTL_VERIFIED_MS, verifySessionIdentity, type LanDeps } from './lanRouting.core.ts';
 
 type Creds = { host: string; port: number; username: string; password: string };
 
@@ -41,7 +41,7 @@ test('TEST A/B : téléphone sur le Wi-Fi de A, routeur B sélectionné, MÊME 1
   assert.equal(b.observedIdentity, 'ROUTER_A');
   const a = await resolver.resolve('A');
   assert.equal(a.state, 'VERIFIED'); // A reste utilisable
-  assert.deepEqual(a.creds, ROUTERS.A.creds);
+  assert.deepEqual(a.creds, { ...ROUTERS.A.creds, expectedIdentity: 'ROUTER_A' });
 });
 
 test('A. bon Wi-Fi + bonne identité → VERIFIED', async () => {
@@ -132,4 +132,55 @@ test('creds exposés UNIQUEMENT si VERIFIED (invariant)', async () => {
 test('identités génériques', () => {
   for (const v of ['MikroTik', 'mikrotik', 'RouterOS', 'MikroTik-2', '', '  ', null, undefined]) assert.equal(isGenericIdentity(v), true, String(v));
   for (const v of ['ROUTER_A', 'rb951_BZ_akdo sinacassi_dec_2025', 'FREEDOM HOME']) assert.equal(isGenericIdentity(v), false, v);
+});
+
+// ── Preuve d'identité DANS la session qui exécute l'action (jamais un cache de 60 s) ──────────────────────
+
+const fakeClient = (read: () => Promise<string>) => ({ systemIdentity: async () => ({ name: await read() }) });
+
+test("SESSION 1 : identité lue dans la session = attendue → l'action peut s'exécuter", async () => {
+  await assert.doesNotReject(verifySessionIdentity(fakeClient(async () => 'ROUTER_A'), 'ROUTER_A'));
+});
+
+test('SESSION 2 : identité différente → refus typé, AVANT toute action', async () => {
+  await assert.rejects(
+    verifySessionIdentity(fakeClient(async () => 'ROUTER_A'), 'ROUTER_B'),
+    (e: unknown) => e instanceof LanIdentityMismatchError && e.reason === 'MISMATCH',
+  );
+});
+
+test('SESSION 3 : identité illisible (timeout) → refus, fail closed', async () => {
+  await assert.rejects(
+    verifySessionIdentity(fakeClient(async () => { throw new Error('timeout'); }), 'ROUTER_A'),
+    (e: unknown) => e instanceof LanIdentityMismatchError && e.reason === 'UNREADABLE',
+  );
+});
+
+test('SESSION 4 : identité attendue vide ou générique → refus (jamais une preuve)', async () => {
+  for (const expected of ['', '  ', 'MikroTik']) {
+    await assert.rejects(verifySessionIdentity(fakeClient(async () => expected), expected), LanIdentityMismatchError);
+  }
+});
+
+test("SESSION 5 : les credentials VERIFIED portent l'identité attendue ; MISMATCH ne rend rien", async () => {
+  const a = await setup({ physical: 'A' }).resolver.resolve('A');
+  assert.equal(a.state, 'VERIFIED');
+  assert.equal(a.creds?.expectedIdentity, 'ROUTER_A');
+  const b = await setup({ physical: 'A' }).resolver.resolve('B');
+  assert.equal(b.creds, null);
+});
+
+test("SESSION 6 (TOCTOU) : preuve A en cache, le téléphone bascule sur B SANS événement réseau → l'action est refusée", async () => {
+  const { resolver, state } = setup({ physical: 'A' });
+  const proof = await resolver.resolve('A'); // VERIFIED, mis en cache pour 60 s
+  assert.equal(proof.state, 'VERIFIED');
+  state.physical = 'B'; // même 10.10.10.1, aucune invalidation
+  const cached = await resolver.resolve('A');
+  assert.equal(cached.state, 'VERIFIED'); // le cache croit encore A…
+  let mutated = false;
+  await assert.rejects(async () => {
+    await verifySessionIdentity(fakeClient(async () => ROUTERS[state.physical as 'A' | 'B'].identity), cached.creds!.expectedIdentity);
+    mutated = true; // reboot / push / écriture config
+  }, LanIdentityMismatchError);
+  assert.equal(mutated, false);
 });
