@@ -107,8 +107,8 @@ android {
         // versionné : `app.json` n'est lu que par `expo prebuild`, donc l'y
         // incrémenter seul ne change rien au build — et `adb install` réussit
         // en silence sans que la version bouge. Garder les deux d'accord.
-        versionCode 38
-        versionName "1.1.4"
+        versionCode 40
+        versionName "1.1.5"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
