@@ -1124,6 +1124,15 @@ export const api = {
       );
       return unwrap(res);
     },
+    /** Ouvre une fenêtre temporaire (IP de l'appelant) pour WebFig/SSH/Winbox. */
+    async openRemoteAccess(
+      id: string,
+    ): Promise<{ expiresAt: string; accessUrls: RemoteAccessUrls | null }> {
+      const res = await apiClient.post<
+        ApiEnvelope<{ expiresAt: string; accessUrls: RemoteAccessUrls | null }>
+      >(`/routers/${id}/remote/open-access`);
+      return unwrap(res);
+    },
     async revokeRemote(id: string): Promise<{ revoked: boolean }> {
       const res = await apiClient.post<ApiEnvelope<{ revoked: boolean }>>(
         `/routers/${id}/remote/revoke`,
