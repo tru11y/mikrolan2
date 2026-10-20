@@ -9,6 +9,7 @@ const peer = {
   wgPublicKey: 'pub',
   wgIp: '10.8.0.2',
   allocatedPort: 20000,
+  accessSourceIp: '41.66.1.2',
   webfigPort: 80,
   sshPort: 22,
   winboxPort: 8291,
@@ -50,10 +51,15 @@ describe('PeerRevocationService.revokePeer', () => {
       webfigPort: 80,
       sshPort: 22,
       winboxPort: 8291,
-    });
+    }, '41.66.1.2');
     expect(mockPrisma.remotePeer.update).toHaveBeenCalledWith({
       where: { id: 'peer1' },
-      data: { status: RemotePeerStatus.REVOKED, revokedAt: expect.any(Date) },
+      data: {
+        status: RemotePeerStatus.REVOKED,
+        revokedAt: expect.any(Date),
+        accessOpenUntil: null,
+        accessSourceIp: null,
+      },
     });
     expect(mockPrisma.router.update).toHaveBeenCalledWith({
       where: { id: 'r1' },
