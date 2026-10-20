@@ -16,7 +16,10 @@ import type { AppConfig } from './config/configuration';
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(
     AppModule,
-    new FastifyAdapter(),
+    // Seul Caddy (loopback) est cru sur X-Forwarded-For : `req.ip` sert à
+    // restreindre l'accès routeur à l'IP de l'opérateur, il ne doit pas être
+    // falsifiable par un appel direct au port de l'API.
+    new FastifyAdapter({ trustProxy: '127.0.0.1' }),
   ) as NestFastifyApplication;
 
   const config = app.get(ConfigService<AppConfig, true>);
