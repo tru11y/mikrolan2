@@ -1130,6 +1130,18 @@ export const api = {
       );
       return unwrap(res);
     },
+    async activateRemote(id: string): Promise<{ activated: boolean }> {
+      const res = await apiClient.post<ApiEnvelope<{ activated: boolean }>>(
+        `/routers/${id}/remote/activate`,
+      );
+      return unwrap(res);
+    },
+    async cancelProvision(id: string): Promise<{ cancelled: boolean }> {
+      const res = await apiClient.post<ApiEnvelope<{ cancelled: boolean }>>(
+        `/routers/${id}/remote/cancel`,
+      );
+      return unwrap(res);
+    },
     async rebootRemote(id: string): Promise<{ rebooted: boolean }> {
       const res = await apiClient.post<ApiEnvelope<{ rebooted: boolean }>>(
         `/routers/${id}/remote/reboot`,
