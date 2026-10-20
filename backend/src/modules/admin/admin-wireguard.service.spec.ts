@@ -18,6 +18,8 @@ type PeerFixture = {
   webfigPort: number;
   sshPort: number;
   winboxPort: number;
+  accessOpenUntil: Date | null;
+  accessSourceIp: string | null;
   router: { id: string; alias: string | null; identity: string; health: string; mode: string; lastHeartbeat: Date | null };
 };
 
@@ -36,6 +38,8 @@ function peer(over: Partial<PeerFixture> & { key: string; alias: string }): Peer
     webfigPort: 80,
     sshPort: 22,
     winboxPort: 8291,
+    accessOpenUntil: null,
+    accessSourceIp: null,
     router: { id: `router-${key}`, alias, identity: `id-${key}`, health: 'OFFLINE', mode: 'REMOTE', lastHeartbeat: null },
     ...rest,
   };
@@ -175,15 +179,29 @@ describe('AdminWireGuardService.listPeers', () => {
 describe('AdminWireGuardService.resync', () => {
   const active = peer({ key: 'a', alias: 'AZ_OPEN', webfigPort: 8080 });
 
-  it('ré-applique le peer avec la clé et les ports stockés, sans doublonner le DNAT', async () => {
+  it('fenêtre ouverte : ré-applique le DNAT restreint à l’IP autorisée, sans doublon', async () => {
+    const open = peer({
+      key: 'o',
+      alias: 'OPEN',
+      webfigPort: 8080,
+      accessSourceIp: '203.0.113.7',
+      accessOpenUntil: new Date(Date.now() + 600_000),
+    });
+    const { service, wg } = build({ peers: [open] });
+    await service.resync('router-o', actor);
+
+    const ports = { webfigPort: 8080, sshPort: 22, winboxPort: 8291 };
+    expect(wg.removeDnat).toHaveBeenCalledWith('10.20.0.2', 20_001, ports, '203.0.113.7');
+    expect(wg.addDnat).toHaveBeenCalledWith('10.20.0.2', 20_001, ports, '203.0.113.7');
+    expect(wg.removeDnat.mock.invocationCallOrder[0]).toBeLessThan(wg.addDnat.mock.invocationCallOrder[0]);
+  });
+
+  it('ré-applique le peer sans publier de DNAT quand aucune fenêtre d’accès n’est ouverte', async () => {
     const { service, wg, eventLog } = build({ peers: [active] });
     await expect(service.resync('router-a', actor)).resolves.toEqual({ resynced: true });
 
     expect(wg.addPeer).toHaveBeenCalledWith('pk-a', '10.20.0.2');
-    const ports = { webfigPort: 8080, sshPort: 22, winboxPort: 8291 };
-    expect(wg.removeDnat).toHaveBeenCalledWith('10.20.0.2', 20_001, ports);
-    expect(wg.addDnat).toHaveBeenCalledWith('10.20.0.2', 20_001, ports);
-    expect(wg.removeDnat.mock.invocationCallOrder[0]).toBeLessThan(wg.addDnat.mock.invocationCallOrder[0]);
+    expect(wg.addDnat).not.toHaveBeenCalled();
     expect(eventLog.success).toHaveBeenCalledWith(
       'UPDATE',
       'RemotePeer',
@@ -207,7 +225,7 @@ describe('AdminWireGuardService.resync', () => {
 
   it('échec wg : 503, échec audité, aucune écriture en base', async () => {
     const { service, wg, eventLog, prisma } = build({ peers: [active] });
-    wg.addDnat.mockRejectedValue(new Error('iptables boom'));
+    wg.addPeer.mockRejectedValue(new Error('wg boom'));
     await expect(service.resync('router-a', actor)).rejects.toMatchObject({ status: HttpStatus.SERVICE_UNAVAILABLE });
     expect(eventLog.failure).toHaveBeenCalled();
     expect(prisma.remotePeer.update).not.toHaveBeenCalled();
