@@ -43,7 +43,7 @@ export class PeerRevocationService {
         webfigPort: peer.webfigPort,
         sshPort: peer.sshPort,
         winboxPort: peer.winboxPort,
-      });
+      }, peer.accessSourceIp);
     } catch (err) {
       this.logger.warn(
         `WireGuard removal failed for router ${peer.routerId} (${reason}): ${err instanceof Error ? err.message : err}`,
@@ -57,7 +57,12 @@ export class PeerRevocationService {
     await this.prisma.$transaction(async (tx) => {
       await tx.remotePeer.update({
         where: { id: peer.id },
-        data: { status: RemotePeerStatus.REVOKED, revokedAt: new Date() },
+        data: {
+          status: RemotePeerStatus.REVOKED,
+          revokedAt: new Date(),
+          accessOpenUntil: null,
+          accessSourceIp: null,
+        },
       });
       await tx.router.update({
         where: { id: peer.routerId },
