@@ -272,7 +272,7 @@ export class RoutersService {
           webfigPort: peer.webfigPort,
           sshPort: peer.sshPort,
           winboxPort: peer.winboxPort,
-        });
+        }, peer.accessSourceIp);
       } catch (err) {
         this.logger.warn(`WireGuard cleanup failed (proceeding): ${err instanceof Error ? err.message : err}`);
         await this.eventLog.warning(AuditAction.DELETE, 'Router', routerId, {

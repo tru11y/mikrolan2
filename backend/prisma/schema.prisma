@@ -307,6 +307,12 @@ model RemotePeer {
   revokedAt       DateTime?
   createdAt       DateTime         @default(now())
 
+  // Fenêtre d'accès temporaire WebFig/SSH/Winbox : les ports DNAT ne sont
+  // publiés sur le VPS que jusqu'à accessOpenUntil, et seulement pour
+  // accessSourceIp. NULL = aucun port exposé (état par défaut).
+  accessOpenUntil DateTime?
+  accessSourceIp  String?
+
   // RouterOS service ports on THIS router. Operators frequently move the
   // WebFig HTTP service off the default 80 (hardening), and SSH/Winbox can
   // also be relocated. Captured at provision time so the DNAT rules on the

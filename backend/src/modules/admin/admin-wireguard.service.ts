@@ -171,11 +171,18 @@ export class AdminWireGuardService {
       winboxPort: peer.winboxPort,
     };
     try {
-      // `wg set` est idempotent. `addDnat` ajoute en fin de chaîne (-A) : on retire
-      // d'abord les règles de CE peer pour ne jamais les dupliquer, sans toucher aux autres.
+      // `wg set` est idempotent. Le DNAT n'existe que pendant une fenêtre d'accès
+      // ouverte : `addDnat` ajoute en fin de chaîne (-A), on retire d'abord les
+      // règles de CE peer pour ne jamais les dupliquer, sans toucher aux autres.
       await this.wg.addPeer(peer.wgPublicKey, peer.wgIp);
-      await this.wg.removeDnat(peer.wgIp, peer.allocatedPort, ports);
-      await this.wg.addDnat(peer.wgIp, peer.allocatedPort, ports);
+      const windowOpen =
+        peer.accessSourceIp !== null &&
+        peer.accessOpenUntil !== null &&
+        peer.accessOpenUntil.getTime() > Date.now();
+      if (windowOpen && peer.accessSourceIp) {
+        await this.wg.removeDnat(peer.wgIp, peer.allocatedPort, ports, peer.accessSourceIp);
+        await this.wg.addDnat(peer.wgIp, peer.allocatedPort, ports, peer.accessSourceIp);
+      }
     } catch (err) {
       this.logger.warn(`WG resync failed for router ${routerId}: ${err instanceof Error ? err.message : err}`);
       const failure = new BusinessException(
@@ -251,7 +258,7 @@ export class AdminWireGuardService {
         webfigPort: peer.webfigPort,
         sshPort: peer.sshPort,
         winboxPort: peer.winboxPort,
-      });
+      }, peer.accessSourceIp);
     } catch (err) {
       // Comme la révocation propriétaire : la base reste la source de vérité, le
       // reconciler élaguera le peer résiduel au prochain cycle.

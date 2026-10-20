@@ -845,6 +845,7 @@
     "webfigSubtitle": "Interface web d'administration RouterOS",
     "remoteNotEnabled": "Gestion à distance non activée pour ce routeur.",
     "remoteNotEnabledShort": "Gestion à distance non activée.",
+    "remoteOpenFailed": "Impossible d'ouvrir l'accès à distance. Réessayez.",
     "sshAccess": "Accès SSH",
     "sshSubtitle": "Terminal en ligne de commande",
     "noSshClient": "Aucun client SSH détecté.",
