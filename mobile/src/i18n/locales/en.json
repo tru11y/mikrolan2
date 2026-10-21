@@ -408,7 +408,20 @@
     "hourlyHeatmap": "Hourly heatmap",
     "month": "Month",
     "year": "Year",
-    "months": ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+    "months": [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December"
+    ],
     "noChartData": "No data for this period."
   },
   "payment": {
@@ -1019,7 +1032,41 @@
     "changeLogo": "Change image",
     "selectLogo": "Select an image",
     "updateButton": "Update",
-    "saved": "Ticket settings saved."
+    "saved": "Ticket settings saved.",
+    "receiptPreset": "Apply \"receipt ticket\" template",
+    "layout": "Layout",
+    "columns": "Columns per page",
+    "cellHeight": "Ticket height (mm)",
+    "durationFormat": "Duration format",
+    "currencyPosition": "Currency position",
+    "dateFormat": "Date format",
+    "boxedCode": "Box the code",
+    "showCodeIcon": "User icon before the code",
+    "lines": "Ticket lines (order, size, style)",
+    "text": "Text",
+    "size": "Size",
+    "bold": "Bold",
+    "align": {
+      "left": "Align left",
+      "center": "Center",
+      "right": "Align right"
+    },
+    "blocks": {
+      "header": "Header",
+      "logo": "Logo",
+      "companyName": "Company name",
+      "number": "Ticket number (#)",
+      "code": "Ticket code",
+      "plan": "Plan name",
+      "duration": "Duration",
+      "price": "Price",
+      "contact": "Wi-Fi name / contact",
+      "createdAt": "Date and time",
+      "qr": "QR code",
+      "note": "Note",
+      "footer": "Footer",
+      "poweredBy": "Powered by MikroLan"
+    }
   },
   "adminTenant": {
     "client": "Client",
