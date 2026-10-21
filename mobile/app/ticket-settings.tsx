@@ -1,17 +1,20 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
 import { useEffect, useState } from 'react';
-import { ScrollView, Switch, Text, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { api, extractErrorMessage } from '@/src/lib/api';
 import {
-  api,
-  extractErrorMessage,
-  DEFAULT_TICKET_TEMPLATE,
-  type TicketTemplate,
-} from '@/src/lib/api';
+  BLOCK_FLAG,
+  moveBlock,
+  receiptPreset,
+  resolveTicketTemplate,
+  type ResolvedTicketTemplate,
+} from '@/src/lib/ticketTemplate';
+import { BlockEditor, Divider, Segment, Stepper, Toggle } from '@/src/components/ticket-settings/TicketBlockEditor';
 import { buildTicketsHtml } from '@/src/lib/ticketsPdf';
 import { reportSilent } from '@/src/lib/report';
 import {
@@ -28,43 +31,6 @@ import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 
-function Toggle({
-  label,
-  value,
-  onValueChange,
-}: {
-  label: string;
-  value: boolean;
-  onValueChange: (v: boolean) => void;
-}) {
-  const theme = useTheme();
-  return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingVertical: 14,
-      }}
-    >
-      <Text style={{ color: theme.text, fontSize: 14, fontWeight: '600', flex: 1 }}>
-        {label}
-      </Text>
-      <Switch
-        value={value}
-        onValueChange={onValueChange}
-        trackColor={{ false: theme.border, true: theme.primary }}
-        thumbColor={theme.onStrong}
-      />
-    </View>
-  );
-}
-
-function Divider() {
-  const theme = useTheme();
-  return <View style={{ height: 1, backgroundColor: theme.border }} />;
-}
-
 export default function TicketSettingsScreen() {
   const theme = useTheme();
   const { t } = useTranslation();
@@ -78,7 +44,7 @@ export default function TicketSettingsScreen() {
     enabled: Boolean(routerId),
   });
 
-  const [tpl, setTpl] = useState<TicketTemplate>(DEFAULT_TICKET_TEMPLATE);
+  const [tpl, setTpl] = useState<ResolvedTicketTemplate>(resolveTicketTemplate(null));
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: 'success' | 'danger'; text: string } | null>(
     null,
@@ -86,7 +52,8 @@ export default function TicketSettingsScreen() {
   const [previewHtml, setPreviewHtml] = useState('');
 
   useEffect(() => {
-    if (routerQuery.data?.ticketTemplate) setTpl(routerQuery.data.ticketTemplate);
+    if (routerQuery.data?.ticketTemplate)
+      setTpl(resolveTicketTemplate(routerQuery.data.ticketTemplate));
   }, [routerQuery.data]);
 
   // Aperçu en direct : le rendu exact que produira l'impression (même
@@ -102,6 +69,7 @@ export default function TicketSettingsScreen() {
       priceXof: 500,
       tickets: [{ code: 'DEMO1234' }],
       template: tpl,
+      preview: true,
     }).then((html) => {
       if (!cancelled) setPreviewHtml(html);
     });
@@ -110,7 +78,7 @@ export default function TicketSettingsScreen() {
     };
   }, [tpl, routerQuery.data]);
 
-  function set<K extends keyof TicketTemplate>(key: K, value: TicketTemplate[K]) {
+  function set<K extends keyof ResolvedTicketTemplate>(key: K, value: ResolvedTicketTemplate[K]) {
     setTpl((t) => ({ ...t, [key]: value }));
   }
 
@@ -158,7 +126,7 @@ export default function TicketSettingsScreen() {
           <View style={{ padding: space.md, paddingBottom: 0 }}>
             <Label>{t('ticketSettings.preview')}</Label>
           </View>
-          <View style={{ height: 300 }}>
+          <View style={{ height: 340 }}>
             {previewHtml ? (
               <WebView
                 source={{ html: previewHtml }}
@@ -170,162 +138,95 @@ export default function TicketSettingsScreen() {
         </Card>
         <View style={{ height: 12 }} />
 
-        <Toggle
-          label={t('ticketSettings.showCompanyName')}
-          value={tpl.showCompanyName}
-          onValueChange={(v) => set('showCompanyName', v)}
-        />
-        {tpl.showCompanyName ? (
-          <View style={{ paddingBottom: 14 }}>
-            <Field
-              label={t('ticketSettings.companyNameLabel')}
-              value={tpl.companyName ?? ''}
-              onChangeText={(v) => set('companyName', v)}
-              placeholder={t('ticketSettings.companyNamePlaceholder')}
-            />
-          </View>
-        ) : null}
-        <Divider />
-
-        <Toggle
-          label={t('ticketSettings.showWifiName')}
-          value={tpl.showWifiName}
-          onValueChange={(v) => set('showWifiName', v)}
-        />
-        {tpl.showWifiName ? (
-          <View style={{ paddingBottom: 14 }}>
-            <Field
-              label={t('ticketSettings.wifiNameLabel')}
-              value={tpl.wifiName ?? ''}
-              onChangeText={(v) => set('wifiName', v)}
-              placeholder={t('ticketSettings.wifiNamePlaceholder')}
-            />
-          </View>
-        ) : null}
-        <Divider />
-
-        <Toggle
-          label={t('ticketSettings.showPrice')}
-          value={tpl.showPrice}
-          onValueChange={(v) => set('showPrice', v)}
-        />
-        {tpl.showPrice ? (
-          <View style={{ paddingBottom: 14 }}>
-            <Field
-              label={t('ticketSettings.currencyLabel')}
-              value={tpl.currency}
-              onChangeText={(v) => set('currency', v)}
-              placeholder="FCFA"
-            />
-          </View>
-        ) : null}
-        <Divider />
-
-        <Toggle
-          label={t('ticketSettings.showTicketNumber')}
-          value={tpl.showTicketNumber}
-          onValueChange={(v) => set('showTicketNumber', v)}
+        <Button
+          title={t('ticketSettings.receiptPreset')}
+          variant="ghost"
+          onPress={() => setTpl(receiptPreset(tpl))}
         />
         <Divider />
 
+        <Label>{t('ticketSettings.layout')}</Label>
+        <Stepper
+          label={t('ticketSettings.columns')}
+          value={tpl.columns}
+          min={1}
+          max={6}
+          step={1}
+          onChange={(v) => set('columns', v)}
+        />
+        <Stepper
+          label={t('ticketSettings.cellHeight')}
+          value={tpl.cellHeightMm}
+          min={15}
+          max={120}
+          step={5}
+          onChange={(v) => set('cellHeightMm', v)}
+        />
+        <Segment
+          label={t('ticketSettings.durationFormat')}
+          value={tpl.durationFormat}
+          options={[
+            ['hours', '24H'],
+            ['auto', '1 j'],
+          ]}
+          onChange={(v) => set('durationFormat', v)}
+        />
+        <Segment
+          label={t('ticketSettings.currencyPosition')}
+          value={tpl.currencyPosition}
+          options={[
+            ['prefix', '$300'],
+            ['suffix', '300 $'],
+          ]}
+          onChange={(v) => set('currencyPosition', v)}
+        />
+        <Segment
+          label={t('ticketSettings.dateFormat')}
+          value={tpl.dateFormat}
+          options={[
+            ['iso', '2026-10-20'],
+            ['fr', '20/10/2026'],
+          ]}
+          onChange={(v) => set('dateFormat', v)}
+        />
+        <Field
+          label={t('ticketSettings.currencyLabel')}
+          value={tpl.currency}
+          onChangeText={(v) => set('currency', v)}
+          placeholder="FCFA"
+        />
         <Toggle
-          label={t('ticketSettings.showQrCode')}
-          value={tpl.showQrCode}
-          onValueChange={(v) => set('showQrCode', v)}
+          label={t('ticketSettings.boxedCode')}
+          value={tpl.boxedCode}
+          onValueChange={(v) => set('boxedCode', v)}
+        />
+        <Toggle
+          label={t('ticketSettings.showCodeIcon')}
+          value={tpl.showCodeIcon}
+          onValueChange={(v) => set('showCodeIcon', v)}
         />
         <Divider />
 
-        <Toggle
-          label={t('ticketSettings.showPlanName')}
-          value={tpl.showPlanName}
-          onValueChange={(v) => set('showPlanName', v)}
-        />
-        <Divider />
-
-        <Toggle
-          label={t('ticketSettings.showCreatedAt')}
-          value={tpl.showCreatedAt}
-          onValueChange={(v) => set('showCreatedAt', v)}
-        />
-        <Divider />
-
-        <Toggle
-          label={t('ticketSettings.showPoweredBy')}
-          value={tpl.showPoweredBy}
-          onValueChange={(v) => set('showPoweredBy', v)}
-        />
-        <Divider />
-
-        <Toggle
-          label={t('ticketSettings.showNote')}
-          value={tpl.showNote}
-          onValueChange={(v) => set('showNote', v)}
-        />
-        {tpl.showNote ? (
-          <View style={{ paddingBottom: 14 }}>
-            <Field
-              label={t('ticketSettings.noteLabel')}
-              value={tpl.note ?? ''}
-              onChangeText={(v) => set('note', v)}
-              placeholder={t('ticketSettings.notePlaceholder')}
-            />
-          </View>
-        ) : null}
-        <Divider />
-
-        <Toggle
-          label={t('ticketSettings.showHeader')}
-          value={tpl.showHeader}
-          onValueChange={(v) => set('showHeader', v)}
-        />
-        {tpl.showHeader ? (
-          <View style={{ paddingBottom: 14 }}>
-            <Field
-              label={t('ticketSettings.headerLabel')}
-              value={tpl.header ?? ''}
-              onChangeText={(v) => set('header', v)}
-            />
-          </View>
-        ) : null}
-        <Divider />
-
-        <Toggle
-          label={t('ticketSettings.showFooter')}
-          value={tpl.showFooter}
-          onValueChange={(v) => set('showFooter', v)}
-        />
-        {tpl.showFooter ? (
-          <View style={{ paddingBottom: 14 }}>
-            <Field
-              label={t('ticketSettings.footerLabel')}
-              value={tpl.footer ?? ''}
-              onChangeText={(v) => set('footer', v)}
-            />
-          </View>
-        ) : null}
-        <Divider />
-
-        <Toggle
-          label={t('ticketSettings.showPageNumber')}
-          value={tpl.showPageNumber}
-          onValueChange={(v) => set('showPageNumber', v)}
-        />
-        <Divider />
-
-        <Toggle
-          label={t('ticketSettings.showLogo')}
-          value={tpl.showLogo}
-          onValueChange={(v) => set('showLogo', v)}
-        />
-        {tpl.showLogo ? (
-          <View style={{ paddingBottom: 14 }}>
-            <Button
-              title={tpl.logoDataUri ? t('ticketSettings.changeLogo') : t('ticketSettings.selectLogo')}
-              variant="ghost"
-              onPress={pickLogo}
-            />
-          </View>
-        ) : null}
+        <Label>{t('ticketSettings.lines')}</Label>
+        {tpl.blocks.map((blk, i) => (
+          <BlockEditor
+            key={blk.id}
+            block={blk}
+            tpl={tpl}
+            first={i === 0}
+            last={i === tpl.blocks.length - 1}
+            onToggle={(v) => {
+              const flag = BLOCK_FLAG[blk.id];
+              if (flag) set(flag, v);
+            }}
+            onChange={(next) =>
+              set('blocks', tpl.blocks.map((x) => (x.id === blk.id ? next : x)))
+            }
+            onMove={(d) => set('blocks', moveBlock(tpl.blocks, i, d))}
+            onText={(key, v) => set(key, v)}
+            onPickLogo={pickLogo}
+          />
+        ))}
 
         <View style={{ height: 12 }} />
         <Button title={t('ticketSettings.updateButton')} onPress={save} loading={busy} />
