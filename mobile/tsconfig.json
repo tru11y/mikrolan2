@@ -2,6 +2,7 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    "allowImportingTsExtensions": true,
     "paths": {
       "@/*": [
         "./*"
@@ -22,6 +23,7 @@
     "src/lib/voucherGeneration.test.ts",
     "src/lib/lotState.test.ts",
     "src/lib/ticketVerification.test.ts",
+    "src/lib/ticketsPdf.test.ts",
     "src/lib/wgDisplay.test.ts",
     "src/lib/versionPolicy.test.ts"
   ]
