@@ -18,7 +18,11 @@ const mockPrisma: Record<string, any> = {
     update: jest.fn(),
     updateMany: jest.fn(),
   },
-  tenant: { findUnique: jest.fn().mockResolvedValue({ name: 'TestCo' }), update: jest.fn() },
+  tenant: {
+    findUnique: jest.fn().mockResolvedValue({ name: 'TestCo' }),
+    update: jest.fn(),
+    updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+  },
   notification: { create: jest.fn() },
   remotePeer: { updateMany: jest.fn() },
   router: { updateMany: jest.fn() },
@@ -227,6 +231,24 @@ describe('SubscriptionsService', () => {
           data: expect.objectContaining({ status: PaymentStatus.PAID }),
         }),
       );
+      expect(mockPrisma.tenant.updateMany).toHaveBeenCalledWith({
+        where: { id: 't1', status: { not: 'DELETED' } },
+        data: { status: 'ACTIVE' },
+      });
+    });
+
+    it('refuses to reactivate a DELETED tenant (409): the transaction aborts before the notification', async () => {
+      const service = buildService();
+      mockPrisma.subscription.findUnique.mockResolvedValueOnce({ tenantId: 't1', currentPeriodEnd: null, tierId: null, billingPeriod: null });
+      mockPrisma.invoice.findFirst.mockResolvedValue({
+        id: 'inv1', tierId: 'tier1', billingPeriod: BillingPeriod.MONTHLY, periodDays: 30, tier: { key: 'starter', name: 'Starter' },
+      });
+      mockPrisma.invoice.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.tenant.updateMany.mockResolvedValueOnce({ count: 0 });
+      mockPrisma.notification.create.mockClear();
+
+      await expect(service.activate('t1', 'admin1', undefined, 'inv1')).rejects.toMatchObject({ status: 409 });
+      expect(mockPrisma.notification.create).not.toHaveBeenCalled();
     });
   });
 
