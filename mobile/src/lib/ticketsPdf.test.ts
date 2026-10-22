@@ -18,6 +18,7 @@ test('modèle ticket reçu : numéro, code encadré, 24H, $300, contact, date IS
   const tpl = {
     ...receiptPreset(resolveTicketTemplate(null)),
     currency: '$',
+    currencyPosition: 'prefix' as const,
     wifiName: '#JAMBO AK 0504627740',
     note: 'Conservez le ticket pendant le service',
   };
@@ -35,6 +36,12 @@ test('modèle ancien sans blocks : rendu inchangé (pas de QR, pas de n°)', asy
   assert.ok(html.includes('1 j<'));
   assert.ok(!html.includes('<path d="M'));
   assert.ok(!html.includes('#1<'));
+});
+
+test('modèle ticket reçu : FCFA en suffixe par défaut', async () => {
+  const html = await buildTicketsHtml({ ...base, template: receiptPreset(resolveTicketTemplate(null)) });
+  assert.ok(/300\s*FCFA</.test(html));
+  assert.ok(!html.includes('FCFA300'));
 });
 
 test('QR généré et texte utilisateur échappé', async () => {
