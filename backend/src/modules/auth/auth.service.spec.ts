@@ -2,7 +2,7 @@ import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { UserRole, UserStatus, SubscriptionPlan, SubscriptionStatus } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { AuthService } from './auth.service';
-import { LEGAL_VERSIONS } from '../legal/legal.versions';
+import { LEGACY_LEGAL_VERSION, LEGAL_VERSIONS } from '../legal/legal.versions';
 import appleSignin from 'apple-signin-auth';
 
 jest.mock('apple-signin-auth', () => ({ __esModule: true, default: { verifyIdToken: jest.fn() } }));
@@ -135,6 +135,25 @@ describe('AuthService', () => {
             privacyVersion: LEGAL_VERSIONS.privacy,
             termsAcceptedAt: expect.any(Date),
             privacyAcceptedAt: expect.any(Date),
+          }),
+        }),
+      );
+    });
+
+    it('accepts a signup from a legacy client and marks consent as legacy without a timestamp', async () => {
+      const service = buildService();
+      mockPrisma.tenant.create.mockResolvedValue({ id: 't1' });
+      mockPrisma.user.create.mockResolvedValue({ id: 'u1', tenantId: 't1', role: UserRole.OWNER });
+
+      await service.signup({ tenantName: 'Café', email: 'a@b.com', password: PASSWORD });
+
+      expect(mockPrisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            termsVersion: LEGACY_LEGAL_VERSION,
+            privacyVersion: LEGACY_LEGAL_VERSION,
+            termsAcceptedAt: null,
+            privacyAcceptedAt: null,
           }),
         }),
       );

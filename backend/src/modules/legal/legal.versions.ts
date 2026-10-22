@@ -9,4 +9,7 @@ export const LEGAL_VERSIONS = {
   remoteAccess: '2026-10-18',
 } as const;
 
+/** Compte créé par un client qui ne collectait pas le consentement : à redemander. */
+export const LEGACY_LEGAL_VERSION = 'legacy';
+
 export type LegalVersions = typeof LEGAL_VERSIONS;
