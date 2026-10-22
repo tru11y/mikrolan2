@@ -133,18 +133,20 @@ export function moveBlock(blocks: TicketBlock[], index: number, delta: -1 | 1): 
   return next;
 }
 
-/** Modèle « ticket reçu » : numéro, code encadré avec icône, durée, prix, contact, date, note. */
+/** Modèle « ticket reçu » : numéro, code encadré avec icône, durée, prix, contact, date, QR, note, signature. */
 export function receiptPreset(tpl: ResolvedTicketTemplate): ResolvedTicketTemplate {
   const style: Partial<Record<TicketBlockId, Pick<TicketBlock, 'size' | 'bold'>>> = {
     number: { size: 7, bold: true },
-    code: { size: 16, bold: false },
+    code: { size: 16, bold: true },
     duration: { size: 10, bold: false },
     price: { size: 11, bold: false },
-    contact: { size: 8, bold: true },
-    createdAt: { size: 6, bold: false },
-    note: { size: 5.5, bold: false },
+    contact: { size: 9, bold: true },
+    createdAt: { size: 7, bold: false },
+    qr: { size: 28, bold: false },
+    note: { size: 6, bold: false },
+    poweredBy: { size: 4, bold: false },
   };
-  const order: TicketBlockId[] = ['number', 'code', 'duration', 'price', 'contact', 'createdAt', 'note'];
+  const order: TicketBlockId[] = ['number', 'code', 'duration', 'price', 'contact', 'createdAt', 'qr', 'note', 'poweredBy'];
   const ordered = [
     ...order.map((id) => tpl.blocks.find((x) => x.id === id)!),
     ...tpl.blocks.filter((x) => !order.includes(x.id)),
@@ -161,10 +163,10 @@ export function receiptPreset(tpl: ResolvedTicketTemplate): ResolvedTicketTempla
     showPrice: true,
     showWifiName: true,
     showCreatedAt: true,
-    showQrCode: false,
+    showQrCode: true,
     showNote: true,
     showFooter: false,
-    showPoweredBy: false,
+    showPoweredBy: true,
     durationFormat: 'hours',
     currencyPosition: 'prefix',
     dateFormat: 'iso',
