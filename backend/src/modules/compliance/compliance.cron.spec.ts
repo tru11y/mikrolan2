@@ -1,7 +1,7 @@
 import { ComplianceCron } from './compliance.cron';
 
 const retention = {
-  purgeAuditLogs: jest.fn(),
+  archiveExpiredAuditLogs: jest.fn(),
   purgePaymentProofs: jest.fn(),
   wipeRevokedRouterCredentials: jest.fn(),
   anonymizeDeletedUsers: jest.fn(),
@@ -27,7 +27,7 @@ describe('ComplianceCron — COMPLIANCE_ENFORCED=true', () => {
   });
 
   it('a failing task does not block the following ones', async () => {
-    retention.purgeAuditLogs.mockRejectedValue(new Error('boom'));
+    retention.archiveExpiredAuditLogs.mockRejectedValue(new Error('boom'));
 
     await build(true).dailyRetention();
 

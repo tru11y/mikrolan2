@@ -10,6 +10,7 @@ import { NestFastifyApplication } from '@nestjs/platform-fastify';
 import {
   ManagementMode,
   PaymentMethod,
+  PaymentStatus,
   RemotePeerStatus,
   SubscriptionPlan,
   SubscriptionStatus,
@@ -260,14 +261,26 @@ describe('Compliance (e2e)', () => {
       await provision().expect(403);
     });
 
-    it('identifiants routeur effacés 7 jours après la révocation, pas avant', async () => {
+    it('identifiants routeur : jamais effacés tant que le tenant est actif, même 8 jours après la révocation', async () => {
       await prisma.router.update({ where: { id: routerId }, data: { credEncrypted: 'enc' } });
 
-      expect(await retention.wipeRevokedRouterCredentials(new Date(Date.now() + 6 * DAY_MS))).toBe(0);
+      await retention.wipeRevokedRouterCredentials(new Date(Date.now() + 8 * DAY_MS));
       expect((await prisma.router.findUniqueOrThrow({ where: { id: routerId } })).credEncrypted).toBe('enc');
+    });
 
-      expect(await retention.wipeRevokedRouterCredentials(new Date(Date.now() + 8 * DAY_MS))).toBeGreaterThanOrEqual(1);
-      expect((await prisma.router.findUniqueOrThrow({ where: { id: routerId } })).credEncrypted).toBeNull();
+    it('identifiants routeur : tenant DELETED → effacés 7 jours après la révocation, pas avant', async () => {
+      await prisma.router.update({ where: { id: routerId }, data: { credEncrypted: 'enc' } });
+      await prisma.tenant.update({ where: { id: tenantId }, data: { status: TenantStatus.DELETED, deletedAt: new Date() } });
+
+      try {
+        await retention.wipeRevokedRouterCredentials(new Date(Date.now() + 6 * DAY_MS));
+        expect((await prisma.router.findUniqueOrThrow({ where: { id: routerId } })).credEncrypted).toBe('enc');
+
+        expect(await retention.wipeRevokedRouterCredentials(new Date(Date.now() + 8 * DAY_MS))).toBeGreaterThanOrEqual(1);
+        expect((await prisma.router.findUniqueOrThrow({ where: { id: routerId } })).credEncrypted).toBeNull();
+      } finally {
+        await prisma.tenant.update({ where: { id: tenantId }, data: { status: TenantStatus.ACTIVE, deletedAt: null } });
+      }
     });
 
     it('tenant supprimé : ses pairs actifs sont coupés par le cron', async () => {
@@ -304,20 +317,39 @@ describe('Compliance (e2e)', () => {
   });
 
   describe('rétention', () => {
-    it('AuditLog : > 12 mois supprimé, récent conservé', async () => {
+    it('AuditLog : > 12 mois archivé puis retiré de la table vive, récent conservé', async () => {
       const u = await signupUser(app);
       const { tenantId } = await prisma.user.findUniqueOrThrow({ where: { email: u.email.toLowerCase() } });
+      const oldDate = new Date(Date.now() - 400 * DAY_MS);
       const old = await prisma.auditLog.create({
-        data: { tenantId, action: 'CREATE', entityType: 'Old', createdAt: new Date(Date.now() - 400 * DAY_MS) },
+        data: { tenantId, action: 'CREATE', entityType: 'Old', metadata: { k: 'v' }, ip: '203.0.113.9', createdAt: oldDate },
       });
       const recent = await prisma.auditLog.create({
         data: { tenantId, action: 'CREATE', entityType: 'Recent', createdAt: new Date(Date.now() - 100 * DAY_MS) },
       });
 
-      expect(await retention.purgeAuditLogs()).toBeGreaterThanOrEqual(1);
+      expect(await retention.archiveExpiredAuditLogs()).toBeGreaterThanOrEqual(1);
 
       expect(await prisma.auditLog.findUnique({ where: { id: old.id } })).toBeNull();
+      const archived = await prisma.auditLogArchive.findUniqueOrThrow({ where: { id: old.id } });
+      expect(archived).toMatchObject({ tenantId, entityType: 'Old', ip: '203.0.113.9', metadata: { k: 'v' } });
+      expect(archived.createdAt.getTime()).toBe(oldDate.getTime());
+      expect(archived.archivedAt).toBeInstanceOf(Date);
       expect(await prisma.auditLog.findUnique({ where: { id: recent.id } })).not.toBeNull();
+      expect(await prisma.auditLogArchive.findUnique({ where: { id: recent.id } })).toBeNull();
+    });
+
+    it('AuditLog : relancer l’archivage ne duplique rien', async () => {
+      const u = await signupUser(app);
+      const { tenantId } = await prisma.user.findUniqueOrThrow({ where: { email: u.email.toLowerCase() } });
+      const old = await prisma.auditLog.create({
+        data: { tenantId, action: 'CREATE', entityType: 'Twice', createdAt: new Date(Date.now() - 500 * DAY_MS) },
+      });
+
+      await retention.archiveExpiredAuditLogs();
+      await retention.archiveExpiredAuditLogs();
+
+      expect(await prisma.auditLogArchive.count({ where: { id: old.id } })).toBe(1);
     });
 
     it('PaymentProof : > 24 mois supprimé (ligne + fichier), récent conservé', async () => {
@@ -357,6 +389,32 @@ describe('Compliance (e2e)', () => {
       expect(await prisma.invoice.findUnique({ where: { id: invoice.id } })).not.toBeNull();
 
       await fs.rm(join(PROOFS_DIR, recentFile), { force: true });
+    });
+
+    it('PaymentProof : une preuve de facture PAID n’est jamais supprimée, même > 24 mois (ligne + fichier)', async () => {
+      const u = await signupUser(app);
+      const { tenantId } = await prisma.user.findUniqueOrThrow({ where: { email: u.email.toLowerCase() } });
+      const paid = await prisma.invoice.create({
+        data: { tenantId, amount: 5000, status: PaymentStatus.PAID, paidAt: new Date(), idempotencyKey: `paid-${Date.now()}` },
+      });
+      await fs.mkdir(PROOFS_DIR, { recursive: true });
+      const file = `paid-${Date.now()}.jpg`;
+      await fs.writeFile(join(PROOFS_DIR, file), 'x');
+      const proof = await prisma.paymentProof.create({
+        data: {
+          invoiceId: paid.id,
+          method: PaymentMethod.WAVE,
+          imageUrl: `/private-uploads/proofs/${file}`,
+          createdAt: new Date(Date.now() - 800 * DAY_MS),
+        },
+      });
+
+      await retention.purgePaymentProofs();
+
+      expect(await prisma.paymentProof.findUnique({ where: { id: proof.id } })).not.toBeNull();
+      await expect(fs.access(join(PROOFS_DIR, file))).resolves.toBeUndefined();
+
+      await fs.rm(join(PROOFS_DIR, file), { force: true });
     });
   });
 });

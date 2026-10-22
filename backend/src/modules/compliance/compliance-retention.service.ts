@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { RemotePeerStatus, TenantStatus, UserStatus } from '@prisma/client';
+import { PaymentStatus, Prisma, RemotePeerStatus, TenantStatus, UserStatus } from '@prisma/client';
 import { unlink } from 'node:fs/promises';
 import { PrismaService } from '../../prisma/prisma.service';
 import { resolveProofFile } from '../subscriptions/subscriptions.service';
@@ -15,32 +15,58 @@ export class ComplianceRetentionService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async purgeAuditLogs(now = new Date()): Promise<number> {
+  /**
+   * Déplace les lignes d'AuditLog > 12 mois vers AuditLogArchive : copie,
+   * vérification, puis suppression dans une même transaction. Aucune ligne
+   * n'est supprimée sans sa copie archivée.
+   */
+  async archiveExpiredAuditLogs(now = new Date()): Promise<number> {
     const cutoff = daysAgo(RETENTION.auditLogDays, now);
     let total = 0;
     for (;;) {
-      const rows = await this.prisma.auditLog.findMany({
-        where: { createdAt: { lt: cutoff } },
-        select: { id: true },
-        take: PURGE_BATCH_SIZE,
+      const moved = await this.prisma.$transaction(async (tx) => {
+        const rows = await tx.auditLog.findMany({
+          where: { createdAt: { lt: cutoff } },
+          orderBy: { createdAt: 'asc' },
+          take: PURGE_BATCH_SIZE,
+        });
+        if (rows.length === 0) return { count: 0, full: false };
+
+        const ids = rows.map((r) => r.id);
+        await tx.auditLogArchive.createMany({
+          data: rows.map(({ metadata, ...row }) => ({
+            ...row,
+            metadata: metadata ?? Prisma.DbNull,
+          })),
+          skipDuplicates: true,
+        });
+        const archived = await tx.auditLogArchive.count({ where: { id: { in: ids } } });
+        if (archived !== ids.length) {
+          throw new Error(`AuditLog archive incomplete (${archived}/${ids.length}), nothing deleted`);
+        }
+        const { count } = await tx.auditLog.deleteMany({ where: { id: { in: ids } } });
+        return { count, full: rows.length === PURGE_BATCH_SIZE };
       });
-      if (rows.length === 0) break;
-      const { count } = await this.prisma.auditLog.deleteMany({
-        where: { id: { in: rows.map((r) => r.id) } },
-      });
-      total += count;
-      if (rows.length < PURGE_BATCH_SIZE) break;
+      total += moved.count;
+      if (!moved.full) break;
     }
     return total;
   }
 
-  /** Supprime le fichier puis la ligne ; un fichier impossible à supprimer garde sa ligne pour un nouvel essai. */
+  /**
+   * Supprime le fichier puis la ligne ; un fichier impossible à supprimer garde sa ligne pour un nouvel essai.
+   * Une preuve rattachée à une facture PAID n'est JAMAIS supprimée : pas de stratégie d'archivage définie.
+   * Seules les preuves de factures PENDING/FAILED sont éligibles (REFUNDED, ancien PAID, est conservé aussi).
+   */
   async purgePaymentProofs(now = new Date()): Promise<number> {
     const cutoff = daysAgo(RETENTION.paymentProofDays, now);
     let total = 0;
     for (;;) {
       const proofs = await this.prisma.paymentProof.findMany({
-        where: { createdAt: { lt: cutoff } },
+        where: {
+          createdAt: { lt: cutoff },
+          invoice: { status: { in: [PaymentStatus.PENDING, PaymentStatus.FAILED] } },
+        },
         select: { id: true, imageUrl: true },
         orderBy: { createdAt: 'asc' },
         take: PURGE_BATCH_SIZE,
@@ -62,12 +88,17 @@ export class ComplianceRetentionService {
     return total;
   }
 
-  /** Identifiants RouterOS effacés N jours après la révocation de l'accès distant. */
+  /**
+   * Identifiants RouterOS effacés N jours après la révocation de l'accès distant,
+   * uniquement pour un tenant DELETED : un client actif garde ses identifiants
+   * (restauration LAN) même après avoir retiré l'autorisation d'accès distant.
+   */
   async wipeRevokedRouterCredentials(now = new Date()): Promise<number> {
     const cutoff = daysAgo(RETENTION.revokedRouterCredentialsDays, now);
     const { count } = await this.prisma.router.updateMany({
       where: {
         credEncrypted: { not: null },
+        tenant: { status: TenantStatus.DELETED },
         remotePeer: {
           is: { status: RemotePeerStatus.REVOKED, revokedAt: { lt: cutoff } },
         },
