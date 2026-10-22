@@ -441,6 +441,25 @@ model AuditLog {
   @@index([createdAt])
 }
 
+// Destination des lignes d'AuditLog > 12 mois (rétention). Table réservée au
+// système, sans clé étrangère : l'archive survit à toute évolution des comptes.
+model AuditLogArchive {
+  id         String       @id
+  tenantId   String
+  userId     String?
+  action     AuditAction
+  entityType String
+  entityId   String?
+  metadata   Json?
+  ip         String?
+  outcome    EventOutcome
+  createdAt  DateTime
+  archivedAt DateTime     @default(now())
+
+  @@index([tenantId, createdAt])
+  @@index([createdAt])
+}
+
 // ─── PLAN (forfait WiFi = user-profile RouterOS) ─────────
 model Plan {
   id              String         @id @default(uuid())

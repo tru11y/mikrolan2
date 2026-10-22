@@ -1,4 +1,4 @@
-import { RemotePeerStatus, TenantStatus, UserStatus } from '@prisma/client';
+import { PaymentStatus, Prisma, RemotePeerStatus, TenantStatus, UserStatus } from '@prisma/client';
 import { unlink } from 'node:fs/promises';
 import { ComplianceRetentionService } from './compliance-retention.service';
 import { PURGE_BATCH_SIZE, RETENTION } from './compliance.constants';
@@ -11,6 +11,7 @@ const unlinkMock = unlink as jest.Mock;
 
 const mockPrisma = {
   auditLog: { findMany: jest.fn(), deleteMany: jest.fn() },
+  auditLogArchive: { createMany: jest.fn(), count: jest.fn() },
   paymentProof: { findMany: jest.fn(), deleteMany: jest.fn() },
   router: { updateMany: jest.fn() },
   user: { findMany: jest.fn(), update: jest.fn(), count: jest.fn() },
@@ -38,37 +39,67 @@ beforeEach(() => {
   );
 });
 
-describe('purgeAuditLogs', () => {
-  it('deletes only rows older than 12 months', async () => {
-    mockPrisma.auditLog.findMany.mockResolvedValueOnce([{ id: 'a' }, { id: 'b' }]);
+describe('archiveExpiredAuditLogs', () => {
+  const row = (id: string, metadata: unknown = null) => ({
+    id,
+    tenantId: 't1',
+    userId: null,
+    action: 'CREATE',
+    entityType: 'X',
+    entityId: null,
+    metadata,
+    ip: null,
+    outcome: 'SUCCESS',
+    createdAt: new Date('2025-01-01T00:00:00Z'),
+  });
+
+  it('copies rows older than 12 months to the archive, verifies, then deletes them', async () => {
+    mockPrisma.auditLog.findMany.mockResolvedValueOnce([row('a'), row('b', { k: 1 })]);
+    mockPrisma.auditLogArchive.createMany.mockResolvedValueOnce({ count: 2 });
+    mockPrisma.auditLogArchive.count.mockResolvedValueOnce(2);
     mockPrisma.auditLog.deleteMany.mockResolvedValueOnce({ count: 2 });
 
-    const purged = await buildService().purgeAuditLogs(NOW);
+    expect(await buildService().archiveExpiredAuditLogs(NOW)).toBe(2);
 
-    expect(purged).toBe(2);
     const cutoff = cutoffOf(mockPrisma.auditLog.findMany.mock.calls[0][0], 'createdAt');
     expect(cutoff.getTime()).toBe(NOW.getTime() - RETENTION.auditLogDays * DAY_MS);
-    expect(mockPrisma.auditLog.deleteMany).toHaveBeenCalledWith({
-      where: { id: { in: ['a', 'b'] } },
-    });
+    const data = mockPrisma.auditLogArchive.createMany.mock.calls[0][0].data;
+    expect(data.map((d: { id: string }) => d.id)).toEqual(['a', 'b']);
+    expect(data[0].metadata).toBe(Prisma.DbNull);
+    expect(data[1].metadata).toEqual({ k: 1 });
+    expect(mockPrisma.auditLog.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ['a', 'b'] } } });
+    // la copie précède la suppression
+    expect(mockPrisma.auditLogArchive.createMany.mock.invocationCallOrder[0]).toBeLessThan(
+      mockPrisma.auditLog.deleteMany.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('deletes NOTHING when the archive copy is incomplete (transaction aborts)', async () => {
+    mockPrisma.auditLog.findMany.mockResolvedValueOnce([row('a'), row('b')]);
+    mockPrisma.auditLogArchive.createMany.mockResolvedValueOnce({ count: 1 });
+    mockPrisma.auditLogArchive.count.mockResolvedValueOnce(1);
+
+    await expect(buildService().archiveExpiredAuditLogs(NOW)).rejects.toThrow(/archive incomplete/);
+    expect(mockPrisma.auditLog.deleteMany).not.toHaveBeenCalled();
   });
 
   it('keeps going while full batches come back', async () => {
-    const fullBatch = Array.from({ length: PURGE_BATCH_SIZE }, (_, i) => ({ id: `r${i}` }));
-    mockPrisma.auditLog.findMany
-      .mockResolvedValueOnce(fullBatch)
-      .mockResolvedValueOnce([{ id: 'last' }]);
+    const fullBatch = Array.from({ length: PURGE_BATCH_SIZE }, (_, i) => row(`r${i}`));
+    mockPrisma.auditLog.findMany.mockResolvedValueOnce(fullBatch).mockResolvedValueOnce([row('last')]);
+    mockPrisma.auditLogArchive.createMany.mockResolvedValue({ count: 0 });
+    mockPrisma.auditLogArchive.count.mockResolvedValueOnce(PURGE_BATCH_SIZE).mockResolvedValueOnce(1);
     mockPrisma.auditLog.deleteMany
       .mockResolvedValueOnce({ count: PURGE_BATCH_SIZE })
       .mockResolvedValueOnce({ count: 1 });
 
-    expect(await buildService().purgeAuditLogs(NOW)).toBe(PURGE_BATCH_SIZE + 1);
+    expect(await buildService().archiveExpiredAuditLogs(NOW)).toBe(PURGE_BATCH_SIZE + 1);
   });
 
   it('does nothing when nothing is expired', async () => {
     mockPrisma.auditLog.findMany.mockResolvedValueOnce([]);
 
-    expect(await buildService().purgeAuditLogs(NOW)).toBe(0);
+    expect(await buildService().archiveExpiredAuditLogs(NOW)).toBe(0);
+    expect(mockPrisma.auditLogArchive.createMany).not.toHaveBeenCalled();
     expect(mockPrisma.auditLog.deleteMany).not.toHaveBeenCalled();
   });
 });
@@ -90,6 +121,17 @@ describe('purgePaymentProofs', () => {
     expect(mockPrisma.paymentProof.deleteMany).toHaveBeenCalledWith({
       where: { id: { in: ['p1'] } },
     });
+  });
+
+  it('never selects a proof linked to a PAID (or REFUNDED) invoice', async () => {
+    mockPrisma.paymentProof.findMany.mockResolvedValueOnce([]);
+
+    await buildService().purgePaymentProofs(NOW);
+
+    const where = mockPrisma.paymentProof.findMany.mock.calls[0][0].where;
+    expect(where.invoice).toEqual({ status: { in: [PaymentStatus.PENDING, PaymentStatus.FAILED] } });
+    expect(JSON.stringify(where)).not.toContain(PaymentStatus.PAID);
+    expect(JSON.stringify(where)).not.toContain(PaymentStatus.REFUNDED);
   });
 
   it('still deletes the row when the file is already gone', async () => {
@@ -124,7 +166,7 @@ describe('purgePaymentProofs', () => {
 });
 
 describe('wipeRevokedRouterCredentials', () => {
-  it('nulls credentials of routers whose peer was revoked more than 7 days ago', async () => {
+  it('nulls credentials only for routers of a DELETED tenant whose peer was revoked more than 7 days ago', async () => {
     mockPrisma.router.updateMany.mockResolvedValueOnce({ count: 3 });
 
     expect(await buildService().wipeRevokedRouterCredentials(NOW)).toBe(3);
@@ -132,6 +174,7 @@ describe('wipeRevokedRouterCredentials', () => {
     const call = mockPrisma.router.updateMany.mock.calls[0][0];
     expect(call.data).toEqual({ credEncrypted: null });
     expect(call.where.credEncrypted).toEqual({ not: null });
+    expect(call.where.tenant).toEqual({ status: TenantStatus.DELETED });
     expect(call.where.remotePeer.is.status).toBe(RemotePeerStatus.REVOKED);
     expect(call.where.remotePeer.is.revokedAt.lt.getTime()).toBe(
       NOW.getTime() - RETENTION.revokedRouterCredentialsDays * DAY_MS,
