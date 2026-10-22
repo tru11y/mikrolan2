@@ -4,7 +4,7 @@ import { createTestApp } from '../helpers/app.helper';
 import { signupUser, loginUser } from '../helpers/auth.helper';
 import { MailService } from '../../src/modules/mail/mail.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
-import { LEGAL_VERSIONS } from '../../src/modules/legal/legal.versions';
+import { LEGACY_LEGAL_VERSION, LEGAL_VERSIONS } from '../../src/modules/legal/legal.versions';
 
 describe('Auth (e2e)', () => {
   let app: NestFastifyApplication;
@@ -67,13 +67,28 @@ describe('Auth (e2e)', () => {
         .expect(400);
     });
 
-    it('rejects signup without legal acceptance with 400', async () => {
+    it('accepts a legacy client signup (no versions) and records consent as legacy', async () => {
+      const email = `legacy-${Date.now()}@test.com`;
+      await request(app.getHttpServer())
+        .post('/api/auth/signup')
+        .send({ tenantName: 'Legacy', email, password: 'SecurePass123!' })
+        .expect(201);
+
+      const row = await prisma.user.findUniqueOrThrow({ where: { email } });
+      expect(row.termsVersion).toBe(LEGACY_LEGAL_VERSION);
+      expect(row.privacyVersion).toBe(LEGACY_LEGAL_VERSION);
+      expect(row.termsAcceptedAt).toBeNull();
+      expect(row.privacyAcceptedAt).toBeNull();
+    });
+
+    it('rejects a single legal version without its pair with 400', async () => {
       await request(app.getHttpServer())
         .post('/api/auth/signup')
         .send({
-          tenantName: 'NoConsent',
-          email: `noconsent-${Date.now()}@test.com`,
+          tenantName: 'Half',
+          email: `half-${Date.now()}@test.com`,
           password: 'SecurePass123!',
+          termsVersion: LEGAL_VERSIONS.terms,
         })
         .expect(400);
     });

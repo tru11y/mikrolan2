@@ -7,13 +7,21 @@ const legalAcceptanceShape = {
   privacyVersion: z.string().min(1).max(32),
 };
 
-export const signupSchema = z.object({
-  tenantName: z.string().min(2).max(80),
-  email: z.string().email().max(160),
-  password: z.string().min(10).max(128),
-  country: z.string().trim().min(1).max(80).optional(),
-  ...legalAcceptanceShape,
-});
+// Transitoire : les APK publiées avant la collecte du consentement n'envoient pas ces
+// champs. Absents, l'inscription reste possible et le consentement est marqué « legacy »
+// (à redemander à la connexion) ; fournis, ils doivent aller par paire.
+export const signupSchema = z
+  .object({
+    tenantName: z.string().min(2).max(80),
+    email: z.string().email().max(160),
+    password: z.string().min(10).max(128),
+    country: z.string().trim().min(1).max(80).optional(),
+    termsVersion: legalAcceptanceShape.termsVersion.optional(),
+    privacyVersion: legalAcceptanceShape.privacyVersion.optional(),
+  })
+  .refine((d) => (d.termsVersion === undefined) === (d.privacyVersion === undefined), {
+    message: 'termsVersion et privacyVersion vont ensemble.',
+  });
 export type SignupDto = z.infer<typeof signupSchema>;
 
 export const acceptLegalSchema = z.object(legalAcceptanceShape).strict();

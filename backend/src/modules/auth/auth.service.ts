@@ -29,7 +29,7 @@ import {
 } from '../subscriptions/subscriptions.service';
 import { MailService } from '../mail/mail.service';
 import { logAndContinue } from '../../common/utils/log-and-continue';
-import { LEGAL_VERSIONS } from '../legal/legal.versions';
+import { LEGACY_LEGAL_VERSION, LEGAL_VERSIONS } from '../legal/legal.versions';
 import {
   AcceptLegalDto,
   ChangePasswordDto,
@@ -76,6 +76,16 @@ function legalAcceptanceData(now: Date) {
   };
 }
 
+// Aucune date d'acceptation : rien n'a été accepté, la version legacy force juste le gate mobile.
+function legacyLegalData() {
+  return {
+    termsAcceptedAt: null,
+    termsVersion: LEGACY_LEGAL_VERSION,
+    privacyAcceptedAt: null,
+    privacyVersion: LEGACY_LEGAL_VERSION,
+  };
+}
+
 function slugify(name: string): string {
   const base = name
     .toLowerCase()
@@ -112,7 +122,11 @@ export class AuthService {
   }
 
   async signup(dto: SignupDto): Promise<TokenPair> {
-    assertCurrentLegalVersions(dto);
+    const acceptance =
+      dto.termsVersion !== undefined && dto.privacyVersion !== undefined
+        ? { termsVersion: dto.termsVersion, privacyVersion: dto.privacyVersion }
+        : null;
+    if (acceptance) assertCurrentLegalVersions(acceptance);
     const passwordHash = await argon2.hash(dto.password, ARGON);
     // Essai gratuit ouvert à l'inscription : l'app entière est utilisable en
     // local pendant TRIAL_DAYS, puis tout se verrouille jusqu'au passage PRO.
@@ -147,7 +161,7 @@ export class AuthService {
             role: UserRole.OWNER,
             status: UserStatus.ACTIVE,
             ...(dto.country && { country: dto.country }),
-            ...legalAcceptanceData(now),
+            ...(acceptance ? legalAcceptanceData(now) : legacyLegalData()),
           },
         });
       });
