@@ -168,7 +168,7 @@ export function receiptPreset(tpl: ResolvedTicketTemplate): ResolvedTicketTempla
     showFooter: false,
     showPoweredBy: true,
     durationFormat: 'hours',
-    currencyPosition: 'prefix',
+    currencyPosition: tpl.currency === '$' ? 'prefix' : 'suffix',
     dateFormat: 'iso',
     boxedCode: true,
     showCodeIcon: true,
