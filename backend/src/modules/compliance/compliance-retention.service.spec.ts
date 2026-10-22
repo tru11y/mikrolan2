@@ -11,7 +11,7 @@ const unlinkMock = unlink as jest.Mock;
 
 const mockPrisma = {
   auditLog: { findMany: jest.fn(), deleteMany: jest.fn(), updateMany: jest.fn() },
-  auditLogArchive: { createMany: jest.fn(), count: jest.fn(), updateMany: jest.fn() },
+  auditLogArchive: { createMany: jest.fn(), count: jest.fn(), updateMany: jest.fn(), findMany: jest.fn(), deleteMany: jest.fn() },
   $executeRaw: jest.fn(),
   paymentProof: { findMany: jest.fn(), deleteMany: jest.fn() },
   router: { updateMany: jest.fn() },
@@ -102,6 +102,26 @@ describe('archiveExpiredAuditLogs', () => {
     expect(await buildService().archiveExpiredAuditLogs(NOW)).toBe(0);
     expect(mockPrisma.auditLogArchive.createMany).not.toHaveBeenCalled();
     expect(mockPrisma.auditLog.deleteMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('purgeExpiredAuditArchive', () => {
+  it('deletes only archives older than 10 years', async () => {
+    mockPrisma.auditLogArchive.findMany.mockResolvedValueOnce([{ id: 'a' }, { id: 'b' }]);
+    mockPrisma.auditLogArchive.deleteMany.mockResolvedValueOnce({ count: 2 });
+
+    expect(await buildService().purgeExpiredAuditArchive(NOW)).toBe(2);
+
+    const cutoff = cutoffOf(mockPrisma.auditLogArchive.findMany.mock.calls[0][0], 'createdAt');
+    expect(cutoff.getTime()).toBe(NOW.getTime() - RETENTION.auditArchiveDays * DAY_MS);
+    expect(mockPrisma.auditLogArchive.deleteMany).toHaveBeenCalledWith({ where: { id: { in: ['a', 'b'] } } });
+  });
+
+  it('does nothing when nothing is expired', async () => {
+    mockPrisma.auditLogArchive.findMany.mockResolvedValueOnce([]);
+
+    expect(await buildService().purgeExpiredAuditArchive(NOW)).toBe(0);
+    expect(mockPrisma.auditLogArchive.deleteMany).not.toHaveBeenCalled();
   });
 });
 
