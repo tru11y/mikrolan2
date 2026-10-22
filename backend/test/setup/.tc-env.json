@@ -1,1 +1,0 @@
-{"DATABASE_URL":"postgresql://test:test@127.0.0.1:32771/mikrolan_test?connect_timeout=10"}
