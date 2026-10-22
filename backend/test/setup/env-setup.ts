@@ -16,6 +16,7 @@ Object.assign(process.env, {
   REDIS_HOST: 'localhost',
   REDIS_PORT: '6380',
   WG_ENABLED: 'false',
+  COMPLIANCE_ENFORCED: 'true',
   SENTRY_DSN: '',
   SMTP_HOST: '',
   ...written,

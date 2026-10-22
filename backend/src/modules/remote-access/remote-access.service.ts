@@ -83,12 +83,14 @@ export class RemoteAccessService {
       throw new BusinessException(HttpStatus.FORBIDDEN, ErrorCode.SUBSCRIPTION_TIER_INSUFFICIENT, 'La gestion à distance nécessite un abonnement payant actif.');
     }
 
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: tenantId },
-      select: { remoteAccessVersion: true },
-    });
-    if (tenant?.remoteAccessVersion !== LEGAL_VERSIONS.remoteAccess) {
-      throw new BusinessException(HttpStatus.FORBIDDEN, ErrorCode.REMOTE_ACCESS_AUTH_REQUIRED, "Autorisation d'accès distant requise : acceptez-la avant d'activer la gestion à distance.");
+    if (this.config.get('COMPLIANCE_ENFORCED', { infer: true })) {
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { remoteAccessVersion: true },
+      });
+      if (tenant?.remoteAccessVersion !== LEGAL_VERSIONS.remoteAccess) {
+        throw new BusinessException(HttpStatus.FORBIDDEN, ErrorCode.REMOTE_ACCESS_AUTH_REQUIRED, "Autorisation d'accès distant requise : acceptez-la avant d'activer la gestion à distance.");
+      }
     }
 
     const router = await this.prisma.router.findFirst({

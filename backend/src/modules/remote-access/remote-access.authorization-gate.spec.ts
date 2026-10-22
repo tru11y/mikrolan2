@@ -11,12 +11,13 @@ const mockPrisma = {
 };
 const mockSubscriptions = { isRemoteAllowed: jest.fn() };
 
-function build() {
+function build(enforced = true) {
+  const config = { get: jest.fn((key: string) => (key === 'COMPLIANCE_ENFORCED' ? enforced : undefined)) };
   return new RemoteAccessService(
     mockPrisma as never,
     mockSubscriptions as never,
     {} as never,
-    {} as never,
+    config as never,
     makeEventLogStub() as never,
   );
 }
@@ -44,6 +45,16 @@ describe('RemoteAccessService.provision — authorization gate', () => {
       status: 403,
     });
     expect(mockPrisma.router.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('COMPLIANCE_ENFORCED=false : no authorization needed, the tenant is not even read', async () => {
+    mockPrisma.router.findFirst.mockResolvedValue(null);
+
+    await expect(asTenant(() => build(false).provision('r1', 'u1'))).rejects.toMatchObject({
+      status: 404,
+    });
+    expect(mockPrisma.tenant.findUnique).not.toHaveBeenCalled();
+    expect(mockPrisma.router.findFirst).toHaveBeenCalled();
   });
 
   it('proceeds past the gate once the current version is accepted', async () => {

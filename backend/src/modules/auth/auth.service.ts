@@ -111,12 +111,33 @@ export class AuthService {
     }
   }
 
+  private get complianceEnforced(): boolean {
+    return this.config.get<boolean>('COMPLIANCE_ENFORCED') === true;
+  }
+
+  /** Preuve d'acceptation à enregistrer à l'inscription ; `{}` pour un ancien client tant que le drapeau est OFF. */
+  private signupLegalAcceptance(dto: SignupDto, now: Date) {
+    const { termsVersion, privacyVersion } = dto;
+    if (termsVersion === undefined || privacyVersion === undefined) {
+      if (this.complianceEnforced) {
+        throw new BusinessException(
+          HttpStatus.BAD_REQUEST,
+          ErrorCode.LEGAL_VERSION_MISMATCH,
+          "L'acceptation des conditions d'utilisation et de la politique de confidentialité est requise.",
+        );
+      }
+      return {};
+    }
+    assertCurrentLegalVersions({ termsVersion, privacyVersion });
+    return legalAcceptanceData(now);
+  }
+
   async signup(dto: SignupDto): Promise<TokenPair> {
-    assertCurrentLegalVersions(dto);
+    const now = new Date();
+    const legalAcceptance = this.signupLegalAcceptance(dto, now);
     const passwordHash = await argon2.hash(dto.password, ARGON);
     // Essai gratuit ouvert à l'inscription : l'app entière est utilisable en
     // local pendant TRIAL_DAYS, puis tout se verrouille jusqu'au passage PRO.
-    const now = new Date();
 
     let user;
     try {
@@ -147,7 +168,7 @@ export class AuthService {
             role: UserRole.OWNER,
             status: UserStatus.ACTIVE,
             ...(dto.country && { country: dto.country }),
-            ...legalAcceptanceData(now),
+            ...legalAcceptance,
           },
         });
       });

@@ -8,8 +8,9 @@ const retention = {
 };
 const peers = { revokeAllForDeletedTenants: jest.fn() };
 
-function build() {
-  return new ComplianceCron(retention as never, peers as never);
+function build(enforced: boolean) {
+  const config = { get: jest.fn((key: string) => (key === 'COMPLIANCE_ENFORCED' ? enforced : undefined)) };
+  return new ComplianceCron(retention as never, peers as never, config as never);
 }
 
 beforeEach(() => {
@@ -18,9 +19,9 @@ beforeEach(() => {
   peers.revokeAllForDeletedTenants.mockResolvedValue(0);
 });
 
-describe('ComplianceCron.dailyRetention', () => {
+describe('ComplianceCron — COMPLIANCE_ENFORCED=true', () => {
   it('runs every retention task', async () => {
-    await build().dailyRetention();
+    await build(true).dailyRetention();
 
     Object.values(retention).forEach((fn) => expect(fn).toHaveBeenCalledTimes(1));
   });
@@ -28,18 +29,36 @@ describe('ComplianceCron.dailyRetention', () => {
   it('a failing task does not block the following ones', async () => {
     retention.purgeAuditLogs.mockRejectedValue(new Error('boom'));
 
-    await build().dailyRetention();
+    await build(true).dailyRetention();
 
     expect(retention.purgePaymentProofs).toHaveBeenCalled();
     expect(retention.wipeRevokedRouterCredentials).toHaveBeenCalled();
     expect(retention.anonymizeDeletedUsers).toHaveBeenCalled();
   });
-});
 
-describe('ComplianceCron.revokeDeletedTenantPeers', () => {
+  it('revokes the peers of deleted tenants', async () => {
+    await build(true).revokeDeletedTenantPeers();
+
+    expect(peers.revokeAllForDeletedTenants).toHaveBeenCalledTimes(1);
+  });
+
   it('swallows errors so the scheduler keeps running', async () => {
     peers.revokeAllForDeletedTenants.mockRejectedValue(new Error('boom'));
 
-    await expect(build().revokeDeletedTenantPeers()).resolves.toBeUndefined();
+    await expect(build(true).revokeDeletedTenantPeers()).resolves.toBeUndefined();
+  });
+});
+
+describe('ComplianceCron — COMPLIANCE_ENFORCED=false', () => {
+  it('purges and anonymizes nothing', async () => {
+    await build(false).dailyRetention();
+
+    Object.values(retention).forEach((fn) => expect(fn).not.toHaveBeenCalled());
+  });
+
+  it('revokes no peer', async () => {
+    await build(false).revokeDeletedTenantPeers();
+
+    expect(peers.revokeAllForDeletedTenants).not.toHaveBeenCalled();
   });
 });

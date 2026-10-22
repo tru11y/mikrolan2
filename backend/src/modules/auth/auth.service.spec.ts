@@ -54,7 +54,7 @@ const mockSubscriptions = {
 };
 
 const mockConfig = {
-  get: jest.fn((key: string): string | undefined => {
+  get: jest.fn((key: string): unknown => {
     if (key === 'GOOGLE_CLIENT_ID') return undefined;
     return undefined;
   }),
@@ -154,6 +154,62 @@ describe('AuthService', () => {
       ).rejects.toMatchObject({ status: 409 });
       expect(mockPrisma.tenant.create).not.toHaveBeenCalled();
       expect(mockPrisma.user.create).not.toHaveBeenCalled();
+    });
+
+    describe('COMPLIANCE_ENFORCED', () => {
+      const withFlag = (on: boolean) =>
+        mockConfig.get.mockImplementation((k: string) => (k === 'COMPLIANCE_ENFORCED' ? on : undefined));
+      afterEach(() => mockConfig.get.mockImplementation(() => undefined));
+
+      it('OFF : an old client without legal versions can still sign up (no consent recorded)', async () => {
+        withFlag(false);
+        const service = buildService();
+        mockPrisma.tenant.create.mockResolvedValue({ id: 't1' });
+        mockPrisma.user.create.mockResolvedValue({ id: 'u1', tenantId: 't1', role: UserRole.OWNER });
+
+        await service.signup({ tenantName: 'Old', email: 'old@b.com', password: PASSWORD });
+
+        const data = mockPrisma.user.create.mock.calls[0][0].data;
+        expect(data.email).toBe('old@b.com');
+        expect(data).not.toHaveProperty('termsVersion');
+        expect(data).not.toHaveProperty('termsAcceptedAt');
+      });
+
+      it('OFF : versions sent by a new client are still validated and recorded', async () => {
+        withFlag(false);
+        const service = buildService();
+        mockPrisma.tenant.create.mockResolvedValue({ id: 't1' });
+        mockPrisma.user.create.mockResolvedValue({ id: 'u1', tenantId: 't1', role: UserRole.OWNER });
+
+        await service.signup({ tenantName: 'New', email: 'new@b.com', password: PASSWORD, ...LEGAL });
+
+        expect(mockPrisma.user.create.mock.calls[0][0].data.termsVersion).toBe(LEGAL_VERSIONS.terms);
+        await expect(
+          service.signup({ tenantName: 'X', email: 'x@b.com', password: PASSWORD, termsVersion: '1999-01-01', privacyVersion: LEGAL_VERSIONS.privacy }),
+        ).rejects.toMatchObject({ status: 409 });
+      });
+
+      it('ON : signup without legal versions is refused with 400, nothing is created', async () => {
+        withFlag(true);
+        const service = buildService();
+
+        await expect(
+          service.signup({ tenantName: 'Old', email: 'old@b.com', password: PASSWORD }),
+        ).rejects.toMatchObject({ status: 400 });
+        expect(mockPrisma.tenant.create).not.toHaveBeenCalled();
+        expect(mockPrisma.user.create).not.toHaveBeenCalled();
+      });
+
+      it('ON : signup with current versions records the consent', async () => {
+        withFlag(true);
+        const service = buildService();
+        mockPrisma.tenant.create.mockResolvedValue({ id: 't1' });
+        mockPrisma.user.create.mockResolvedValue({ id: 'u1', tenantId: 't1', role: UserRole.OWNER });
+
+        await service.signup({ tenantName: 'New', email: 'new@b.com', password: PASSWORD, ...LEGAL });
+
+        expect(mockPrisma.user.create.mock.calls[0][0].data.privacyVersion).toBe(LEGAL_VERSIONS.privacy);
+      });
     });
 
     it('throws ConflictException on duplicate email (P2002)', async () => {

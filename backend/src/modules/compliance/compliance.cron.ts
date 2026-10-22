@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { ComplianceRetentionService } from './compliance-retention.service';
 import { PeerRevocationService } from './peer-revocation.service';
@@ -10,10 +11,17 @@ export class ComplianceCron {
   constructor(
     private readonly retention: ComplianceRetentionService,
     private readonly peers: PeerRevocationService,
+    private readonly config: ConfigService,
   ) {}
+
+  /** Purges et révocations ne s'exécutent que lorsque la conformité est activée (COMPLIANCE_ENFORCED). */
+  private get enabled(): boolean {
+    return this.config.get<boolean>('COMPLIANCE_ENFORCED') === true;
+  }
 
   @Cron('30 3 * * *')
   async dailyRetention(): Promise<void> {
+    if (!this.enabled) return;
     await this.run('audit logs purged', () => this.retention.purgeAuditLogs());
     await this.run('payment proofs purged', () => this.retention.purgePaymentProofs());
     await this.run('router credentials wiped', () => this.retention.wipeRevokedRouterCredentials());
@@ -22,6 +30,7 @@ export class ComplianceCron {
 
   @Cron(CronExpression.EVERY_5_MINUTES)
   async revokeDeletedTenantPeers(): Promise<void> {
+    if (!this.enabled) return;
     await this.run('deleted-tenant peers revoked', () => this.peers.revokeAllForDeletedTenants());
   }
 
