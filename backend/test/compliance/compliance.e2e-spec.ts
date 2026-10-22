@@ -366,6 +366,22 @@ describe('Compliance (e2e)', () => {
       expect(await prisma.auditLogArchive.count({ where: { id: old.id } })).toBe(1);
     });
 
+    it('AuditLogArchive : > 10 ans supprimée, plus récente conservée', async () => {
+      const u = await signupUser(app);
+      const { tenantId } = await prisma.user.findUniqueOrThrow({ where: { email: u.email.toLowerCase() } });
+      const row = (suffix: string, years: number) => ({
+        id: `arch-${suffix}-${Date.now()}`, tenantId, action: 'CREATE' as const, entityType: 'Old', outcome: 'SUCCESS' as const,
+        createdAt: new Date(Date.now() - years * 365.25 * DAY_MS),
+      });
+      const tooOld = await prisma.auditLogArchive.create({ data: row('old', 11) });
+      const kept = await prisma.auditLogArchive.create({ data: row('kept', 5) });
+
+      expect(await retention.purgeExpiredAuditArchive()).toBeGreaterThanOrEqual(1);
+
+      expect(await prisma.auditLogArchive.findUnique({ where: { id: tooOld.id } })).toBeNull();
+      expect(await prisma.auditLogArchive.findUnique({ where: { id: kept.id } })).not.toBeNull();
+    });
+
     it('PaymentProof : > 24 mois supprimé (ligne + fichier), récent conservé', async () => {
       const u = await signupUser(app);
       const { tenantId } = await prisma.user.findUniqueOrThrow({ where: { email: u.email.toLowerCase() } });

@@ -55,6 +55,26 @@ export class ComplianceRetentionService {
     return total;
   }
 
+  /** Suppression définitive des archives d'audit au-delà de leur durée de conservation (date d'origine de l'événement). */
+  async purgeExpiredAuditArchive(now = new Date()): Promise<number> {
+    const cutoff = daysAgo(RETENTION.auditArchiveDays, now);
+    let total = 0;
+    for (;;) {
+      const rows = await this.prisma.auditLogArchive.findMany({
+        where: { createdAt: { lt: cutoff } },
+        select: { id: true },
+        take: PURGE_BATCH_SIZE,
+      });
+      if (rows.length === 0) break;
+      const { count } = await this.prisma.auditLogArchive.deleteMany({
+        where: { id: { in: rows.map((r) => r.id) } },
+      });
+      total += count;
+      if (rows.length < PURGE_BATCH_SIZE) break;
+    }
+    return total;
+  }
+
   /**
    * Supprime le fichier puis la ligne ; un fichier impossible à supprimer garde sa ligne pour un nouvel essai.
    * Une preuve rattachée à une facture PAID n'est JAMAIS supprimée : pas de stratégie d'archivage définie.

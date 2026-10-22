@@ -2,6 +2,7 @@ import { ComplianceCron } from './compliance.cron';
 
 const retention = {
   archiveExpiredAuditLogs: jest.fn(),
+  purgeExpiredAuditArchive: jest.fn(),
   purgePaymentProofs: jest.fn(),
   wipeRevokedRouterCredentials: jest.fn(),
   anonymizeDeletedUsers: jest.fn(),

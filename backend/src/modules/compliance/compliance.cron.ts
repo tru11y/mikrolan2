@@ -23,6 +23,7 @@ export class ComplianceCron {
   async dailyRetention(): Promise<void> {
     if (!this.enabled) return;
     await this.run('audit logs archived', () => this.retention.archiveExpiredAuditLogs());
+    await this.run('audit archive purged', () => this.retention.purgeExpiredAuditArchive());
     await this.run('payment proofs purged', () => this.retention.purgePaymentProofs());
     await this.run('router credentials wiped', () => this.retention.wipeRevokedRouterCredentials());
     await this.run('users anonymized', () => this.retention.anonymizeDeletedUsers());
