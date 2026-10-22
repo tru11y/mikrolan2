@@ -1,12 +1,23 @@
 import { z } from 'zod';
 
+// Versions des textes que l'utilisateur dit avoir lues — le serveur refuse
+// toute version qui n'est plus la version publiée (preuve d'un consentement éclairé).
+const legalAcceptanceShape = {
+  termsVersion: z.string().min(1).max(32),
+  privacyVersion: z.string().min(1).max(32),
+};
+
 export const signupSchema = z.object({
   tenantName: z.string().min(2).max(80),
   email: z.string().email().max(160),
   password: z.string().min(10).max(128),
   country: z.string().trim().min(1).max(80).optional(),
+  ...legalAcceptanceShape,
 });
 export type SignupDto = z.infer<typeof signupSchema>;
+
+export const acceptLegalSchema = z.object(legalAcceptanceShape).strict();
+export type AcceptLegalDto = z.infer<typeof acceptLegalSchema>;
 
 export const loginSchema = z.object({
   email: z.string().email().max(160),
@@ -53,11 +64,14 @@ export const deleteAccountSchema = z
   .object({
     password: z.string().min(1).max(128).optional(),
     googleIdToken: z.string().min(20).max(4000).optional(),
+    appleIdentityToken: z.string().min(20).max(4000).optional(),
+    appleNonce: z.string().min(1).max(200).optional(),
   })
   .strict()
-  .refine((d) => d.password || d.googleIdToken, {
-    message: 'Mot de passe ou token Google requis.',
-  });
+  .refine(
+    (d) => d.password || d.googleIdToken || (d.appleIdentityToken && d.appleNonce),
+    { message: 'Mot de passe, token Google ou token Apple (avec nonce) requis.' },
+  );
 export type DeleteAccountDto = z.infer<typeof deleteAccountSchema>;
 
 export const setPasswordSchema = z
