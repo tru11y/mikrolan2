@@ -126,6 +126,18 @@ describe('TelemetryService', () => {
     expect(prisma.routerTelemetry.create).not.toHaveBeenCalled();
   });
 
+  it('cleanup keeps 30 days: the cutoff is 30 days before now', async () => {
+    (prisma.routerTelemetry.deleteMany as jest.Mock).mockResolvedValue({ count: 0 });
+    const before = Date.now();
+
+    await service.cleanup();
+
+    const cutoff = (prisma.routerTelemetry.deleteMany as jest.Mock).mock.calls.at(-1)[0].where.collectedAt.lt as Date;
+    const days = (before - cutoff.getTime()) / 86_400_000;
+    expect(days).toBeGreaterThan(29.99);
+    expect(days).toBeLessThan(30.01);
+  });
+
   it('cleanup deletes old records', async () => {
     (prisma.routerTelemetry.deleteMany as jest.Mock).mockResolvedValue({ count: 42 });
     const count = await service.cleanup();

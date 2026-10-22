@@ -56,3 +56,13 @@ describe('TelemetryCron — garde running', () => {
     expect(collectAll).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('TelemetryCron — purge quotidienne', () => {
+  it('purge() déclenche la suppression de la télémétrie expirée (30 jours)', async () => {
+    const cleanup = jest.fn().mockResolvedValue(0);
+
+    await new TelemetryCron({ collectAll, cleanup } as unknown as TelemetryService).purge();
+
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+});
