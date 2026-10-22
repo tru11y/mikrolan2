@@ -342,13 +342,19 @@ export default function RouterDetailScreen() {
     }
   }
 
-  async function enableRemote() {
-    if (!id) return;
+  function enableRemote() {
     // Autorisation d'accès distant (annexe CGV) : exigée par le serveur avant tout provisionnement.
     if (me?.legal && me.tenant.remoteAccessVersion !== me.legal.remoteAccess) {
       setShowRemoteConsent(true);
       return;
     }
+    void provisionRemote();
+  }
+
+  // Appelée aussi juste après l'acceptation : `me` est alors périmé dans cette fermeture,
+  // on ne revérifie donc pas l'autorisation (le serveur la contrôle de toute façon).
+  async function provisionRemote() {
+    if (!id) return;
     setRemoteBusy(true);
     setRemoteMsg(null);
     try {
@@ -1252,7 +1258,7 @@ export default function RouterDetailScreen() {
         onClose={() => setShowRemoteConsent(false)}
         onAccepted={() => {
           setShowRemoteConsent(false);
-          void enableRemote();
+          void provisionRemote();
         }}
       />
     </View>
