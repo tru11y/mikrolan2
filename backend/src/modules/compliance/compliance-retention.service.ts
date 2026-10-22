@@ -8,6 +8,8 @@ import { PURGE_BATCH_SIZE, RETENTION, daysAgo } from './compliance.constants';
 const ANONYMIZED_EMAIL_DOMAIN = 'anonymized.invalid';
 // Valeur volontairement non vérifiable par argon2.verify : le compte ne peut plus se connecter.
 const ANONYMIZED_PASSWORD_HASH = '!anonymized';
+// Clés de `metadata` d'audit pouvant identifier une personne (adresse IP source, e-mail…), retirées à l'anonymisation.
+const PERSONAL_METADATA_KEYS = ['sourceIp', 'ip', 'ipAddress', 'clientIp', 'email', 'name', 'phone'];
 
 @Injectable()
 export class ComplianceRetentionService {
@@ -141,6 +143,7 @@ export class ComplianceRetentionService {
     await this.prisma.$transaction(async (tx) => {
       await tx.passwordResetCode.deleteMany({ where: { email: user.email } });
       await tx.refreshToken.deleteMany({ where: { userId: user.id } });
+      await this.anonymizeAuditTrail(tx, user.id);
       await tx.user.update({
         where: { id: user.id },
         data: {
@@ -176,6 +179,18 @@ export class ComplianceRetentionService {
         data: { credEncrypted: null, localAddress: null, alias: null },
       });
     });
+  }
+
+  /**
+   * Garde la valeur opérationnelle de l'audit (date, action, entité, résultat, tenant) mais coupe le lien avec la
+   * personne : userId, ip et données personnelles des métadonnées. À faire AVANT d'effacer userId (le nettoyage des
+   * métadonnées s'appuie dessus), dans AuditLog comme dans AuditLogArchive.
+   */
+  private async anonymizeAuditTrail(tx: Prisma.TransactionClient, userId: string): Promise<void> {
+    await tx.$executeRaw`UPDATE "AuditLog" SET "metadata" = "metadata" - ${PERSONAL_METADATA_KEYS}::text[] WHERE "userId" = ${userId} AND "metadata" IS NOT NULL`;
+    await tx.$executeRaw`UPDATE "AuditLogArchive" SET "metadata" = "metadata" - ${PERSONAL_METADATA_KEYS}::text[] WHERE "userId" = ${userId} AND "metadata" IS NOT NULL`;
+    await tx.auditLog.updateMany({ where: { userId }, data: { userId: null, ip: null } });
+    await tx.auditLogArchive.updateMany({ where: { userId }, data: { userId: null, ip: null } });
   }
 
   /** @returns true si le fichier n'existe plus (supprimé ou déjà absent ou référence invalide). */

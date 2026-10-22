@@ -153,6 +153,13 @@ describe('Compliance (e2e)', () => {
         data: { email: user.email, codeHash: 'h', expiresAt: new Date(Date.now() + 600_000) },
       });
 
+      const audit = await prisma.auditLog.create({
+        data: { tenantId: user.tenantId, userId: user.id, action: 'CONNECT', entityType: 'Router', ip: '41.66.1.2', metadata: { sourceIp: '41.66.1.2', expiresAt: '2026-10-22T10:00:00Z', outcomeNote: 'ok' } },
+      });
+      const archived = await prisma.auditLogArchive.create({
+        data: { id: `arch-${Date.now()}`, tenantId: user.tenantId, userId: user.id, action: 'CONNECT', entityType: 'Router', outcome: 'SUCCESS', ip: '41.66.1.2', metadata: { sourceIp: '41.66.1.2', email: user.email }, createdAt: new Date(Date.now() - 400 * DAY_MS) },
+      });
+
       await request(app.getHttpServer())
         .delete('/api/auth/me')
         .set(bearer(u.accessToken))
@@ -166,6 +173,13 @@ describe('Compliance (e2e)', () => {
       expect(await retention.anonymizeDeletedUsers(new Date(Date.now() + 31 * DAY_MS))).toBeGreaterThanOrEqual(1);
 
       const after = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
+      const auditAfter = await prisma.auditLog.findUniqueOrThrow({ where: { id: audit.id } });
+      expect(auditAfter).toMatchObject({ userId: null, ip: null, action: 'CONNECT', entityType: 'Router', tenantId: user.tenantId });
+      expect(auditAfter.metadata).toEqual({ expiresAt: '2026-10-22T10:00:00Z', outcomeNote: 'ok' });
+      const archiveAfter = await prisma.auditLogArchive.findUniqueOrThrow({ where: { id: archived.id } });
+      expect(archiveAfter).toMatchObject({ userId: null, ip: null, action: 'CONNECT', outcome: 'SUCCESS' });
+      expect(archiveAfter.metadata).toEqual({});
+
       expect(after.email).toBe(`deleted-${user.id}@anonymized.invalid`);
       expect(after).toMatchObject({ name: null, country: null, googleId: null, appleId: null, pushToken: null });
       expect(after.anonymizedAt).toBeInstanceOf(Date);
