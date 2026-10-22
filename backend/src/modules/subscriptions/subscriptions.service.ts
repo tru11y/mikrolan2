@@ -20,6 +20,7 @@ import {
   RemotePeerStatus,
   SubscriptionPlan,
   SubscriptionStatus,
+  TenantStatus,
   UserRole,
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
@@ -354,10 +355,15 @@ export class SubscriptionsService {
           currentPeriodEnd: end,
         },
       });
-      await tx.tenant.update({
-        where: { id: tenantId },
-        data: { status: 'ACTIVE' },
+      // Un compte supprimé ne doit jamais être réactivé par un paiement tardif :
+      // l'exception annule toute la transaction (facture restée PENDING).
+      const reactivated = await tx.tenant.updateMany({
+        where: { id: tenantId, status: { not: TenantStatus.DELETED } },
+        data: { status: TenantStatus.ACTIVE },
       });
+      if (reactivated.count === 0) {
+        throw new BusinessException(HttpStatus.CONFLICT, ErrorCode.TENANT_DELETED, 'Ce compte a été supprimé : activation impossible.');
+      }
       return tx.notification.create({
         data: {
           tenantId,

@@ -9,6 +9,7 @@ import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/error-codes';
 import { ConfigService } from '@nestjs/config';
 import {
+  PaymentStatus,
   Prisma,
   SubscriptionPlan,
   SubscriptionStatus,
@@ -666,6 +667,23 @@ export class AuthService {
         if (e instanceof BusinessException) throw e;
         throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_GOOGLE_INVALID, 'Token Google invalide.');
       }
+    } else if (dto.appleIdentityToken && dto.appleNonce) {
+      const clientId = this.config.get<string>('APPLE_CLIENT_ID');
+      if (!clientId) throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_APPLE_NOT_CONFIGURED, 'Apple Sign-In non configuré.');
+      let sub: string;
+      try {
+        ({ sub } = await appleSignin.verifyIdToken(dto.appleIdentityToken, {
+          audience: clientId,
+          // Nonce obligatoire ici : un jeton Apple volé ne doit pas suffire à supprimer un compte.
+          nonce: createHash('sha256').update(dto.appleNonce).digest('hex'),
+          ignoreExpiration: false,
+        }));
+      } catch {
+        throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_APPLE_INVALID, 'Token Apple invalide.');
+      }
+      if (!user.appleId || sub !== user.appleId) {
+        throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_APPLE_INVALID, 'Compte Apple incorrect.');
+      }
     } else {
       throw new BusinessException(
         HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_UNSUPPORTED_METHOD,
@@ -675,6 +693,19 @@ export class AuthService {
 
     const now = new Date();
     await this.prisma.$transaction(async (tx) => {
+      // Tout utilisateur non supprimé (actif ou suspendu) garde le tenant en vie.
+      const others = await tx.user.count({
+        where: { tenantId: user.tenantId, id: { not: userId }, status: { not: UserStatus.DELETED } },
+      });
+      // Sans propriétaire plus personne ne peut gérer l'autorisation d'accès distant.
+      if (user.role === UserRole.OWNER && others > 0) {
+        throw new BusinessException(
+          HttpStatus.CONFLICT,
+          ErrorCode.OWNER_TRANSFER_REQUIRED,
+          'Des utilisateurs sont encore rattachés à ce compte : supprimez-les ou transférez la propriété avant de supprimer le compte.',
+        );
+      }
+
       await tx.user.update({
         where: { id: userId },
         data: { status: UserStatus.DELETED, deletedAt: now },
@@ -683,15 +714,17 @@ export class AuthService {
         where: { userId, revoked: false },
         data: { revoked: true },
       });
-      // Dernier utilisateur actif : le tenant est supprimé avec lui. Ses accès
+      // Dernier utilisateur : le tenant est supprimé avec lui. Ses accès
       // WireGuard sont coupés par ComplianceCron, ses données anonymisées à J+30.
-      const remaining = await tx.user.count({
-        where: { tenantId: user.tenantId, status: UserStatus.ACTIVE },
-      });
-      if (remaining === 0) {
+      if (others === 0) {
         await tx.tenant.update({
           where: { id: user.tenantId },
           data: { status: TenantStatus.DELETED, deletedAt: now },
+        });
+        // Un paiement encore en attente ne doit plus pouvoir activer ce compte.
+        await tx.invoice.updateMany({
+          where: { tenantId: user.tenantId, status: PaymentStatus.PENDING },
+          data: { status: PaymentStatus.FAILED },
         });
       }
     });
