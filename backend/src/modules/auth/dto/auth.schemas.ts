@@ -64,11 +64,14 @@ export const deleteAccountSchema = z
   .object({
     password: z.string().min(1).max(128).optional(),
     googleIdToken: z.string().min(20).max(4000).optional(),
+    appleIdentityToken: z.string().min(20).max(4000).optional(),
+    appleNonce: z.string().min(1).max(200).optional(),
   })
   .strict()
-  .refine((d) => d.password || d.googleIdToken, {
-    message: 'Mot de passe ou token Google requis.',
-  });
+  .refine(
+    (d) => d.password || d.googleIdToken || (d.appleIdentityToken && d.appleNonce),
+    { message: 'Mot de passe, token Google ou token Apple (avec nonce) requis.' },
+  );
 export type DeleteAccountDto = z.infer<typeof deleteAccountSchema>;
 
 export const setPasswordSchema = z

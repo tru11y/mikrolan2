@@ -3,6 +3,9 @@ import { UserRole, UserStatus, SubscriptionPlan, SubscriptionStatus } from '@pri
 import * as argon2 from 'argon2';
 import { AuthService } from './auth.service';
 import { LEGAL_VERSIONS } from '../legal/legal.versions';
+import appleSignin from 'apple-signin-auth';
+
+jest.mock('apple-signin-auth', () => ({ __esModule: true, default: { verifyIdToken: jest.fn() } }));
 
 // ─── Mocks ───────────────────────────────────────────────
 const mockPrisma = {
@@ -20,6 +23,7 @@ const mockPrisma = {
   },
   subscription: { findUnique: jest.fn() },
   refreshToken: { updateMany: jest.fn().mockResolvedValue({}) },
+  invoice: { updateMany: jest.fn().mockResolvedValue({}) },
   $transaction: jest.fn((fn: (tx: any) => Promise<unknown>): Promise<unknown> => fn(mockPrisma)),
 };
 
@@ -50,7 +54,7 @@ const mockSubscriptions = {
 };
 
 const mockConfig = {
-  get: jest.fn((key: string) => {
+  get: jest.fn((key: string): string | undefined => {
     if (key === 'GOOGLE_CLIENT_ID') return undefined;
     return undefined;
   }),
@@ -377,13 +381,16 @@ describe('AuthService', () => {
       user.passwordHash = await argon2.hash(PASSWORD, { type: argon2.argon2id });
     });
 
-    it('stamps deletedAt, revokes tokens and soft-deletes the tenant when no active user remains', async () => {
+    it('stamps deletedAt, revokes tokens, soft-deletes the tenant and fails pending invoices when no other user remains', async () => {
       const service = buildService();
       mockPrisma.user.findFirst.mockResolvedValue(user);
       mockPrisma.user.count.mockResolvedValue(0);
 
       await service.deleteAccount('u1', { password: PASSWORD });
 
+      expect(mockPrisma.user.count).toHaveBeenCalledWith({
+        where: { tenantId: 't1', id: { not: 'u1' }, status: { not: UserStatus.DELETED } },
+      });
       expect(mockPrisma.user.update).toHaveBeenCalledWith({
         where: { id: 'u1' },
         data: { status: UserStatus.DELETED, deletedAt: expect.any(Date) },
@@ -396,17 +403,87 @@ describe('AuthService', () => {
         where: { id: 't1' },
         data: { status: 'DELETED', deletedAt: expect.any(Date) },
       });
+      expect(mockPrisma.invoice.updateMany).toHaveBeenCalledWith({
+        where: { tenantId: 't1', status: 'PENDING' },
+        data: { status: 'FAILED' },
+      });
     });
 
-    it('keeps the tenant when other active users remain', async () => {
+    it('keeps the tenant (and its invoices) when other users remain, suspended ones included', async () => {
       const service = buildService();
-      mockPrisma.user.findFirst.mockResolvedValue(user);
+      mockPrisma.user.findFirst.mockResolvedValue({ ...user, role: UserRole.ADMIN });
       mockPrisma.user.count.mockResolvedValue(2);
 
       await service.deleteAccount('u1', { password: PASSWORD });
 
       expect(mockPrisma.user.update).toHaveBeenCalled();
       expect(mockPrisma.tenant.update).not.toHaveBeenCalled();
+      expect(mockPrisma.invoice.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('refuses to delete an OWNER while other users remain (409), nothing written', async () => {
+      const service = buildService();
+      mockPrisma.user.findFirst.mockResolvedValue({ ...user, role: UserRole.OWNER });
+      mockPrisma.user.count.mockResolvedValue(1);
+
+      await expect(service.deleteAccount('u1', { password: PASSWORD })).rejects.toMatchObject({ status: 409 });
+      expect(mockPrisma.user.update).not.toHaveBeenCalled();
+      expect(mockPrisma.refreshToken.updateMany).not.toHaveBeenCalled();
+      expect(mockPrisma.tenant.update).not.toHaveBeenCalled();
+    });
+
+    describe('Apple account (no password)', () => {
+      const appleUser = { id: 'u1', tenantId: 't1', hasPassword: false, passwordHash: '', appleId: 'apple-sub-1' };
+      const verify = appleSignin.verifyIdToken as jest.Mock;
+      const dto = { appleIdentityToken: 'x'.repeat(30), appleNonce: 'nonce-1' };
+
+      beforeEach(() => {
+        verify.mockReset();
+        mockConfig.get.mockImplementation((k: string) => (k === 'APPLE_CLIENT_ID' ? 'com.mikrolan.app' : undefined));
+      });
+      afterEach(() => mockConfig.get.mockImplementation(() => undefined));
+
+      it('deletes the account when the Apple token matches the stored appleId', async () => {
+        const service = buildService();
+        mockPrisma.user.findFirst.mockResolvedValue(appleUser);
+        mockPrisma.user.count.mockResolvedValue(0);
+        verify.mockResolvedValue({ sub: 'apple-sub-1' });
+
+        await service.deleteAccount('u1', dto);
+
+        expect(verify).toHaveBeenCalledWith(
+          dto.appleIdentityToken,
+          expect.objectContaining({ nonce: expect.stringMatching(/^[0-9a-f]{64}$/) }),
+        );
+        expect(mockPrisma.user.update).toHaveBeenCalled();
+      });
+
+      it('rejects a token belonging to another Apple account (401), nothing deleted', async () => {
+        const service = buildService();
+        mockPrisma.user.findFirst.mockResolvedValue(appleUser);
+        verify.mockResolvedValue({ sub: 'someone-else' });
+
+        await expect(service.deleteAccount('u1', dto)).rejects.toMatchObject({ status: 401 });
+        expect(mockPrisma.user.update).not.toHaveBeenCalled();
+      });
+
+      it('rejects an invalid Apple token (401)', async () => {
+        const service = buildService();
+        mockPrisma.user.findFirst.mockResolvedValue(appleUser);
+        verify.mockRejectedValue(new Error('bad signature'));
+
+        await expect(service.deleteAccount('u1', dto)).rejects.toMatchObject({ status: 401 });
+        expect(mockPrisma.user.update).not.toHaveBeenCalled();
+      });
+
+      it('rejects an Apple account without stored appleId (401)', async () => {
+        const service = buildService();
+        mockPrisma.user.findFirst.mockResolvedValue({ ...appleUser, appleId: null });
+        verify.mockResolvedValue({ sub: 'apple-sub-1' });
+
+        await expect(service.deleteAccount('u1', dto)).rejects.toMatchObject({ status: 401 });
+        expect(mockPrisma.user.update).not.toHaveBeenCalled();
+      });
     });
 
     it('does not delete anything on a wrong password', async () => {
