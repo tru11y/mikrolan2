@@ -31,7 +31,7 @@ export function RemoteAccessConsentModal({ visible, onClose, onAccepted }: Props
   const [error, setError] = useState<string | null>(null);
 
   const isOwner = me?.user.role === 'OWNER' || me?.user.role === 'SUPER_ADMIN';
-  const version = me?.legal.remoteAccess;
+  const version = me?.legal?.remoteAccess;
 
   async function accept() {
     if (!version) return;

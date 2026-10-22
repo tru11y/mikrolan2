@@ -4,8 +4,8 @@
  * force les utilisateurs à ré-accepter (écran de consentement mobile).
  */
 export const LEGAL_VERSIONS = {
-  terms: '2026-09-01',
-  privacy: '2026-09-01',
+  terms: '2026-10-22',
+  privacy: '2026-10-22',
   remoteAccess: '2026-10-18',
 } as const;
 

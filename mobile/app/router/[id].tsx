@@ -345,7 +345,7 @@ export default function RouterDetailScreen() {
   async function enableRemote() {
     if (!id) return;
     // Autorisation d'accès distant (annexe CGV) : exigée par le serveur avant tout provisionnement.
-    if (me && me.tenant.remoteAccessVersion !== me.legal.remoteAccess) {
+    if (me?.legal && me.tenant.remoteAccessVersion !== me.legal.remoteAccess) {
       setShowRemoteConsent(true);
       return;
     }
