@@ -10,8 +10,9 @@ const NOW = new Date('2026-10-18T12:00:00Z');
 const unlinkMock = unlink as jest.Mock;
 
 const mockPrisma = {
-  auditLog: { findMany: jest.fn(), deleteMany: jest.fn() },
-  auditLogArchive: { createMany: jest.fn(), count: jest.fn() },
+  auditLog: { findMany: jest.fn(), deleteMany: jest.fn(), updateMany: jest.fn() },
+  auditLogArchive: { createMany: jest.fn(), count: jest.fn(), updateMany: jest.fn() },
+  $executeRaw: jest.fn(),
   paymentProof: { findMany: jest.fn(), deleteMany: jest.fn() },
   router: { updateMany: jest.fn() },
   user: { findMany: jest.fn(), update: jest.fn(), count: jest.fn() },
@@ -221,6 +222,26 @@ describe('anonymizeDeletedUsers', () => {
       }),
     });
     expect(mockPrisma.tenant.update).not.toHaveBeenCalled();
+  });
+
+  it('cuts the audit trail from the person: userId and ip nulled in AuditLog and AuditLogArchive, personal metadata keys removed first', async () => {
+    mockPrisma.user.findMany.mockResolvedValueOnce([user]);
+    mockPrisma.tenant.findUnique.mockResolvedValue({ status: TenantStatus.ACTIVE });
+    const order: string[] = [];
+    mockPrisma.$executeRaw.mockImplementation(async (strings: TemplateStringsArray) => {
+      order.push(strings.join('?').includes('"AuditLogArchive"') ? 'raw-archive' : 'raw-log');
+    });
+    mockPrisma.auditLog.updateMany.mockImplementation(async () => order.push('null-log'));
+    mockPrisma.auditLogArchive.updateMany.mockImplementation(async () => order.push('null-archive'));
+
+    await buildService().anonymizeDeletedUsers(NOW);
+
+    expect(order).toEqual(['raw-log', 'raw-archive', 'null-log', 'null-archive']);
+    expect(mockPrisma.auditLog.updateMany).toHaveBeenCalledWith({ where: { userId: 'u1' }, data: { userId: null, ip: null } });
+    expect(mockPrisma.auditLogArchive.updateMany).toHaveBeenCalledWith({ where: { userId: 'u1' }, data: { userId: null, ip: null } });
+    const [, keys, userId] = mockPrisma.$executeRaw.mock.calls[0];
+    expect(keys).toEqual(expect.arrayContaining(['sourceIp', 'ip', 'email']));
+    expect(userId).toBe('u1');
   });
 
   it('also anonymizes the tenant and wipes router secrets when it is deleted and this is its last user', async () => {
