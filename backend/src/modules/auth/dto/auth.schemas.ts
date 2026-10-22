@@ -12,7 +12,9 @@ export const signupSchema = z.object({
   email: z.string().email().max(160),
   password: z.string().min(10).max(128),
   country: z.string().trim().min(1).max(80).optional(),
-  ...legalAcceptanceShape,
+  // Optionnels au niveau du schéma : requis seulement si COMPLIANCE_ENFORCED (voir AuthService).
+  termsVersion: legalAcceptanceShape.termsVersion.optional(),
+  privacyVersion: legalAcceptanceShape.privacyVersion.optional(),
 });
 export type SignupDto = z.infer<typeof signupSchema>;
 

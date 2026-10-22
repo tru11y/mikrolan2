@@ -74,6 +74,14 @@ const envSchema = z.object({
 
   // ─── OAuth (optional — disabled if blank) ──
   GOOGLE_CLIENT_ID: z.string().default(''),
+
+  // ─── Conformité : consentement à l'inscription, autorisation d'accès distant, purges ──
+  // OFF par défaut : l'APK diffusée avant ces règles ne sait ni envoyer les versions
+  // légales ni accorder l'autorisation. À activer une fois l'APK à jour diffusée.
+  COMPLIANCE_ENFORCED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;
