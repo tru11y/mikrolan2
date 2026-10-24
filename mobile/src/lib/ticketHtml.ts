@@ -150,6 +150,7 @@ body{background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif}
 .hdr{font-size:7pt;color:#555;display:flex;justify-content:center;gap:4px;padding:1mm 0 2mm;border-bottom:0.5px solid #ccc;margin-bottom:1mm}
 .hdr .sep{color:#ccc}
 .g{width:100%;border-collapse:collapse;table-layout:fixed}
+tr{page-break-inside:avoid;break-inside:avoid}
 .c{border:0.5px solid #000;width:${100 / COLS}%;height:${tpl.cellHeightMm}mm;vertical-align:middle;padding:0.8mm 1.2mm;overflow:hidden;line-height:1.1}
 .ln{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .code{font-family:'Courier New',Courier,monospace;letter-spacing:0.5px;padding:0.8mm 0 0.3mm;white-space:nowrap;position:relative}
