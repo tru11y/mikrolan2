@@ -29,10 +29,13 @@ export function buildPdfFileName(opts: {
   return `Mikrolan_${plan}_${yyyy}-${MM}-${dd}_${lot}.pdf`;
 }
 
+// expo-print ignore `@page { size: A4 }` sur Android et sort du Letter (612×792) par défaut.
+const A4_POINTS = { width: 595, height: 842 } as const;
+
 export async function printTickets(opts: TicketsPdfOpts): Promise<void> {
   try {
     const html = await buildTicketsHtml(opts);
-    const { uri } = await Print.printToFileAsync({ html });
+    const { uri } = await Print.printToFileAsync({ html, ...A4_POINTS });
     const fileName = buildPdfFileName({
       planName: opts.planName,
       batchSeq: opts.batchSeq,

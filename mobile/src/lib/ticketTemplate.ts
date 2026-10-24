@@ -173,6 +173,7 @@ export function receiptPreset(tpl: ResolvedTicketTemplate): ResolvedTicketTempla
     boxedCode: true,
     showCodeIcon: true,
     columns: 4,
-    cellHeightMm: 45,
+    // Le contenu mesure ~48,6 mm sur appareil : en dessous, la ligne grandit et la dernière rangée déborde.
+    cellHeightMm: 50,
   };
 }
