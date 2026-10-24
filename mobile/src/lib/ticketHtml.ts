@@ -40,6 +40,8 @@ function fmtDateFull(d: Date): string {
 }
 
 const MM_TO_PX = 96 / 25.4;
+// La monospace d'Android n'a pas de graisse grasse : font-weight seul ne change rien, le trait épaissit les glyphes.
+const BOLD_STROKE = '-webkit-text-stroke:0.5pt #000;';
 const USER_ICON =
   '<svg viewBox="0 0 24 24" width="100%" height="100%"><circle cx="9" cy="7" r="4"/><path d="M1 21c0-5 3-8 8-8s8 3 8 8z"/><circle cx="18" cy="12" r="2.5" fill="none" stroke="#000" stroke-width="1.5"/><path d="M18 14.5V21M18 18h2" stroke="#000" stroke-width="1.5" fill="none"/></svg>';
 
@@ -121,7 +123,7 @@ function renderBlock(blk: TicketBlock, c: CellCtx, code: string, number: number)
   if (blk.id === 'code') {
     const icon = tpl.showCodeIcon ? `<span class="ico">${USER_ICON}</span>` : '';
     const box = tpl.boxedCode ? ' boxed' : '';
-    return `<div class="code${box}" style="font-size:${blk.size}pt;font-weight:${blk.bold ? 900 : 400};${base}">${icon}${esc(code)}</div>`;
+    return `<div class="code${box}" style="font-size:${blk.size}pt;font-weight:${blk.bold ? 900 : 400};${blk.bold ? BOLD_STROKE : ''}${base}">${icon}${esc(code)}</div>`;
   }
   const text = blockText(blk.id, c, number);
   if (!text) return '';

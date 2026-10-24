@@ -44,6 +44,13 @@ test('modèle ticket reçu : FCFA en suffixe par défaut', async () => {
   assert.ok(!html.includes('FCFA300'));
 });
 
+test('code du ticket en gras : graisse + trait (la monospace Android n\'a pas de gras)', async () => {
+  const html = await buildTicketsHtml({ ...base, template: receiptPreset(resolveTicketTemplate(null)) });
+  const codeDiv = html.match(/<div class="code[^"]*" style="([^"]*)"/)?.[1] ?? '';
+  assert.ok(codeDiv.includes('font-weight:900'));
+  assert.ok(codeDiv.includes('-webkit-text-stroke'));
+});
+
 test('QR généré et texte utilisateur échappé', async () => {
   assert.ok(qrSvg('abc').includes('<path d="M'));
   const html = await buildTicketsHtml({
