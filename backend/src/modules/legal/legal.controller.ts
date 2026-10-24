@@ -25,6 +25,7 @@ export class LegalController {
   }
 
   @Public()
+  @NoEnvelope()
   @Get('remote-access')
   @Header('Content-Type', 'text/html; charset=utf-8')
   remoteAccess() {
