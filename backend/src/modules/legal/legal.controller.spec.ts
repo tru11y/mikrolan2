@@ -4,7 +4,8 @@ import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify
 import { Test } from '@nestjs/testing';
 import { ResponseInterceptor } from '../../common/interceptors/response.interceptor';
 import { LegalController } from './legal.controller';
-import { PRIVACY_HTML, TERMS_HTML } from './legal.content';
+import { PRIVACY_HTML, REMOTE_ACCESS_HTML, TERMS_HTML } from './legal.content';
+import { LEGAL_VERSIONS } from './legal.versions';
 
 @Controller('probe')
 class ProbeController {
@@ -36,11 +37,18 @@ describe('LegalController (HTTP, intercepteur global actif)', () => {
   it.each([
     ['/legal/terms', TERMS_HTML],
     ['/legal/privacy', PRIVACY_HTML],
+    ['/legal/remote-access', REMOTE_ACCESS_HTML],
   ])('%s répond 200 en HTML brut, sans enveloppe', async (url, html) => {
     const res = await app.inject({ method: 'GET', url });
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toContain('text/html');
     expect(res.body).toBe(html);
+  });
+
+  it('/legal/versions conserve l\'enveloppe JSON (lue par le mobile avec unwrap)', async () => {
+    const res = await app.inject({ method: 'GET', url: '/legal/versions' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ success: true, data: LEGAL_VERSIONS, message: null, error: null });
   });
 
   it("l'enveloppe JSON reste appliquée aux autres routes", async () => {
