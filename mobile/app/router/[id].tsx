@@ -53,6 +53,7 @@ import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 import { RouterStatusDot } from '@/src/components/RouterStatusDot';
+import { RemoteAccessConsentModal } from '@/src/components/RemoteAccessConsentModal';
 
 // Perfs du routeur et sessions actives : 15 s (temps réel ressenti).
 const POLL_MS = 15_000;
@@ -186,7 +187,7 @@ export default function RouterDetailScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const qc = useQueryClient();
-  const { isPro } = useAuth();
+  const { isPro, me } = useAuth();
   const { selectRouter } = useActiveRouter();
   const sseLive = useSseLive();
   const navHeight = useBottomNavHeight();
@@ -306,6 +307,7 @@ export default function RouterDetailScreen() {
   });
 
   const [remoteBusy, setRemoteBusy] = useState(false);
+  const [showRemoteConsent, setShowRemoteConsent] = useState(false);
   const [remoteMsg, setRemoteMsg] = useState<
     { tone: 'success' | 'danger'; text: string } | null
   >(null);
@@ -340,7 +342,18 @@ export default function RouterDetailScreen() {
     }
   }
 
-  async function enableRemote() {
+  function enableRemote() {
+    // Autorisation d'accès distant (annexe CGV) : exigée par le serveur avant tout provisionnement.
+    if (me?.legal && me.tenant.remoteAccessVersion !== me.legal.remoteAccess) {
+      setShowRemoteConsent(true);
+      return;
+    }
+    void provisionRemote();
+  }
+
+  // Appelée aussi juste après l'acceptation : `me` est alors périmé dans cette fermeture,
+  // on ne revérifie donc pas l'autorisation (le serveur la contrôle de toute façon).
+  async function provisionRemote() {
     if (!id) return;
     setRemoteBusy(true);
     setRemoteMsg(null);
@@ -1240,6 +1253,14 @@ export default function RouterDetailScreen() {
         />
       </ScrollView>
       <BottomNav active="index" />
+      <RemoteAccessConsentModal
+        visible={showRemoteConsent}
+        onClose={() => setShowRemoteConsent(false)}
+        onAccepted={() => {
+          setShowRemoteConsent(false);
+          void provisionRemote();
+        }}
+      />
     </View>
   );
 }

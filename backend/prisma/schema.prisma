@@ -169,30 +169,34 @@ enum GenerationType {
 
 // ─── TENANT (racine d'isolation) ─────────────────────────
 model Tenant {
-  id                    String            @id @default(uuid())
-  name                  String
-  slug                  String            @unique
-  status                TenantStatus      @default(ACTIVE)
-  country               String?
-  countryUpdatedAt      DateTime?
-  lastCountryReminderAt DateTime?
-  timezone              String?           @default("Africa/Abidjan")
-  users                 User[]
-  routers               Router[]
-  subscription          Subscription?
-  invoices              Invoice[]
-  releaseDownloads      ReleaseDownload[]
-  auditLogs             AuditLog[]
-  plans                 Plan[]
-  voucherBatches        VoucherBatch[]
-  vouchers              Voucher[]
-  sessions              Session[]
-  notifications         Notification[]
-  supportTickets        SupportTicket[]
-  ticketVaults          TicketVault[]
-  createdAt             DateTime          @default(now())
-  updatedAt             DateTime          @updatedAt
-  deletedAt             DateTime?
+  id                       String            @id @default(uuid())
+  name                     String
+  slug                     String            @unique
+  status                   TenantStatus      @default(ACTIVE)
+  country                  String?
+  countryUpdatedAt         DateTime?
+  lastCountryReminderAt    DateTime?
+  // Autorisation d'accès distant aux routeurs (annexe CGV) : donnée par le client, révocable.
+  remoteAccessAcceptedAt   DateTime?
+  remoteAccessVersion      String?
+  remoteAccessAcceptedById String?
+  timezone                 String?           @default("Africa/Abidjan")
+  users                    User[]
+  routers                  Router[]
+  subscription             Subscription?
+  invoices                 Invoice[]
+  releaseDownloads         ReleaseDownload[]
+  auditLogs                AuditLog[]
+  plans                    Plan[]
+  voucherBatches           VoucherBatch[]
+  vouchers                 Voucher[]
+  sessions                 Session[]
+  notifications            Notification[]
+  supportTickets           SupportTicket[]
+  ticketVaults             TicketVault[]
+  createdAt                DateTime          @default(now())
+  updatedAt                DateTime          @updatedAt
+  deletedAt                DateTime?
 
   // Le back-office trie les comptes du plus récent au plus ancien et pagine
   // par curseur : sans cet index, chaque page est un seq scan de la table.
@@ -217,6 +221,14 @@ model User {
   notificationsEnabled Boolean           @default(true)
   pushToken            String? // Expo push token pour les notifications OS
   lastLoginAt          DateTime? // dernière authentification réussie (vue admin)
+  // Preuve d'acceptation des textes légaux (version = date de publication du texte).
+  termsAcceptedAt      DateTime?
+  termsVersion         String?
+  privacyAcceptedAt    DateTime?
+  privacyVersion       String?
+  // Suppression de compte : deletedAt = demande, anonymizedAt = effacement des données personnelles (J+30).
+  deletedAt            DateTime?
+  anonymizedAt         DateTime?
   refreshTokens        RefreshToken[]
   supportTickets       SupportTicket[]
   ticketMessages       TicketMessage[]
@@ -229,6 +241,7 @@ model User {
   @@index([tenantId])
   @@index([tenantId, createdAt])
   @@index([createdAt])
+  @@index([status, deletedAt])
 }
 
 // ─── REFRESH TOKEN (family rotation) ─────────────────────
@@ -322,6 +335,7 @@ model RemotePeer {
   winboxPort Int @default(8291)
 
   @@index([tenantId])
+  @@index([status, revokedAt])
 }
 
 // ─── SUBSCRIPTION TIER (grille tarifaire, hors tenant) ───
@@ -424,6 +438,7 @@ model AuditLog {
 
   @@index([tenantId, createdAt])
   @@index([outcome])
+  @@index([createdAt])
 }
 
 // ─── PLAN (forfait WiFi = user-profile RouterOS) ─────────
@@ -589,6 +604,7 @@ model PaymentProof {
   createdAt DateTime      @default(now())
 
   @@index([invoiceId])
+  @@index([createdAt])
 }
 
 // ─── SUPPORT / SAV ───────────────────────────────────────

@@ -12,3 +12,6 @@ coverage/
 # Payment proofs (real client financial documents) — never committed.
 /uploads/
 /private-uploads/
+
+# Fichier temporaire généré par les e2e (testcontainers)
+test/setup/.tc-env.json

@@ -3,6 +3,7 @@ import { reportSilent, swallow } from '@/src/lib/report';
 import { useCallback, useState } from 'react';
 import { Linking, Modal, ScrollView, Switch, Text, View, Pressable, FlatList } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -108,6 +109,7 @@ export default function AccountScreen() {
   const { mode: themeMode, setMode: setThemeMode } = useThemeMode();
   const navHeight = useBottomNavHeight();
   const router = useRouter();
+  const qc = useQueryClient();
   const { me, isPro, logout, refreshProfile } = useAuth();
   const pushStatus = usePushStatus();
   const {
@@ -177,6 +179,29 @@ export default function AccountScreen() {
     setLoggingOutAll(true);
     try { await api.auth.logoutAllSessions(); } catch (err) { reportSilent('account.logout-all', err); }
     await logout();
+  }
+
+  const [editingRevoke, setEditingRevoke] = useState(false);
+  const [revokeBusy, setRevokeBusy] = useState(false);
+  const [revokeMsg, setRevokeMsg] = useState<{ tone: 'success' | 'danger'; text: string } | null>(null);
+  const canRevokeRemoteAccess =
+    (me?.user.role === 'OWNER' || me?.user.role === 'SUPER_ADMIN') && Boolean(me?.tenant.remoteAccessVersion);
+
+  async function revokeRemoteAccess() {
+    setRevokeBusy(true);
+    setRevokeMsg(null);
+    try {
+      await api.remoteAccess.revoke();
+      await refreshProfile();
+      await qc.invalidateQueries({ queryKey: ['routers'] });
+      await qc.invalidateQueries({ queryKey: ['router-remote'] });
+      setEditingRevoke(false);
+      setRevokeMsg({ tone: 'success', text: t('legal.remoteRevoked') });
+    } catch (e) {
+      setRevokeMsg({ tone: 'danger', text: extractErrorMessage(e) });
+    } finally {
+      setRevokeBusy(false);
+    }
   }
 
   const [editingDelete, setEditingDelete] = useState(false);
@@ -476,6 +501,30 @@ export default function AccountScreen() {
             subtitle={t('account.appDownloadSubtitle')}
             onPress={() => router.push('/app-download')}
           />
+          {revokeMsg && !editingRevoke ? (
+            <View style={{ paddingHorizontal: 14, paddingBottom: 10 }}>
+              <Banner tone={revokeMsg.tone}>{revokeMsg.text}</Banner>
+            </View>
+          ) : null}
+          {canRevokeRemoteAccess ? (
+            <>
+              <SectionSep />
+              <SettingRow
+                icon="git-network-outline"
+                iconColor={theme.warning}
+                title={t('legal.remoteAuthTitle')}
+                subtitle={t('legal.remoteAuthSubtitle')}
+                onPress={() => setEditingRevoke((v) => !v)}
+              />
+              {editingRevoke ? (
+                <View style={{ gap: 10, padding: 14, paddingTop: 0 }}>
+                  {revokeMsg ? <Banner tone={revokeMsg.tone}>{revokeMsg.text}</Banner> : null}
+                  <Banner tone="warning">{t('legal.remoteRevokeWarning')}</Banner>
+                  <Button title={t('legal.remoteRevokeConfirm')} variant="danger" onPress={revokeRemoteAccess} loading={revokeBusy} />
+                </View>
+              ) : null}
+            </>
+          ) : null}
           {me?.user.role === 'SUPER_ADMIN' ? (
             <>
               <SectionSep />
