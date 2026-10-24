@@ -211,6 +211,9 @@ export class AdminService {
     if (id === actor.tenantId) {
       throw new BusinessException(HttpStatus.FORBIDDEN, ErrorCode.ADMIN_SELF_SUSPEND, 'Impossible de suspendre son propre compte.');
     }
+    if (tenant.status === TenantStatus.DELETED) {
+      throw new BusinessException(HttpStatus.CONFLICT, ErrorCode.TENANT_DELETED, 'Ce compte a été supprimé : son statut ne peut plus changer.');
+    }
 
     const updated = await this.prisma.tenant.update({
       where: { id },
