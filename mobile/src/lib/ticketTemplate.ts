@@ -30,6 +30,7 @@ export type ResolvedTicketTemplate = TicketTemplate & {
   showCodeIcon: boolean;
   columns: number;
   cellHeightMm: number;
+  priceDurationInline: boolean;
 };
 
 type FlagKey = {
@@ -117,6 +118,7 @@ export function resolveTicketTemplate(
     showCodeIcon: src.showCodeIcon ?? false,
     columns: src.columns ?? 5,
     cellHeightMm: src.cellHeightMm ?? 28,
+    priceDurationInline: src.priceDurationInline ?? false,
   };
 }
 
@@ -175,5 +177,53 @@ export function receiptPreset(tpl: ResolvedTicketTemplate): ResolvedTicketTempla
     columns: 4,
     // Le contenu mesure ~48,6 mm sur appareil : en dessous, la ligne grandit et la dernière rangée déborde.
     cellHeightMm: 50,
+  };
+}
+
+/**
+ * Modèle « compact » : 50 tickets par page A4 (5 colonnes × 28 mm). Sans QR, durée et prix
+ * sur une seule ligne séparés par un trait, textes réduits. Code limité à ~12 caractères
+ * par cellule : au-delà, il serait rogné.
+ */
+export function compactPreset(tpl: ResolvedTicketTemplate): ResolvedTicketTemplate {
+  const style: Partial<Record<TicketBlockId, Pick<TicketBlock, 'size' | 'bold'>>> = {
+    number: { size: 6, bold: true },
+    code: { size: 12, bold: true },
+    duration: { size: 7, bold: false },
+    price: { size: 7, bold: true },
+    contact: { size: 7, bold: true },
+    createdAt: { size: 5, bold: false },
+    note: { size: 4.5, bold: false },
+    poweredBy: { size: 4, bold: false },
+  };
+  const order: TicketBlockId[] = ['number', 'code', 'duration', 'price', 'contact', 'createdAt', 'note', 'poweredBy'];
+  const ordered = [
+    ...order.map((id) => tpl.blocks.find((x) => x.id === id)!),
+    ...tpl.blocks.filter((x) => !order.includes(x.id)),
+  ].map((x) => ({ ...x, ...style[x.id], align: 'center' as const }));
+  return {
+    ...tpl,
+    blocks: ordered,
+    showHeader: false,
+    showLogo: false,
+    showCompanyName: false,
+    showTicketNumber: true,
+    showPlanName: false,
+    showDuration: true,
+    showPrice: true,
+    showWifiName: true,
+    showCreatedAt: true,
+    showQrCode: false,
+    showNote: true,
+    showFooter: false,
+    showPoweredBy: true,
+    durationFormat: 'hours',
+    currencyPosition: tpl.currency === '$' ? 'prefix' : 'suffix',
+    dateFormat: 'iso',
+    boxedCode: true,
+    showCodeIcon: false,
+    priceDurationInline: true,
+    columns: 5,
+    cellHeightMm: 28,
   };
 }

@@ -9,6 +9,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, extractErrorMessage } from '@/src/lib/api';
 import {
   BLOCK_FLAG,
+  compactPreset,
   moveBlock,
   receiptPreset,
   resolveTicketTemplate,
@@ -143,6 +144,11 @@ export default function TicketSettingsScreen() {
           variant="ghost"
           onPress={() => setTpl(receiptPreset(tpl))}
         />
+        <Button
+          title={t('ticketSettings.compactPreset')}
+          variant="ghost"
+          onPress={() => setTpl(compactPreset(tpl))}
+        />
         <Divider />
 
         <Label>{t('ticketSettings.layout')}</Label>
@@ -204,6 +210,11 @@ export default function TicketSettingsScreen() {
           label={t('ticketSettings.showCodeIcon')}
           value={tpl.showCodeIcon}
           onValueChange={(v) => set('showCodeIcon', v)}
+        />
+        <Toggle
+          label={t('ticketSettings.priceDurationInline')}
+          value={tpl.priceDurationInline}
+          onValueChange={(v) => set('priceDurationInline', v)}
         />
         <Divider />
 
