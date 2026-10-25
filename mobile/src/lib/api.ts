@@ -130,6 +130,8 @@ export type TicketTemplate = {
   showCodeIcon?: boolean;
   columns?: number;
   cellHeightMm?: number;
+  /** Durée et prix sur une seule ligne, séparés par un trait (gagne de la hauteur). */
+  priceDurationInline?: boolean;
   /** Ordre + style des lignes ; absent = ancien modèle (voir resolveTicketTemplate). */
   blocks?: TicketBlock[];
 };
