@@ -50,6 +50,7 @@ export const ticketTemplateSchema = z
     showCodeIcon: z.boolean().optional(),
     columns: z.number().int().min(1).max(6).optional(),
     cellHeightMm: z.number().int().min(15).max(120).optional(),
+    priceDurationInline: z.boolean().optional(),
     blocks: z
       .array(
         z

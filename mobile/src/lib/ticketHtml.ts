@@ -130,6 +130,15 @@ function renderBlock(blk: TicketBlock, c: CellCtx, code: string, number: number)
   return `<div class="ln" style="${base};font-size:${blk.size}pt;font-weight:${blk.bold ? 700 : 400}">${esc(text)}</div>`;
 }
 
+const JUSTIFY: Record<TicketBlock['align'], string> = { left: 'flex-start', center: 'center', right: 'flex-end' };
+
+/** Durée | prix sur une seule ligne, chacun avec sa taille ; l'alignement est celui du bloc durée. */
+function renderPriceDuration(dur: TicketBlock, price: TicketBlock, c: CellCtx, number: number): string {
+  const part = (b: TicketBlock) =>
+    `<span style="font-size:${b.size}pt;font-weight:${b.bold ? 700 : 400}">${esc(blockText(b.id, c, number))}</span>`;
+  return `<div class="pd" style="justify-content:${JUSTIFY[dur.align]}">${part(dur)}<span class="bar"></span>${part(price)}</div>`;
+}
+
 export async function buildTicketsHtml(opts: TicketsPdfOpts): Promise<string> {
   const { routerName, planName, durationMinutes, priceXof, tickets, batchSeq, batchDate, preview } = opts;
   const tpl = resolveTicketTemplate(opts.template);
@@ -142,8 +151,20 @@ export async function buildTicketsHtml(opts: TicketsPdfOpts): Promise<string> {
   const ctx: CellCtx = { tpl, routerName, planName, durationMinutes, priceXof, date: d };
   const visible = tpl.blocks.filter((x) => isBlockVisible(tpl, x.id));
 
+  const durBlock = visible.find((x) => x.id === 'duration');
+  const priceBlock = visible.find((x) => x.id === 'price');
+  const inline = tpl.priceDurationInline && durBlock && priceBlock ? { dur: durBlock, price: priceBlock } : null;
+  const inlineAt = visible.findIndex((x) => x.id === 'duration' || x.id === 'price');
+
+  function renderCellBlock(x: TicketBlock, i: number, code: string, number: number): string {
+    if (inline && (x.id === 'duration' || x.id === 'price')) {
+      return i === inlineAt ? renderPriceDuration(inline.dur, inline.price, ctx, number) : '';
+    }
+    return renderBlock(x, ctx, code, number);
+  }
+
   function buildCell(ticket: PrintableTicket, number: number): string {
-    return `<td class="c">${visible.map((x) => renderBlock(x, ctx, ticket.code, number)).join('')}</td>`;
+    return `<td class="c">${visible.map((x, i) => renderCellBlock(x, i, ticket.code, number)).join('')}</td>`;
   }
 
   const css = `*{box-sizing:border-box;margin:0;padding:0}
@@ -155,6 +176,8 @@ body{background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif}
 tr{page-break-inside:avoid;break-inside:avoid}
 .c{border:0.5px solid #000;width:${100 / COLS}%;height:${tpl.cellHeightMm}mm;vertical-align:middle;padding:0.8mm 1.2mm;overflow:hidden;line-height:1.1}
 .ln{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pd{display:flex;align-items:center;gap:1.2mm;white-space:nowrap;overflow:hidden}
+.bar{display:inline-block;width:0;height:3mm;border-left:0.6pt solid #000}
 .code{font-family:'Courier New',Courier,monospace;letter-spacing:0.5px;padding:0.8mm 0 0.3mm;white-space:nowrap;position:relative}
 .code.boxed{border:0.5px solid #000;padding:1mm 1mm 1mm 7mm;margin:0.6mm 0}
 .code .ico{position:absolute;left:1mm;top:50%;width:5mm;height:5mm;margin-top:-2.5mm}`;
