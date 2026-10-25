@@ -408,7 +408,20 @@
     "hourlyHeatmap": "Heatmap horaire",
     "month": "Mois",
     "year": "Année",
-    "months": ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"],
+    "months": [
+      "Janvier",
+      "Février",
+      "Mars",
+      "Avril",
+      "Mai",
+      "Juin",
+      "Juillet",
+      "Août",
+      "Septembre",
+      "Octobre",
+      "Novembre",
+      "Décembre"
+    ],
     "noChartData": "Pas de données sur cette période."
   },
   "payment": {
@@ -1019,7 +1032,41 @@
     "changeLogo": "Changer l'image",
     "selectLogo": "Sélectionner une image",
     "updateButton": "Mise à jour",
-    "saved": "Paramètres du ticket enregistrés."
+    "saved": "Paramètres du ticket enregistrés.",
+    "receiptPreset": "Appliquer le modèle « ticket reçu »",
+    "layout": "Mise en page",
+    "columns": "Colonnes par page",
+    "cellHeight": "Hauteur du ticket (mm)",
+    "durationFormat": "Format de la durée",
+    "currencyPosition": "Position de la devise",
+    "dateFormat": "Format de la date",
+    "boxedCode": "Encadrer le code",
+    "showCodeIcon": "Icône utilisateur devant le code",
+    "lines": "Lignes du ticket (ordre, taille, style)",
+    "text": "Texte",
+    "size": "Taille",
+    "bold": "Gras",
+    "align": {
+      "left": "Aligner à gauche",
+      "center": "Centrer",
+      "right": "Aligner à droite"
+    },
+    "blocks": {
+      "header": "En-tête",
+      "logo": "Logo",
+      "companyName": "Nom de l'entreprise",
+      "number": "Numéro du ticket (#)",
+      "code": "Code du ticket",
+      "plan": "Nom du plan",
+      "duration": "Durée",
+      "price": "Prix",
+      "contact": "Nom du Wi-Fi / contact",
+      "createdAt": "Date et heure",
+      "qr": "Code QR",
+      "note": "Note",
+      "footer": "Pied de page",
+      "poweredBy": "Propulsé par MikroLan"
+    }
   },
   "adminTenant": {
     "client": "Client",

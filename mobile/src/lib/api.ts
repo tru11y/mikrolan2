@@ -122,26 +122,42 @@ export type TicketTemplate = {
   showLogo: boolean;
   logoDataUri?: string;
   wifiName?: string;
+  showDuration?: boolean;
+  durationFormat?: 'hours' | 'auto';
+  currencyPosition?: 'prefix' | 'suffix';
+  dateFormat?: 'iso' | 'fr';
+  boxedCode?: boolean;
+  showCodeIcon?: boolean;
+  columns?: number;
+  cellHeightMm?: number;
+  /** Ordre + style des lignes ; absent = ancien modèle (voir resolveTicketTemplate). */
+  blocks?: TicketBlock[];
 };
 
-export const DEFAULT_TICKET_TEMPLATE: TicketTemplate = {
-  showCompanyName: false,
-  showWifiName: true,
-  showPrice: true,
-  currency: 'FCFA',
-  showTicketNumber: true,
-  showQrCode: true,
-  showPlanName: true,
-  showCreatedAt: true,
-  showPoweredBy: true,
-  showNote: true,
-  note: 'Conservez le ticket pendant le service',
-  showHeader: false,
-  showFooter: false,
-  showPageNumber: false,
-  showLogo: false,
-  wifiName: undefined,
+export type TicketBlockId =
+  | 'header'
+  | 'logo'
+  | 'companyName'
+  | 'number'
+  | 'code'
+  | 'plan'
+  | 'duration'
+  | 'price'
+  | 'contact'
+  | 'createdAt'
+  | 'qr'
+  | 'note'
+  | 'footer'
+  | 'poweredBy';
+
+export type TicketBlock = {
+  id: TicketBlockId;
+  size: number;
+  bold: boolean;
+  align: 'left' | 'center' | 'right';
 };
+
+export { DEFAULT_TICKET_TEMPLATE } from './ticketTemplate';
 
 export type RouterItem = {
   id: string;
