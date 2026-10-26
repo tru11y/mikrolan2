@@ -47,7 +47,7 @@ describe('PublicDownloadController', () => {
     expect(res.headers['content-security-policy']).not.toContain('script-src');
     expect(res.body).toContain('Version 1.1.6');
     expect(res.body).toContain('82,6 Mo');
-    expect(res.body).toContain('href="/api/download/apk"');
+    expect(res.body).toContain('href="download/apk"');
     expect(res.body).not.toContain('X-Amz-Signature');
     expect(res.body).not.toContain('<script');
   });

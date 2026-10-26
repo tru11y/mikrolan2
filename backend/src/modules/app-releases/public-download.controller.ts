@@ -26,6 +26,9 @@ ol{padding-left:20px;color:#c9cce0}li{margin:8px 0}.n{color:#9aa0b8;font-size:14
  * Téléchargement public de l'APK de la version active : une page et un lien, sans compte.
  * Aucune donnée sensible : version, taille et une URL signée de courte durée, générée à chaque clic.
  * Le portail d'administration (`/admin-portal/releases`) reste réservé au SUPER_ADMIN.
+ *
+ * Le lien du bouton est RELATIF (`download/apk`) : la page fonctionne sous `/api/download` comme
+ * sous un nom de domaine dédié qui la sert à la racine (voir backend/deploy/Caddyfile.download).
  */
 @Controller('download')
 @Public()
@@ -51,7 +54,7 @@ export class PublicDownloadController {
     reply.status(HttpStatus.OK).send(
       page(`<h1>MikroLan</h1>
 <p class="v">Version ${esc(release.versionName)} · Android · ${mb(release.fileSize)}</p>
-<a class="btn" href="/api/download/apk">Télécharger l'application</a>
+<a class="btn" href="download/apk">Télécharger l'application</a>
 <h2>Installation</h2>
 <ol><li>Ouvrez le fichier téléchargé (<em>mikrolan.apk</em>).</li>
 <li>Si Android le demande, autorisez l'installation depuis cette source (une seule fois).</li>
