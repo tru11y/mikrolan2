@@ -51,6 +51,6 @@
 - [x] ~~No CGU / privacy policy~~ — added at `/api/legal/terms` and `/api/legal/privacy` (PR #19).
 - [x] ~~CI never runs `test:e2e`~~ — CI runs e2e tests (auth, payments, revenue, analytics, forecast).
 - [x] ~~Revenue-critical path has no unit tests~~ — `upload-proof.spec.ts` and push notification assertions added (PR #17).
-- [x] ~~Postgres backup strategy not documented~~ — `pg_backup.sh` with S3 off-site backup to `s3://mikrolan-backups` (PR #19).
+- [x] ~~Postgres backup strategy not documented~~ — nightly local dumps (cron → root wrapper `backend/deploy/backup/mikrolan-postgres-backup.sh`), off-site copy to `s3://mikrolan-backups` and restore test documented in `backend/deploy/backup/README.md` (the wrapper must be installed on the VPS by hand; check `s3=OK` in `/var/log/mikrolan-backup.log`).
 - [ ] No i18n — all UI strings hardcoded in French.
 - [x] ~~`mail.service.ts` no-ops if `SMTP_HOST` unset~~ — confirmed SMTP configured in prod (Brevo).
