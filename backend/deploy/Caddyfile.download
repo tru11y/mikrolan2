@@ -1,0 +1,24 @@
+# Bloc à AJOUTER dans /etc/caddy/Caddyfile (VPS), à côté de api.mikrolan.net.
+# Lien public du téléchargement de l'APK, sans le mot « api » :  https://mikrolan.net
+#
+# Prérequis DNS (Route 53) : enregistrement A à la racine  mikrolan.net -> 3.234.142.9
+# Caddy obtient le certificat Let's Encrypt tout seul une fois le DNS propagé.
+#
+# N'expose QUE le téléchargement : « / » = page, « /apk » = fichier. Tout le reste, y compris
+# /api/*, répond 404 sur ce nom.
+mikrolan.net {
+	@page path /
+	@apk path /apk /download/apk
+
+	handle @page {
+		rewrite * /api/download
+		reverse_proxy 127.0.0.1:3002
+	}
+	handle @apk {
+		rewrite * /api/download/apk
+		reverse_proxy 127.0.0.1:3002
+	}
+	handle {
+		respond "Not found" 404
+	}
+}
