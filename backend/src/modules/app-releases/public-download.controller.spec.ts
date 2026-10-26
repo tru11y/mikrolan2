@@ -9,6 +9,7 @@ const release = {
   versionName: '1.1.6',
   versionCode: 41,
   fileSize: 86_635_875,
+  publishedAt: new Date('2026-10-26T12:20:33Z'),
   downloadUrl: 'https://bucket.s3.eu-west-3.amazonaws.com/releases/android/mikrolan-41.apk?X-Amz-Signature=abc',
 };
 
@@ -37,19 +38,33 @@ describe('PublicDownloadController', () => {
     expect(Reflect.getMetadata(NO_ENVELOPE_KEY, PublicDownloadController)).toBe(true);
   });
 
-  it('GET /download : page HTML avec version, taille et lien, sans script', async () => {
+  it('GET /download : page complète (accroche, bouton, version, taille, date, étapes, pied légal)', async () => {
     latestForTenant.mockResolvedValue(release);
     const res = await app.inject({ method: 'GET', url: '/download' });
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toContain('text/html');
     expect(res.headers['cache-control']).toBe('no-store');
-    expect(res.headers['content-security-policy']).toContain("default-src 'none'");
-    expect(res.headers['content-security-policy']).not.toContain('script-src');
+    expect(res.body).toContain('Gérez votre hotspot MikroTik depuis votre téléphone');
+    expect(res.body).toContain('href="download/apk"');
+    expect(res.body).toContain('Télécharger pour Android');
     expect(res.body).toContain('Version 1.1.6');
     expect(res.body).toContain('82,6 Mo');
-    expect(res.body).toContain('href="download/apk"');
-    expect(res.body).not.toContain('X-Amz-Signature');
+    expect(res.body).toContain('publiée le 26 octobre 2026');
+    expect(res.body).toContain('Installer en 3 étapes');
+    expect(res.body).toContain('href="download/conditions"');
+    expect(res.body).toContain('href="download/confidentialite"');
+    expect(res.body).toContain('href="download/acces-distant"');
+    expect(res.body).toContain('<meta name="viewport"');
+  });
+
+  it('GET /download : aucun script, aucune ressource externe, aucun secret, CSP stricte', async () => {
+    latestForTenant.mockResolvedValue(release);
+    const res = await app.inject({ method: 'GET', url: '/download' });
     expect(res.body).not.toContain('<script');
+    expect(res.body).not.toMatch(/(src|href)="https?:/);
+    expect(res.body).not.toContain('X-Amz-Signature');
+    expect(res.headers['content-security-policy']).toContain("default-src 'none'");
+    expect(res.headers['content-security-policy']).not.toContain('script-src');
   });
 
   it('GET /download : le nom de version est échappé', async () => {
@@ -59,7 +74,7 @@ describe('PublicDownloadController', () => {
     expect(res.body).not.toContain('<img src=x');
   });
 
-  it('GET /download/apk : redirige (302) vers l\'URL signée, sans mise en cache', async () => {
+  it("GET /download/apk : redirige (302) vers l'URL signée, sans mise en cache", async () => {
     latestForTenant.mockResolvedValue(release);
     const res = await app.inject({ method: 'GET', url: '/download/apk' });
     expect(res.statusCode).toBe(302);
@@ -82,5 +97,27 @@ describe('PublicDownloadController', () => {
     const res = await app.inject({ method: 'GET', url: '/download/apk' });
     expect(res.statusCode).toBe(503);
     expect(res.headers.location).toBeUndefined();
+  });
+
+  it.each([
+    ['/download/conditions', 'Conditions Générales'],
+    ['/download/confidentialite', 'confidentialité'],
+    ['/download/acces-distant', 'accès'],
+  ])('%s : texte légal servi en HTML, sans dépendre d’une release', async (url, needle) => {
+    const res = await app.inject({ method: 'GET', url });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('text/html');
+    expect(res.body.toLowerCase()).toContain(needle.toLowerCase());
+    expect(latestForTenant).not.toHaveBeenCalled();
+  });
+
+  it('les liens internes des textes légaux restent sur le site (plus de /api/legal)', async () => {
+    const pages = await Promise.all(
+      ['/download/conditions', '/download/confidentialite', '/download/acces-distant'].map((url) =>
+        app.inject({ method: 'GET', url }),
+      ),
+    );
+    for (const p of pages) expect(p.body).not.toContain('/api/legal/');
+    expect(pages[0].body).toContain('href="confidentialite"');
   });
 });
