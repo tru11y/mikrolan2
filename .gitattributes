@@ -1,0 +1,2 @@
+# Les scripts shell (déployés sur Linux) doivent rester en LF, quel que soit le poste.
+*.sh text eol=lf
