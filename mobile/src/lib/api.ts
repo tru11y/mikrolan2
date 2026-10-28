@@ -1702,6 +1702,56 @@ export const api = {
     },
   },
 
+  // ── SasPay (Mobile Money gateway, phase pilote CI) ──────
+  // Flux : createCheckout → ouvrir checkoutUrl dans navigateur externe
+  // → au retour, polling de intentStatus jusqu'à SUCCESS/FAILED/timeout.
+  // Le serveur recalcule le prix depuis le tier : jamais de montant côté client.
+  saspay: {
+    async createCheckout(payload: {
+      tierKey: string;
+      billingPeriod?: BillingPeriod;
+    }): Promise<{
+      intentId: string;
+      checkoutUrl: string;
+      invoiceId: string;
+      amount: number;
+    }> {
+      const res = await apiClient.post<
+        ApiEnvelope<{
+          intentId: string;
+          checkoutUrl: string;
+          invoiceId: string;
+          amount: number;
+        }>
+      >('/payments/saspay/checkout', payload);
+      return unwrap(res);
+    },
+    async getIntent(intentId: string): Promise<{
+      id: string;
+      status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELLED' | 'EXPIRED';
+      activatedAt: string | null;
+      amountRequested: number;
+      amountCharged: number | null;
+      amountNet: number | null;
+      currency: string;
+      createdAt: string;
+    }> {
+      const res = await apiClient.get<
+        ApiEnvelope<{
+          id: string;
+          status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'CANCELLED' | 'EXPIRED';
+          activatedAt: string | null;
+          amountRequested: number;
+          amountCharged: number | null;
+          amountNet: number | null;
+          currency: string;
+          createdAt: string;
+        }>
+      >(`/payments/saspay/intents/${intentId}`);
+      return unwrap(res);
+    },
+  },
+
   // ── Back-office plateforme (SUPER_ADMIN) ────────────────
   // Le serveur ferme ces routes à tout autre rôle (403) ; l'application se
   // contente de ne pas les afficher.
