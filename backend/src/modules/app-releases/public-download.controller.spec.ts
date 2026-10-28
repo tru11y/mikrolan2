@@ -50,7 +50,10 @@ describe('PublicDownloadController', () => {
     expect(res.body).toContain('Version 1.1.6');
     expect(res.body).toContain('82,6 Mo');
     expect(res.body).toContain('publiée le 26 octobre 2026');
-    expect(res.body).toContain('Installer en 3 étapes');
+    expect(res.body).toContain('Installer en 5 étapes');
+    expect(res.body).toContain('Télécharger quand même');
+    expect(res.body).toContain('Analyser l’appli');
+    expect(res.body).not.toContain('mikrolan.apk');
     expect(res.body).toContain('href="download/conditions"');
     expect(res.body).toContain('href="download/confidentialite"');
     expect(res.body).toContain('href="download/acces-distant"');
