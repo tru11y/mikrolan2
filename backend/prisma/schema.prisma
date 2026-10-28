@@ -74,6 +74,15 @@ enum PaymentProvider {
   MANUAL
   WAVE
   ORANGE_MONEY
+  SASPAY
+}
+
+enum PaymentIntentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELLED
+  EXPIRED
 }
 
 enum PaymentMethod {
@@ -415,10 +424,75 @@ model Invoice {
   paidAt         DateTime?
   expiresAt      DateTime?
   proofs         PaymentProof[]
+  paymentIntents PaymentIntent[]
   createdAt      DateTime          @default(now())
 
   @@index([tenantId])
   @@index([status, createdAt])
+}
+
+// ─── PAYMENT INTENT (SasPay — tentative externe liée à une Invoice) ──
+//
+// Une Invoice reste la source de vérité métier (ce que le client doit) ;
+// un PaymentIntent modélise UNE tentative de paiement via un prestataire
+// externe. Un même Invoice peut porter plusieurs intents (retry après échec),
+// mais au plus un en PENDING à la fois (contrainte applicative).
+model PaymentIntent {
+  id                String              @id @default(uuid())
+  tenantId          String
+  userId            String
+  invoiceId         String
+  invoice           Invoice             @relation(fields: [invoiceId], references: [id])
+  provider          PaymentProvider     @default(SASPAY)
+  // Clé d'idempotence envoyée à SasPay (header Idempotency-Key).
+  idempotencyKey    String              @unique
+  // Identifiant de la checkout_session côté SasPay (nullable tant que l'appel
+  // de création n'a pas encore abouti).
+  providerSessionId String?             @unique
+  // Référence de la transaction SasPay issue du webhook (TXN-...), figée
+  // une seule fois pour permettre la détection stricte des doublons.
+  providerReference String?             @unique
+  checkoutUrl       String?
+  status            PaymentIntentStatus @default(PENDING)
+  amountRequested   Int // XOF entier, recalculé serveur depuis le tier
+  amountCharged     Int? // ce que le payeur a déboursé (webhook: charged)
+  amountNet         Int? // ce qui nous revient (webhook: net_amount)
+  fee               Int? // frais prélevés
+  feeChargeMode     String? // "ADD_ON" | "DEDUCTED"
+  currency          String              @default("XOF")
+  countryCode       String? // ISO 2 lettres renvoyé par webhook
+  network           String? // code réseau renvoyé par webhook
+  // Trace sur la paire (paiement reçu) ≠ (abonnement activé).
+  activatedAt       DateTime?
+  expiresAt         DateTime?
+  // Dernier payload d'event webhook stocké pour audit (secrets exclus).
+  rawLastEvent      Json?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([tenantId])
+  @@index([invoiceId])
+  @@index([status, createdAt])
+}
+
+// ─── WEBHOOK EVENT (dédup prestataire — toutes sources confondues) ──
+//
+// SasPay garantit 5 tentatives par event : sans trace persistante du
+// `(provider, event, timestamp, reference)` déjà traité, un re-livraison
+// réussie ré-exécuterait l'activation de l'abonnement. On s'en protège
+// via une contrainte UNIQUE sur l'empreinte d'event.
+model WebhookEventLog {
+  id          String   @id @default(uuid())
+  provider    String // "saspay"
+  eventType   String // "transaction.success", etc.
+  eventHash   String   @unique // hex(sha256(timestamp + signature))
+  providerRef String? // reference transaction, pour debug
+  tenantId    String?
+  intentId    String?
+  receivedAt  DateTime @default(now())
+
+  @@index([provider, eventType])
+  @@index([receivedAt])
 }
 
 // ─── AUDIT LOG (append-only) ─────────────────────────────
