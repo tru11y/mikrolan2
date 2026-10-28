@@ -34,6 +34,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { MailModule } from './modules/mail/mail.module';
 import { SupportModule } from './modules/support/support.module';
 import { TelemetryModule } from './modules/telemetry/telemetry.module';
+import { SaspayModule } from './modules/payments/saspay/saspay.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { EntitlementGuard } from './common/guards/entitlement.guard';
@@ -81,6 +82,7 @@ import { RouterGatewayModule } from './modules/router-gateway/router-gateway.mod
     TelemetryModule,
     HealthModule,
     LegalModule,
+    SaspayModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
