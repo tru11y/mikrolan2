@@ -62,11 +62,13 @@ export const landingPage = (r: PublicRelease): string =>
 </div>
 <section aria-labelledby="f"><h2 id="f">Ce que vous pouvez faire</h2>
 <div class="grid">${FEATURES.map(([t, d]) => `<div class="card"><h3>${esc(t)}</h3><p>${esc(d)}</p></div>`).join('')}</div></section>
-<section aria-labelledby="i"><h2 id="i">Installer en 3 étapes</h2>
-<ol class="steps"><li><span>Touchez « Télécharger pour Android » puis ouvrez le fichier <em>mikrolan.apk</em>.</span></li>
-<li><span>Si Android le demande, autorisez l’installation depuis cette source (une seule fois).</span></li>
+<section aria-labelledby="i"><h2 id="i">Installer en 5 étapes</h2>
+<ol class="steps"><li><span>Touchez « Télécharger pour Android ». Si le navigateur affiche « Fichier potentiellement dangereux », touchez <strong>Télécharger quand même</strong> : c’est normal, MikroLan n’est pas (encore) sur le Play Store.</span></li>
+<li><span>Une fois le téléchargement terminé, ouvrez le fichier <strong>.apk</strong> depuis la notification ou le dossier Téléchargements.</span></li>
+<li><span>Si Android demande d’autoriser l’installation depuis cette source, acceptez (une seule fois).</span></li>
+<li><span>Si Google Play Protect affiche « Analyse d’appli recommandée », touchez <strong>Analyser l’appli</strong> (et non « Ne pas installer »). Quand il indique « Cette appli semble sûre », touchez <strong>Installer</strong>.</span></li>
 <li><span>Ouvrez MikroLan, créez votre compte et acceptez les conditions d’utilisation.</span></li></ol>
-<p class="note">MikroLan est disponible sur Android pour le moment. Si l’installation est bloquée, vérifiez que votre navigateur est autorisé à installer des applications dans les réglages d’Android.</p></section>`,
+<p class="note">MikroLan est disponible sur Android pour le moment. Le fichier fait environ 87 Mo : sur une connexion lente, le téléchargement peut prendre plusieurs minutes. N’éteignez pas l’écran avant la fin.</p></section>`,
   );
 
 function shell(title: string, body: string): string {
