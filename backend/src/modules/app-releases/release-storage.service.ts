@@ -16,6 +16,12 @@ export const APK_CONTENT_TYPE = 'application/vnd.android.package-archive';
 // Un APK de ~90 Mo sur une liaison lente : l'URL doit survivre à l'envoi.
 const UPLOAD_URL_TTL_SECONDS = 1800;
 
+/** Nom de fichier sûr pour l'en-tête Content-Disposition : lettres, chiffres, point, tiret, souligné. */
+export function safeFilename(name: string | undefined): string | null {
+  const cleaned = (name ?? '').replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '');
+  return cleaned.length > 0 ? cleaned.slice(0, 80) : null;
+}
+
 /** Accès au bucket S3 privé des APK : HEAD (vérification) et URL signée de téléchargement. */
 @Injectable()
 export class ReleaseStorageService {
@@ -73,16 +79,20 @@ export class ReleaseStorageService {
       : '';
   }
 
-  async presignDownload(key: string): Promise<string> {
+  /**
+   * URL signée de téléchargement. `filename` est le nom proposé au téléphone, distinct de la clé de
+   * stockage (qui porte un suffixe aléatoire, inutile à l'utilisateur) ; par défaut, la fin de la clé.
+   */
+  async presignDownload(key: string, filename?: string): Promise<string> {
     const client = this.s3();
-    const filename = key.slice(key.lastIndexOf('/') + 1);
+    const name = safeFilename(filename) ?? key.slice(key.lastIndexOf('/') + 1);
     try {
       return await getSignedUrl(
         client,
         new GetObjectCommand({
           Bucket: this.bucket,
           Key: key,
-          ResponseContentDisposition: `attachment; filename="${filename}"`,
+          ResponseContentDisposition: `attachment; filename="${name}"`,
           ResponseContentType: APK_CONTENT_TYPE,
         }),
         { expiresIn: this.ttl },
