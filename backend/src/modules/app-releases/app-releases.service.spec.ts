@@ -305,6 +305,13 @@ describe('AppReleasesService.latest', () => {
     expect(out.effectiveMinVersionCode).toBe(30);
   });
 
+  it('propose un nom de fichier lisible (mikrolan-<version>.apk), pas la clé de stockage', async () => {
+    mockPrisma.appRelease.findFirst.mockResolvedValue(row({ isActive: true, versionName: '1.1.6', storageKey: 'releases/android/mikrolan-41-8ff38170bf9f.apk' }));
+    mockStorage.presignDownload.mockResolvedValue('u');
+    await build().latest();
+    expect(mockStorage.presignDownload).toHaveBeenCalledWith('releases/android/mikrolan-41-8ff38170bf9f.apk', 'mikrolan-1.1.6.apk');
+  });
+
   it('plancher = versionCode quand la release est obligatoire', async () => {
     mockPrisma.appRelease.findFirst.mockResolvedValue(row({ isActive: true, isRequired: true }));
     mockStorage.presignDownload.mockResolvedValue('u');
