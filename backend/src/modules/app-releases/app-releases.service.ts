@@ -17,6 +17,11 @@ import type {
   UploadUrlDto,
 } from './dto/app-release.schemas';
 
+/** Nom proposé au téléchargement : lisible (« mikrolan-1.1.6.apk »), sans le suffixe aléatoire de la clé. */
+export function apkFileName(versionName: string): string {
+  return `mikrolan-${versionName}.apk`;
+}
+
 export interface ReleaseView {
   id: string;
   versionName: string;
@@ -208,7 +213,7 @@ export class AppReleasesService {
 
     let downloadUrl: string | null = null;
     try {
-      downloadUrl = await this.storage.presignDownload(row.storageKey);
+      downloadUrl = await this.storage.presignDownload(row.storageKey, apkFileName(row.versionName));
     } catch (err) {
       if (!(err instanceof ReleaseStorageUnavailableError)) throw err;
       this.logger.warn('Stockage APK indisponible : downloadUrl omis');
@@ -234,7 +239,7 @@ export class AppReleasesService {
           'Le fichier de cette version est introuvable',
         );
       }
-      downloadUrl = await this.storage.presignDownload(row.storageKey);
+      downloadUrl = await this.storage.presignDownload(row.storageKey, apkFileName(row.versionName));
     } catch (err) {
       if (!(err instanceof ReleaseStorageUnavailableError)) throw err;
       this.logger.warn('Stockage APK indisponible : downloadUrl omis');
