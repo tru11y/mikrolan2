@@ -1,17 +1,13 @@
--- SasPay integration: payment intents + webhook event dedup
+-- SasPay integration: payment intents + webhook event dedup.
+-- The PaymentProvider enum was extended with 'SASPAY' in the preceding
+-- migration (20261028120000_saspay_provider_enum) because ALTER TYPE
+-- cannot share a transaction with other statements.
 -- Non-destructive. Existing MANUAL invoices and PaymentProof unchanged.
 
--- 1. Extend PaymentProvider enum with SASPAY
-ALTER TYPE "PaymentProvider" ADD VALUE IF NOT EXISTS 'SASPAY';
+-- 1. New enum PaymentIntentStatus
+CREATE TYPE "PaymentIntentStatus" AS ENUM ('PENDING', 'SUCCESS', 'FAILED', 'CANCELLED', 'EXPIRED');
 
--- 2. New enum PaymentIntentStatus
-DO $$ BEGIN
-    CREATE TYPE "PaymentIntentStatus" AS ENUM ('PENDING', 'SUCCESS', 'FAILED', 'CANCELLED', 'EXPIRED');
-EXCEPTION
-    WHEN duplicate_object THEN NULL;
-END $$;
-
--- 3. PaymentIntent — one external payment attempt per row
+-- 2. PaymentIntent — one external payment attempt per row
 CREATE TABLE "PaymentIntent" (
     "id" TEXT NOT NULL,
     "tenantId" TEXT NOT NULL,
@@ -50,7 +46,7 @@ ALTER TABLE "PaymentIntent"
     ADD CONSTRAINT "PaymentIntent_invoiceId_fkey"
     FOREIGN KEY ("invoiceId") REFERENCES "Invoice"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
--- 4. WebhookEventLog — dedup for provider webhook deliveries
+-- 3. WebhookEventLog — dedup for provider webhook deliveries
 CREATE TABLE "WebhookEventLog" (
     "id" TEXT NOT NULL,
     "provider" TEXT NOT NULL,
