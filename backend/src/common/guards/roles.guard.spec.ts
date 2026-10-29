@@ -58,6 +58,14 @@ describe('RolesGuard', () => {
         guardFor([UserRole.OWNER]).canActivate(ctxFor(UserRole.SUPER_ADMIN)),
       ).toBe(true);
     });
+    it('SUPER_ADMIN also passes MEMBER / ADMIN requirements', () => {
+      expect(
+        guardFor([UserRole.MEMBER]).canActivate(ctxFor(UserRole.SUPER_ADMIN)),
+      ).toBe(true);
+      expect(
+        guardFor([UserRole.ADMIN]).canActivate(ctxFor(UserRole.SUPER_ADMIN)),
+      ).toBe(true);
+    });
     it('OWNER cannot pass a SUPER_ADMIN requirement', () => {
       expect(() =>
         guardFor([UserRole.SUPER_ADMIN]).canActivate(ctxFor(UserRole.OWNER)),
@@ -114,12 +122,12 @@ describe('RolesGuard', () => {
       ).toThrow(ForbiddenException);
     });
 
-    it('SUPER_ADMIN does NOT satisfy a verifier-only requirement', () => {
-      expect(() =>
+    it('SUPER_ADMIN DOES satisfy a verifier-only requirement at RolesGuard level (project convention: SUPER_ADMIN is omnipotent). The TicketVerifierScopeGuard will still refuse it because its DB role is not TICKET_VERIFIER.', () => {
+      expect(
         guardFor([UserRole.TICKET_VERIFIER]).canActivate(
           ctxFor(UserRole.SUPER_ADMIN),
         ),
-      ).toThrow(ForbiddenException);
+      ).toBe(true);
     });
 
     it('mixed required [ADMIN, TICKET_VERIFIER]: ADMIN passes', () => {
