@@ -1,10 +1,5 @@
 import { ExecutionContext, ForbiddenException } from '@nestjs/common';
-import {
-  RouterHealth,
-  TenantStatus,
-  UserRole,
-  UserStatus,
-} from '@prisma/client';
+import { TenantStatus, UserRole, UserStatus } from '@prisma/client';
 import { TicketVerifierScopeGuard } from './ticket-verifier-scope.guard';
 
 type Req = {
@@ -31,7 +26,6 @@ const activeAssignment = {
   router: {
     tenantId: 't1',
     deletedAt: null,
-    health: RouterHealth.ONLINE,
     tenant: { status: TenantStatus.ACTIVE },
   },
 };
@@ -183,6 +177,24 @@ describe('TicketVerifierScopeGuard', () => {
       ),
     ).rejects.toThrow(ForbiddenException);
   });
+
+  it.each(['OFFLINE', 'DEGRADED', 'ERROR', 'UNKNOWN'])(
+    'passes even when RouterHealth=%s (verification is DB-only via ticketState)',
+    async () => {
+      // Health is intentionally not even selected by the guard; the DB can
+      // hold any RouterHealth value and the guard must still inject the scope.
+      const guard = makeGuard({});
+      const req: Req = {
+        user: { role: UserRole.TICKET_VERIFIER, tenantId: 't1', userId: 'u1' },
+      };
+      await expect(guard.canActivate(ctxFor(req))).resolves.toBe(true);
+      expect(req.verifierScope).toEqual({
+        userId: 'u1',
+        tenantId: 't1',
+        routerId: 'r1',
+      });
+    },
+  );
 
   it('refuses when the tenant is SUSPENDED', async () => {
     const guard = makeGuard({
