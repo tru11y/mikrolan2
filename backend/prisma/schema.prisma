@@ -114,6 +114,7 @@ enum AuditAction {
   CONNECT
   DISCONNECT
   EXPORT
+  VERIFY // vérification manuelle d'un ticket par un TICKET_VERIFIER (lot 2)
 }
 
 enum EventOutcome {
