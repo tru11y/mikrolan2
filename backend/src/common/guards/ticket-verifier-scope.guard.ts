@@ -4,12 +4,7 @@ import {
   ForbiddenException,
   Injectable,
 } from '@nestjs/common';
-import {
-  RouterHealth,
-  TenantStatus,
-  UserRole,
-  UserStatus,
-} from '@prisma/client';
+import { TenantStatus, UserRole, UserStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TenantContext, isAdminBypass, setAdminBypass } from '../context/tenant-context';
 
@@ -97,7 +92,6 @@ export class TicketVerifierScopeGuard implements CanActivate {
           select: {
             tenantId: true,
             deletedAt: true,
-            health: true,
             tenant: { select: { status: true } },
           },
         },
@@ -121,9 +115,9 @@ export class TicketVerifierScopeGuard implements CanActivate {
     ) {
       throw new ForbiddenException('Hotspot indisponible.');
     }
-    // RouterHealth is informational here; verification remains possible even
-    // if the router is OFFLINE because voucher state lives in the DB.
-    void (assignment.router.health as RouterHealth);
+    // RouterHealth (ONLINE/OFFLINE/DEGRADED/ERROR/UNKNOWN) is intentionally
+    // NOT checked here: voucher verification reads DB state via ticketState()
+    // and must stay available even when the router is temporarily unreachable.
 
     req.verifierScope = {
       userId: user.id,

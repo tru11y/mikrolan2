@@ -38,6 +38,12 @@ export class RolesGuard implements CanActivate {
     const user = req.user;
     if (!user) throw new ForbiddenException('Session invalide, reconnectez-vous.');
 
+    // SUPER_ADMIN is omnipotent across the platform (project convention — cf.
+    // EntitlementGuard). RolesGuard preserves this convention; endpoints that
+    // depend on scope (e.g. a verifier's hotspot assignment) use a dedicated
+    // scope guard that re-checks the role and the scope against the DB.
+    if (user.role === UserRole.SUPER_ADMIN) return true;
+
     // Disjoint role: TICKET_VERIFIER passes iff explicitly listed.
     if (user.role === UserRole.TICKET_VERIFIER) {
       if (required.includes(UserRole.TICKET_VERIFIER)) return true;
