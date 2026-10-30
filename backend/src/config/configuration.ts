@@ -74,6 +74,32 @@ const envSchema = z.object({
 
   // ─── OAuth (optional — disabled if blank) ──
   GOOGLE_CLIENT_ID: z.string().default(''),
+
+  // ─── SasPay (mobile money gateway — disabled if SASPAY_ENABLED=false) ──
+  // En prod : sk_live_... + webhook secret partagé avec SasPay (dashboard >
+  // Webhooks). En sandbox : sk_test_... L'API key donne accès total au
+  // compte marchand : backend uniquement, jamais mobile.
+  SASPAY_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  SASPAY_BASE_URL: z.string().default('https://api.saspay.me/api/v1'),
+  SASPAY_API_KEY: z.string().default(''),
+  SASPAY_WEBHOOK_SECRET: z.string().default(''),
+  // Deep links mobiles vers lesquels SasPay redirige le client après paiement.
+  SASPAY_CHECKOUT_SUCCESS_URL: z.string().default('mikrolan://payment/success'),
+  SASPAY_CHECKOUT_CANCEL_URL: z.string().default('mikrolan://payment/cancel'),
+  // Pays et réseaux autorisés sur le checkout (phase pilote : CI uniquement).
+  SASPAY_COUNTRY: z.string().default('CI'),
+  SASPAY_NETWORKS: z
+    .string()
+    .default('mtn_ci,moov_ci,orange_ci,wave_ci')
+    .transform((v) =>
+      v
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    ),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;
