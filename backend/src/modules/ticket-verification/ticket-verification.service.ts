@@ -22,6 +22,7 @@ export type VerificationStatus =
 export type RecommendedAction =
   | 'ALLOW_CUSTOMER'
   | 'DO_NOT_REPLACE'
+  | 'SELL_NEW_TICKET'
   | 'CONTACT_MANAGER'
   | 'RETRY_LATER'
   | 'CHECK_ENTERED_CODE';
@@ -158,7 +159,7 @@ export class TicketVerificationService {
         return {
           status: 'EXPIRED',
           message: 'Ticket expiré',
-          recommendedAction: 'DO_NOT_REPLACE',
+          recommendedAction: 'SELL_NEW_TICKET',
           ticket: commonTicket,
         };
       case 'ENDED':

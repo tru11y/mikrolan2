@@ -105,12 +105,12 @@ describe('TicketVerificationService', () => {
     expect(res.status).toBe('ALREADY_USED');
   });
 
-  it('EXPIRED: stored status', async () => {
+  it('EXPIRED: stored status → recommendedAction SELL_NEW_TICKET', async () => {
     const db = makeDb([voucher({ status: VoucherStatus.EXPIRED })]);
     const svc = new TicketVerificationService(db as never, makeEvents() as never);
     const res = await svc.verify(SCOPE, 'ABC123');
     expect(res.status).toBe('EXPIRED');
-    expect(res.recommendedAction).toBe('DO_NOT_REPLACE');
+    expect(res.recommendedAction).toBe('SELL_NEW_TICKET');
   });
 
   it('EXPIRED: ACTIVE but duration elapsed', async () => {
