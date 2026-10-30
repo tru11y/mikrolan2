@@ -47,7 +47,7 @@ async function bootstrap(): Promise<void> {
           // Laisse body indéfini : le contrôleur rejettera via Zod.
           (req as unknown as { body?: unknown }).body = {};
         }
-        done(null, Readable.from([raw]));
+        done(null, Readable.from([Buffer.from(raw, 'utf8')]));
       });
       payload.on('error', (err: Error) => done(err));
       return;
