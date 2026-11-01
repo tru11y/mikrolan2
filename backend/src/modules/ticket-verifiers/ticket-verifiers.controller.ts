@@ -19,11 +19,13 @@ import { TicketVerifiersService } from './ticket-verifiers.service';
 import {
   createVerifierSchema,
   listVerifiersQuerySchema,
+  resetPasswordSchema,
   updateStatusSchema,
   updateVerifierSchema,
   upsertAssignmentSchema,
   type CreateVerifierDto,
   type ListVerifiersQuery,
+  type ResetPasswordDto,
   type UpdateStatusDto,
   type UpdateVerifierDto,
   type UpsertAssignmentDto,
@@ -95,6 +97,16 @@ export class TicketVerifiersController {
     @Body(new ZodValidationPipe(updateStatusSchema)) dto: UpdateStatusDto,
   ) {
     return this.svc.setStatus(ctx, id, dto);
+  }
+
+  @Post(':id/reset-password')
+  @HttpCode(200)
+  resetPassword(
+    @CurrentUser() ctx: TenantContext,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(resetPasswordSchema)) dto: ResetPasswordDto,
+  ) {
+    return this.svc.resetPassword(ctx, id, dto);
   }
 
   @Post(':id/revoke-sessions')
