@@ -442,6 +442,28 @@
     "cameraPermission": "Autorisez la caméra pour prendre une photo.",
     "chooseFromGallery": "Choisir depuis la galerie"
   },
+  "saspay": {
+    "title": "Paiement Mobile Money",
+    "summary": "Montant à payer",
+    "cta": "Payer par Mobile Money",
+    "ctaOpening": "Ouverture…",
+    "disclaimer": "Vous allez être redirigé vers une page sécurisée (SasPay) pour choisir votre réseau (MTN, Moov, Orange, Wave) et confirmer le paiement.",
+    "waiting": "Paiement en attente de confirmation",
+    "waitingHint": "Terminez le paiement dans votre application Mobile Money. Nous détectons automatiquement la validation.",
+    "pollingSlow": "La confirmation prend plus de temps que prévu. Vous pouvez vérifier manuellement.",
+    "checkNow": "Vérifier maintenant",
+    "success": "Paiement reçu",
+    "successDetail": "Votre abonnement est actif. Bienvenue.",
+    "continue": "Continuer",
+    "failed": "Paiement non abouti",
+    "failedDetail": "Le prestataire a refusé ou annulé le paiement.",
+    "cancelled": "Paiement annulé",
+    "expired": "Session expirée",
+    "retry": "Réessayer",
+    "openAgain": "Rouvrir la page de paiement",
+    "openError": "Impossible d'ouvrir la page de paiement. Réessayez.",
+    "createError": "Création du paiement impossible. Réessayez."
+  },
   "pro": {
     "title": "Abonnement PRO",
     "prime": "MikroLan2 Prime",
