@@ -299,7 +299,14 @@ export default function ProScreen() {
       });
       setRequested(true);
       toast.success(res.instructions);
-      navRouter.push({ pathname: '/payment', params: { invoiceId: res.invoice.id } });
+      navRouter.push({
+        pathname: '/payment-saspay',
+        params: {
+          tierKey: tier.key,
+          tierName: tier.name,
+          billingPeriod: billingPeriod(annual),
+        },
+      });
     } catch (e) {
       toast.error(describeError(e).message);
     } finally {
