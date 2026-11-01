@@ -152,8 +152,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
   }, [router]);
 
   async function afterAuth(): Promise<void> {
-    setMe(await api.auth.me());
-    router.replace('/(tabs)');
+    const fresh = await api.auth.me();
+    setMe(fresh);
+    // Routing par rôle serveur. TICKET_VERIFIER va directement sur le shell
+    // vendeur ; aucun autre rôle ne doit l'atteindre et vice versa.
+    if (fresh?.user?.role === 'TICKET_VERIFIER') {
+      router.replace('/(verifier)/verify');
+    } else {
+      router.replace('/(tabs)');
+    }
   }
 
   async function signup(
