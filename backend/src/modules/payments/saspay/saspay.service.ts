@@ -77,18 +77,23 @@ export class SaspayService {
       orderBy: { createdAt: 'desc' },
     });
 
-    const invoice = existingInvoice
-      ? await this.prisma.invoice.update({
-          where: { id: existingInvoice.id },
-          data: {
-            amount,
-            tierId: tier.id,
-            billingPeriod,
-            periodDays,
-            provider: PaymentProvider.SASPAY,
-          },
-        })
-      : await this.prisma.invoice.create({
+    let invoice;
+    if (existingInvoice) {
+      await this.prisma.invoice.update({
+        where: { id: existingInvoice.id },
+        data: {
+          amount,
+          tierId: tier.id,
+          billingPeriod,
+          periodDays,
+          provider: PaymentProvider.SASPAY,
+        },
+      });
+      // Le middleware tenant-scope convertit update → updateMany, qui renvoie
+      // { count } sans l'objet. On relit la ligne pour récupérer l'id.
+      invoice = { ...existingInvoice, amount, tierId: tier.id, billingPeriod, periodDays, provider: PaymentProvider.SASPAY };
+    } else {
+      invoice = await this.prisma.invoice.create({
           data: {
             tenantId,
             amount,
@@ -101,6 +106,7 @@ export class SaspayService {
             status: PaymentStatus.PENDING,
           },
         });
+    }
 
     // Debounce : un intent SasPay PENDING existe déjà sur cette facture →
     // on renvoie son checkoutUrl sans recréer une session côté SasPay.
