@@ -2,8 +2,14 @@ import { Redirect, Tabs } from 'expo-router';
 import { useAuth } from '@/src/providers/auth-provider';
 
 export default function TabsLayout() {
-  const { isReady, isAuthenticated } = useAuth();
+  const { isReady, isAuthenticated, me } = useAuth();
   if (isReady && !isAuthenticated) return <Redirect href="/login" />;
+  // Un TICKET_VERIFIER ne doit jamais monter l'arbre tenant, même par deep
+  // link ou retour arrière. Le routeur serveur reste l'autorité, mais le
+  // mobile empêche l'exposition visuelle.
+  if (isReady && me?.user?.role === 'TICKET_VERIFIER') {
+    return <Redirect href="/(verifier)/verify" />;
+  }
 
   return (
     <Tabs
