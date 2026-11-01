@@ -167,6 +167,112 @@ describe('Ticket verifiers CRUD (e2e)', () => {
     });
   });
 
+  describe('ADMIN role coverage (lot 4)', () => {
+    // Validates that the controller's @Roles(ADMIN) grants ADMIN the same
+    // tenant-scoped capabilities as OWNER — same set of writes.
+    let adminToken: string;
+    let targetVerifierId: string;
+    let targetVerifierEmail: string;
+    let bVerifierId: string;
+
+    beforeAll(async () => {
+      const argon2 = await import('argon2');
+      const adminPassword = 'AdminPass#1';
+      const adminEmail = `admin-${Date.now()}-${Math.random().toString(36).slice(2)}@e2e.local`;
+      await prisma.user.create({
+        data: {
+          tenantId: s.tenantAId,
+          email: adminEmail,
+          passwordHash: await argon2.hash(adminPassword, {
+            type: argon2.argon2id,
+            memoryCost: 65536,
+            timeCost: 3,
+            parallelism: 4,
+          }),
+          role: UserRole.ADMIN,
+          status: UserStatus.ACTIVE,
+        },
+      });
+      adminToken = (await loginUser(app, adminEmail, adminPassword)).accessToken;
+      // Seed a verifier in tenant B so ADMIN of A cannot touch it.
+      const bRes = await request(app.getHttpServer())
+        .post(BASE)
+        .set('Authorization', `Bearer ${s.ownerB.token}`)
+        .send({ email: `vb-admin-${Date.now()}@e2e.local`, password: 'LongPass#1' })
+        .expect(201);
+      bVerifierId = bRes.body.data.id;
+    });
+
+    const asAdmin = {
+      get: (p: string) => request(app.getHttpServer()).get(p).set('Authorization', `Bearer ${adminToken}`),
+      post: (p: string) => request(app.getHttpServer()).post(p).set('Authorization', `Bearer ${adminToken}`),
+      patch: (p: string) => request(app.getHttpServer()).patch(p).set('Authorization', `Bearer ${adminToken}`),
+      delete: (p: string) => request(app.getHttpServer()).delete(p).set('Authorization', `Bearer ${adminToken}`),
+    };
+
+    it('ADMIN creates a verifier in own tenant', async () => {
+      targetVerifierEmail = `v-admin-${Date.now()}@e2e.local`;
+      const res = await asAdmin
+        .post(BASE)
+        .send({ email: targetVerifierEmail, password: 'LongPass#1' })
+        .expect(201);
+      targetVerifierId = res.body.data.id;
+    });
+
+    it('ADMIN lists verifiers (tenant A)', async () => {
+      const res = await asAdmin.get(BASE).expect(200);
+      const ids = (res.body.data.items as Array<{ id: string }>).map((x) => x.id);
+      expect(ids).toContain(targetVerifierId);
+      expect(ids).not.toContain(bVerifierId);
+    });
+
+    it('ADMIN assigns A1', async () => {
+      await asAdmin
+        .patch(`${BASE}/${targetVerifierId}/assignment`)
+        .send({ routerId: s.routerA1 })
+        .expect(200);
+    });
+
+    it('ADMIN suspends then reactivates', async () => {
+      await asAdmin
+        .patch(`${BASE}/${targetVerifierId}/status`)
+        .send({ status: 'SUSPENDED' })
+        .expect(200);
+      await asAdmin
+        .patch(`${BASE}/${targetVerifierId}/status`)
+        .send({ status: 'ACTIVE' })
+        .expect(200);
+    });
+
+    it('ADMIN resets password', async () => {
+      await asAdmin
+        .post(`${BASE}/${targetVerifierId}/reset-password`)
+        .send({ newPassword: 'NewLongPass#2' })
+        .expect(200);
+    });
+
+    it('ADMIN revokes sessions', async () => {
+      await asAdmin
+        .post(`${BASE}/${targetVerifierId}/revoke-sessions`)
+        .expect(200);
+    });
+
+    it('ADMIN of A cannot touch verifier of tenant B (404 generic)', async () => {
+      await asAdmin.get(`${BASE}/${bVerifierId}`).expect(404);
+      await asAdmin.patch(`${BASE}/${bVerifierId}/status`).send({ status: 'SUSPENDED' }).expect(404);
+      await asAdmin.post(`${BASE}/${bVerifierId}/reset-password`).send({ newPassword: 'LongPass#1' }).expect(404);
+      await asAdmin.delete(`${BASE}/${bVerifierId}`).expect(404);
+    });
+
+    it('ADMIN of A cannot assign to router of tenant B', async () => {
+      const res = await asAdmin
+        .patch(`${BASE}/${targetVerifierId}/assignment`)
+        .send({ routerId: s.routerB1 })
+        .expect(404);
+      expect(res.body.errorCode).toBe('VERIFIER_ROUTER_FOREIGN');
+    });
+  });
+
   describe('tenant isolation', () => {
     let bVerifierId: string;
 
