@@ -66,6 +66,18 @@ export class SaspayService {
   ): Promise<{ intentId: string; checkoutUrl: string; invoiceId: string; amount: number }> {
     this.assertEnabled();
 
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId },
+      select: { email: true, name: true },
+    });
+    if (!user?.email) {
+      throw new BusinessException(
+        HttpStatus.UNAUTHORIZED,
+        ErrorCode.TENANT_CONTEXT_MISSING,
+        'Utilisateur introuvable.',
+      );
+    }
+
     const tier = await this.tiers.getByKeyOrThrow(dto.tierKey);
     const billingPeriod: BillingPeriod = dto.billingPeriod;
     const amount = periodAmount(tier, billingPeriod);
@@ -154,6 +166,8 @@ export class SaspayService {
         cancelUrl: this.config.get('SASPAY_CHECKOUT_CANCEL_URL', { infer: true }),
         reference: `MKL-${invoice.id}`,
         idempotencyKey,
+        customerEmail: user.email,
+        customerName: user.name || user.email,
         metadata: {
           intentId: intent.id,
           invoiceId: invoice.id,
