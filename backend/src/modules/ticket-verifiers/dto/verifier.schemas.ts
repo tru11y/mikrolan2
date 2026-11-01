@@ -29,6 +29,13 @@ export const updateVerifierSchema = z
   .strict();
 export type UpdateVerifierDto = z.infer<typeof updateVerifierSchema>;
 
+export const resetPasswordSchema = z
+  .object({
+    newPassword: passwordField,
+  })
+  .strict();
+export type ResetPasswordDto = z.infer<typeof resetPasswordSchema>;
+
 export const upsertAssignmentSchema = z
   .object({
     routerId: routerIdField,

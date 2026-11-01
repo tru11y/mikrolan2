@@ -18,6 +18,7 @@ import type { TenantContext } from '../../common/context/tenant-context';
 import type {
   CreateVerifierDto,
   ListVerifiersQuery,
+  ResetPasswordDto,
   UpdateStatusDto,
   UpdateVerifierDto,
   UpsertAssignmentDto,
@@ -367,6 +368,46 @@ export class TicketVerifiersService {
       userId: ctx.userId,
     });
     return toPublic(await this.loadOrThrow(ctx.tenantId, id));
+  }
+
+  async resetPassword(
+    ctx: TenantContext,
+    id: string,
+    dto: ResetPasswordDto,
+  ): Promise<{ reset: true }> {
+    const current = await this.loadOrThrow(ctx.tenantId, id);
+    if (current.status === UserStatus.DELETED) {
+      throw new BusinessException(
+        HttpStatus.CONFLICT,
+        ErrorCode.VERIFIER_INVALID_STATUS_TRANSITION,
+        'Compte supprimé, opération impossible.',
+      );
+    }
+    // Hash OUTSIDE the transaction so a slow argon2 run (65 MiB) doesn't
+    // hold a DB row lock. The subsequent two writes are atomic together.
+    const passwordHash = await argon2.hash(dto.newPassword, ARGON);
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id },
+        data: { passwordHash, hasPassword: true },
+      }),
+      this.prisma.refreshToken.updateMany({
+        where: { userId: id, revoked: false },
+        data: { revoked: true },
+      }),
+    ]);
+    await this.events.emit({
+      action: AuditAction.UPDATE,
+      entityType: 'User',
+      entityId: id,
+      outcome: 'SUCCESS',
+      // NEVER the password nor its hash — only the fact that a reset
+      // happened, by whom.
+      metadata: { kind: 'VERIFIER_PASSWORD_RESET' },
+      tenantId: ctx.tenantId,
+      userId: ctx.userId,
+    });
+    return { reset: true };
   }
 
   async revokeSessions(ctx: TenantContext, id: string): Promise<{ revoked: true }> {
