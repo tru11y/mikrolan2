@@ -1,5 +1,5 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -60,11 +60,16 @@ export default function VerifyScreen() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [state, setState] = useState<ScreenState>({ kind: 'idle' });
+  // Verrou synchrone : deux taps dans le même tick React ne doivent pas
+  // franchir le check busy avant que setBusy(true) soit propagé.
+  const inflight = useRef(false);
 
   const canSubmit = useMemo(() => !busy && isValidLength(code), [busy, code]);
 
   async function verify(): Promise<void> {
     if (!canSubmit) return;
+    if (inflight.current) return;
+    inflight.current = true;
     const normalized = normalizeTicketCode(code);
     setBusy(true);
     try {
@@ -77,6 +82,7 @@ export default function VerifyScreen() {
       setState({ kind: 'error', view: httpErrorView(httpStatus) });
     } finally {
       setBusy(false);
+      inflight.current = false;
     }
   }
 
