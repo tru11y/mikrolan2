@@ -10,6 +10,7 @@ import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import { join } from 'node:path';
+import { Readable } from 'node:stream';
 import { AppModule } from './app.module';
 import type { AppConfig } from './config/configuration';
 
@@ -26,6 +27,33 @@ async function bootstrap(): Promise<void> {
 
   await app.register(helmet);
   await app.register(multipart, { limits: { fileSize: 5 * 1024 * 1024 } });
+
+  // Raw body capture pour la vérification HMAC du webhook SasPay.
+  // Scopé à l'URL exacte pour ne jamais perturber les autres routes JSON :
+  // on remplace le parser JSON par défaut sur ces requêtes uniquement, afin
+  // de conserver le corps brut (indispensable car la signature couvre les
+  // octets exacts envoyés par SasPay, pas une re-sérialisation).
+  const fastify = app.getHttpAdapter().getInstance();
+  fastify.addHook('preParsing', (req, _reply, payload, done) => {
+    if (req.url === '/api/payments/saspay/webhook') {
+      const chunks: Buffer[] = [];
+      payload.on('data', (chunk: Buffer) => chunks.push(chunk));
+      payload.on('end', () => {
+        const raw = Buffer.concat(chunks).toString('utf8');
+        (req as unknown as { rawBody?: string }).rawBody = raw;
+        try {
+          (req as unknown as { body?: unknown }).body = raw.length ? JSON.parse(raw) : {};
+        } catch {
+          // Laisse body indéfini : le contrôleur rejettera via Zod.
+          (req as unknown as { body?: unknown }).body = {};
+        }
+        done(null, Readable.from([Buffer.from(raw, 'utf8')]));
+      });
+      payload.on('error', (err: Error) => done(err));
+      return;
+    }
+    done(null, payload);
+  });
   // Payment proofs are intentionally NOT served here (FIND-004): they are
   // private financial documents, served exclusively through the
   // authenticated/authorized endpoint in SubscriptionsController, which is
