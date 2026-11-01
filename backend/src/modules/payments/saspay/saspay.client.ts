@@ -23,6 +23,8 @@ export interface CreateCheckoutSessionRequest {
   reference: string;
   idempotencyKey: string;
   metadata: Record<string, string>;
+  customerEmail: string;
+  customerName: string;
 }
 
 export interface CreateCheckoutSessionResponse {
@@ -66,6 +68,8 @@ export class SaspayClient {
       cancel_url: req.cancelUrl,
       reference: req.reference,
       metadata: req.metadata,
+      customer_email: req.customerEmail,
+      customer_name: req.customerName,
     };
 
     const url = `${this.baseUrl}/checkout-sessions/`;
