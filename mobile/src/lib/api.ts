@@ -2162,7 +2162,6 @@ export type TicketVerificationStatus =
   | 'VALID'
   | 'ALREADY_USED'
   | 'EXPIRED'
-  | 'BLOCKED'
   | 'NOT_FOUND'
   | 'TEMPORARILY_UNAVAILABLE';
 
@@ -2170,7 +2169,6 @@ export type TicketVerificationAction =
   | 'ALLOW_CUSTOMER'
   | 'DO_NOT_REPLACE'
   | 'SELL_NEW_TICKET'
-  | 'CONTACT_MANAGER'
   | 'RETRY_LATER'
   | 'CHECK_ENTERED_CODE';
 

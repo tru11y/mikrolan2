@@ -15,7 +15,6 @@ export type VerificationStatus =
   | 'VALID'
   | 'ALREADY_USED'
   | 'EXPIRED'
-  | 'BLOCKED'
   | 'NOT_FOUND'
   | 'TEMPORARILY_UNAVAILABLE';
 
@@ -23,7 +22,6 @@ export type RecommendedAction =
   | 'ALLOW_CUSTOMER'
   | 'DO_NOT_REPLACE'
   | 'SELL_NEW_TICKET'
-  | 'CONTACT_MANAGER'
   | 'RETRY_LATER'
   | 'CHECK_ENTERED_CODE';
 
@@ -101,7 +99,15 @@ export class TicketVerificationService {
     }
 
     const response = this.mapToPublic(voucher);
-    await this.auditResult(scope, fingerprint, voucher.id, response.status);
+    // L'état interne REVOKED reste tracé dans l'audit (usage interne) mais
+    // n'est jamais exposé : le vendeur voit exactement un « ticket inexistant ».
+    await this.auditResult(
+      scope,
+      fingerprint,
+      voucher.id,
+      response.status,
+      voucher.status === VoucherStatus.REVOKED ? 'REVOKED' : undefined,
+    );
     return response;
   }
 
@@ -149,12 +155,10 @@ export class TicketVerificationService {
 
     switch (state) {
       case 'REVOKED':
-        return {
-          status: 'BLOCKED',
-          message: 'Ticket bloqué',
-          recommendedAction: 'CONTACT_MANAGER',
-          ticket: commonTicket,
-        };
+        // Décision produit : un ticket révoqué n'est jamais proposé à la vente,
+        // son existence ne doit pas être révélée au vendeur. Réponse canonique
+        // identique à un code inexistant / d'un autre routeur / d'un autre tenant.
+        return NOT_FOUND_RESPONSE;
       case 'EXPIRED':
         return {
           status: 'EXPIRED',
@@ -202,6 +206,7 @@ export class TicketVerificationService {
     codeFingerprint: string,
     voucherId: string | null,
     result: VerificationStatus,
+    internalState?: 'REVOKED',
   ): Promise<void> {
     const outcome =
       result === 'TEMPORARILY_UNAVAILABLE'
@@ -217,6 +222,7 @@ export class TicketVerificationService {
         source: 'MANUAL',
         routerId: scope.routerId,
         codeFingerprint,
+        ...(internalState ? { internalState } : {}),
       },
       tenantId: scope.tenantId,
       userId: scope.userId,
