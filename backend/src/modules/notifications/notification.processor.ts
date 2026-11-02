@@ -42,6 +42,17 @@ export class NotificationProcessor extends WorkerHost {
       throw new Error(`Expo push failed: ${res.status}`);
     }
 
+    const { data: tickets } = (await res.json()) as {
+      data?: Array<{ status: string; message?: string; details?: { error?: string } }>;
+    };
+    tickets?.forEach((ticket) => {
+      if (ticket.status === 'error') {
+        this.logger.warn(
+          `Expo ticket error for notification ${notificationId}: ${ticket.details?.error ?? 'unknown'} — ${ticket.message ?? ''}`,
+        );
+      }
+    });
+
     await this.prisma.notification.update({
       where: { id: notificationId },
       data: { pushSentAt: new Date(), retryCount: job.attemptsMade },
