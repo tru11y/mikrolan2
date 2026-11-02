@@ -201,6 +201,8 @@ async function seed(app: NestFastifyApplication): Promise<Seed> {
       mk(tenantBId, planB1.id, rB1.id, 'SHARED1', VoucherStatus.GENERATED, 'mk-b1-1'),
     ]);
 
+  await mk(tenantBId, planB1.id, rB1.id, 'ONLYB1', VoucherStatus.GENERATED, 'mk-b1-only');
+
   return {
     tenantAId,
     tenantBId,
@@ -344,12 +346,41 @@ describe('Ticket verification (e2e)', () => {
       expect(res.body.data.recommendedAction).toBe('SELL_NEW_TICKET');
     });
 
-    it('BLOCKED + CONTACT_MANAGER on REVOKED', async () => {
-      const res = await asVerifier()
-        .send({ ticketCode: 'REV1' })
-        .expect(200);
-      expect(res.body.data.status).toBe('BLOCKED');
-      expect(res.body.data.recommendedAction).toBe('CONTACT_MANAGER');
+    it('REVOKED is hidden: strictly identical to nowhere / other router / other tenant', async () => {
+      const send = (code: string) => asVerifier().send({ ticketCode: code }).expect(200);
+      const [revoked, nowhere, otherRouter, otherTenant] = await Promise.all([
+        send('REV1'),
+        send('ZZ-NOWHERE-999'),
+        send('SHARED1'), // exists only on router A2 of the same tenant for this verifier
+        send('ONLYB1'), // exists only in tenant B
+      ]);
+      const canonical = {
+        status: 'NOT_FOUND',
+        message: 'Ticket inexistant',
+        recommendedAction: 'CHECK_ENTERED_CODE',
+      };
+      for (const r of [revoked, nowhere, otherRouter, otherTenant]) {
+        expect(r.body.data).toEqual(canonical);
+      }
+      const bodies = [revoked, nowhere, otherRouter, otherTenant].map((r) => JSON.stringify(r.body.data));
+      expect(new Set(bodies).size).toBe(1);
+      const flat = JSON.stringify(revoked.body);
+      for (const bad of ['BLOCKED', 'bloqué', 'CONTACT_MANAGER', 'REVOKED', s.vouchers.sameCodeA2, 'mk-r-1']) {
+        expect(flat).not.toContain(bad);
+      }
+    });
+
+    it('REVOKED audit keeps the internal state without exposing it', async () => {
+      const before = Date.now();
+      await asVerifier().send({ ticketCode: 'REV1' }).expect(200);
+      const row = await prisma.auditLog.findFirst({
+        where: { action: AuditAction.VERIFY, tenantId: s.tenantAId, createdAt: { gte: new Date(before) } },
+        orderBy: { createdAt: 'desc' },
+      });
+      const meta = row!.metadata as Record<string, unknown>;
+      expect(meta['result']).toBe('NOT_FOUND');
+      expect(meta['internalState']).toBe('REVOKED');
+      expect(JSON.stringify(meta)).not.toContain('REV1');
     });
 
     it('TEMPORARILY_UNAVAILABLE + RETRY_LATER on not-yet-provisioned', async () => {
