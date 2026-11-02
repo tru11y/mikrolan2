@@ -37,23 +37,6 @@ type ScreenState =
   | { kind: 'result'; result: TicketVerificationResponse; view: VerdictView }
   | { kind: 'error'; view: HttpErrorView };
 
-function Pill({ tone, label }: { tone: VerdictView['tone']; label: string }) {
-  return (
-    <View
-      style={{
-        paddingHorizontal: space.md,
-        paddingVertical: space.xs,
-        borderRadius: 999,
-        backgroundColor: toneColor(tone),
-      }}
-    >
-      <Text style={{ color: '#000', fontSize: type.caption, fontWeight: '700' }}>
-        {label}
-      </Text>
-    </View>
-  );
-}
-
 export default function VerifyScreen() {
   const theme = useTheme();
   const router = useRouter();
@@ -137,12 +120,9 @@ export default function VerifyScreen() {
           {state.kind === 'result' && (
             <Card>
               <View style={{ gap: space.sm }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
-                  <Pill tone={state.view.tone} label={state.result.status} />
-                  <Text style={{ color: theme.text, fontSize: type.body, fontWeight: '700' }}>
-                    {state.view.title}
-                  </Text>
-                </View>
+                <Text style={{ color: toneColor(state.view.tone), fontSize: type.body, fontWeight: '700' }}>
+                  {state.view.title}
+                </Text>
                 {state.view.subtitle && (
                   <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
                     {state.view.subtitle}
