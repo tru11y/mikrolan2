@@ -27,3 +27,26 @@ test('result title and action come from verdictView', () => {
 test('result title is colored by the view tone', () => {
   assert.ok(/toneColor\(state\.view\.tone\)/.test(src));
 });
+
+// Décision produit : un ticket révoqué est indistinguable d'un code inexistant.
+// Plus aucun rendu ni type public « bloqué » côté vendeur.
+const sources = [
+  readFileSync('src/lib/verifierMapping.ts', 'utf8').toString(),
+  readFileSync('app/(verifier)/verify.tsx', 'utf8').toString(),
+];
+
+test('no public BLOCKED / Ticket bloqué / CONTACT_MANAGER rendering in the vendor mobile sources', () => {
+  for (const s of sources) {
+    assert.ok(!/BLOCKED/.test(s));
+    assert.ok(!/Ticket bloqué/.test(s));
+    assert.ok(!/CONTACT_MANAGER/.test(s));
+    assert.ok(!/Contacter le responsable/.test(s));
+  }
+});
+
+test('the public status/action types no longer include BLOCKED / CONTACT_MANAGER', () => {
+  const api = readFileSync('src/lib/api.ts', 'utf8').toString();
+  const block = api.slice(api.indexOf('export type TicketVerificationStatus'), api.indexOf('export interface TicketVerificationResponse'));
+  assert.ok(block.includes("'NOT_FOUND'"));
+  assert.ok(!/BLOCKED|CONTACT_MANAGER/.test(block));
+});
