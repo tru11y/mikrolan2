@@ -9,7 +9,7 @@ import { useTheme } from '@/src/providers/theme-provider';
 import { ONBOARDING_KEY } from './onboarding';
 
 export default function Index() {
-  const { isReady, isAuthenticated } = useAuth();
+  const { isReady, isAuthenticated, me } = useAuth();
   const theme = useTheme();
   const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
 
@@ -36,6 +36,11 @@ export default function Index() {
   }
 
   if (!isAuthenticated) return <Redirect href="/login" />;
+  // Routing par rôle serveur. TICKET_VERIFIER n'entre jamais dans (tabs),
+  // même brièvement : la redirection remplace l'historique.
+  if (me?.user?.role === 'TICKET_VERIFIER') {
+    return <Redirect href="/(verifier)/verify" />;
+  }
   if (!onboardingDone) return <Redirect href="/onboarding" />;
   return <Redirect href="/(tabs)" />;
 }

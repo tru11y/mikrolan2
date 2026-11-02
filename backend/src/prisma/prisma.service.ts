@@ -26,6 +26,7 @@ const TENANT_MODELS = new Set<Prisma.ModelName>([
   'Notification',
   'SupportTicket',
   'ReleaseDownload',
+  'TicketVerifierAssignment',
 ]);
 
 /**
