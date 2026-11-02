@@ -25,8 +25,6 @@ export function actionLabel(a: TicketVerificationAction): string {
       return 'Ne pas remplacer le ticket';
     case 'SELL_NEW_TICKET':
       return 'Proposer un nouveau ticket';
-    case 'CONTACT_MANAGER':
-      return 'Contacter le responsable';
     case 'RETRY_LATER':
       return 'Réessayer plus tard';
     case 'CHECK_ENTERED_CODE':
@@ -57,13 +55,6 @@ export function verdictView(res: TicketVerificationResponse): VerdictView {
     case 'EXPIRED':
       return {
         title: 'Ticket expiré',
-        subtitle: null,
-        tone: 'danger',
-        actionLabel: action,
-      };
-    case 'BLOCKED':
-      return {
-        title: 'Ticket bloqué',
         subtitle: null,
         tone: 'danger',
         actionLabel: action,
@@ -147,7 +138,6 @@ export const KNOWN_STATUSES: readonly TicketVerificationStatus[] = [
   'VALID',
   'ALREADY_USED',
   'EXPIRED',
-  'BLOCKED',
   'NOT_FOUND',
   'TEMPORARILY_UNAVAILABLE',
 ] as const;

@@ -123,12 +123,69 @@ describe('TicketVerificationService', () => {
     expect(res.status).toBe('EXPIRED');
   });
 
-  it('BLOCKED: REVOKED', async () => {
-    const db = makeDb([voucher({ status: VoucherStatus.REVOKED })]);
-    const svc = new TicketVerificationService(db as never, makeEvents() as never);
-    const res = await svc.verify(SCOPE, 'ABC123');
-    expect(res.status).toBe('BLOCKED');
-    expect(res.recommendedAction).toBe('CONTACT_MANAGER');
+  describe('REVOKED is hidden as NOT_FOUND (product decision)', () => {
+    const CANONICAL = {
+      status: 'NOT_FOUND',
+      message: 'Ticket inexistant',
+      recommendedAction: 'CHECK_ENTERED_CODE',
+    };
+
+    it('REVOKED in scope → canonical NOT_FOUND', async () => {
+      const db = makeDb([voucher({ id: 'V-REV', status: VoucherStatus.REVOKED })]);
+      const svc = new TicketVerificationService(db as never, makeEvents() as never);
+      const res = await svc.verify(SCOPE, 'ABC123');
+      expect(res).toEqual(CANONICAL);
+      expect(res).toBe(NOT_FOUND_RESPONSE);
+    });
+
+    it('REVOKED never exposes BLOCKED / Ticket bloqué / CONTACT_MANAGER / REVOKED / ids', async () => {
+      const db = makeDb([voucher({ id: 'V-REV', status: VoucherStatus.REVOKED, mikrotikId: 'mk-secret' })]);
+      const svc = new TicketVerificationService(db as never, makeEvents() as never);
+      const flat = JSON.stringify(await svc.verify(SCOPE, 'ABC123'));
+      for (const bad of ['BLOCKED', 'bloqué', 'CONTACT_MANAGER', 'REVOKED', 'V-REV', 'mk-secret', 'R-A1', 'T-A', 'ticket']) {
+        expect(flat).not.toContain(bad);
+      }
+      expect(Object.keys(JSON.parse(flat)).sort()).toEqual(['message', 'recommendedAction', 'status']);
+    });
+
+    it('four public responses are strictly identical: REVOKED, nowhere, other router, other tenant', async () => {
+      const make = (rows: Parameters<typeof makeDb>[0]) =>
+        new TicketVerificationService(makeDb(rows) as never, makeEvents() as never);
+      const results = await Promise.all([
+        make([voucher({ status: VoucherStatus.REVOKED })]).verify(SCOPE, 'ABC123'),
+        make([]).verify(SCOPE, 'ABC123'),
+        make([voucher({ routerId: 'R-A2' })]).verify(SCOPE, 'ABC123'),
+        make([voucher({ tenantId: 'T-B', routerId: 'R-B1' })]).verify(SCOPE, 'ABC123'),
+      ]);
+      const serialized = results.map((r) => JSON.stringify(r));
+      expect(new Set(serialized).size).toBe(1);
+      expect(serialized[0]).toBe(JSON.stringify(CANONICAL));
+    });
+
+    it('internal audit keeps REVOKED (not exposed): result NOT_FOUND + internalState REVOKED, no raw code', async () => {
+      const events = makeEvents();
+      const svc = new TicketVerificationService(
+        makeDb([voucher({ id: 'V-REV', status: VoucherStatus.REVOKED })]) as never,
+        events as never,
+      );
+      await svc.verify(SCOPE, 'ABC123');
+      const call = (events.emit as jest.Mock).mock.calls[0]![0] as {
+        entityId?: string;
+        metadata: Record<string, unknown>;
+      };
+      expect(call.metadata['result']).toBe('NOT_FOUND');
+      expect(call.metadata['internalState']).toBe('REVOKED');
+      expect(call.entityId).toBe('V-REV');
+      expect(JSON.stringify(call.metadata)).not.toContain('ABC123');
+    });
+
+    it('non-revoked results carry no internalState in the audit', async () => {
+      const events = makeEvents();
+      const svc = new TicketVerificationService(makeDb([voucher({})]) as never, events as never);
+      await svc.verify(SCOPE, 'ABC123');
+      const call = (events.emit as jest.Mock).mock.calls[0]![0] as { metadata: Record<string, unknown> };
+      expect(call.metadata['internalState']).toBeUndefined();
+    });
   });
 
   it('TEMPORARILY_UNAVAILABLE: not provisioned (mikrotikId empty)', async () => {
