@@ -31,7 +31,12 @@ export type AuthTokens = {
   expiresIn: number;
 };
 
-export type UserRole = 'SUPER_ADMIN' | 'OWNER' | 'ADMIN' | 'MEMBER';
+export type UserRole =
+  | 'SUPER_ADMIN'
+  | 'OWNER'
+  | 'ADMIN'
+  | 'MEMBER'
+  | 'TICKET_VERIFIER';
 export type SubscriptionPlan = 'FREE' | 'PRO';
 export type ManagementMode = 'LOCAL' | 'REMOTE';
 export type RouterHealth = 'UNKNOWN' | 'ONLINE' | 'OFFLINE' | 'ERROR';
@@ -2141,7 +2146,45 @@ export const api = {
       return unwrap(res);
     },
   },
+  ticketVerification: {
+    // Scope strict : AUCUN routerId / tenantId / hotspotId n'est envoyé. Le
+    // backend charge l'affectation depuis la session TICKET_VERIFIER.
+    async verify(ticketCode: string): Promise<TicketVerificationResponse> {
+      const res = await apiClient.post<
+        ApiEnvelope<TicketVerificationResponse>
+      >('/ticket-verification/verify', { ticketCode });
+      return unwrap(res);
+    },
+  },
 };
+
+export type TicketVerificationStatus =
+  | 'VALID'
+  | 'ALREADY_USED'
+  | 'EXPIRED'
+  | 'BLOCKED'
+  | 'NOT_FOUND'
+  | 'TEMPORARILY_UNAVAILABLE';
+
+export type TicketVerificationAction =
+  | 'ALLOW_CUSTOMER'
+  | 'DO_NOT_REPLACE'
+  | 'SELL_NEW_TICKET'
+  | 'CONTACT_MANAGER'
+  | 'RETRY_LATER'
+  | 'CHECK_ENTERED_CODE';
+
+export interface TicketVerificationResponse {
+  status: TicketVerificationStatus;
+  message: string;
+  recommendedAction: TicketVerificationAction;
+  ticket?: {
+    planName: string;
+    durationMinutes: number;
+    expiresAt: string | null;
+    usedAt: string | null;
+  };
+}
 
 // ── Types du back-office ──────────────────────────────────
 

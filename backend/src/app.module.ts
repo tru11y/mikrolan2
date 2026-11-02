@@ -23,6 +23,8 @@ import { RemoteAccessModule } from './modules/remote-access/remote-access.module
 import { PlansModule } from './modules/plans/plans.module';
 import { HotspotModule } from './modules/hotspot/hotspot.module';
 import { VouchersModule } from './modules/vouchers/vouchers.module';
+import { TicketVerificationModule } from './modules/ticket-verification/ticket-verification.module';
+import { TicketVerifiersModule } from './modules/ticket-verifiers/ticket-verifiers.module';
 import { SessionsModule } from './modules/sessions/sessions.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
@@ -71,6 +73,8 @@ import { RouterGatewayModule } from './modules/router-gateway/router-gateway.mod
     PlansModule,
     HotspotModule,
     VouchersModule,
+    TicketVerificationModule,
+    TicketVerifiersModule,
     SessionsModule,
     RouterGatewayModule,
     MetricsModule,

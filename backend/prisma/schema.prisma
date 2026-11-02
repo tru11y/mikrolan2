@@ -22,6 +22,7 @@ enum UserRole {
   OWNER
   ADMIN
   MEMBER
+  TICKET_VERIFIER // vendeur limité à la vérification de tickets sur un routeur affecté (rôle disjoint, hors hiérarchie)
 }
 
 enum UserStatus {
@@ -122,6 +123,7 @@ enum AuditAction {
   CONNECT
   DISCONNECT
   EXPORT
+  VERIFY // vérification manuelle d'un ticket par un TICKET_VERIFIER (lot 2)
 }
 
 enum EventOutcome {
@@ -203,6 +205,7 @@ model Tenant {
   notifications            Notification[]
   supportTickets           SupportTicket[]
   ticketVaults             TicketVault[]
+  ticketVerifierAssignments TicketVerifierAssignment[]
   createdAt                DateTime          @default(now())
   updatedAt                DateTime          @updatedAt
   deletedAt                DateTime?
@@ -244,6 +247,8 @@ model User {
   auditLogs            AuditLog[]
   appReleases          AppRelease[]
   releaseDownloads     ReleaseDownload[]
+  verifierAssignment   TicketVerifierAssignment?  @relation("TicketVerifierAssignment")
+  assignedVerifiers    TicketVerifierAssignment[] @relation("TicketVerifierAssignmentCreator")
   createdAt            DateTime          @default(now())
   updatedAt            DateTime          @updatedAt
 
@@ -304,6 +309,7 @@ model Router {
   voucherBatches    VoucherBatch[]
   vouchers          Voucher[]
   sessions          Session[]
+  ticketVerifierAssignments TicketVerifierAssignment[]
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
   deletedAt         DateTime?
@@ -311,6 +317,28 @@ model Router {
   @@unique([tenantId, identity])
   @@index([tenantId])
   @@index([tenantId, health])
+}
+
+// ─── TICKET VERIFIER ASSIGNMENT ──────────────────────────
+// Un vendeur (User role=TICKET_VERIFIER) est affecté à un et un seul routeur
+// (hotspot commercial pour le MVP). userId @unique garantit l'affectation unique.
+// L'historique des changements est tracé via AuditLog.
+model TicketVerifierAssignment {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  user         User     @relation("TicketVerifierAssignment", fields: [userId], references: [id])
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  routerId     String
+  router       Router   @relation(fields: [routerId], references: [id])
+  assignedById String
+  assignedBy   User     @relation("TicketVerifierAssignmentCreator", fields: [assignedById], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([routerId])
+  @@index([tenantId, routerId])
 }
 
 // ─── REMOTE PEER (WG, provisionné si abonnement PRO actif) ─

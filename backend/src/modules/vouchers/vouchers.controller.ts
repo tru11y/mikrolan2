@@ -70,6 +70,7 @@ export class VouchersController {
   }
 
   @Get()
+  @Roles(UserRole.MEMBER)
   list(
     @Param('id', ParseUUIDPipe) id: string,
     @Query('status') status?: string,
@@ -81,14 +82,17 @@ export class VouchersController {
   }
 
   @Get('batches')
+  @Roles(UserRole.MEMBER)
   batches(@Param('id', ParseUUIDPipe) id: string) {
     return this.vouchers.listBatches(id);
   }
 
   // Point lookup by code — used at the counter to verify a ticket without
   // depending on the recent-only `list()` cap. Must stay above `:voucherId`
-  // routes so "lookup" isn't parsed as a voucher id.
+  // routes so "lookup" isn't parsed as a voucher id. TICKET_VERIFIER is
+  // explicitly refused here: that role must use /ticket-verification/verify.
   @Get('lookup')
+  @Roles(UserRole.MEMBER)
   lookup(
     @Param('id', ParseUUIDPipe) id: string,
     @Query('code') code: string,
