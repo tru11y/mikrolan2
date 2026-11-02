@@ -57,13 +57,6 @@ test('verdictView EXPIRED → danger + SELL_NEW_TICKET', () => {
   assert.equal(v.actionLabel, 'Proposer un nouveau ticket');
 });
 
-test('verdictView BLOCKED → danger + CONTACT_MANAGER', () => {
-  const v = verdictView(mkRes('BLOCKED', 'CONTACT_MANAGER'));
-  assert.equal(v.title, 'Ticket bloqué');
-  assert.equal(v.tone, 'danger');
-  assert.equal(v.actionLabel, 'Contacter le responsable');
-});
-
 test('verdictView NOT_FOUND → muted + check-code subtitle', () => {
   const v = verdictView(mkRes('NOT_FOUND', 'CHECK_ENTERED_CODE'));
   assert.equal(v.title, 'Ticket inexistant');
@@ -119,7 +112,6 @@ test('KNOWN_STATUSES exhaustive — matches the public contract', () => {
     'VALID',
     'ALREADY_USED',
     'EXPIRED',
-    'BLOCKED',
     'NOT_FOUND',
     'TEMPORARILY_UNAVAILABLE',
   ]);
@@ -129,7 +121,6 @@ test('actionLabel covers all stable codes', () => {
   assert.equal(actionLabel('ALLOW_CUSTOMER'), 'Autoriser le client');
   assert.equal(actionLabel('DO_NOT_REPLACE'), 'Ne pas remplacer le ticket');
   assert.equal(actionLabel('SELL_NEW_TICKET'), 'Proposer un nouveau ticket');
-  assert.equal(actionLabel('CONTACT_MANAGER'), 'Contacter le responsable');
   assert.equal(actionLabel('RETRY_LATER'), 'Réessayer plus tard');
   assert.equal(actionLabel('CHECK_ENTERED_CODE'), 'Vérifiez le code saisi');
 });
