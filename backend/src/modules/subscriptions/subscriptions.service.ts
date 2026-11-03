@@ -54,6 +54,11 @@ export interface Entitlement {
   routerLimit: number | null;
   /** Utilisateurs autorisés par la formule ; `null` = illimité. */
   userLimit: number | null;
+  /** Sauvegarde cloud des lots de tickets (coffre PDF). */
+  cloudBackup: boolean;
+  /** Impression PDF A4/A3 (appliquée côté app : le PDF est généré sur l'appareil). */
+  a4Printing: boolean;
+  prioritySupport: boolean;
 }
 
 function daysUntil(end: Date | null): number {
@@ -106,7 +111,7 @@ export class SubscriptionsService {
         currentPeriodEnd: true,
         routerLimitOverride: true,
         userLimitOverride: true,
-        tier: { select: { key: true, routerLimit: true, userLimit: true } },
+        tier: { select: { key: true, routerLimit: true, userLimit: true, remoteAccess: true, cloudBackup: true, a4Printing: true, prioritySupport: true } },
       },
     });
 
@@ -122,12 +127,16 @@ export class SubscriptionsService {
       return {
         tier: 'PRO',
         localAllowed: true,
-        remoteAllowed: true,
+        remoteAllowed: sub.tier?.remoteAccess ?? true,
         endsAt: sub.currentPeriodEnd,
         daysLeft: daysUntil(sub.currentPeriodEnd),
         tierKey: sub.tier?.key ?? null,
         routerLimit: sub.routerLimitOverride ?? sub.tier?.routerLimit ?? null,
         userLimit: sub.userLimitOverride ?? sub.tier?.userLimit ?? null,
+        // PRO sans formule (activé avant la grille) : tout débloqué, comme avant.
+        cloudBackup: sub.tier?.cloudBackup ?? true,
+        a4Printing: sub.tier?.a4Printing ?? true,
+        prioritySupport: sub.tier?.prioritySupport ?? true,
       };
     }
 
@@ -141,6 +150,9 @@ export class SubscriptionsService {
       tierKey: sub?.tier?.key ?? null,
       routerLimit: sub?.routerLimitOverride ?? sub?.tier?.routerLimit ?? null,
       userLimit: sub?.userLimitOverride ?? sub?.tier?.userLimit ?? null,
+      cloudBackup: false,
+      a4Printing: false,
+      prioritySupport: false,
     };
   }
 

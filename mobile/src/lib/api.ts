@@ -102,6 +102,10 @@ export type Entitlement = {
   tierKey: string | null;
   /** Routeurs autorisés par la formule ; `null` = illimité. */
   routerLimit: number | null;
+  userLimit: number | null;
+  cloudBackup: boolean;
+  a4Printing: boolean;
+  prioritySupport: boolean;
 };
 
 export type TicketTemplate = {
