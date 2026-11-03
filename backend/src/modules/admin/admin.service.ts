@@ -150,8 +150,7 @@ export class AdminService {
             currentPeriodEnd: true,
             routerLimitOverride: true,
             userLimitOverride: true,
-            voucherLimitOverride: true,
-            tier: { select: { key: true, name: true, monthlyXof: true, routerLimit: true, userLimit: true, voucherMonthlyLimit: true } },
+            tier: { select: { key: true, name: true, monthlyXof: true, routerLimit: true, userLimit: true } },
           },
         },
         users: {
@@ -717,7 +716,6 @@ export class AdminService {
         ...(dto.currentPeriodEnd !== undefined && { currentPeriodEnd: dto.currentPeriodEnd }),
         ...(dto.routerLimitOverride !== undefined && { routerLimitOverride: dto.routerLimitOverride }),
         ...(dto.userLimitOverride !== undefined && { userLimitOverride: dto.userLimitOverride }),
-        ...(dto.voucherLimitOverride !== undefined && { voucherLimitOverride: dto.voucherLimitOverride }),
       },
     });
 

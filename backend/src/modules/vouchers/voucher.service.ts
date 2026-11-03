@@ -18,7 +18,6 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RemoteRouterService } from '../remote-access/remote-router.service';
-import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { EventLogService, describeFailure } from '../events/event-log.service';
 import { assertObservedRouterIdentity } from '../../common/routeros/router-identity.guard';
 import {
@@ -169,7 +168,6 @@ export class VoucherService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly remote: RemoteRouterService,
-    private readonly subscriptions: SubscriptionsService,
     private readonly eventLog: EventLogService,
   ) {}
 
@@ -214,7 +212,6 @@ export class VoucherService {
     const tenantId = ctx?.tenantId;
     if (!tenantId) throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.TENANT_CONTEXT_MISSING, 'Contexte tenant manquant');
 
-    await this.subscriptions.assertVoucherLimit(tenantId);
 
     const codes = await this.uniqueCodes(dto.quantity, {
       codePrefix: plan.codePrefix,

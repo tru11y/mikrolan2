@@ -108,7 +108,7 @@ describe('SubscriptionsService', () => {
         plan: SubscriptionPlan.PRO,
         status: SubscriptionStatus.ACTIVE,
         currentPeriodEnd: past,
-        tier: { key: 'essentiel', routerLimit: 3, userLimit: null, voucherMonthlyLimit: null },
+        tier: { key: 'essentiel', routerLimit: 3, userLimit: null },
       });
 
       const e = await service.getEntitlement('t1');
@@ -125,7 +125,7 @@ describe('SubscriptionsService', () => {
           plan: SubscriptionPlan.PRO,
           status: SubscriptionStatus.ACTIVE,
           currentPeriodEnd: new Date(Date.now() + 86_400_000),
-          tier: { key, routerLimit: null, userLimit: null, voucherMonthlyLimit: null },
+          tier: { key, routerLimit: null, userLimit: null },
         });
 
         const e = await service.getEntitlement('t1');
@@ -135,6 +135,44 @@ describe('SubscriptionsService', () => {
       },
     );
 
+    const paidSub = (tier: Record<string, unknown> | null) => ({
+      plan: SubscriptionPlan.PRO,
+      status: SubscriptionStatus.ACTIVE,
+      currentPeriodEnd: new Date(Date.now() + 86_400_000),
+      tier,
+    });
+
+    it('formule avec remoteAccess=false → pas de remote même en PRO actif', async () => {
+      const service = buildService();
+      mockPrisma.subscription.findUnique.mockResolvedValue(
+        paidSub({ key: 'local', routerLimit: null, userLimit: null, remoteAccess: false, cloudBackup: false, a4Printing: false, prioritySupport: false }),
+      );
+      expect((await service.getEntitlement('t1')).remoteAllowed).toBe(false);
+    });
+
+    it('options de la formule reflétées dans le droit (Essentiel : aucune)', async () => {
+      const service = buildService();
+      mockPrisma.subscription.findUnique.mockResolvedValue(
+        paidSub({ key: 'essentiel', routerLimit: 3, userLimit: null, remoteAccess: true, cloudBackup: false, a4Printing: false, prioritySupport: false }),
+      );
+      const e = await service.getEntitlement('t1');
+      expect([e.cloudBackup, e.a4Printing, e.prioritySupport]).toEqual([false, false, false]);
+    });
+
+    it('PRO hérité sans formule → options débloquées', async () => {
+      const service = buildService();
+      mockPrisma.subscription.findUnique.mockResolvedValue(paidSub(null));
+      const e = await service.getEntitlement('t1');
+      expect([e.remoteAllowed, e.cloudBackup, e.a4Printing, e.prioritySupport]).toEqual([true, true, true, true]);
+    });
+
+    it('FREE → aucune option payante', async () => {
+      const service = buildService();
+      mockPrisma.subscription.findUnique.mockResolvedValue(null);
+      const e = await service.getEntitlement('t1');
+      expect([e.cloudBackup, e.a4Printing, e.prioritySupport]).toEqual([false, false, false]);
+    });
+
     it.each([SubscriptionStatus.PAST_DUE, SubscriptionStatus.CANCELED, SubscriptionStatus.TRIALING])(
       'PRO avec statut %s → pas de remote',
       async (status) => {
@@ -143,7 +181,7 @@ describe('SubscriptionsService', () => {
           plan: SubscriptionPlan.PRO,
           status,
           currentPeriodEnd: new Date(Date.now() + 86_400_000),
-          tier: { key: 'essentiel', routerLimit: 3, userLimit: null, voucherMonthlyLimit: null },
+          tier: { key: 'essentiel', routerLimit: 3, userLimit: null },
         });
 
         expect((await service.getEntitlement('t1')).remoteAllowed).toBe(false);
