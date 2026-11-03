@@ -280,7 +280,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
     daysLeft: 0,
     tierKey: null,
     routerLimit: null,
-    voucherMonthlyLimit: null,
+    userLimit: null,
+    cloudBackup: false,
+    a4Printing: false,
+    prioritySupport: false,
   };
 
   const needsLegalConsent = Boolean(

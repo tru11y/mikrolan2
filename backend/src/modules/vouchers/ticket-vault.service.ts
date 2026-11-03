@@ -12,6 +12,7 @@ import { basename, join, resolve, sep } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventLogService } from '../events/event-log.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 const VAULT_DIR = join('private-uploads', 'ticket-vault');
 const FILENAME_PATTERN = /^[A-Za-z0-9._-]+\.pdf$/i;
@@ -23,6 +24,7 @@ export class TicketVaultService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventLog: EventLogService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   async store(
@@ -31,6 +33,10 @@ export class TicketVaultService {
     pdfBuffer: Buffer,
     originalName: string,
   ): Promise<{ id: string; storagePath: string }> {
+    const { cloudBackup } = await this.subscriptions.getEntitlement(tenantId);
+    if (!cloudBackup) {
+      throw new BusinessException(HttpStatus.FORBIDDEN, ErrorCode.SUBSCRIPTION_TIER_INSUFFICIENT, "La sauvegarde cloud n'est pas incluse dans votre formule.");
+    }
     try {
       const dir = resolve(process.cwd(), VAULT_DIR, tenantId);
       await mkdir(dir, { recursive: true });

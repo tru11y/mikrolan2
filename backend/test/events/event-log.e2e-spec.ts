@@ -30,6 +30,14 @@ describe('EventLog unifié (e2e)', () => {
     const user = await signupUser(app, { tenantName: 'Events Tenant' });
     owner = (await loginUser(app, user.email, user.password)).accessToken;
     tenantId = (await prisma.tenant.findFirstOrThrow({ where: { users: { some: { email: user.email } } } })).id;
+    // Le coffre PDF est réservé aux formules avec sauvegarde cloud.
+    const tier = await prisma.subscriptionTier.create({
+      data: { key: `evt-${Date.now()}`, name: 'Events', monthlyXof: 1000, cloudBackup: true, features: [] },
+    });
+    await prisma.subscription.update({
+      where: { tenantId },
+      data: { plan: 'PRO', status: 'ACTIVE', tierId: tier.id, currentPeriodEnd: new Date(Date.now() + 30 * 86_400_000) },
+    });
 
     const adminUser = await signupUser(app, { tenantName: 'Platform' });
     admin = (await promoteToSuperAdmin(app, adminUser.email, adminUser.password)).accessToken;

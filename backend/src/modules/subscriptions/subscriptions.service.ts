@@ -54,8 +54,11 @@ export interface Entitlement {
   routerLimit: number | null;
   /** Utilisateurs autorisés par la formule ; `null` = illimité. */
   userLimit: number | null;
-  /** Tickets générés/mois autorisés ; `null` = illimité. */
-  voucherMonthlyLimit: number | null;
+  /** Sauvegarde cloud des lots de tickets (coffre PDF). */
+  cloudBackup: boolean;
+  /** Impression PDF A4/A3 (appliquée côté app : le PDF est généré sur l'appareil). */
+  a4Printing: boolean;
+  prioritySupport: boolean;
 }
 
 function daysUntil(end: Date | null): number {
@@ -108,8 +111,7 @@ export class SubscriptionsService {
         currentPeriodEnd: true,
         routerLimitOverride: true,
         userLimitOverride: true,
-        voucherLimitOverride: true,
-        tier: { select: { key: true, routerLimit: true, userLimit: true, voucherMonthlyLimit: true } },
+        tier: { select: { key: true, routerLimit: true, userLimit: true, remoteAccess: true, cloudBackup: true, a4Printing: true, prioritySupport: true } },
       },
     });
 
@@ -125,13 +127,16 @@ export class SubscriptionsService {
       return {
         tier: 'PRO',
         localAllowed: true,
-        remoteAllowed: true,
+        remoteAllowed: sub.tier?.remoteAccess ?? true,
         endsAt: sub.currentPeriodEnd,
         daysLeft: daysUntil(sub.currentPeriodEnd),
         tierKey: sub.tier?.key ?? null,
         routerLimit: sub.routerLimitOverride ?? sub.tier?.routerLimit ?? null,
         userLimit: sub.userLimitOverride ?? sub.tier?.userLimit ?? null,
-        voucherMonthlyLimit: sub.voucherLimitOverride ?? sub.tier?.voucherMonthlyLimit ?? null,
+        // PRO sans formule (activé avant la grille) : tout débloqué, comme avant.
+        cloudBackup: sub.tier?.cloudBackup ?? true,
+        a4Printing: sub.tier?.a4Printing ?? true,
+        prioritySupport: sub.tier?.prioritySupport ?? true,
       };
     }
 
@@ -145,32 +150,15 @@ export class SubscriptionsService {
       tierKey: sub?.tier?.key ?? null,
       routerLimit: sub?.routerLimitOverride ?? sub?.tier?.routerLimit ?? null,
       userLimit: sub?.userLimitOverride ?? sub?.tier?.userLimit ?? null,
-      voucherMonthlyLimit: sub?.voucherLimitOverride ?? sub?.tier?.voucherMonthlyLimit ?? null,
+      cloudBackup: false,
+      a4Printing: false,
+      prioritySupport: false,
     };
   }
 
   /** True when the tenant may use remote (cloud + WireGuard) management. */
   async isRemoteAllowed(tenantId: string): Promise<boolean> {
     return (await this.getEntitlement(tenantId)).remoteAllowed;
-  }
-
-  async assertVoucherLimit(tenantId: string): Promise<void> {
-    const entitlement = await this.getEntitlement(tenantId);
-    if (entitlement.voucherMonthlyLimit === null) return;
-    const startOfMonth = new Date();
-    startOfMonth.setDate(1);
-    startOfMonth.setHours(0, 0, 0, 0);
-    const count = await this.prisma.voucher.count({
-      where: { tenantId, createdAt: { gte: startOfMonth } },
-    });
-    if (count >= entitlement.voucherMonthlyLimit) {
-      throw new BusinessException(
-        HttpStatus.FORBIDDEN,
-        ErrorCode.VOUCHER_LIMIT_REACHED,
-        `Limite de ${entitlement.voucherMonthlyLimit} tickets/mois atteinte. Passez à une formule supérieure.`,
-        { limit: entitlement.voucherMonthlyLimit, used: count },
-      );
-    }
   }
 
   async assertUserLimit(tenantId: string): Promise<void> {
