@@ -7,7 +7,7 @@ import { z } from 'zod';
  */
 export const saspayWebhookEventSchema = z.object({
   event: z.string().min(1),
-  data: z.record(z.unknown()).default({}),
+  data: z.record(z.string(), z.unknown()).default({}),
 });
 
 export type SaspayWebhookEvent = z.infer<typeof saspayWebhookEventSchema>;
