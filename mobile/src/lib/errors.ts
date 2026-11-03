@@ -45,7 +45,6 @@ const ERROR_CODE_MESSAGES: Record<string, string> = {
   ROUTER_LIMIT_REACHED: 'Limite de routeurs atteinte. Passez à une formule supérieure.',
   ROUTER_CREDS_MISSING: 'Identifiants du routeur manquants.',
   ROUTER_CREDS_INVALID: 'Identifiants du routeur invalides.',
-  VOUCHER_LIMIT_REACHED: 'Limite de tickets/mois atteinte. Passez à une formule supérieure.',
   VOUCHER_PUSH_FAILED: 'Les tickets n\'ont pas pu être enregistrés sur le routeur.',
   VOUCHER_REVOKE_ROUTER_UNREACHABLE: 'Ticket révoqué en base, mais le routeur est injoignable.',
   VOUCHER_DELETE_ROUTER_UNREACHABLE: 'Ticket supprimé en base, mais le routeur est injoignable.',

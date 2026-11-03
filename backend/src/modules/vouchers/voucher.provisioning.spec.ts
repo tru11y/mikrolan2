@@ -84,7 +84,6 @@ function makeService(prismaOverrides: Record<string, unknown> = {}) {
   const service = new VoucherService(
     prisma,
     { run: jest.fn() } as any,
-    { assertVoucherLimit: jest.fn().mockResolvedValue(undefined) } as any,
     makeEventLogStub() as any,
   );
   return { service, prisma };
@@ -233,7 +232,6 @@ describe('generate — what the operator receives as distributable tickets', () 
     return new VoucherService(
       prisma as any,
       remote as any,
-      { assertVoucherLimit: jest.fn().mockResolvedValue(undefined) } as any,
       makeEventLogStub() as any,
     );
   }

@@ -108,7 +108,7 @@ describe('SubscriptionsService', () => {
         plan: SubscriptionPlan.PRO,
         status: SubscriptionStatus.ACTIVE,
         currentPeriodEnd: past,
-        tier: { key: 'essentiel', routerLimit: 3, userLimit: null, voucherMonthlyLimit: null },
+        tier: { key: 'essentiel', routerLimit: 3, userLimit: null },
       });
 
       const e = await service.getEntitlement('t1');
@@ -125,7 +125,7 @@ describe('SubscriptionsService', () => {
           plan: SubscriptionPlan.PRO,
           status: SubscriptionStatus.ACTIVE,
           currentPeriodEnd: new Date(Date.now() + 86_400_000),
-          tier: { key, routerLimit: null, userLimit: null, voucherMonthlyLimit: null },
+          tier: { key, routerLimit: null, userLimit: null },
         });
 
         const e = await service.getEntitlement('t1');
@@ -143,7 +143,7 @@ describe('SubscriptionsService', () => {
           plan: SubscriptionPlan.PRO,
           status,
           currentPeriodEnd: new Date(Date.now() + 86_400_000),
-          tier: { key: 'essentiel', routerLimit: 3, userLimit: null, voucherMonthlyLimit: null },
+          tier: { key: 'essentiel', routerLimit: 3, userLimit: null },
         });
 
         expect((await service.getEntitlement('t1')).remoteAllowed).toBe(false);
