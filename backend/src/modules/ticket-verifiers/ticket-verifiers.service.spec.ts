@@ -194,7 +194,7 @@ describe('TicketVerifiersService', () => {
   describe('create', () => {
     it('forces role=TICKET_VERIFIER and tenantId=ctx (never from body)', async () => {
       const { db } = makeDb({ users: [], routers: [ROUTER_A1] });
-      const svc = new TicketVerifiersService(db as never, makeEvents() as never);
+      const svc = new TicketVerifiersService(db as never, makeEvents() as never, { assertUserLimit: jest.fn() } as never);
       await svc.create(CTX_A, { email: 'v@x', password: 'LongPass#1' } as never);
       const createCall = (db.user.create as jest.Mock).mock.calls[0]![0] as { data: Row };
       expect(createCall.data['role']).toBe(UserRole.TICKET_VERIFIER);
@@ -204,9 +204,17 @@ describe('TicketVerifiersService', () => {
       expect(createCall.data['passwordHash']).not.toBe('LongPass#1');
     });
 
+    it('refuses creation when the tier user limit is reached', async () => {
+      const { db } = makeDb({ users: [], routers: [ROUTER_A1] });
+      const limit = new Error('USER_LIMIT_REACHED');
+      const svc = new TicketVerifiersService(db as never, makeEvents() as never, { assertUserLimit: jest.fn().mockRejectedValue(limit) } as never);
+      await expect(svc.create(CTX_A, { email: 'v@x', password: 'LongPass#1' } as never)).rejects.toBe(limit);
+      expect(db.user.create).not.toHaveBeenCalled();
+    });
+
     it('creates assignment atomically when routerId provided', async () => {
       const { db, state } = makeDb({ users: [], routers: [ROUTER_A1] });
-      const svc = new TicketVerifiersService(db as never, makeEvents() as never);
+      const svc = new TicketVerifiersService(db as never, makeEvents() as never, { assertUserLimit: jest.fn() } as never);
       await svc.create(CTX_A, {
         email: 'v@x',
         password: 'LongPass#1',
@@ -222,7 +230,7 @@ describe('TicketVerifiersService', () => {
       const { db } = makeDb({
         users: [{ id: 'EXIST', email: 'v@x', tenantId: 'T-OTHER' }],
       });
-      const svc = new TicketVerifiersService(db as never, makeEvents() as never);
+      const svc = new TicketVerifiersService(db as never, makeEvents() as never, { assertUserLimit: jest.fn() } as never);
       await expect(
         svc.create(CTX_A, { email: 'v@x', password: 'LongPass#1' } as never),
       ).rejects.toMatchObject({
@@ -232,7 +240,7 @@ describe('TicketVerifiersService', () => {
 
     it('404 VERIFIER_ROUTER_FOREIGN when routerId belongs to another tenant', async () => {
       const { db } = makeDb({ users: [], routers: [ROUTER_B1] });
-      const svc = new TicketVerifiersService(db as never, makeEvents() as never);
+      const svc = new TicketVerifiersService(db as never, makeEvents() as never, { assertUserLimit: jest.fn() } as never);
       await expect(
         svc.create(CTX_A, {
           email: 'v@x',
@@ -244,7 +252,7 @@ describe('TicketVerifiersService', () => {
 
     it('404 VERIFIER_ROUTER_FOREIGN when routerId is soft-deleted', async () => {
       const { db } = makeDb({ users: [], routers: [ROUTER_A1_DELETED] });
-      const svc = new TicketVerifiersService(db as never, makeEvents() as never);
+      const svc = new TicketVerifiersService(db as never, makeEvents() as never, { assertUserLimit: jest.fn() } as never);
       await expect(
         svc.create(CTX_A, {
           email: 'v@x',
@@ -257,7 +265,7 @@ describe('TicketVerifiersService', () => {
     it('audits CREATE without any password or secret in metadata', async () => {
       const { db } = makeDb({ users: [], routers: [ROUTER_A1] });
       const events = makeEvents();
-      const svc = new TicketVerifiersService(db as never, events as never);
+      const svc = new TicketVerifiersService(db as never, events as never, { assertUserLimit: jest.fn() } as never);
       await svc.create(CTX_A, {
         email: 'v@x',
         password: 'LongPass#1',
@@ -279,7 +287,7 @@ describe('TicketVerifiersService', () => {
           { id: 'M1', tenantId: 'T-A', role: UserRole.MEMBER, status: UserStatus.ACTIVE, email: 'm', name: null, createdAt: new Date(), updatedAt: new Date(), deletedAt: null, lastLoginAt: null },
         ],
       });
-      const svc = new TicketVerifiersService(db as never, makeEvents() as never);
+      const svc = new TicketVerifiersService(db as never, makeEvents() as never, { assertUserLimit: jest.fn() } as never);
       await svc.list(CTX_A, { limit: 50 } as never);
       const call = (db.user.findMany as jest.Mock).mock.calls[0]![0] as { where: Row };
       expect(call.where['tenantId']).toBe('T-A');
@@ -292,7 +300,7 @@ describe('TicketVerifiersService', () => {
       const { db } = makeDb({
         users: [{ id: 'V-B', tenantId: 'T-B', role: UserRole.TICKET_VERIFIER, status: UserStatus.ACTIVE, email: 'x', name: null, createdAt: new Date(), updatedAt: new Date(), deletedAt: null, lastLoginAt: null }],
       });
-      const svc = new TicketVerifiersService(db as never, makeEvents() as never);
+      const svc = new TicketVerifiersService(db as never, makeEvents() as never, { assertUserLimit: jest.fn() } as never);
       await expect(svc.get(CTX_A, 'V-B')).rejects.toMatchObject({
         errorCode: ErrorCode.VERIFIER_NOT_FOUND,
       });
@@ -302,7 +310,7 @@ describe('TicketVerifiersService', () => {
       const { db } = makeDb({
         users: [{ id: 'M', tenantId: 'T-A', role: UserRole.MEMBER, status: UserStatus.ACTIVE, email: 'x', name: null, createdAt: new Date(), updatedAt: new Date(), deletedAt: null, lastLoginAt: null }],
       });
-      const svc = new TicketVerifiersService(db as never, makeEvents() as never);
+      const svc = new TicketVerifiersService(db as never, makeEvents() as never, { assertUserLimit: jest.fn() } as never);
       await expect(svc.get(CTX_A, 'M')).rejects.toMatchObject({
         errorCode: ErrorCode.VERIFIER_NOT_FOUND,
       });
@@ -333,7 +341,7 @@ describe('TicketVerifiersService', () => {
         ],
       });
       const events = makeEvents();
-      const svc = new TicketVerifiersService(db as never, events as never);
+      const svc = new TicketVerifiersService(db as never, events as never, { assertUserLimit: jest.fn() } as never);
       await svc.upsertAssignment(CTX_A, 'V1', { routerId: ROUTER_A1.id });
       expect(state.assignments.length).toBe(1);
       expect(state.refreshTokens.every((t) => t['revoked'] === true)).toBe(true);
@@ -361,7 +369,7 @@ describe('TicketVerifiersService', () => {
         refreshTokens: [{ id: 'RT', userId: 'V1', revoked: false }],
       });
       const events = makeEvents();
-      const svc = new TicketVerifiersService(db as never, events as never);
+      const svc = new TicketVerifiersService(db as never, events as never, { assertUserLimit: jest.fn() } as never);
       await svc.upsertAssignment(CTX_A, 'V1', { routerId: ROUTER_A2.id });
       expect(state.assignments.length).toBe(1);
       expect(state.assignments[0]!['routerId']).toBe('R-A2');
@@ -377,7 +385,7 @@ describe('TicketVerifiersService', () => {
         users: [baseVerifier],
         routers: [ROUTER_B1],
       });
-      const svc = new TicketVerifiersService(db as never, makeEvents() as never);
+      const svc = new TicketVerifiersService(db as never, makeEvents() as never, { assertUserLimit: jest.fn() } as never);
       await expect(
         svc.upsertAssignment(CTX_A, 'V1', { routerId: ROUTER_B1.id }),
       ).rejects.toMatchObject({ errorCode: ErrorCode.VERIFIER_ROUTER_FOREIGN });
@@ -399,7 +407,7 @@ describe('TicketVerifiersService', () => {
         ],
         refreshTokens: [{ id: 'RT', userId: 'V1', revoked: false }],
       });
-      const svc = new TicketVerifiersService(db as never, makeEvents() as never);
+      const svc = new TicketVerifiersService(db as never, makeEvents() as never, { assertUserLimit: jest.fn() } as never);
       await svc.removeAssignment(CTX_A, 'V1');
       expect(state.assignments.length).toBe(0);
       expect(state.refreshTokens[0]!['revoked']).toBe(true);
@@ -407,7 +415,7 @@ describe('TicketVerifiersService', () => {
 
     it('removeAssignment is idempotent when none exists', async () => {
       const { db } = makeDb({ users: [baseVerifier] });
-      const svc = new TicketVerifiersService(db as never, makeEvents() as never);
+      const svc = new TicketVerifiersService(db as never, makeEvents() as never, { assertUserLimit: jest.fn() } as never);
       await expect(svc.removeAssignment(CTX_A, 'V1')).resolves.toBeDefined();
     });
   });
@@ -431,7 +439,7 @@ describe('TicketVerifiersService', () => {
         users: [base],
         refreshTokens: [{ id: 'RT', userId: 'V1', revoked: false }],
       });
-      const svc = new TicketVerifiersService(db as never, makeEvents() as never);
+      const svc = new TicketVerifiersService(db as never, makeEvents() as never, { assertUserLimit: jest.fn() } as never);
       await svc.setStatus(CTX_A, 'V1', { status: 'SUSPENDED' });
       expect(state.users[0]!['status']).toBe(UserStatus.SUSPENDED);
       expect(state.refreshTokens[0]!['revoked']).toBe(true);
@@ -442,7 +450,7 @@ describe('TicketVerifiersService', () => {
         users: [{ ...base, status: UserStatus.SUSPENDED }],
         refreshTokens: [{ id: 'RT', userId: 'V1', revoked: true }],
       });
-      const svc = new TicketVerifiersService(db as never, makeEvents() as never);
+      const svc = new TicketVerifiersService(db as never, makeEvents() as never, { assertUserLimit: jest.fn() } as never);
       await svc.setStatus(CTX_A, 'V1', { status: 'ACTIVE' });
       expect(state.users[0]!['status']).toBe(UserStatus.ACTIVE);
       expect(state.refreshTokens[0]!['revoked']).toBe(true);
@@ -452,7 +460,7 @@ describe('TicketVerifiersService', () => {
       const { db } = makeDb({
         users: [{ ...base, status: UserStatus.DELETED }],
       });
-      const svc = new TicketVerifiersService(db as never, makeEvents() as never);
+      const svc = new TicketVerifiersService(db as never, makeEvents() as never, { assertUserLimit: jest.fn() } as never);
       await expect(
         svc.setStatus(CTX_A, 'V1', { status: 'ACTIVE' }),
       ).rejects.toBeInstanceOf(BusinessException);
@@ -482,7 +490,7 @@ describe('TicketVerifiersService', () => {
           { id: 'C', userId: 'OTHER', revoked: false },
         ],
       });
-      const svc = new TicketVerifiersService(db as never, makeEvents() as never);
+      const svc = new TicketVerifiersService(db as never, makeEvents() as never, { assertUserLimit: jest.fn() } as never);
       await svc.revokeSessions(CTX_A, 'V1');
       expect(state.refreshTokens.filter((t) => t['userId'] === 'V1').every((t) => t['revoked'])).toBe(true);
       expect(state.refreshTokens.find((t) => t['id'] === 'C')!['revoked']).toBe(false);
@@ -497,7 +505,7 @@ describe('TicketVerifiersService', () => {
         ],
         refreshTokens: [{ id: 'RT', userId: 'V1', revoked: false }],
       });
-      const svc = new TicketVerifiersService(db as never, makeEvents() as never);
+      const svc = new TicketVerifiersService(db as never, makeEvents() as never, { assertUserLimit: jest.fn() } as never);
       await svc.softDelete(CTX_A, 'V1');
       expect(state.users[0]!['status']).toBe(UserStatus.DELETED);
       expect(state.users[0]!['deletedAt']).toBeInstanceOf(Date);

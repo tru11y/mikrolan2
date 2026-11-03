@@ -258,7 +258,7 @@ export class AuthService {
     // L'app dessine ses cadenas à partir de ceci ; le serveur les applique.
     const entitlement =
       user.role === 'SUPER_ADMIN'
-        ? { tier: 'PRO' as const, localAllowed: true, remoteAllowed: true, endsAt: null, daysLeft: null, tierKey: null, routerLimit: null }
+        ? { tier: 'PRO' as const, localAllowed: true, remoteAllowed: true, endsAt: null, daysLeft: null, tierKey: null, routerLimit: null, userLimit: null, cloudBackup: true, a4Printing: true, prioritySupport: true }
         : await this.subscriptions.getEntitlement(tenantId);
     return { user, tenant, subscription, entitlement, legal: LEGAL_VERSIONS };
   }
