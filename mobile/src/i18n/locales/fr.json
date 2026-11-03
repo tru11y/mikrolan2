@@ -1241,6 +1241,11 @@
     "removeWarning": "Supprimer {{name}} ? Son compte sera désactivé et son affectation retirée. Cette action est définitive.",
     "noRouterWarning": "Sans routeur, ce vendeur ne pourra pas vérifier de tickets.",
     "notReady": "Pas prêt à vérifier : aucun routeur affecté",
-    "errNetwork": "Connexion indisponible. Vérifiez votre réseau et réessayez."
+    "errNetwork": "Connexion indisponible. Vérifiez votre réseau et réessayez.",
+    "uncertainCreate": "La réponse du serveur n'a pas été reçue. Actualisez la liste avant de réessayer afin d'éviter un doublon.",
+    "createdFound": "Le vendeur a été créé.",
+    "createAbsent": "Aucun vendeur avec cet e-mail n'a été trouvé : vous pouvez réessayer.",
+    "uncertainOther": "La réponse du serveur n'a pas été reçue. L'état a été actualisé : vérifiez-le avant de réessayer.",
+    "uncertainReset": "La réponse du serveur n'a pas été reçue. Vérifiez l'état du vendeur avant un nouvel essai : le mot de passe saisi a été effacé."
   }
 }

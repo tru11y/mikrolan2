@@ -4,16 +4,25 @@ import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from 'react-na
 import { Redirect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type RouterItem, type VerifierItem } from '@/src/lib/api';
+import { api, type Page, type RouterItem, type VerifierItem } from '@/src/lib/api';
 import { describeError } from '@/src/lib/errors';
+import { createActionLock } from '@/src/lib/actionLock';
+import { callWithDeadline, HardTimeoutError } from '@/src/lib/hardTimeout';
 import {
+  MUTATION_DEADLINE_MS,
   buildCreateBody,
   displayName,
-  routerLabel,
-  validateNewVerifier,
   isReadyToVerify,
+  planForUncertain,
+  reconcileAssign,
+  reconcileCreate,
+  reconcileRemove,
+  reconcileStatus,
+  routerLabel,
   validateNewPassword,
+  validateNewVerifier,
   type FormErrorKey,
+  type MutationKind,
 } from '@/src/lib/verifierMgmt';
 import {
   Banner,
@@ -41,6 +50,40 @@ const FORM_ERROR_KEY: Record<FormErrorKey, string> = {
   weakPassword: 'verifiers.errWeakPassword',
   nameTooLong: 'verifiers.errNameTooLong',
 };
+
+// Mutations sensibles : réseau forcé (sinon react-query met la requête en pause tant
+// que le réseau est coupé, puis l'exécute au retour) et aucun renvoi automatique
+// (un POST renvoyé peut créer un doublon).
+const MUTATION_OPTIONS = { networkMode: 'always', retry: false } as const;
+const RECONCILE_DEADLINE_MS = 10000;
+
+/** Aucune réponse HTTP reçue (échéance, coupure) : le serveur a peut-être agi. */
+function isUncertain(err: unknown): boolean {
+  return err instanceof HardTimeoutError || describeError(err).status === null;
+}
+
+/** Relit la liste (jamais depuis le cache) ; null si le réseau est toujours indisponible. */
+async function freshItems(qc: ReturnType<typeof useQueryClient>): Promise<VerifierItem[] | null> {
+  try {
+    // Même règle que les mutations : réseau forcé, sans retry, borné dans le temps
+    // (sinon la relecture reste en pause tant que le réseau est coupé).
+    const page = await callWithDeadline(
+      () =>
+        qc.fetchQuery<Page<VerifierItem>>({
+          queryKey: QUERY_KEY,
+          queryFn: () => api.ticketVerifiers.list(),
+          staleTime: 0,
+          retry: false,
+          networkMode: 'always',
+        }),
+      RECONCILE_DEADLINE_MS,
+    );
+    qc.setQueryData(QUERY_KEY, page);
+    return page.items;
+  } catch {
+    return null;
+  }
+}
 
 function RouterChips({
   routers,
@@ -96,47 +139,67 @@ function AddForm({ routers, onDone }: { routers: RouterItem[]; onDone: () => voi
   const [form, setForm] = useState({ email: '', password: '', name: '' });
   const [routerId, setRouterId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const lock = useRef(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const lock = useRef(createActionLock());
 
   const create = useMutation({
-    mutationFn: () => api.ticketVerifiers.create(buildCreateBody(form, routerId)),
+    ...MUTATION_OPTIONS,
+    mutationFn: () =>
+      callWithDeadline(
+        (signal) => api.ticketVerifiers.create(buildCreateBody(form, routerId), signal),
+        MUTATION_DEADLINE_MS,
+      ),
     onSuccess: () => {
       setForm({ email: '', password: '', name: '' });
       qc.invalidateQueries({ queryKey: QUERY_KEY });
       toast.success(t('verifiers.created'));
       onDone();
     },
-    onError: (err) => {
-      const d = describeError(err);
-      setError(
-        d.status === 409
-          ? t('verifiers.errEmailTaken')
-          : d.status === null
-            ? t('verifiers.errNetwork')
-            : t('verifiers.errGeneric'),
-      );
-    },
-    onSettled: () => {
-      lock.current = false;
+    onError: async (err) => {
+      if (!isUncertain(err)) {
+        setError(
+          describeError(err).status === 409 ? t('verifiers.errEmailTaken') : t('verifiers.errGeneric'),
+        );
+        return;
+      }
+      // Réponse non reçue : le vendeur a peut-être été créé. On relit la liste,
+      // l'e-mail (unique) sert de clé ; aucun renvoi automatique.
+      setError(null);
+      setNotice(t(planForUncertain('create').messageKey));
+      const items = await freshItems(qc);
+      if (items && reconcileCreate(items, form.email) === 'created') {
+        setForm({ email: '', password: '', name: '' });
+        toast.success(t('verifiers.createdFound'));
+        onDone();
+      } else if (items) {
+        setNotice(t('verifiers.createAbsent'));
+      }
     },
   });
 
   function submit() {
-    if (lock.current || create.isPending) return;
+    if (lock.current.locked || create.isPending) return;
     const invalid = validateNewVerifier(form);
     if (invalid) {
       setError(t(FORM_ERROR_KEY[invalid]));
       return;
     }
     setError(null);
-    lock.current = true;
-    create.mutate();
+    setNotice(null);
+    void lock.current.run(async () => {
+      try {
+        await create.mutateAsync();
+      } catch {
+        // traité dans onError
+      }
+    });
   }
 
   return (
     <Card>
       <View style={{ gap: space.md }}>
         {error ? <Banner tone="danger">{error}</Banner> : null}
+        {notice ? <Banner tone="warning">{notice}</Banner> : null}
         <Field
           label={t('verifiers.email')}
           value={form.email}
@@ -184,45 +247,91 @@ function VerifierCard({ item, routers }: { item: VerifierItem; routers: RouterIt
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  // Un seul verrou par carte : une action à la fois, uniquement pour ce vendeur.
+  const lock = useRef(createActionLock());
 
   const refresh = () => qc.invalidateQueries({ queryKey: QUERY_KEY });
   const fail = () => toast.error(t('verifiers.errGeneric'));
+  const act = (fn: () => Promise<unknown>) => {
+    void lock.current.run(async () => {
+      try {
+        await fn();
+      } catch {
+        // traité dans onError
+      }
+    });
+  };
+
+  /** Réponse non reçue : message + relecture de la liste, sans renvoi automatique. */
+  async function onUncertain(kind: MutationKind, reconcile?: (items: VerifierItem[]) => boolean) {
+    const plan = planForUncertain(kind);
+    if (plan.clearSecrets) {
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordError(null);
+      setPanel(null);
+    }
+    toast.error(t(plan.messageKey));
+    if (!plan.refetch) return;
+    const items = await freshItems(qc);
+    if (items && reconcile?.(items)) toast.success(t(kind === 'remove' ? 'verifiers.removed' : 'verifiers.updated'));
+  }
 
   const assign = useMutation({
-    mutationFn: (routerId: string) => api.ticketVerifiers.assign(item.id, routerId),
+    ...MUTATION_OPTIONS,
+    mutationFn: (routerId: string) =>
+      callWithDeadline((signal) => api.ticketVerifiers.assign(item.id, routerId, signal), MUTATION_DEADLINE_MS),
     onSuccess: () => {
       refresh();
       setPanel(null);
       toast.success(t('verifiers.updated'));
     },
-    onError: fail,
+    onError: async (err, routerId) => {
+      if (!isUncertain(err)) return fail();
+      await onUncertain('assign', (items) => reconcileAssign(items, item.id, routerId) === 'applied');
+    },
   });
   const setStatus = useMutation({
-    mutationFn: (status: 'ACTIVE' | 'SUSPENDED') => api.ticketVerifiers.setStatus(item.id, status),
+    ...MUTATION_OPTIONS,
+    mutationFn: (status: 'ACTIVE' | 'SUSPENDED') =>
+      callWithDeadline((signal) => api.ticketVerifiers.setStatus(item.id, status, signal), MUTATION_DEADLINE_MS),
     onSuccess: () => {
       refresh();
       setPanel(null);
       toast.success(t('verifiers.updated'));
     },
-    onError: fail,
+    onError: async (err, status) => {
+      if (!isUncertain(err)) return fail();
+      await onUncertain('status', (items) => reconcileStatus(items, item.id, status) === 'applied');
+    },
   });
   const reset = useMutation({
-    mutationFn: () => api.ticketVerifiers.resetPassword(item.id, newPassword),
+    ...MUTATION_OPTIONS,
+    mutationFn: () =>
+      callWithDeadline((signal) => api.ticketVerifiers.resetPassword(item.id, newPassword, signal), MUTATION_DEADLINE_MS),
     onSuccess: () => {
       setNewPassword('');
       setConfirmPassword('');
       setPanel(null);
       toast.success(t('verifiers.passwordReset'));
     },
-    onError: fail,
+    onError: async (err) => {
+      if (!isUncertain(err)) return fail();
+      await onUncertain('resetPassword');
+    },
   });
   const remove = useMutation({
-    mutationFn: () => api.ticketVerifiers.remove(item.id),
+    ...MUTATION_OPTIONS,
+    mutationFn: () =>
+      callWithDeadline((signal) => api.ticketVerifiers.remove(item.id, signal), MUTATION_DEADLINE_MS),
     onSuccess: () => {
       refresh();
       toast.success(t('verifiers.removed'));
     },
-    onError: fail,
+    onError: async (err) => {
+      if (!isUncertain(err)) return fail();
+      await onUncertain('remove', (items) => reconcileRemove(items, item.id) === 'removed');
+    },
   });
 
   const suspended = item.status === 'SUSPENDED';
@@ -232,6 +341,7 @@ function VerifierCard({ item, routers }: { item: VerifierItem; routers: RouterIt
   const busy = assign.isPending || setStatus.isPending || reset.isPending || remove.isPending;
   // Changer de panneau efface toujours l'erreur et les secrets saisis : rien ne reste en mémoire.
   const toggle = (p: Exclude<Panel, null>) => {
+    if (busy) return;
     setPasswordError(null);
     setNewPassword('');
     setConfirmPassword('');
@@ -239,25 +349,21 @@ function VerifierCard({ item, routers }: { item: VerifierItem; routers: RouterIt
   };
 
   function submitPassword() {
-    if (busy) return;
+    if (busy || lock.current.locked) return;
     const invalid = validateNewPassword(newPassword, confirmPassword);
     if (invalid) {
       setPasswordError(t(invalid === 'mismatch' ? 'verifiers.errPasswordMismatch' : 'verifiers.errWeakPassword'));
       return;
     }
     setPasswordError(null);
-    reset.mutate();
+    act(() => reset.mutateAsync());
   }
 
   return (
     <Card>
       <View style={{ gap: space.sm }}>
-        <Text style={{ color: theme.text, fontSize: type.body, fontWeight: weight.bold }}>
-          {displayName(item)}
-        </Text>
-        {item.name ? (
-          <Text style={{ color: theme.textMuted, fontSize: type.caption }}>{item.email}</Text>
-        ) : null}
+        <Text style={{ color: theme.text, fontSize: type.body, fontWeight: weight.bold }}>{name}</Text>
+        {item.name ? <Text style={{ color: theme.textMuted, fontSize: type.caption }}>{item.email}</Text> : null}
         <Text
           style={{
             color: suspended ? theme.warning : theme.success,
@@ -281,7 +387,7 @@ function VerifierCard({ item, routers }: { item: VerifierItem; routers: RouterIt
               routers={routers}
               selected={item.assignment?.routerId ?? null}
               onSelect={(id) => {
-                if (id && !busy) assign.mutate(id);
+                if (id && !busy) act(() => assign.mutateAsync(id));
               }}
             />
           ) : null}
@@ -289,7 +395,7 @@ function VerifierCard({ item, routers }: { item: VerifierItem; routers: RouterIt
           <Button
             title={suspended ? t('verifiers.reactivate') : t('verifiers.suspend')}
             variant="ghost"
-            onPress={() => (suspended ? setStatus.mutate('ACTIVE') : toggle('suspend'))}
+            onPress={() => (suspended ? act(() => setStatus.mutateAsync('ACTIVE')) : toggle('suspend'))}
             loading={suspended && setStatus.isPending}
             disabled={busy}
           />
@@ -299,7 +405,7 @@ function VerifierCard({ item, routers }: { item: VerifierItem; routers: RouterIt
               <Button
                 title={t('verifiers.confirmSuspend')}
                 variant="ghost"
-                onPress={() => setStatus.mutate('SUSPENDED')}
+                onPress={() => act(() => setStatus.mutateAsync('SUSPENDED'))}
                 loading={setStatus.isPending}
                 disabled={busy}
               />
@@ -337,19 +443,14 @@ function VerifierCard({ item, routers }: { item: VerifierItem; routers: RouterIt
             </View>
           ) : null}
 
-          <Button
-            title={t('verifiers.remove')}
-            variant="danger"
-            onPress={() => toggle('remove')}
-            disabled={busy}
-          />
+          <Button title={t('verifiers.remove')} variant="danger" onPress={() => toggle('remove')} disabled={busy} />
           {panel === 'remove' ? (
             <View style={{ gap: space.sm }}>
               <Banner tone="danger">{t('verifiers.removeWarning', { name })}</Banner>
               <Button
                 title={t('verifiers.confirmRemove')}
                 variant="danger"
-                onPress={() => remove.mutate()}
+                onPress={() => act(() => remove.mutateAsync())}
                 loading={remove.isPending}
                 disabled={busy}
               />
