@@ -77,3 +77,69 @@ export function isReadyToVerify(v: {
 }): boolean {
   return v.status === 'ACTIVE' && v.assignment !== null;
 }
+
+// ── Mutations incertaines (réponse non reçue) ─────────────────────────────
+// Un délai local ne prouve pas que le serveur n'a rien fait : on relit la liste
+// et on réconcilie, sans jamais renvoyer automatiquement une requête.
+
+export type MutationKind = 'create' | 'assign' | 'status' | 'resetPassword' | 'remove';
+
+export const MUTATION_DEADLINE_MS = 20000;
+
+export interface UncertainPlan {
+  /** Clé i18n du message affiché immédiatement. */
+  messageKey: string;
+  /** Relire la liste pour réconcilier. */
+  refetch: boolean;
+  /** Vider les champs de mot de passe. */
+  clearSecrets: boolean;
+  /** Jamais de renvoi automatique. */
+  autoRetry: false;
+}
+
+export function planForUncertain(kind: MutationKind): UncertainPlan {
+  switch (kind) {
+    case 'create':
+      return { messageKey: 'verifiers.uncertainCreate', refetch: true, clearSecrets: false, autoRetry: false };
+    case 'resetPassword':
+      return { messageKey: 'verifiers.uncertainReset', refetch: false, clearSecrets: true, autoRetry: false };
+    default:
+      return { messageKey: 'verifiers.uncertainOther', refetch: true, clearSecrets: false, autoRetry: false };
+  }
+}
+
+type ListedVerifier = {
+  id: string;
+  email: string;
+  status: 'ACTIVE' | 'SUSPENDED' | 'DELETED';
+  assignment: { routerId: string } | null;
+};
+
+/** Création : l'e-mail (unique) sert de clé de réconciliation. */
+export function reconcileCreate(items: ListedVerifier[], email: string): 'created' | 'absent' {
+  const wanted = email.trim().toLowerCase();
+  return items.some((v) => v.email.trim().toLowerCase() === wanted) ? 'created' : 'absent';
+}
+
+/** Suppression : absent de la liste active = supprimé. */
+export function reconcileRemove(items: ListedVerifier[], id: string): 'removed' | 'present' {
+  return items.some((v) => v.id === id) ? 'present' : 'removed';
+}
+
+export function reconcileStatus(
+  items: ListedVerifier[],
+  id: string,
+  wanted: 'ACTIVE' | 'SUSPENDED',
+): 'applied' | 'not-applied' {
+  const v = items.find((i) => i.id === id);
+  return v && v.status === wanted ? 'applied' : 'not-applied';
+}
+
+export function reconcileAssign(
+  items: ListedVerifier[],
+  id: string,
+  routerId: string,
+): 'applied' | 'not-applied' {
+  const v = items.find((i) => i.id === id);
+  return v?.assignment?.routerId === routerId ? 'applied' : 'not-applied';
+}
