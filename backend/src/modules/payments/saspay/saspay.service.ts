@@ -305,6 +305,18 @@ export class SaspayService {
         return { handled: true, reason: 'missing_reference' };
       }
 
+      // Défense en profondeur : un montant encaissé inférieur à celui demandé
+      // (ou une autre devise) ne doit jamais activer l'abonnement.
+      if (
+        (amountCharged !== null && amountCharged < intent.amountRequested) ||
+        (data.currency && data.currency.toUpperCase() !== intent.currency.toUpperCase())
+      ) {
+        this.logger.error(
+          `SasPay success amount/currency mismatch (intentId=${intent.id} requested=${intent.amountRequested} charged=${amountCharged})`,
+        );
+        return { handled: true, reason: 'amount_mismatch' };
+      }
+
       try {
         await this.prisma.paymentIntent.update({
           where: { id: intent.id },

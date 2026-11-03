@@ -1,3 +1,5 @@
+import { UserRole } from '@prisma/client';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { Controller, Get, NotFoundException, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RouterGatewayService } from './router-gateway.service';
@@ -11,6 +13,7 @@ const TUNNEL_STALE_MS = 150_000;
  * route existante — `remote/system-resource` et `sessions` (legacy) restent
  * inchangés et continuent de fonctionner indépendamment de ce contrôleur.
  */
+@Roles(UserRole.MEMBER)
 @Controller('routers/:id/remote')
 export class RouterLiveController {
   constructor(
