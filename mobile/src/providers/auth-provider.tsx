@@ -280,7 +280,6 @@ export function AuthProvider({ children }: PropsWithChildren) {
     daysLeft: 0,
     tierKey: null,
     routerLimit: null,
-    voucherMonthlyLimit: null,
   };
 
   const needsLegalConsent = Boolean(
