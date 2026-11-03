@@ -9,7 +9,12 @@ const codePrefix = z
   .trim()
   .max(12)
   .regex(/^[A-Za-z0-9]*$/, { message: 'Invalid prefix' });
-const codeLength = z.number().int().min(4).max(12);
+// Plancher d'entropie : un code court se devine par force brute sur le portail hotspot.
+export const MIN_CODE_LENGTH = { ALPHANUMERIC: 6, NUMERIC: 8 } as const;
+const codeLength = z.number().int().min(6).max(12);
+const numericNeedsLength = (v: { codeFormat?: PlanCodeFormat; codeLength?: number }) =>
+  v.codeFormat !== 'NUMERIC' || v.codeLength === undefined || v.codeLength >= MIN_CODE_LENGTH.NUMERIC;
+const numericMsg = { message: 'Un code numérique doit faire au moins 8 chiffres', path: ['codeLength'] };
 
 export const createPlanSchema = z.object({
   name: z.string().trim().min(2).max(100),
@@ -25,7 +30,7 @@ export const createPlanSchema = z.object({
   codePrefix: codePrefix.nullable().optional(),
   codeLength: codeLength.optional(),
   codeFormat: z.nativeEnum(PlanCodeFormat).optional(),
-});
+}).refine(numericNeedsLength, numericMsg);
 export type CreatePlanDto = z.infer<typeof createPlanSchema>;
 
 export const updatePlanSchema = z
@@ -45,5 +50,6 @@ export const updatePlanSchema = z
     codeLength: codeLength.optional(),
     codeFormat: z.nativeEnum(PlanCodeFormat).optional(),
   })
-  .strict();
+  .strict()
+  .refine(numericNeedsLength, numericMsg);
 export type UpdatePlanDto = z.infer<typeof updatePlanSchema>;
