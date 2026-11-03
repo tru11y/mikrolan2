@@ -1,4 +1,4 @@
-export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
+﻿export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
 import { useState } from 'react';
 import { FlatList, Share, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
@@ -166,6 +166,7 @@ export default function FichiersScreen() {
   const [confirmBatch, setConfirmBatch] = useState<VoucherBatch | null>(null);
   const [batchPreview, setBatchPreview] = useState<BatchDeletionPreview | null>(null);
   const [batchPreviewLoading, setBatchPreviewLoading] = useState(false);
+  const [batchPreviewError, setBatchPreviewError] = useState<string | null>(null);
   const [confirmCleanup, setConfirmCleanup] = useState(false);
   const [cleanupPreview, setCleanupPreview] = useState<Omit<BatchDeletionPreview, 'batchId'> | null>(null);
   const [cleanupPreviewLoading, setCleanupPreviewLoading] = useState(false);
@@ -285,12 +286,14 @@ export default function FichiersScreen() {
   async function openDeleteBatch(b: VoucherBatch) {
     setConfirmBatch(b);
     setBatchPreview(null);
+    setBatchPreviewError(null);
     setBatchPreviewLoading(true);
     try {
       const preview = await api.routers.previewBatchDeletion(routerId, b.id);
       setBatchPreview(preview);
     } catch (e) {
       reportSilent('fichiers.preview-batch', e, { routerId, batchId: b.id });
+      setBatchPreviewError(extractErrorMessage(e));
     } finally {
       setBatchPreviewLoading(false);
     }
@@ -623,22 +626,34 @@ export default function FichiersScreen() {
         icon="trash-outline"
         title={t('fichiers.deleteBatchTitle')}
         message={
-          batchPreviewLoading || !batchPreview
+          batchPreviewLoading
             ? t('fichiers.deleteBatchAnalyzing')
-            : buildDeletionMessage(t, 'fichiers.deleteBatchMessageEligible', batchPreview)
+            : batchPreviewError
+              ? `${t('fichiers.deleteBatchPreviewError')}
+${batchPreviewError}`
+              : batchPreview
+                ? buildDeletionMessage(t, 'fichiers.deleteBatchMessageEligible', batchPreview)
+                : t('fichiers.deleteBatchAnalyzing')
         }
         confirmLabel={
           batchPreview
             ? t('fichiers.deleteBatchConfirmLabel', { count: batchPreview.eligible })
-            : t('common.delete')
+            : batchPreviewLoading
+              ? t('common.delete')
+              : t('common.retry')
         }
-        tone="danger"
+        tone={batchPreview ? 'danger' : 'primary'}
         busy={deleteBusy || batchPreviewLoading}
         focusCancel
-        onConfirm={deleteBatchConfirmed}
+        onConfirm={() => {
+          // Sans analyse réussie, « confirmer » relance l'analyse : jamais de suppression à l'aveugle.
+          if (batchPreview) void deleteBatchConfirmed();
+          else if (confirmBatch) void openDeleteBatch(confirmBatch);
+        }}
         onCancel={() => {
           setConfirmBatch(null);
           setBatchPreview(null);
+          setBatchPreviewError(null);
         }}
       />
 
