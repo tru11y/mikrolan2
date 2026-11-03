@@ -52,5 +52,5 @@ export type ListReleasesQueryDto = z.infer<typeof listReleasesQuerySchema>;
 export const requireReleaseSchema = z
   .object({ required: z.boolean().default(true) })
   .strict()
-  .default({});
+  .default({ required: true });
 export type RequireReleaseDto = z.infer<typeof requireReleaseSchema>;
