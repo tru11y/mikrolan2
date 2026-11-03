@@ -1,3 +1,5 @@
+import { UserRole } from '@prisma/client';
+import { Roles } from '../../common/decorators/roles.decorator';
 import {
   Controller,
   Get,
@@ -8,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { AccountingService } from './accounting.service';
 
+@Roles(UserRole.MEMBER)
 @Controller('accounting')
 export class AccountingController {
   constructor(private readonly accounting: AccountingService) {}
@@ -39,6 +42,7 @@ export class AccountingController {
   }
 
   @Post('invoices/generate')
+  @Roles(UserRole.ADMIN)
   @HttpCode(201)
   generateInvoice(
     @Body() body: { periodStart: string; periodEnd: string },

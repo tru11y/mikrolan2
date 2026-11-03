@@ -14,17 +14,20 @@ PrivateKey = <SERVER_PRIVATE_KEY>
 # dropped, so the host-network API can't reach host-bound Postgres/Redis without
 # the first line below. (v1 is unaffected: it exposes via docker-proxy on 0.0.0.0.)
 PostUp = iptables -w 5 -C INPUT -i lo -j ACCEPT 2>/dev/null || iptables -w 5 -I INPUT -i lo -j ACCEPT
-# CRITICAL: allow decrypted tunnel traffic re-entering via the wg-mgmt interface.
-# The udp/51822 rule below only lets the WireGuard TRANSPORT in — handshakes and
-# keepalives succeed and the tunnel looks "up" — but every decrypted inner packet
-# (a router's ping/REST reply on its way back to the backend) hits INPUT again with
-# `-i wg-mgmt` and is dropped by the DROP policy. Without this rule the backend
-# proxy reaches the router (VPS→router) but never sees the reply → 100% loss.
-PostUp = iptables -w 5 -C INPUT -i wg-mgmt -j ACCEPT 2>/dev/null || iptables -w 5 -I INPUT -i wg-mgmt -j ACCEPT
-PostDown = iptables -w 5 -D INPUT -i wg-mgmt -j ACCEPT 2>/dev/null || true
+# Les paquets déchiffrés revenant par wg-mgmt (réponses des routeurs au backend)
+# sont acceptés UNIQUEMENT s'ils font partie d'une connexion initiée par le VPS.
+# Un routeur client (non fiable) ne peut donc ouvrir aucune connexion vers les
+# services du VPS (SSH, nginx v1, API…).
+PostUp = iptables -w 5 -C INPUT -i wg-mgmt -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || iptables -w 5 -I INPUT -i wg-mgmt -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+PostDown = iptables -w 5 -D INPUT -i wg-mgmt -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
+PostUp = iptables -w 5 -A INPUT -i wg-mgmt -j DROP
+PostDown = iptables -w 5 -D INPUT -i wg-mgmt -j DROP 2>/dev/null || true
+# Isolation inter-tenants : aucun routeur ne peut joindre un autre routeur via le VPS.
+PostUp = iptables -w 5 -I FORWARD -i wg-mgmt -o wg-mgmt -j DROP
+PostDown = iptables -w 5 -D FORWARD -i wg-mgmt -o wg-mgmt -j DROP 2>/dev/null || true
 PostUp = iptables -w 5 -C INPUT -p udp --dport 51822 -j ACCEPT 2>/dev/null || iptables -w 5 -A INPUT -p udp --dport 51822 -j ACCEPT
-PostUp = iptables -w 5 -C INPUT -p tcp --dport 3002 -j ACCEPT 2>/dev/null || iptables -w 5 -A INPUT -p tcp --dport 3002 -j ACCEPT
-PostDown = iptables -w 5 -D INPUT -p tcp --dport 3002 -j ACCEPT 2>/dev/null || true
+# L'API écoute sur 127.0.0.1:3002 (Caddy en frontal) : aucune règle INPUT 3002.
+# Chaque peer devrait en plus avoir une PresharedKey (wg set … preshared-key).
 # Peers are added dynamically by the API (`wg set wg-mgmt peer ...`); do not
 # list them here (they would be lost on `wg-quick down`).
 

@@ -1,3 +1,5 @@
+import { UserRole } from '@prisma/client';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { AnalyticsService } from './analytics.service';
@@ -23,6 +25,7 @@ import {
   type ForecastTrafficQueryDto,
 } from './forecast/forecast.schemas';
 
+@Roles(UserRole.MEMBER)
 @Controller('analytics')
 export class AnalyticsController {
   constructor(

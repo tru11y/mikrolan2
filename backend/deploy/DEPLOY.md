@@ -108,6 +108,7 @@ l'app hors de `/opt/mikrolan/backend` — élargir `ReadWritePaths` dans
 ## 8. Exposition (transitoire, avant TLS)
 Pas de nginx **v1** (interdit d'y toucher). Ouvrir le port haut directement :
 ```bash
+# (test temporaire uniquement — l'API écoute sur 127.0.0.1 en production, HOST=0.0.0.0 pour l'exposer)
 iptables -A INPUT -p tcp --dport 3002 -j ACCEPT
 ```
 Mobile → « Configurer le serveur » → `http://139.84.241.27:3002/api`.
