@@ -2156,7 +2156,65 @@ export const api = {
       return unwrap(res);
     },
   },
+  // Gestion tenant des vendeurs (OWNER / ADMIN). Le serveur impose rôle, tenant et
+  // statut ; le mobile n'envoie jamais ces champs.
+  ticketVerifiers: {
+    async list(): Promise<Page<VerifierItem>> {
+      const res = await apiClient.get<ApiEnvelope<Page<VerifierItem>>>(
+        '/ticket-verifiers',
+        { params: { limit: 100 } },
+      );
+      return unwrap(res);
+    },
+    async create(body: CreateVerifierInput): Promise<VerifierItem> {
+      const res = await apiClient.post<ApiEnvelope<VerifierItem>>('/ticket-verifiers', body);
+      return unwrap(res);
+    },
+    async assign(id: string, routerId: string): Promise<VerifierItem> {
+      const res = await apiClient.patch<ApiEnvelope<VerifierItem>>(
+        `/ticket-verifiers/${id}/assignment`,
+        { routerId },
+      );
+      return unwrap(res);
+    },
+    async setStatus(id: string, status: 'ACTIVE' | 'SUSPENDED'): Promise<VerifierItem> {
+      const res = await apiClient.patch<ApiEnvelope<VerifierItem>>(
+        `/ticket-verifiers/${id}/status`,
+        { status },
+      );
+      return unwrap(res);
+    },
+    async resetPassword(id: string, newPassword: string): Promise<void> {
+      await apiClient.post(`/ticket-verifiers/${id}/reset-password`, { newPassword });
+    },
+    async remove(id: string): Promise<void> {
+      await apiClient.delete(`/ticket-verifiers/${id}`);
+    },
+  },
 };
+
+export type VerifierStatus = 'ACTIVE' | 'SUSPENDED' | 'DELETED';
+
+export interface VerifierItem {
+  id: string;
+  email: string;
+  name: string | null;
+  status: VerifierStatus;
+  lastLoginAt: string | null;
+  createdAt: string;
+  assignment: {
+    routerId: string;
+    routerIdentity: string;
+    routerAlias: string | null;
+  } | null;
+}
+
+export interface CreateVerifierInput {
+  email: string;
+  password: string;
+  name?: string;
+  routerId?: string;
+}
 
 export type TicketVerificationStatus =
   | 'VALID'
