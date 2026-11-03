@@ -17,6 +17,11 @@ export const createReleaseSchema = z
     minVersionCode: z.number().int().min(1).max(MAX_VERSION_CODE).default(1),
     releaseNotes: z.string().trim().min(1).max(5000),
     fileSize: z.number().int().min(1).max(MAX_APK_BYTES),
+    sha256: z
+      .string()
+      .regex(/^[0-9a-fA-F]{64}$/, 'SHA-256 attendu : 64 caractères hexadécimaux')
+      .transform((v) => v.toLowerCase())
+      .optional(),
     storageKey: z
       .string()
       .regex(STORAGE_KEY, 'Clé attendue : releases/android/<nom>.apk')

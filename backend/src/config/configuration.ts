@@ -5,6 +5,8 @@ const envSchema = z.object({
     .enum(['development', 'test', 'production'])
     .default('development'),
   PORT: z.coerce.number().int().positive().default(3001),
+  // Prod : loopback seulement (Caddy en frontal). Surcharger HOST=0.0.0.0 pour Docker/dev LAN.
+  HOST: z.string().optional(),
 
   DATABASE_URL: z.string().url(),
 
@@ -104,6 +106,8 @@ const envSchema = z.object({
 
 export type AppConfig = z.infer<typeof envSchema>;
 
+const PLACEHOLDER_JWT = /change-me|changeme|secret-?key|example/i;
+
 export function validateEnv(raw: Record<string, unknown>): AppConfig {
   const parsed = envSchema.safeParse(raw);
   if (!parsed.success) {
@@ -111,6 +115,18 @@ export function validateEnv(raw: Record<string, unknown>): AppConfig {
       .map((i) => `  - ${i.path.join('.')}: ${i.message}`)
       .join('\n');
     throw new Error(`Invalid environment configuration:\n${issues}`);
+  }
+  if (parsed.data.NODE_ENV === 'production') {
+    const problems: string[] = [];
+    if (PLACEHOLDER_JWT.test(parsed.data.JWT_ACCESS_SECRET)) {
+      problems.push("JWT_ACCESS_SECRET est une valeur d'exemple");
+    }
+    if (/^0+$/.test(parsed.data.ROUTER_CRED_KEY)) {
+      problems.push("ROUTER_CRED_KEY est la clé d'exemple (zéros)");
+    }
+    if (problems.length) {
+      throw new Error(`Invalid production configuration: ${problems.join('; ')}`);
+    }
   }
   return parsed.data;
 }

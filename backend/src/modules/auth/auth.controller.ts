@@ -14,11 +14,16 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { TenantContext } from '../../common/context/tenant-context';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { AuthService } from './auth.service';
+import { MfaService } from './mfa.service';
 import {
   acceptLegalSchema,
   appleOAuthSchema,
   changePasswordSchema,
   confirmPasswordResetSchema,
+  mfaCodeSchema,
+  mfaDisableSchema,
+  type MfaCodeDto,
+  type MfaDisableDto,
   deleteAccountSchema,
   googleOAuthSchema,
   loginSchema,
@@ -48,7 +53,10 @@ import {
 @Controller('auth')
 @AlwaysAllowed() // se connecter et consulter son compte restent possibles
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly mfa: MfaService,
+  ) {}
 
   @Public()
   @Post('signup')
@@ -137,7 +145,7 @@ export class AuthController {
   @HttpCode(200)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   googleLogin(@Body(new ZodValidationPipe(googleOAuthSchema)) dto: GoogleOAuthDto) {
-    return this.auth.googleLogin(dto.idToken, dto.nonce);
+    return this.auth.googleLogin(dto.idToken, dto.nonce, dto.totpCode);
   }
 
   @Public()
@@ -145,7 +153,7 @@ export class AuthController {
   @HttpCode(200)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   appleLogin(@Body(new ZodValidationPipe(appleOAuthSchema)) dto: AppleOAuthDto) {
-    return this.auth.appleLogin(dto.identityToken, dto.nonce, dto.fullName);
+    return this.auth.appleLogin(dto.identityToken, dto.nonce, dto.fullName, dto.totpCode);
   }
 
   @Public()
@@ -187,6 +195,33 @@ export class AuthController {
     @Body(new ZodValidationPipe(acceptLegalSchema)) dto: AcceptLegalDto,
   ) {
     return this.auth.acceptLegal(user.userId, dto);
+  }
+
+  @Post('mfa/setup')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  mfaSetup(@CurrentUser() user: TenantContext) {
+    return this.mfa.setup(user.userId);
+  }
+
+  @Post('mfa/enable')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  mfaEnable(
+    @CurrentUser() user: TenantContext,
+    @Body(new ZodValidationPipe(mfaCodeSchema)) dto: MfaCodeDto,
+  ) {
+    return this.mfa.enable(user.userId, dto.code);
+  }
+
+  @Post('mfa/disable')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  mfaDisable(
+    @CurrentUser() user: TenantContext,
+    @Body(new ZodValidationPipe(mfaDisableSchema)) dto: MfaDisableDto,
+  ) {
+    return this.mfa.disable(user.userId, dto.password, dto.code);
   }
 
   @Post('logout-all')

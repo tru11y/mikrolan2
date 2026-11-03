@@ -226,6 +226,9 @@ model User {
   country              String?
   passwordHash         String
   hasPassword          Boolean           @default(true)
+  /// Secret TOTP chiffré (AES-GCM) ; MFA effective seulement si totpEnabledAt est posé.
+  totpSecretEnc        String?
+  totpEnabledAt        DateTime?
   googleId             String?           @unique
   appleId              String?           @unique
   role                 UserRole          @default(MEMBER)
@@ -280,6 +283,7 @@ model PasswordResetCode {
   codeHash  String
   expiresAt DateTime
   used      Boolean  @default(false)
+  attempts  Int      @default(0)
   createdAt DateTime @default(now())
 
   @@index([email])
@@ -817,6 +821,8 @@ model AppRelease {
   releaseNotes   String            @db.Text
   fileSize       Int
   storageKey     String            @unique
+  /// SHA-256 (hex) de l'APK : permet de vérifier l'intégrité hors Play Store.
+  sha256         String?
   isActive       Boolean           @default(false)
   isRequired     Boolean           @default(false)
   archivedAt     DateTime?

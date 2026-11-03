@@ -18,11 +18,12 @@ import {
   UserStatus,
 } from '@prisma/client';
 import * as argon2 from 'argon2';
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import { OAuth2Client } from 'google-auth-library';
 import appleSignin from 'apple-signin-auth';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TokenService, TokenPair } from './token.service';
+import { MfaService } from './mfa.service';
 import {
   SubscriptionsService,
   TRIAL_DAYS,
@@ -45,6 +46,7 @@ import {
 
 const RESET_CODE_EXPIRY_MINUTES = 10;
 const RESET_MAX_ATTEMPTS_PER_HOUR = 5;
+const RESET_MAX_CODE_GUESSES = 5;
 
 // Argon2id params (fintech-grade) — see global profile.
 const ARGON: argon2.Options = {
@@ -109,6 +111,7 @@ export class AuthService {
     private readonly subscriptions: SubscriptionsService,
     private readonly config: ConfigService,
     private readonly mail: MailService,
+    private readonly mfa: MfaService,
   ) {
     const clientId = this.config.get<string>('GOOGLE_CLIENT_ID');
     if (clientId) {
@@ -203,6 +206,7 @@ export class AuthService {
 
     const ok = await argon2.verify(user.passwordHash, dto.password);
     if (!ok) throw invalid;
+    this.mfa.assertLogin(user, dto.totpCode);
 
     // Le back-office affiche la dernière connexion pour distinguer un compte
     // abandonné d'un compte actif. Sans await bloquant sur l'échec : ne pas
@@ -389,7 +393,35 @@ export class AuthService {
     return { registered: false };
   }
 
-  async googleLogin(idToken: string, nonce?: string): Promise<TokenPair> {
+  /**
+   * L'e-mail n'est pas vérifié à l'inscription : un mot de passe posé avant le
+   * premier login OAuth peut venir d'un tiers (pré-détournement). Lier l'identité
+   * OAuth prouve la possession de l'e-mail → on neutralise ce mot de passe et
+   * toutes les sessions existantes.
+   */
+  private async linkOAuthIdentity(
+    userId: string,
+    hadPassword: boolean,
+    identity: { googleId: string } | { appleId: string },
+  ): Promise<void> {
+    if (!hadPassword) {
+      await this.prisma.user.update({ where: { id: userId }, data: identity });
+      return;
+    }
+    const passwordHash = await argon2.hash(randomBytes(32).toString('hex'), ARGON);
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: { ...identity, passwordHash, hasPassword: false },
+      }),
+      this.prisma.refreshToken.updateMany({
+        where: { userId, revoked: false },
+        data: { revoked: true },
+      }),
+    ]);
+  }
+
+  async googleLogin(idToken: string, nonce?: string, totpCode?: string): Promise<TokenPair> {
     if (!this.googleClient) {
       throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_GOOGLE_NOT_CONFIGURED, 'Google OAuth non configuré.');
     }
@@ -430,11 +462,9 @@ export class AuthService {
       if (existing.status !== UserStatus.ACTIVE) {
         throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_ACCOUNT_DISABLED, 'Compte désactivé.');
       }
+      this.mfa.assertLogin(existing, totpCode);
       if (!existing.googleId) {
-        await this.prisma.user.update({
-          where: { id: existing.id },
-          data: { googleId },
-        });
+        await this.linkOAuthIdentity(existing.id, existing.hasPassword, { googleId });
       }
       await this.prisma.user
         .update({ where: { id: existing.id }, data: { lastLoginAt: new Date() } })
@@ -490,6 +520,7 @@ export class AuthService {
     identityToken: string,
     nonce?: string,
     fullName?: string,
+    totpCode?: string,
   ): Promise<TokenPair> {
     const clientId = this.config.get<string>('APPLE_CLIENT_ID');
     if (!clientId) {
@@ -526,11 +557,9 @@ export class AuthService {
       if (existing.status !== UserStatus.ACTIVE) {
         throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_ACCOUNT_DISABLED, 'Compte désactivé.');
       }
+      this.mfa.assertLogin(existing, totpCode);
       if (!existing.appleId) {
-        await this.prisma.user.update({
-          where: { id: existing.id },
-          data: { appleId },
-        });
+        await this.linkOAuthIdentity(existing.id, existing.hasPassword, { appleId });
       }
       await this.prisma.user
         .update({ where: { id: existing.id }, data: { lastLoginAt: new Date() } })
@@ -598,9 +627,7 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { email } });
     if (!user || user.status !== 'ACTIVE') return;
 
-    const code = Array.from(randomBytes(6))
-      .map((b) => (b % 10).toString())
-      .join('');
+    const code = Array.from({ length: 6 }, () => randomInt(0, 10).toString()).join('');
     const codeHash = createHash('sha256').update(code).digest('hex');
 
     await this.prisma.passwordResetCode.create({
@@ -611,7 +638,8 @@ export class AuthService {
       },
     });
 
-    await this.mail
+    // Non attendu : le temps de réponse ne doit pas révéler l'existence du compte.
+    this.mail
       .sendPasswordReset(email, code, RESET_CODE_EXPIRY_MINUTES)
       .catch(logAndContinue(this.logger, 'Password reset mail'));
   }
@@ -630,7 +658,15 @@ export class AuthService {
 
     const a = Buffer.from(record.codeHash, 'hex');
     const b = Buffer.from(codeHash, 'hex');
-    if (a.length !== b.length || !timingSafeEqual(a, b)) throw generic;
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      // Compteur par code : au-delà de N essais le code est brûlé, quelle que soit l'IP.
+      const burned = record.attempts + 1 >= RESET_MAX_CODE_GUESSES;
+      await this.prisma.passwordResetCode.update({
+        where: { id: record.id },
+        data: { attempts: { increment: 1 }, ...(burned && { used: true }) },
+      });
+      throw generic;
+    }
 
     const passwordHash = await argon2.hash(dto.newPassword, ARGON);
 

@@ -1,3 +1,5 @@
+import { UserRole } from '@prisma/client';
+import { Roles } from '../../../common/decorators/roles.decorator';
 import {
   Body,
   Controller,
@@ -27,6 +29,7 @@ function requireTenantContext() {
   return ctx;
 }
 
+@Roles(UserRole.MEMBER)
 @Controller('payments/saspay')
 export class SaspayController {
   constructor(private readonly service: SaspayService) {}

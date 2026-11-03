@@ -6,7 +6,7 @@ import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/error-codes';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { UserRole } from '@prisma/client';
+import { TenantStatus, UserRole, UserStatus } from '@prisma/client';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AppConfig } from '../../config/configuration';
@@ -63,7 +63,7 @@ export class TokenService {
   async rotate(rawRefresh: string): Promise<TokenPair> {
     const record = await this.prisma.refreshToken.findUnique({
       where: { tokenHash: sha256(rawRefresh) },
-      include: { user: true },
+      include: { user: { include: { tenant: { select: { status: true } } } } },
     });
 
     if (!record) throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_TOKEN_INVALID, 'Invalid refresh token');
@@ -81,6 +81,31 @@ export class TokenService {
       throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_TOKEN_EXPIRED, 'Refresh token expired');
     }
 
+    if (
+      record.user.status !== UserStatus.ACTIVE ||
+      record.user.tenant.status === TenantStatus.DELETED
+    ) {
+      await this.prisma.refreshToken.updateMany({
+        where: { family: record.family, revoked: false },
+        data: { revoked: true },
+      });
+      throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_ACCOUNT_DISABLED, 'Compte désactivé.');
+    }
+
+    // Consommation atomique : un seul appel concurrent peut gagner la rotation.
+    // Le hash d'origine est conservé (revoked=true) pour détecter un rejeu ultérieur.
+    const claimed = await this.prisma.refreshToken.updateMany({
+      where: { id: record.id, revoked: false },
+      data: { revoked: true },
+    });
+    if (claimed.count === 0) {
+      await this.prisma.refreshToken.updateMany({
+        where: { family: record.family, revoked: false },
+        data: { revoked: true },
+      });
+      throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_TOKEN_REUSE, 'Refresh token reuse detected');
+    }
+
     const next = await this.issueTokens(
       {
         id: record.user.id,
@@ -89,13 +114,6 @@ export class TokenService {
       },
       record.family,
     );
-
-    // Keep the original tokenHash so a later replay of this token is detected
-    // as reuse (revoked=true) and triggers family-wide revocation.
-    await this.prisma.refreshToken.update({
-      where: { id: record.id },
-      data: { revoked: true },
-    });
 
     return next;
   }

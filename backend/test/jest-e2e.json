@@ -10,7 +10,7 @@
     }]
   },
   "transformIgnorePatterns": [
-    "node_modules/(?!(@nestjs|file-type|strtok3|peek-readable|token-types|uint8array-extras)/)"
+    "node_modules/(?!(@nestjs|file-type|strtok3|peek-readable|token-types|uint8array-extras|cookie)/)"
   ],
   "testEnvironment": "node",
   "globalSetup": "<rootDir>/test/setup/global-setup.ts",

@@ -1,3 +1,5 @@
+import { UserRole } from '@prisma/client';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { Controller, Get, Query } from '@nestjs/common';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { MetricsService } from './metrics.service';
@@ -8,6 +10,7 @@ import {
   type MetricsQueryDto,
 } from './dto/metrics.schemas';
 
+@Roles(UserRole.MEMBER)
 @Controller('metrics')
 export class MetricsController {
   constructor(private readonly metrics: MetricsService) {}
