@@ -14,6 +14,7 @@ import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/error-codes';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventLogService } from '../events/event-log.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import type { TenantContext } from '../../common/context/tenant-context';
 import type {
   CreateVerifierDto,
@@ -106,6 +107,7 @@ export class TicketVerifiersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly events: EventLogService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   async create(
@@ -129,6 +131,8 @@ export class TicketVerifiersService {
     if (dto.routerId) {
       await this.assertRouterInTenant(ctx.tenantId, dto.routerId);
     }
+
+    await this.subscriptions.assertUserLimit(ctx.tenantId);
 
     const passwordHash = await argon2.hash(dto.password, ARGON);
 

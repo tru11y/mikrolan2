@@ -28,7 +28,6 @@ export interface TierView {
   annualMonthlyXof: number;
   annualDiscount: number;
   routerLimit: number | null;
-  voucherMonthlyLimit: number | null;
   remoteAccess: boolean;
   a4Printing: boolean;
   cloudBackup: boolean;
@@ -69,7 +68,6 @@ export function toTierView(tier: SubscriptionTier): TierView {
     annualMonthlyXof: monthlyPrice(tier, 'ANNUAL'),
     annualDiscount: tier.annualDiscount,
     routerLimit: tier.routerLimit,
-    voucherMonthlyLimit: tier.voucherMonthlyLimit,
     remoteAccess: tier.remoteAccess,
     a4Printing: tier.a4Printing,
     cloudBackup: tier.cloudBackup,

@@ -99,7 +99,7 @@ describe('syncFromLan — garde d\'identité backend', () => {
 
 describe('confirmPush — garde d\'identité backend', () => {
   const dto = { batchId: '00000000-0000-4000-8000-000000000001', items: [{ id: '00000000-0000-4000-8000-000000000002', mikrotikId: '*A1' }] };
-  const vouchers = () => new VoucherService(prisma as never, {} as never, {} as never, eventLog as never);
+  const vouchers = () => new VoucherService(prisma as never, {} as never, eventLog as never);
 
   it('mikrotikId issus du routeur A confirmés pour B : 409, aucune écriture', async () => {
     await expect(vouchers().confirmPush('B', { ...dto, observedRouterIdentity: 'ROUTER_A' })).rejects.toMatchObject({ status: 409 });

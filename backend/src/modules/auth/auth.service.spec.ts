@@ -308,6 +308,10 @@ describe('AuthService', () => {
         daysLeft: null,
         tierKey: null,
         routerLimit: null,
+        userLimit: null,
+        cloudBackup: true,
+        a4Printing: true,
+        prioritySupport: true,
       });
     });
 
