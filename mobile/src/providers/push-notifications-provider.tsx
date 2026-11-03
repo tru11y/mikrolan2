@@ -128,7 +128,13 @@ export function PushNotificationsProvider({ children }: PropsWithChildren) {
   const qc = useQueryClient();
 
   useEffect(() => {
-    if (!isAuthenticated || registered.current) return;
+    // Le logout supprime le token côté serveur : un login suivant dans le même
+    // process doit le ré-enregistrer.
+    if (!isAuthenticated) {
+      registered.current = false;
+      return;
+    }
+    if (registered.current) return;
     registered.current = true;
 
     registerForPushNotifications()

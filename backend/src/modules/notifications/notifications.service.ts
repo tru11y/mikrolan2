@@ -41,7 +41,10 @@ export class NotificationsService {
     });
 
     const tokens = await this.collectPushTokens(tenantId, routerId);
-    if (!tokens.length) return;
+    if (!tokens.length) {
+      this.logger.warn(`No push token for tenant ${tenantId} (notification ${notification.id}, type ${type})`);
+      return;
+    }
 
     try {
       await this.pushQueue.add('push', {
@@ -65,7 +68,10 @@ export class NotificationsService {
     extraData?: Record<string, unknown>,
   ): Promise<void> {
     const tokens = await this.collectPushTokens(tenantId, routerId);
-    if (!tokens.length) return;
+    if (!tokens.length) {
+      this.logger.warn(`No push token for tenant ${tenantId} ("${title}")`);
+      return;
+    }
 
     const data = { ...(routerId ? { routerId } : {}), ...extraData };
     await this.sendPushDirect(tokens, title, body, Object.keys(data).length ? data : undefined);
@@ -127,9 +133,15 @@ export class NotificationsService {
       }
 
       const { data: tickets } = (await res.json()) as {
-        data?: Array<{ status: string; details?: { error?: string } }>;
+        data?: Array<{ status: string; message?: string; details?: { error?: string } }>;
       };
       if (!tickets) return;
+
+      tickets.forEach((ticket) => {
+        if (ticket.status === 'error') {
+          this.logger.warn(`Expo ticket error: ${ticket.details?.error ?? 'unknown'} — ${ticket.message ?? ''}`);
+        }
+      });
 
       const deadTokens = tickets
         .map((ticket, i) =>
