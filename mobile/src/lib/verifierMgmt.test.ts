@@ -83,3 +83,64 @@ test('isReadyToVerify requires ACTIVE and an assignment', () => {
   assert.equal(isReadyToVerify({ status: 'SUSPENDED', assignment: { r: 1 } }), false);
   assert.equal(isReadyToVerify({ status: 'DELETED', assignment: { r: 1 } }), false);
 });
+
+import {
+  MUTATION_DEADLINE_MS,
+  planForUncertain,
+  reconcileAssign,
+  reconcileCreate,
+  reconcileRemove,
+  reconcileStatus,
+} from './verifierMgmt.ts';
+
+const rows = [
+  { id: 'a', email: 'Awa@Exemple.ci', status: 'ACTIVE' as const, assignment: { routerId: 'r1' } },
+  { id: 'b', email: 'b@x.ci', status: 'SUSPENDED' as const, assignment: null },
+];
+
+test('deadline is 20 seconds', () => {
+  assert.equal(MUTATION_DEADLINE_MS, 20000);
+});
+
+test('uncertain create: message, refetch, no auto retry', () => {
+  const p = planForUncertain('create');
+  assert.equal(p.messageKey, 'verifiers.uncertainCreate');
+  assert.equal(p.refetch, true);
+  assert.equal(p.autoRetry, false);
+});
+
+test('uncertain reset password: never replayed, secrets cleared', () => {
+  const p = planForUncertain('resetPassword');
+  assert.equal(p.messageKey, 'verifiers.uncertainReset');
+  assert.equal(p.clearSecrets, true);
+  assert.equal(p.autoRetry, false);
+});
+
+test('uncertain assign / status / remove: refetch and reconcile, no auto retry', () => {
+  for (const k of ['assign', 'status', 'remove'] as const) {
+    const p = planForUncertain(k);
+    assert.equal(p.refetch, true, k);
+    assert.equal(p.autoRetry, false, k);
+  }
+});
+
+test('reconcileCreate finds the vendor by email (case-insensitive) = created', () => {
+  assert.equal(reconcileCreate(rows, '  awa@exemple.ci '), 'created');
+});
+
+test('reconcileCreate with the email absent = manual retry allowed', () => {
+  assert.equal(reconcileCreate(rows, 'nobody@x.ci'), 'absent');
+});
+
+test('reconcileRemove: gone from the active list = removed, else still present', () => {
+  assert.equal(reconcileRemove(rows, 'zzz'), 'removed');
+  assert.equal(reconcileRemove(rows, 'a'), 'present');
+});
+
+test('reconcileStatus and reconcileAssign read the observed state', () => {
+  assert.equal(reconcileStatus(rows, 'b', 'SUSPENDED'), 'applied');
+  assert.equal(reconcileStatus(rows, 'a', 'SUSPENDED'), 'not-applied');
+  assert.equal(reconcileAssign(rows, 'a', 'r1'), 'applied');
+  assert.equal(reconcileAssign(rows, 'a', 'r2'), 'not-applied');
+  assert.equal(reconcileAssign(rows, 'b', 'r1'), 'not-applied');
+});

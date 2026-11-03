@@ -2166,29 +2166,36 @@ export const api = {
       );
       return unwrap(res);
     },
-    async create(body: CreateVerifierInput): Promise<VerifierItem> {
-      const res = await apiClient.post<ApiEnvelope<VerifierItem>>('/ticket-verifiers', body);
+    // `signal` : annulation par l'écran (échéance). Voir hardTimeout.ts.
+    async create(body: CreateVerifierInput, signal?: AbortSignal): Promise<VerifierItem> {
+      const res = await apiClient.post<ApiEnvelope<VerifierItem>>('/ticket-verifiers', body, { signal });
       return unwrap(res);
     },
-    async assign(id: string, routerId: string): Promise<VerifierItem> {
+    async assign(id: string, routerId: string, signal?: AbortSignal): Promise<VerifierItem> {
       const res = await apiClient.patch<ApiEnvelope<VerifierItem>>(
         `/ticket-verifiers/${id}/assignment`,
         { routerId },
+        { signal },
       );
       return unwrap(res);
     },
-    async setStatus(id: string, status: 'ACTIVE' | 'SUSPENDED'): Promise<VerifierItem> {
+    async setStatus(
+      id: string,
+      status: 'ACTIVE' | 'SUSPENDED',
+      signal?: AbortSignal,
+    ): Promise<VerifierItem> {
       const res = await apiClient.patch<ApiEnvelope<VerifierItem>>(
         `/ticket-verifiers/${id}/status`,
         { status },
+        { signal },
       );
       return unwrap(res);
     },
-    async resetPassword(id: string, newPassword: string): Promise<void> {
-      await apiClient.post(`/ticket-verifiers/${id}/reset-password`, { newPassword });
+    async resetPassword(id: string, newPassword: string, signal?: AbortSignal): Promise<void> {
+      await apiClient.post(`/ticket-verifiers/${id}/reset-password`, { newPassword }, { signal });
     },
-    async remove(id: string): Promise<void> {
-      await apiClient.delete(`/ticket-verifiers/${id}`);
+    async remove(id: string, signal?: AbortSignal): Promise<void> {
+      await apiClient.delete(`/ticket-verifiers/${id}`, { signal });
     },
   },
 };
