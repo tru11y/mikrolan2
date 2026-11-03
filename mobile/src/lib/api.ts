@@ -102,8 +102,6 @@ export type Entitlement = {
   tierKey: string | null;
   /** Routeurs autorisés par la formule ; `null` = illimité. */
   routerLimit: number | null;
-  /** Tickets générés/mois autorisés ; `null` = illimité. */
-  voucherMonthlyLimit: number | null;
 };
 
 export type TicketTemplate = {
@@ -2218,7 +2216,6 @@ export type Tier = {
   annualMonthlyXof: number;
   annualDiscount: number;
   routerLimit: number | null;
-  voucherMonthlyLimit: number | null;
   remoteAccess: boolean;
   a4Printing: boolean;
   cloudBackup: boolean;

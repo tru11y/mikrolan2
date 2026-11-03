@@ -46,12 +46,11 @@ function makePrisma(finalBatch = { status: 'COMPLETED', generated: 0 }) {
   };
 }
 
-function build(prisma: ReturnType<typeof makePrisma>, remote?: unknown, subs?: unknown) {
+function build(prisma: ReturnType<typeof makePrisma>, remote?: unknown) {
   const eventLog = makeEventLogStub();
   const service = new VoucherService(
     prisma as any,
     (remote ?? { run: jest.fn() }) as any,
-    (subs ?? { assertVoucherLimit: jest.fn().mockResolvedValue(undefined) }) as any,
     eventLog as any,
   );
   return { service, eventLog };
@@ -110,20 +109,6 @@ describe('VoucherService event trace', () => {
     );
   });
 
-  it('generation refused by a plan limit is traced FAILED then rethrown', async () => {
-    const limit = new Error('limit');
-    const subs = { assertVoucherLimit: jest.fn().mockRejectedValue(limit) };
-    const { service, eventLog } = build(makePrisma(), undefined, subs);
-
-    await expect(service.generate('router-1', { planId: 'plan-1', quantity: 2 } as any)).rejects.toBe(limit);
-    expect(eventLog.failure).toHaveBeenCalledWith(
-      expect.anything(),
-      'VoucherBatch',
-      'router-1',
-      limit,
-      expect.objectContaining({ stage: 'generate' }),
-    );
-  });
 
   it('LAN confirmation of fewer tickets than the batch is PARTIAL_SUCCESS', async () => {
     const prisma = makePrisma();
