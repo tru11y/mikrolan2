@@ -182,10 +182,11 @@ function makeStyles(t: ThemeColors) {
       borderRadius: radius.sm,
       borderWidth: 1,
       paddingVertical: space.lg - 2,
+      paddingHorizontal: space.lg,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    buttonText: { fontSize: type.bodyLg, fontWeight: '700' },
+    buttonText: { fontSize: type.bodyLg, fontWeight: '700', textAlign: 'center' },
     badge: {
       borderWidth: 1,
       borderRadius: radius.pill,
