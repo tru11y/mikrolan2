@@ -1241,6 +1241,11 @@
     "removeWarning": "Delete {{name}}? The account will be disabled and the assignment removed. This cannot be undone.",
     "noRouterWarning": "Without a router, this seller cannot verify tickets.",
     "notReady": "Not ready to verify: no router assigned",
-    "errNetwork": "No connection. Check your network and try again."
+    "errNetwork": "No connection. Check your network and try again.",
+    "uncertainCreate": "The server response was not received. Refresh the list before retrying to avoid a duplicate.",
+    "createdFound": "The seller was created.",
+    "createAbsent": "No seller with this email was found: you can try again.",
+    "uncertainOther": "The server response was not received. The state was refreshed: check it before retrying.",
+    "uncertainReset": "The server response was not received. Check the seller state before retrying: the typed password was cleared."
   }
 }
