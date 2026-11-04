@@ -34,6 +34,9 @@ jobs:
       - name: Type-check
         run: npx tsc --noEmit
 
+      - name: Dependency audit (prod, high+)
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true
 
       - name: Unit tests
         run: npx jest --no-cache --ci --coverage
