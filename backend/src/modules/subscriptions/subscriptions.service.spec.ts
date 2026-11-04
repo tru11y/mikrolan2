@@ -160,11 +160,11 @@ describe('SubscriptionsService', () => {
       expect([e.cloudBackup, e.a4Printing, e.prioritySupport]).toEqual([false, false, false]);
     });
 
-    it('PRO hérité sans formule → options débloquées', async () => {
+    it('PRO hérité sans formule → remote conservé, aucune option payante', async () => {
       const service = buildService();
       mockPrisma.subscription.findUnique.mockResolvedValue(paidSub(null));
       const e = await service.getEntitlement('t1');
-      expect([e.remoteAllowed, e.cloudBackup, e.a4Printing, e.prioritySupport]).toEqual([true, true, true, true]);
+      expect([e.remoteAllowed, e.cloudBackup, e.a4Printing, e.prioritySupport]).toEqual([true, false, false, false]);
     });
 
     it('FREE → aucune option payante', async () => {
@@ -276,6 +276,16 @@ describe('SubscriptionsService', () => {
   });
 
   describe('activate', () => {
+    it('refuse d’activer un PRO sans formule (ni facture ni abonnement)', async () => {
+      const service = buildService();
+      mockPrisma.subscription.findUnique.mockResolvedValueOnce({ tenantId: 't1', currentPeriodEnd: null, tierId: null, billingPeriod: null });
+      mockPrisma.invoice.findFirst.mockResolvedValue({ id: 'inv-x', tierId: null, billingPeriod: BillingPeriod.MONTHLY, periodDays: 30, tier: null });
+      mockPrisma.subscription.update.mockClear();
+
+      await expect(service.activate('t1', 'admin1', undefined, 'inv-x')).rejects.toMatchObject({ status: 400 });
+      expect(mockPrisma.subscription.update).not.toHaveBeenCalled();
+    });
+
     it('sets PRO, pays invoice, creates notification', async () => {
       const service = buildService();
       mockPrisma.subscription.findUnique
