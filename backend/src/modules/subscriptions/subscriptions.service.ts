@@ -124,6 +124,9 @@ export class SubscriptionsService {
       sub.status === SubscriptionStatus.ACTIVE &&
       !expired
     ) {
+      if (!sub.tier) {
+        this.logger.warn(`PRO subscription without tierId for tenant ${tenantId}`);
+      }
       return {
         tier: 'PRO',
         localAllowed: true,
@@ -133,10 +136,10 @@ export class SubscriptionsService {
         tierKey: sub.tier?.key ?? null,
         routerLimit: sub.routerLimitOverride ?? sub.tier?.routerLimit ?? null,
         userLimit: sub.userLimitOverride ?? sub.tier?.userLimit ?? null,
-        // PRO sans formule (activé avant la grille) : tout débloqué, comme avant.
-        cloudBackup: sub.tier?.cloudBackup ?? true,
-        a4Printing: sub.tier?.a4Printing ?? true,
-        prioritySupport: sub.tier?.prioritySupport ?? true,
+        // PRO sans formule (état hérité) : accès distant conservé, mais aucune option payante.
+        cloudBackup: sub.tier?.cloudBackup ?? false,
+        a4Printing: sub.tier?.a4Printing ?? false,
+        prioritySupport: sub.tier?.prioritySupport ?? false,
       };
     }
 
@@ -204,6 +207,23 @@ export class SubscriptionsService {
     const tier = tierKey
       ? await this.tiers.getByKeyOrThrow(tierKey)
       : await this.tiers.defaultUpgradeTier();
+
+    // Monter est libre ; descendre passe par le support (utilisateurs, accès
+    // distants et sauvegardes déjà créés à traiter à la main).
+    const current = await this.getEntitlement(tenantId);
+    if (current.tier === 'PRO' && current.tierKey) {
+      const held = await this.prisma.subscriptionTier.findUnique({
+        where: { key: current.tierKey },
+        select: { monthlyXof: true },
+      });
+      if (held && tier.monthlyXof < held.monthlyXof) {
+        throw new BusinessException(
+          HttpStatus.FORBIDDEN,
+          ErrorCode.TIER_DOWNGRADE_NOT_ALLOWED,
+          'Pour passer à une formule inférieure, contactez le support.',
+        );
+      }
+    }
 
     // Une demande en attente existe déjà : on la met à jour plutôt que d'en
     // empiler une seconde, sinon la file d'attente de l'administrateur se
@@ -306,6 +326,12 @@ export class SubscriptionsService {
       orderBy: { createdAt: 'desc' },
       include: { tier: true },
     });
+
+    // Un PRO sans formule n'a ni limites ni options définies : on refuse de
+    // créer cet état plutôt que de deviner ce que le client a payé.
+    if (!(invoice?.tierId ?? sub.tierId)) {
+      throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.PRO_TIER_REQUIRED, 'Activation impossible : aucune formule associée à cette facture ou à l\'abonnement.');
+    }
 
     const days = periodDays ?? invoice?.periodDays ?? PERIOD_DAYS.MONTHLY;
     const now = new Date();
