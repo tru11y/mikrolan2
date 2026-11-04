@@ -124,6 +124,9 @@ export class SubscriptionsService {
       sub.status === SubscriptionStatus.ACTIVE &&
       !expired
     ) {
+      if (!sub.tier) {
+        this.logger.warn(`PRO subscription without tierId for tenant ${tenantId}`);
+      }
       return {
         tier: 'PRO',
         localAllowed: true,
@@ -133,10 +136,10 @@ export class SubscriptionsService {
         tierKey: sub.tier?.key ?? null,
         routerLimit: sub.routerLimitOverride ?? sub.tier?.routerLimit ?? null,
         userLimit: sub.userLimitOverride ?? sub.tier?.userLimit ?? null,
-        // PRO sans formule (activé avant la grille) : tout débloqué, comme avant.
-        cloudBackup: sub.tier?.cloudBackup ?? true,
-        a4Printing: sub.tier?.a4Printing ?? true,
-        prioritySupport: sub.tier?.prioritySupport ?? true,
+        // PRO sans formule (état hérité) : accès distant conservé, mais aucune option payante.
+        cloudBackup: sub.tier?.cloudBackup ?? false,
+        a4Printing: sub.tier?.a4Printing ?? false,
+        prioritySupport: sub.tier?.prioritySupport ?? false,
       };
     }
 
@@ -323,6 +326,12 @@ export class SubscriptionsService {
       orderBy: { createdAt: 'desc' },
       include: { tier: true },
     });
+
+    // Un PRO sans formule n'a ni limites ni options définies : on refuse de
+    // créer cet état plutôt que de deviner ce que le client a payé.
+    if (!(invoice?.tierId ?? sub.tierId)) {
+      throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.PRO_TIER_REQUIRED, 'Activation impossible : aucune formule associée à cette facture ou à l\'abonnement.');
+    }
 
     const days = periodDays ?? invoice?.periodDays ?? PERIOD_DAYS.MONTHLY;
     const now = new Date();
