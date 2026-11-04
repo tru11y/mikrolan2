@@ -3,6 +3,8 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import {
   AuditAction,
   ManagementMode,
+  Prisma,
+  RouterHealth,
   SessionStatus,
   UserRole,
   VoucherStatus,
@@ -15,6 +17,9 @@ import { setTenantContext, tenantStore } from '../../common/context/tenant-conte
 import { computeExpiresAt } from './voucher.service';
 
 const BATCH_SIZE = 200;
+// Après un échec routeur, on ne le retente pas avant ce délai : un routeur hors ligne
+// ne doit ni ralentir les autres (timeouts en série) ni monopoliser le lot.
+const ROUTER_COOLDOWN_MS = 15 * 60_000;
 const NOT_FOUND = /no such item/i;
 
 /**
@@ -27,6 +32,7 @@ const NOT_FOUND = /no such item/i;
 export class VoucherExpiryCron {
   private readonly logger = new Logger(VoucherExpiryCron.name);
   private running = false;
+  private readonly cooldowns = new Map<string, number>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -46,8 +52,26 @@ export class VoucherExpiryCron {
   }
 
   async run(now: Date): Promise<number> {
+    for (const [routerId, until] of this.cooldowns) {
+      if (until <= now.getTime()) this.cooldowns.delete(routerId);
+    }
+    // LOCAL : base seule, toujours traité. REMOTE : seulement si des identifiants existent
+    // et que le routeur n'est pas déclaré hors ligne (sinon timeout garanti).
+    const reachable: Prisma.RouterWhereInput = {
+      deletedAt: null,
+      OR: [
+        { mode: ManagementMode.LOCAL },
+        { mode: ManagementMode.REMOTE, credEncrypted: { not: null }, health: { not: RouterHealth.OFFLINE } },
+      ],
+    };
     const candidates = await this.prisma.voucher.findMany({
-      where: { status: VoucherStatus.ACTIVE, expiresAt: null, usedAt: { not: null } },
+      where: {
+        status: VoucherStatus.ACTIVE,
+        expiresAt: null,
+        usedAt: { not: null },
+        routerId: { notIn: [...this.cooldowns.keys()] },
+        router: reachable,
+      },
       orderBy: { usedAt: 'asc' },
       take: BATCH_SIZE,
       select: {
@@ -63,13 +87,29 @@ export class VoucherExpiryCron {
     });
 
     let enforced = 0;
+    const failedRouters = new Set<string>();
     for (const v of candidates) {
+      if (failedRouters.has(v.routerId)) continue;
       const expiresAt = computeExpiresAt(v.usedAt, v.plan.durationMinutes);
       if (!expiresAt || expiresAt.getTime() > now.getTime()) continue;
-      try {
-        if (v.router.mode === ManagementMode.REMOTE && v.mikrotikId) {
+      if (v.router.mode === ManagementMode.REMOTE && v.mikrotikId) {
+        try {
           await this.removeFromRouter(v.tenantId, v.routerId, v.mikrotikId, v.session?.mikrotikId ?? null);
+        } catch (err) {
+          failedRouters.add(v.routerId);
+          this.cooldowns.set(v.routerId, now.getTime() + ROUTER_COOLDOWN_MS);
+          this.logger.warn({
+            errorCode: 'VOUCHER_EXPIRY_ROUTER_FAILED',
+            voucherId: v.id,
+            routerId: v.routerId,
+            cooldownMinutes: ROUTER_COOLDOWN_MS / 60_000,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          continue;
         }
+        this.cooldowns.delete(v.routerId);
+      }
+      try {
         await this.prisma.voucher.updateMany({
           where: { id: v.id, status: VoucherStatus.ACTIVE, expiresAt: null },
           data: { expiresAt },
