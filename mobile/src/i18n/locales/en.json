@@ -1005,6 +1005,7 @@
     "deleteTicketTitle": "Delete this ticket?",
     "deleteTicketMessage": "Code {{code}} will be permanently deleted — cannot be undone.",
     "deleteBatchTitle": "Delete this batch?",
+    "deleteBatchPreviewError": "Unable to analyze this batch.",
     "deleteBatchAnalyzing": "Analyzing the batch…",
     "deleteBatchMessage": "{{count}} ticket(s) in this batch will be permanently deleted — cannot be undone.",
     "deleteBatchMessageEligible": "🗑️ {{count}} unused or cancelled ticket(s) in this batch will be permanently deleted.",

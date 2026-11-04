@@ -1005,6 +1005,7 @@
     "deleteTicketTitle": "Supprimer ce ticket ?",
     "deleteTicketMessage": "Le code {{code}} sera supprimé définitivement — impossible à annuler.",
     "deleteBatchTitle": "Supprimer ce lot ?",
+    "deleteBatchPreviewError": "Impossible d'analyser ce lot.",
     "deleteBatchAnalyzing": "Analyse du lot en cours…",
     "deleteBatchMessage": "{{count}} ticket(s) de ce lot seront supprimés définitivement — impossible à annuler.",
     "deleteBatchMessageEligible": "🗑️ {{count}} ticket(s) inutilisé(s) ou annulé(s) de ce lot seront supprimés définitivement.",
