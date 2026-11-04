@@ -44,7 +44,7 @@ function makePrisma() {
       count: jest.fn().mockResolvedValue(0),
     },
     auditLog: { create: jest.fn() },
-    session: { deleteMany: jest.fn() },
+    session: { deleteMany: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
     voucherBatch: { findFirst: jest.fn(), delete: jest.fn() },
     $transaction: jest.fn((fn: (tx: unknown) => Promise<unknown>) => fn(tx)),
     _tx: tx,
@@ -274,6 +274,53 @@ describe('VoucherService', () => {
       prisma.voucher.updateMany.mockResolvedValue({ count: 0 });
 
       await expect(service.revoke('v-1')).rejects.toMatchObject({ status: 409 });
+    });
+
+    describe('force on ACTIVE ticket', () => {
+      const active = (mode: ManagementMode) => ({
+        id: 'v-1',
+        routerId: 'router-1',
+        mikrotikId: 'ros-1',
+        status: VoucherStatus.ACTIVE,
+        router: { mode },
+        session: { mikrotikId: '*A' },
+      });
+
+      it('without force: 409', async () => {
+        const { service, prisma } = makeService();
+        prisma.voucher.findFirst.mockResolvedValue(active(ManagementMode.REMOTE));
+        prisma.voucher.updateMany.mockResolvedValue({ count: 0 });
+        await expect(service.revoke('v-1')).rejects.toMatchObject({ status: 409 });
+      });
+
+      it('with force REMOTE: cuts router, keeps status ACTIVE, sets expiresAt', async () => {
+        const { service, prisma, remote } = makeService();
+        prisma.voucher.findFirst.mockResolvedValue(active(ManagementMode.REMOTE));
+        prisma.voucher.updateMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValue({ count: 1 });
+        const result = await service.revoke('v-1', true);
+        expect(result).toEqual({ revoked: true, forced: true, routerCleaned: true });
+        expect(remote.run).toHaveBeenCalled();
+        const data = prisma.voucher.updateMany.mock.calls[1][0].data;
+        expect(data.status).toBeUndefined();
+        expect(data.expiresAt).toBeInstanceOf(Date);
+      });
+
+      it('with force LOCAL: DB only', async () => {
+        const { service, prisma, remote } = makeService();
+        prisma.voucher.findFirst.mockResolvedValue(active(ManagementMode.LOCAL));
+        prisma.voucher.updateMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValue({ count: 1 });
+        await service.revoke('v-1', true);
+        expect(remote.run).not.toHaveBeenCalled();
+      });
+
+      it('with force, router down: still cut in DB, warns', async () => {
+        const { service, prisma, remote } = makeService();
+        prisma.voucher.findFirst.mockResolvedValue(active(ManagementMode.REMOTE));
+        prisma.voucher.updateMany.mockResolvedValueOnce({ count: 0 }).mockResolvedValue({ count: 1 });
+        remote.run.mockRejectedValue(new Error('down'));
+        const result = await service.revoke('v-1', true);
+        expect(result).toMatchObject({ forced: true, routerCleaned: false });
+      });
     });
   });
 
