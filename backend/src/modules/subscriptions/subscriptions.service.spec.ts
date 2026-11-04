@@ -24,6 +24,7 @@ const mockPrisma: Record<string, any> = {
     updateMany: jest.fn().mockResolvedValue({ count: 1 }),
   },
   notification: { create: jest.fn() },
+  subscriptionTier: { findUnique: jest.fn() },
   remotePeer: { updateMany: jest.fn() },
   router: { updateMany: jest.fn() },
   auditLog: { create: jest.fn() },
@@ -234,6 +235,43 @@ describe('SubscriptionsService', () => {
       expect(result.invoice.id).toBe('inv-existing');
       expect(mockPrisma.invoice.create).not.toHaveBeenCalled();
       expect(mockPrisma.invoice.update).toHaveBeenCalled();
+    });
+
+    describe('changement de formule', () => {
+      const proOn = (tierKey: string) =>
+        mockPrisma.subscription.findUnique.mockResolvedValue({
+          plan: SubscriptionPlan.PRO,
+          status: SubscriptionStatus.ACTIVE,
+          currentPeriodEnd: new Date(Date.now() + 86_400_000),
+          tier: { key: tierKey, routerLimit: null, userLimit: null },
+        });
+
+      it('refuse de descendre vers une formule moins chère (support requis)', async () => {
+        const service = buildService();
+        proOn('entreprise');
+        mockPrisma.subscriptionTier.findUnique.mockResolvedValue({ monthlyXof: 35000 });
+        mockPrisma.invoice.create.mockClear();
+
+        await expect(service.requestUpgrade('t1', 'u1', undefined, 'starter')).rejects.toMatchObject({ status: 403 });
+        expect(mockPrisma.invoice.create).not.toHaveBeenCalled();
+      });
+
+      it('autorise de monter vers une formule plus chère', async () => {
+        const service = buildService();
+        proOn('essentiel');
+        mockPrisma.subscriptionTier.findUnique.mockResolvedValue({ monthlyXof: 1000 });
+        mockPrisma.invoice.findFirst.mockResolvedValue(null);
+        mockPrisma.invoice.create.mockResolvedValue({
+          id: 'inv-up',
+          amount: 5000,
+          currency: 'XOF',
+          status: PaymentStatus.PENDING,
+          billingPeriod: BillingPeriod.MONTHLY,
+        });
+
+        const result = await service.requestUpgrade('t1', 'u1', undefined, 'starter');
+        expect(result.invoice.id).toBe('inv-up');
+      });
     });
   });
 
