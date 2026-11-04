@@ -32,6 +32,7 @@ import {
   withAlpha,
 } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
+import { useAuth } from '@/src/providers/auth-provider';
 import { ProAdvisor } from '@/src/components/ProAdvisor';
 import { AppHeader } from '@/src/components/AppHeader';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
@@ -120,12 +121,14 @@ function TierCard({
   annual,
   selected,
   recommended,
+  current,
   onPress,
 }: {
   tier: Tier;
   annual: boolean;
   selected: boolean;
   recommended: boolean;
+  current: boolean;
   onPress: () => void;
 }) {
   // Une seule chose peut être mise en avant à la fois : l'or dit « c'est la
@@ -150,7 +153,23 @@ function TierCard({
         overflow: 'hidden',
       }}
     >
-      {recommended ? (
+      {current ? (
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            backgroundColor: theme.success,
+            borderBottomLeftRadius: radius.md,
+            paddingHorizontal: space.md,
+            paddingVertical: 4,
+          }}
+        >
+          <Text style={{ color: theme.goldText, fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>
+            {t('pro.currentPlan')}
+          </Text>
+        </View>
+      ) : recommended ? (
         <View
           style={{
             position: 'absolute',
@@ -262,6 +281,8 @@ export default function ProScreen() {
   const theme = useTheme();
   const { t } = useTranslation();
   const navHeight = useBottomNavHeight();
+  const { entitlement } = useAuth();
+  const currentKey = entitlement.tier === 'PRO' ? entitlement.tierKey : null;
   const toast = useToast();
 
   // La grille vient du serveur : c'est le super admin qui fixe les prix, plus
@@ -411,6 +432,7 @@ export default function ProScreen() {
                   annual={annual}
                   selected={tier?.key === t.key}
                   recommended={t.key === advised}
+                  current={t.key === currentKey}
                   onPress={() => setSelectedKey(t.key)}
                 />
               </FadeIn>
@@ -438,6 +460,7 @@ export default function ProScreen() {
           <Button
             title={t('pro.requestActivation', { name: tier.name, price: formatXof(periodPrice(tier, annual)) })}
             variant="gold"
+            disabled={tier.key === currentKey}
             onPress={requestActivation}
             loading={busy}
           />
