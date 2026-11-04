@@ -483,6 +483,7 @@
     "perYear": "i.e. {{price}} / year",
     "requestSent": "Request sent. You'll be notified in the app once your subscription is activated.",
     "requestActivation": "Request activation {{name}} — {{price}}",
+    "downgradeViaSupport": "Contact support to change plan",
     "manualPayment": "Manual payment, validated by an administrator within 24 hours. No commitment.",
     "formulaSelected": "{{name}} plan selected.",
     "openAdvisor": "Open subscription advisor",
