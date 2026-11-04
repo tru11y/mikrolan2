@@ -486,6 +486,18 @@ export default function AccountScreen() {
               <SectionSep />
             </>
           ) : null}
+          {me?.user.role === 'OWNER' || me?.user.role === 'ADMIN' ? (
+            <>
+              <SettingRow
+                icon="people-outline"
+                iconColor={theme.primary}
+                title={t('verifiers.title')}
+                subtitle={t('verifiers.intro')}
+                onPress={() => router.push('/vendeurs')}
+              />
+              <SectionSep />
+            </>
+          ) : null}
           <SettingRow
             icon="chatbubble-ellipses-outline"
             iconColor={theme.primary}
