@@ -485,7 +485,18 @@ export default function AccountScreen() {
               />
               <SectionSep />
             </>
-          ) : null}
+          ) : (
+            <>
+              <SettingRow
+                icon="swap-vertical-outline"
+                iconColor={theme.warning}
+                title={t('account.changePlanTitle')}
+                subtitle={t('account.changePlanSubtitle')}
+                onPress={() => router.push('/pro')}
+              />
+              <SectionSep />
+            </>
+          )}
           {me?.user.role === 'OWNER' || me?.user.role === 'ADMIN' ? (
             <>
               <SettingRow
