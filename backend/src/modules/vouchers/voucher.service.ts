@@ -25,6 +25,7 @@ import {
   ensureUserProfile,
   removeHotspotUser,
 } from '../../common/routeros/hotspot.ops';
+import { MIN_CODE_LENGTH } from '../plans/dto/plan.schemas';
 import { getTenantContext } from '../../common/context/tenant-context';
 import type {
   ConfirmVouchersDto,
@@ -968,7 +969,8 @@ export class VoucherService {
 
   private genCode(opts: CodeFormatOptions): string {
     const alphabet = opts.codeFormat === 'NUMERIC' ? NUMERIC : ALPHANUMERIC;
-    const length = opts.codeLength || 8;
+    // Plans créés avant le plancher d'entropie : jamais de code plus court que le minimum.
+    const length = Math.max(opts.codeLength || 8, MIN_CODE_LENGTH[opts.codeFormat]);
     const b = randomBytes(length);
     let s = '';
     for (let i = 0; i < length; i += 1) s += alphabet[b[i] % alphabet.length];
