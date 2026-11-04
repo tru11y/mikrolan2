@@ -9,6 +9,7 @@ import type { AppConfig } from '../../config/configuration';
 
 const ALGO = 'aes-256-gcm';
 const IV_LEN = 12;
+const TAG_LEN = 16;
 
 /**
  * AES-256-GCM for router credentials at rest. Stored format:
@@ -25,7 +26,7 @@ export class CryptoService {
 
   encrypt(plaintext: string): string {
     const iv = randomBytes(IV_LEN);
-    const cipher = createCipheriv(ALGO, this.key, iv);
+    const cipher = createCipheriv(ALGO, this.key, iv, { authTagLength: TAG_LEN });
     const ct = Buffer.concat([
       cipher.update(plaintext, 'utf8'),
       cipher.final(),
@@ -43,8 +44,11 @@ export class CryptoService {
       ALGO,
       this.key,
       Buffer.from(ivB64, 'base64'),
+      { authTagLength: TAG_LEN },
     );
-    decipher.setAuthTag(Buffer.from(tagB64, 'base64'));
+    const tag = Buffer.from(tagB64, 'base64');
+    if (tag.length !== TAG_LEN) throw new Error('Invalid auth tag length');
+    decipher.setAuthTag(tag);
     return Buffer.concat([
       decipher.update(Buffer.from(ctB64, 'base64')),
       decipher.final(),

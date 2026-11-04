@@ -74,6 +74,7 @@ function buildService() {
     mockSubscriptions as any,
     mockConfig as any,
     mockMail as any,
+    { assertLogin: jest.fn() } as any,
   );
 }
 
