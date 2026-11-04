@@ -483,6 +483,7 @@
     "perYear": "soit {{price}} / an",
     "requestSent": "Demande envoyée. Vous serez notifié dans l'application dès que votre abonnement sera activé.",
     "requestActivation": "Demander l'activation {{name}} — {{price}}",
+    "downgradeViaSupport": "Contacter le support pour changer de formule",
     "manualPayment": "Paiement manuel, validé par un administrateur sous 24 h. Sans engagement de durée.",
     "formulaSelected": "Formule {{name}} retenue.",
     "openAdvisor": "Ouvrir le conseiller d'abonnement",

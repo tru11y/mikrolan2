@@ -205,6 +205,23 @@ export class SubscriptionsService {
       ? await this.tiers.getByKeyOrThrow(tierKey)
       : await this.tiers.defaultUpgradeTier();
 
+    // Monter est libre ; descendre passe par le support (utilisateurs, accès
+    // distants et sauvegardes déjà créés à traiter à la main).
+    const current = await this.getEntitlement(tenantId);
+    if (current.tier === 'PRO' && current.tierKey) {
+      const held = await this.prisma.subscriptionTier.findUnique({
+        where: { key: current.tierKey },
+        select: { monthlyXof: true },
+      });
+      if (held && tier.monthlyXof < held.monthlyXof) {
+        throw new BusinessException(
+          HttpStatus.FORBIDDEN,
+          ErrorCode.TIER_DOWNGRADE_NOT_ALLOWED,
+          'Pour passer à une formule inférieure, contactez le support.',
+        );
+      }
+    }
+
     // Une demande en attente existe déjà : on la met à jour plutôt que d'en
     // empiler une seconde, sinon la file d'attente de l'administrateur se
     // remplit de doublons au moindre double-appui.

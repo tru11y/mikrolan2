@@ -305,6 +305,10 @@ export default function ProScreen() {
     tiers.find((t) => t.badge) ??
     tiers[Math.floor(tiers.length / 2)] ??
     null;
+  // Monter est libre ; descendre passe par le support (utilisateurs, accès distants et
+  // sauvegardes déjà créés à traiter). Le rang se déduit du prix, pas d'une clé figée.
+  const currentTier = tiers.find((ti) => ti.key === currentKey) ?? null;
+  const isDowngrade = Boolean(tier && currentTier && tier.monthlyXof < currentTier.monthlyXof);
 
   async function requestActivation() {
     if (!tier) return;
@@ -458,10 +462,10 @@ export default function ProScreen() {
           </FadeIn>
         ) : tier ? (
           <Button
-            title={t('pro.requestActivation', { name: tier.name, price: formatXof(periodPrice(tier, annual)) })}
-            variant="gold"
+            title={isDowngrade ? t('pro.downgradeViaSupport') : t('pro.requestActivation', { name: tier.name, price: formatXof(periodPrice(tier, annual)) })}
+            variant={isDowngrade ? 'ghost' : 'gold'}
             disabled={tier.key === currentKey}
-            onPress={requestActivation}
+            onPress={isDowngrade ? () => navRouter.push('/support') : requestActivation}
             loading={busy}
           />
         ) : null}
