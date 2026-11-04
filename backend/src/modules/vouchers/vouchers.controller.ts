@@ -127,8 +127,11 @@ export class VouchersController {
   @Post(':voucherId/revoke')
   @Roles(UserRole.ADMIN)
   @HttpCode(200)
-  revoke(@Param('voucherId', ParseUUIDPipe) voucherId: string) {
-    return this.vouchers.revoke(voucherId);
+  revoke(
+    @Param('voucherId', ParseUUIDPipe) voucherId: string,
+    @Query('force') force?: string,
+  ) {
+    return this.vouchers.revoke(voucherId, force === 'true');
   }
 
   @Delete(':voucherId')

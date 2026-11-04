@@ -23,6 +23,7 @@ import { assertObservedRouterIdentity } from '../../common/routeros/router-ident
 import {
   addHotspotUser,
   ensureUserProfile,
+  removeActive,
   removeHotspotUser,
 } from '../../common/routeros/hotspot.ops';
 import { MIN_CODE_LENGTH } from '../plans/dto/plan.schemas';
@@ -662,7 +663,7 @@ export class VoucherService {
     }));
   }
 
-  async revoke(id: string) {
+  async revoke(id: string, force = false) {
     const voucher = await this.prisma.voucher.findFirst({
       where: { id },
       select: {
@@ -671,6 +672,7 @@ export class VoucherService {
         mikrotikId: true,
         status: true,
         router: { select: { mode: true } },
+        session: { select: { mikrotikId: true } },
       },
     });
     if (!voucher) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.VOUCHER_NOT_FOUND, 'Ticket introuvable.');
@@ -687,10 +689,11 @@ export class VoucherService {
       data: { status: VoucherStatus.REVOKED, revokedAt: new Date() },
     });
     if (claim.count === 0) {
+      if (force) return this.forceCut(voucher);
       throw new BusinessException(
         HttpStatus.CONFLICT,
         ErrorCode.VOUCHER_ACTIVE_PROTECTED,
-        'Ce ticket a déjà été activé — révocation refusée (un ticket déjà utilisé ne peut plus être annulé).',
+        'Ce ticket a déjà été activé — révocation refusée (un ticket déjà utilisé ne peut plus être annulé). Utilisez la coupure forcée.',
       );
     }
 
@@ -716,6 +719,53 @@ export class VoucherService {
     if (routerWarning) await this.eventLog.warning(AuditAction.REVOKE, 'Voucher', id, { routerId: voucher.routerId, ...routerWarning });
     else await this.eventLog.success(AuditAction.REVOKE, 'Voucher', id, { routerId: voucher.routerId });
     return { revoked: true };
+  }
+
+  /**
+   * Coupure forcée d'un ticket déjà ACTIVE (vol, partage). Le statut reste ACTIVE
+   * pour ne pas retirer une vente déjà comptée des rapports ; `expiresAt = now`
+   * le rend EXPIRED partout, et l'utilisateur + la session sont retirés du routeur
+   * (REMOTE ; en LOCAL le mobile doit retirer l'utilisateur sur le LAN).
+   */
+  private async forceCut(voucher: {
+    id: string;
+    routerId: string;
+    mikrotikId: string | null;
+    router: { mode: ManagementMode };
+    session: { mikrotikId: string | null } | null;
+  }) {
+    const now = new Date();
+    let routerWarning: Prisma.InputJsonObject | null = null;
+    if (voucher.mikrotikId && voucher.router.mode === ManagementMode.REMOTE) {
+      const { mikrotikId } = voucher;
+      const activeId = voucher.session?.mikrotikId ?? null;
+      try {
+        await this.remote.run(voucher.routerId, async (client) => {
+          if (activeId) await removeActive(client, activeId).catch(() => undefined);
+          await removeHotspotUser(client, mikrotikId);
+        });
+      } catch (err) {
+        this.logger.warn({
+          errorCode: 'VOUCHER_REVOKE_ROUTER_UNREACHABLE',
+          voucherId: voucher.id,
+          routerId: voucher.routerId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        routerWarning = { ...describeFailure(err), errorCode: ErrorCode.VOUCHER_REVOKE_ROUTER_UNREACHABLE };
+      }
+    }
+    await this.prisma.voucher.updateMany({
+      where: { id: voucher.id, status: VoucherStatus.ACTIVE },
+      data: { expiresAt: now, revokedAt: now },
+    });
+    await this.prisma.session.updateMany({
+      where: { voucherId: voucher.id, status: SessionStatus.ACTIVE },
+      data: { status: SessionStatus.TERMINATED, terminatedAt: now },
+    });
+    const meta = { routerId: voucher.routerId, forced: true, ...(routerWarning ?? {}) };
+    if (routerWarning) await this.eventLog.warning(AuditAction.REVOKE, 'Voucher', voucher.id, meta);
+    else await this.eventLog.success(AuditAction.REVOKE, 'Voucher', voucher.id, meta);
+    return { revoked: true, forced: true, routerCleaned: !routerWarning };
   }
 
   /**
