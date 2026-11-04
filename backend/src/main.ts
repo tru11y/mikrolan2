@@ -14,6 +14,9 @@ import { Readable } from 'node:stream';
 import { AppModule } from './app.module';
 import type { AppConfig } from './config/configuration';
 
+// Endpoint public lu avant vérification HMAC : plafonner pour éviter un DoS mémoire.
+const WEBHOOK_MAX_BYTES = 64 * 1024;
+
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(
     AppModule,
@@ -37,7 +40,15 @@ async function bootstrap(): Promise<void> {
   fastify.addHook('preParsing', (req, _reply, payload, done) => {
     if (req.url === '/api/payments/saspay/webhook') {
       const chunks: Buffer[] = [];
-      payload.on('data', (chunk: Buffer) => chunks.push(chunk));
+      let received = 0;
+      payload.on('data', (chunk: Buffer) => {
+        received += chunk.length;
+        if (received > WEBHOOK_MAX_BYTES) {
+          payload.destroy(new Error('Webhook body too large'));
+          return;
+        }
+        chunks.push(chunk);
+      });
       payload.on('end', () => {
         const raw = Buffer.concat(chunks).toString('utf8');
         (req as unknown as { rawBody?: string }).rawBody = raw;
@@ -73,7 +84,10 @@ async function bootstrap(): Promise<void> {
   });
 
   const port = config.get('PORT', { infer: true });
-  await app.listen(port, '0.0.0.0');
+  const host =
+    config.get('HOST', { infer: true }) ??
+    (config.get('NODE_ENV', { infer: true }) === 'production' ? '127.0.0.1' : '0.0.0.0');
+  await app.listen(port, host);
   new Logger('Bootstrap').log(`MikroLan API on :${port}`);
 }
 

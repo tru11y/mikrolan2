@@ -32,6 +32,7 @@ export interface ReleaseView {
   releaseNotes: string;
   fileSize: number;
   storageKey: string;
+  sha256: string | null;
   isActive: boolean;
   isRequired: boolean;
   archivedAt: Date | null;
@@ -60,6 +61,7 @@ export interface TenantReleaseView {
   minVersionCode: number;
   releaseNotes: string;
   fileSize: number;
+  sha256: string | null;
   publishedAt: Date;
   isActive: boolean;
   isRequired: boolean;
@@ -75,6 +77,7 @@ export function toTenantView(r: AppRelease): TenantReleaseView {
     minVersionCode: r.isRequired ? r.versionCode : r.minVersionCode,
     releaseNotes: r.releaseNotes,
     fileSize: r.fileSize,
+    sha256: r.sha256,
     publishedAt: r.createdAt,
     isActive: r.isActive,
     isRequired: r.isRequired,
@@ -93,6 +96,7 @@ export function toView(r: ReleaseRow): ReleaseView {
     releaseNotes: r.releaseNotes,
     fileSize: r.fileSize,
     storageKey: r.storageKey,
+    sha256: r.sha256,
     isActive: r.isActive,
     isRequired: r.isRequired,
     archivedAt: r.archivedAt,

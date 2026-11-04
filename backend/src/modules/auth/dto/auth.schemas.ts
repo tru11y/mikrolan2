@@ -30,6 +30,7 @@ export type AcceptLegalDto = z.infer<typeof acceptLegalSchema>;
 export const loginSchema = z.object({
   email: z.string().email().max(160),
   password: z.string().min(1).max(128),
+  totpCode: z.string().regex(/^\d{6}$/).optional(),
 });
 export type LoginDto = z.infer<typeof loginSchema>;
 
@@ -109,6 +110,7 @@ export const googleOAuthSchema = z
   .object({
     idToken: z.string().min(20).max(4000),
     nonce: z.string().min(1).max(200).optional(),
+    totpCode: z.string().regex(/^\d{6}$/).optional(),
   })
   .strict();
 export type GoogleOAuthDto = z.infer<typeof googleOAuthSchema>;
@@ -119,6 +121,15 @@ export const appleOAuthSchema = z
     nonce: z.string().min(1).max(200).optional(),
     // Apple ne renvoie le nom qu'au tout premier login — le client doit le transmettre à cette occasion.
     fullName: z.string().min(1).max(200).optional(),
+    totpCode: z.string().regex(/^\d{6}$/).optional(),
   })
   .strict();
 export type AppleOAuthDto = z.infer<typeof appleOAuthSchema>;
+
+export const mfaCodeSchema = z.object({ code: z.string().regex(/^\d{6}$/) }).strict();
+export type MfaCodeDto = z.infer<typeof mfaCodeSchema>;
+
+export const mfaDisableSchema = z
+  .object({ code: z.string().regex(/^\d{6}$/), password: z.string().min(1).max(128).optional() })
+  .strict();
+export type MfaDisableDto = z.infer<typeof mfaDisableSchema>;

@@ -42,7 +42,7 @@ const openAccessSchema = z
   .object({
     durationMinutes: z.coerce.number().int().min(5).max(60).default(15),
   })
-  .default({});
+  .default({ durationMinutes: 15 });
 type OpenAccessDto = z.infer<typeof openAccessSchema>;
 
 /** `::ffff:1.2.3.4` → `1.2.3.4` ; null si l'adresse n'est pas de l'IPv4 valide. */

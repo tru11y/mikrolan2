@@ -1,3 +1,5 @@
+import { UserRole } from '@prisma/client';
+import { Roles } from '../../common/decorators/roles.decorator';
 import { Controller, MessageEvent, NotFoundException, Param, ParseUUIDPipe, Sse } from '@nestjs/common';
 import { defer, finalize, type Observable } from 'rxjs';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -11,6 +13,7 @@ import { RouterGatewayService } from './router-gateway.service';
  * canal `events/stream` (notifications métier persistées) — aucun curseur de
  * reprise : une reconnexion redemande simplement un snapshot via `GET .../live`.
  */
+@Roles(UserRole.MEMBER)
 @Controller('routers/:id/live-events')
 export class RouterLiveEventsController {
   constructor(
