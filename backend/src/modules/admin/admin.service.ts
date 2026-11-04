@@ -699,6 +699,12 @@ export class AdminService {
     });
     if (!sub) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.SUBSCRIPTION_NOT_FOUND, 'Abonnement introuvable');
 
+    const resultingPlan = dto.plan ?? sub.plan;
+    const resultingTierId = dto.tierId !== undefined ? dto.tierId : sub.tierId;
+    if (resultingPlan === SubscriptionPlan.PRO && !resultingTierId) {
+      throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.PRO_TIER_REQUIRED, 'Un abonnement PRO doit avoir une formule (tierId).');
+    }
+
     if (dto.tierId) {
       const tier = await this.prisma.subscriptionTier.findUnique({
         where: { id: dto.tierId },
