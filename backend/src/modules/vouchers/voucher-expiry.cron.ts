@@ -64,11 +64,25 @@ export class VoucherExpiryCron {
         { mode: ManagementMode.REMOTE, credEncrypted: { not: null }, health: { not: RouterHealth.OFFLINE } },
       ],
     };
+    // L'échéance (usedAt + durée du forfait) ne s'exprime pas en SQL via Prisma : on la
+    // ramène à un seuil `usedAt <= now - durée` par durée distincte de forfait. Sans cela,
+    // `take` s'applique à des tickets pas encore expirés et les expirés plus récents
+    // restent bloqués derrière eux (starvation).
+    const durations = await this.prisma.plan.findMany({
+      distinct: ['durationMinutes'],
+      select: { durationMinutes: true },
+    });
+    const expiredNow: Prisma.VoucherWhereInput[] = durations.map(({ durationMinutes }) => ({
+      plan: { durationMinutes },
+      usedAt: { lte: new Date(now.getTime() - durationMinutes * 60_000) },
+    }));
+    if (expiredNow.length === 0) return 0;
     const candidates = await this.prisma.voucher.findMany({
       where: {
         status: VoucherStatus.ACTIVE,
         expiresAt: null,
         usedAt: { not: null },
+        OR: expiredNow,
         routerId: { notIn: [...this.cooldowns.keys()] },
         router: reachable,
       },
