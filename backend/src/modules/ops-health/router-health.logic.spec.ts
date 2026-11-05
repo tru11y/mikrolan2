@@ -84,6 +84,38 @@ describe('summarizeRouters — niveaux', () => {
   });
 });
 
+describe('summarizeRouters — période de grâce (jamais vu, créé < 24 h)', () => {
+  const fresh = (o: Partial<RouterRow> = {}) =>
+    router({ lastHeartbeat: null, createdAt: ago(30), health: 'UNKNOWN', credentialsConfigured: false, ...o });
+
+  it('UNKNOWN sans identifiants créé depuis 30 min → GREEN, compteurs descriptifs visibles', () => {
+    const r = run([fresh()]);
+    expect(r).toMatchObject({ level: 'GREEN', neverSeen: 1, remoteWithoutCredentials: 1, unknown: 1 });
+    expect(r.items[0].provisionPendingMinutes).toBe(30);
+  });
+  it('même routeur créé depuis 25 h → ORANGE', () => {
+    expect(run([fresh({ createdAt: ago(25 * 60) })]).level).toBe('ORANGE');
+  });
+  it('OFFLINE jamais vu créé depuis 2 h → GREEN ; 25 h → ORANGE', () => {
+    expect(run([fresh({ health: 'OFFLINE', credentialsConfigured: true, createdAt: ago(120) })]).level).toBe('GREEN');
+    expect(run([fresh({ health: 'OFFLINE', credentialsConfigured: true, createdAt: ago(25 * 60) })]).level).toBe('ORANGE');
+  });
+  it('déjà vu : UNKNOWN / ERROR / DEGRADED → ORANGE immédiatement', () => {
+    for (const health of ['UNKNOWN', 'ERROR', 'DEGRADED'] as const) {
+      expect(run([router({ health, createdAt: ago(30) })]).level).toBe('ORANGE');
+    }
+  });
+  it('déjà vu : OFFLINE depuis 25 h → RED', () => {
+    expect(run([router({ health: 'OFFLINE', lastHeartbeat: ago(25 * 60) })]).level).toBe('RED');
+  });
+  it('routeur en grâce + ancien OFFLINE → RED', () => {
+    expect(run([fresh(), router({ health: 'OFFLINE', lastHeartbeat: ago(3000) })]).level).toBe('RED');
+  });
+  it('routeur en grâce sans identifiants seul : GREEN mais remoteWithoutCredentials = 1', () => {
+    expect(run([fresh({ health: 'ONLINE' })])).toMatchObject({ level: 'GREEN', remoteWithoutCredentials: 1 });
+  });
+});
+
 describe('summarizeRouters — items', () => {
   it('tri : OFFLINE anciens, jamais vus (createdAt), ERROR, DEGRADED, UNKNOWN, ONLINE', () => {
     const on = router({ name: 'on' });

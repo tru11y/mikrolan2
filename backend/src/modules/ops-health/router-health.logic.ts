@@ -90,15 +90,20 @@ export function summarizeRouters(rows: RouterRow[], now: Date = new Date()): Rou
   const degraded = count('DEGRADED');
   const unknown = count('UNKNOWN') + count('ERROR');
 
+  // Période de grâce : jamais vu ET créé depuis moins de 24 h. Elle n'affecte que le niveau,
+  // jamais les compteurs descriptifs (neverSeen, remoteWithoutCredentials, unknown…).
+  const settled = remote.filter(
+    (r) => r.lastHeartbeat !== null || minutesSince(r.createdAt, now) >= ROUTER_STALE_AFTER_MINUTES,
+  );
+  const settledCount = (pred: (r: RouterRow) => boolean) => settled.filter(pred).length;
+
   const level = routersLevel({
     offlineOver24h,
     offlineRecent: offlineAges.length - offlineOver24h,
-    degraded,
-    unknown,
-    remoteWithoutCredentials,
-    neverSeenOver24h: neverSeenRows.filter(
-      (r) => minutesSince(r.createdAt, now) >= ROUTER_STALE_AFTER_MINUTES,
-    ).length,
+    degraded: settledCount((r) => r.health === 'DEGRADED'),
+    unknown: settledCount((r) => r.health === 'UNKNOWN' || r.health === 'ERROR'),
+    remoteWithoutCredentials: settledCount((r) => !r.credentialsConfigured),
+    neverSeenOver24h: settledCount((r) => r.lastHeartbeat === null),
   });
 
   const items = [...remote]
