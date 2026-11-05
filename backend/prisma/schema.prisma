@@ -562,7 +562,7 @@ model Plan {
   downloadKbps    Int? // rate-limit descendant (null = illimité)
   uploadKbps      Int? // rate-limit montant
   dataLimitMb     Int? // quota (limit-bytes-total), null = illimité
-  sharedUsers     Int            @default(1) // logins simultanés (RouterOS shared-users)
+  sharedUsers     Int // appareils simultanés (RouterOS shared-users) — obligatoire, entier >= 1, sans défaut
   expirationMode  PlanExpiration @default(RADIO_PAUSE) // Temps écoulé vs Pause radio
   userProfile     String         @default("default") // nom du profile RouterOS
   codePrefix      String? // préfixe collé devant le code généré (ex. "3d")

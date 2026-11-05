@@ -140,7 +140,7 @@ export const PlanListItem = memo(function PlanListItem({
         <PlansChip
           icon="people-outline"
           color={theme.textMuted}
-          label={`${p.sharedUsers} user${p.sharedUsers > 1 ? 's' : ''}`}
+          label={`${p.sharedUsers} appareil${p.sharedUsers > 1 ? 's' : ''}`}
         />
         <PlansChip
           icon="key-outline"

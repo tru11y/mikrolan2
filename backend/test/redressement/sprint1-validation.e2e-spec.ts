@@ -361,7 +361,7 @@ describe('Sprint 1 — Validation fonctionnelle (e2e)', () => {
           routerId: router.id,
           name: 'Test',
           slug: `test-${Date.now()}`,
-          durationMinutes: 60,
+          durationMinutes: 60, sharedUsers: 1,
           priceXof: 100,
         },
       });
