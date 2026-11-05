@@ -124,6 +124,18 @@ describe('ops-health routeurs — intégration réelle', () => {
     expect(r.online + r.degraded + r.offline + r.unknown).toBe(r.remote);
   });
 
+  it('période de grâce : UNKNOWN jamais vu sans identifiants créé il y a 30 min → GREEN ; 25 h → ORANGE', async () => {
+    await mk(tenantA, { health: RouterHealth.UNKNOWN, hb: null, cred: false, createdAt: min(30) });
+    const r = await scoped();
+    expect(r).toMatchObject({ level: 'GREEN', neverSeen: 1, remoteWithoutCredentials: 1, unknown: 1 });
+    expect(r.items[0].provisionPendingMinutes).toBeGreaterThanOrEqual(29);
+    await mk(tenantB, { health: RouterHealth.OFFLINE, hb: min(25 * 60 + 5) });
+    expect((await scoped()).level).toBe('RED');
+    await clear();
+    await mk(tenantA, { health: RouterHealth.UNKNOWN, hb: null, cred: false, createdAt: min(25 * 60) });
+    expect((await scoped()).level).toBe('ORANGE');
+  });
+
   it('routeur supprimé exclu', async () => {
     await mk(tenantA, { health: RouterHealth.OFFLINE, hb: min(50_000), deleted: true });
     await mk(tenantA);
