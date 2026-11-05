@@ -7,7 +7,8 @@ import { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { ManagementMode, VoucherStatus } from '@prisma/client';
 import * as Sentry from '@sentry/node';
 import { createTestApp } from '../helpers/app.helper';
-import { signupUser } from '../helpers/auth.helper';
+import request from 'supertest';
+import { promoteToSuperAdmin, signupUser } from '../helpers/auth.helper';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { OpsHealthService } from '../../src/modules/ops-health/ops-health.service';
 import { OpsHealthAlertCron } from '../../src/modules/ops-health/ops-health.alert.cron';
@@ -25,6 +26,7 @@ describe('ops-health — intégration réelle', () => {
   let prisma: PrismaService;
   let health: OpsHealthService;
   let tenantId: string;
+  let admin: { email: string; password: string };
   let routerId: string;
   let planId: string;
   let seq = 0;
@@ -60,6 +62,7 @@ describe('ops-health — intégration réelle', () => {
     prisma = app.get(PrismaService);
     health = app.get(OpsHealthService);
     const u = await signupUser(app, { tenantName: 'Ops T' });
+    admin = u;
     tenantId = (await prisma.user.findUniqueOrThrow({ where: { email: u.email } })).tenantId;
     routerId = (
       await prisma.router.create({
@@ -128,7 +131,14 @@ describe('ops-health — intégration réelle', () => {
     const cron = makeCron('solqueflo.balley@epitech.eu');
     await cron.checkExpiry();
     expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining('EXPIRY_PENDING_STUCK'), 'fatal');
+    expect(spy).toHaveBeenCalledWith(
+      expect.stringContaining('EXPIRY_PENDING_STUCK'),
+      expect.objectContaining({
+        level: 'fatal',
+        tags: expect.objectContaining({ errorCode: 'EXPIRY_PENDING_STUCK' }),
+        extra: expect.objectContaining({ pending: 2 }),
+      }),
+    );
     expect(sendAlert).toHaveBeenCalledTimes(1);
     expect(sendAlert).toHaveBeenCalledWith(
       'solqueflo.balley@epitech.eu',
@@ -155,11 +165,59 @@ describe('ops-health — intégration réelle', () => {
     expect(sendAlert).toHaveBeenCalledTimes(3);
   });
 
+  it('routeur REMOTE hors ligne : compté en blockedOffline, jamais rouge', async () => {
+    const off = await prisma.router.create({
+      data: { tenantId, identity: 'r-off', mode: ManagementMode.REMOTE, health: 'OFFLINE', credEncrypted: 'x' },
+    });
+    const v = await voucher({ status: VoucherStatus.ACTIVE, usedAt: min(30000) });
+    await prisma.voucher.update({ where: { id: v.id }, data: { routerId: off.id } });
+    const h = await health.getExpiryHealth();
+    expect(h).toMatchObject({ level: 'GREEN', pending: 0, blockedOffline: 1, oldestPendingMinutes: null });
+    await makeCron('a@b.c').checkExpiry();
+    expect(captureMessage).not.toHaveBeenCalled();
+    expect(sendAlert).not.toHaveBeenCalled();
+    await prisma.voucher.deleteMany({});
+    await prisma.router.delete({ where: { id: off.id } });
+  });
+
   it('ALERT_EMAIL vide : aucun email, Sentry émis quand même', async () => {
     await voucher({ status: VoucherStatus.ACTIVE, usedAt: min(100) });
     const spy = captureMessage;
     await makeCron('').checkExpiry();
     expect(sendAlert).not.toHaveBeenCalled();
     expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('backlog : 3000 tickets expirés comptés exactement, requête rapide', async () => {
+    await prisma.voucher.createMany({
+      data: Array.from({ length: 3000 }, (_, k) => ({
+        tenantId, routerId, planId, code: `bk${k}`, password: 'x',
+        status: VoucherStatus.ACTIVE, usedAt: min(90 + (k % 600)),
+      })),
+    });
+    const t0 = Date.now();
+    const h = await health.getExpiryHealth();
+    expect(Date.now() - t0).toBeLessThan(1000);
+    expect(h.pending).toBe(3000);
+    expect(h.level).toBe('RED');
+    expect(h.oldestPendingMinutes).toBeGreaterThanOrEqual(628);
+  });
+
+  it('HTTP GET /api/admin/system-health : 401 anonyme, 403 non-admin, 200 SUPER_ADMIN', async () => {
+    await voucher({ status: VoucherStatus.ACTIVE, usedAt: min(100) });
+    const http = app.getHttpServer();
+    await request(http).get('/api/admin/system-health').expect(401);
+    const other = await signupUser(app, { tenantName: 'Other' });
+    await request(http)
+      .get('/api/admin/system-health')
+      .set('Authorization', `Bearer ${other.accessToken}`)
+      .expect(403);
+    const { accessToken } = await promoteToSuperAdmin(app, admin.email, admin.password);
+    const res = await request(http)
+      .get('/api/admin/system-health')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    const body = res.body.data ?? res.body;
+    expect(body.expiry).toMatchObject({ level: 'RED', pending: 1 });
   });
 });
