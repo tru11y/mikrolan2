@@ -54,6 +54,17 @@ describe('summarizeRouters — niveaux', () => {
     const old = router({ health: 'OFFLINE', lastHeartbeat: null, createdAt: ago(1440) });
     expect(run([old])).toMatchObject({ level: 'ORANGE', neverSeen: 1, oldestOfflineMinutes: null, offlineOver24h: 0 });
   });
+  it('UNKNOWN seul → ORANGE ; ERROR seul → ORANGE', () => {
+    expect(run([router({ health: 'UNKNOWN' })])).toMatchObject({ level: 'ORANGE', unknown: 1 });
+    expect(run([router({ health: 'ERROR' })])).toMatchObject({ level: 'ORANGE', unknown: 1 });
+  });
+  it('UNKNOWN + OFFLINE ancien → RED', () => {
+    expect(run([router({ health: 'UNKNOWN' }), router({ health: 'OFFLINE', lastHeartbeat: ago(2000) })]).level).toBe('RED');
+  });
+  it('LOCAL UNKNOWN / ERROR → GREEN, unknown ne compte que les REMOTE', () => {
+    const r = run([router({ mode: 'LOCAL', health: 'UNKNOWN' }), router({ mode: 'LOCAL', health: 'ERROR' })]);
+    expect(r).toMatchObject({ level: 'GREEN', unknown: 0, local: 2, remote: 0 });
+  });
   it('RED prime sur ORANGE', () => {
     expect(
       run([router({ health: 'DEGRADED' }), router({ credentialsConfigured: false }), router({ health: 'OFFLINE', lastHeartbeat: ago(3000) })]).level,
@@ -74,13 +85,17 @@ describe('summarizeRouters — niveaux', () => {
 });
 
 describe('summarizeRouters — items', () => {
-  it('tri : OFFLINE anciens, jamais vus (createdAt), DEGRADED, ONLINE', () => {
+  it('tri : OFFLINE anciens, jamais vus (createdAt), ERROR, DEGRADED, UNKNOWN, ONLINE', () => {
     const on = router({ name: 'on' });
     const deg = router({ name: 'deg', health: 'DEGRADED' });
     const nev = router({ name: 'nev', health: 'OFFLINE', lastHeartbeat: null, createdAt: ago(5000) });
     const offRecent = router({ name: 'off-recent', health: 'OFFLINE', lastHeartbeat: ago(30) });
     const offOld = router({ name: 'off-old', health: 'OFFLINE', lastHeartbeat: ago(9000) });
-    expect(run([on, deg, nev, offRecent, offOld]).items.map((i) => i.name)).toEqual(['off-old', 'off-recent', 'nev', 'deg', 'on']);
+    const err = router({ name: 'err', health: 'ERROR' });
+    const unk = router({ name: 'unk', health: 'UNKNOWN' });
+    expect(run([on, unk, deg, nev, err, offRecent, offOld]).items.map((i) => i.name)).toEqual([
+      'off-old', 'off-recent', 'nev', 'err', 'deg', 'unk', 'on',
+    ]);
   });
   it('minutes calculées et id tronqué', () => {
     const [i] = run([router({ health: 'OFFLINE', lastHeartbeat: ago(125) })]).items;
@@ -91,8 +106,13 @@ describe('summarizeRouters — items', () => {
     expect(j).toMatchObject({ offlineMinutes: null, provisionPendingMinutes: 90 });
   });
   it(`plafond à ${ROUTER_ITEMS_MAX}`, () => {
-    const r = run(Array.from({ length: 120 }, () => router()));
+    const rows = [
+      ...Array.from({ length: 119 }, () => router()),
+      router({ name: 'critique', health: 'OFFLINE', lastHeartbeat: ago(5000) }),
+    ];
+    const r = run(rows);
     expect(r.items).toHaveLength(ROUTER_ITEMS_MAX);
+    expect(r.items[0].name).toBe('critique'); // le tri précède le plafond
     expect(r.remote).toBe(120);
   });
 });
