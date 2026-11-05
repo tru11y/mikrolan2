@@ -24,7 +24,7 @@ async function postVoucher(
       routerId,
       name: '1H',
       slug: planName.slice(0, 50),
-      durationMinutes: 60,
+      durationMinutes: 60, sharedUsers: 1,
       priceXof: 500,
     },
   });

@@ -377,7 +377,7 @@ describe('Ticket verifiers CRUD (e2e)', () => {
           routerId: s.routerA1,
           name: '1H',
           slug: `h-${Date.now()}`,
-          durationMinutes: 60,
+          durationMinutes: 60, sharedUsers: 1,
           priceXof: 500,
         },
       });
