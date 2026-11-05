@@ -1,11 +1,12 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
 import { useState } from 'react';
-import { Alert, Modal, ScrollView, TextInput, TouchableOpacity, View, Text } from 'react-native';
+import { Modal, ScrollView, TextInput, TouchableOpacity, View, Text } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { api, extractErrorMessage, type AdminTenantDetail } from '@/src/lib/api';
+import { api, type AdminTenantDetail } from '@/src/lib/api';
+import { invoicePaymentKey } from '@/src/lib/invoicePayment';
 import { describeError } from '@/src/lib/errors';
 import { formatXof } from '@/src/config/tiers';
 import {
@@ -271,31 +272,10 @@ export default function AdminTenantScreen() {
                           }
                         />
                       </Row>
-                      {inv.status === 'PENDING' ? (
-                        <Row style={{ gap: space.sm, marginTop: space.sm }}>
-                          <View style={{ flex: 1 }}>
-                            <Button
-                              title={tr('adminTenant.validateInvoice')}
-                              onPress={() => {
-                                api.admin.validateInvoice(inv.id).then(() =>
-                                  queryClient.invalidateQueries({ queryKey: ['admin-tenant', id] }),
-                                ).catch((e) => Alert.alert('Erreur', extractErrorMessage(e)));
-                              }}
-                            />
-                          </View>
-                          <View style={{ flex: 1 }}>
-                            <Button
-                              title={tr('adminTenant.rejectInvoice')}
-                              variant="danger"
-                              onPress={() => {
-                                api.admin.rejectInvoice(inv.id, 'Refusé').then(() =>
-                                  queryClient.invalidateQueries({ queryKey: ['admin-tenant', id] }),
-                                ).catch((e) => Alert.alert('Erreur', extractErrorMessage(e)));
-                              }}
-                            />
-                          </View>
-                        </Row>
-                      ) : null}
+                      {/* Aucune action manuelle : une facture n'est activée que par le webhook SasPay confirmé. */}
+                      <Text style={{ color: theme.textMuted, fontSize: type.caption, marginTop: space.sm }}>
+                        {tr(`adminPayments.${invoicePaymentKey(inv.provider, inv.status)}`, { defaultValue: inv.status })}
+                      </Text>
                     </Card>
                   ))}
                 </View>
