@@ -14,6 +14,10 @@ export class OpsHealthController {
 
   @Get()
   async get() {
-    return { expiry: await this.health.getExpiryHealth() };
+    const [expiry, routers] = await Promise.all([
+      this.health.getExpiryHealth(),
+      this.health.getRoutersHealth(),
+    ]);
+    return { expiry, routers };
   }
 }
