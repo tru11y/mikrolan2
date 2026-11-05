@@ -40,7 +40,7 @@ export interface RoutersHealth {
   online: number;
   degraded: number;
   offline: number;
-  /** REMOTE au health UNKNOWN/ERROR : garde online+degraded+offline+unknown = remote. */
+  /** REMOTE au health UNKNOWN ou ERROR (jamais LOCAL) : remote = online + degraded + offline + unknown. */
   unknown: number;
   offlineOver24h: number;
   remoteWithoutCredentials: number;
@@ -55,23 +55,26 @@ const minutesSince = (d: Date, now: Date): number =>
 
 /** Priorité RED > ORANGE > GREEN, sur les routeurs REMOTE uniquement. */
 export function routersLevel(
-  c: Pick<RoutersHealth, 'offlineOver24h' | 'degraded' | 'remoteWithoutCredentials'> & {
+  c: Pick<RoutersHealth, 'offlineOver24h' | 'degraded' | 'unknown' | 'remoteWithoutCredentials'> & {
     offlineRecent: number;
     neverSeenOver24h: number;
   },
 ): HealthLevel {
   if (c.offlineOver24h > 0) return 'RED';
-  if (c.offlineRecent + c.degraded + c.remoteWithoutCredentials + c.neverSeenOver24h > 0) {
+  if (c.offlineRecent + c.degraded + c.unknown + c.remoteWithoutCredentials + c.neverSeenOver24h > 0) {
     return 'ORANGE';
   }
   return 'GREEN';
 }
 
+/** OFFLINE vus, jamais vus, ERROR, DEGRADED, UNKNOWN, puis le reste (ONLINE). */
 function rank(r: RouterRow): number {
   if (r.health === 'OFFLINE' && r.lastHeartbeat) return 0;
   if (!r.lastHeartbeat) return 1;
-  if (r.health === 'DEGRADED') return 2;
-  return 3;
+  if (r.health === 'ERROR') return 2;
+  if (r.health === 'DEGRADED') return 3;
+  if (r.health === 'UNKNOWN') return 4;
+  return 5;
 }
 
 export function summarizeRouters(rows: RouterRow[], now: Date = new Date()): RoutersHealth {
@@ -85,11 +88,13 @@ export function summarizeRouters(rows: RouterRow[], now: Date = new Date()): Rou
   const heartbeats = remote.flatMap((r) => (r.lastHeartbeat ? [r.lastHeartbeat.getTime()] : []));
   const remoteWithoutCredentials = remote.filter((r) => !r.credentialsConfigured).length;
   const degraded = count('DEGRADED');
+  const unknown = count('UNKNOWN') + count('ERROR');
 
   const level = routersLevel({
     offlineOver24h,
     offlineRecent: offlineAges.length - offlineOver24h,
     degraded,
+    unknown,
     remoteWithoutCredentials,
     neverSeenOver24h: neverSeenRows.filter(
       (r) => minutesSince(r.createdAt, now) >= ROUTER_STALE_AFTER_MINUTES,
@@ -127,7 +132,7 @@ export function summarizeRouters(rows: RouterRow[], now: Date = new Date()): Rou
     online: count('ONLINE'),
     degraded,
     offline: count('OFFLINE'),
-    unknown: count('UNKNOWN') + count('ERROR'),
+    unknown,
     offlineOver24h,
     remoteWithoutCredentials,
     neverSeen: neverSeenRows.length,

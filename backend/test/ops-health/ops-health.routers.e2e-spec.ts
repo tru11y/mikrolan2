@@ -24,6 +24,12 @@ describe('ops-health routeurs — intégration réelle', () => {
   let tenantB: string;
   let seq = 0;
 
+  // Périmètre isolé : seuls les tenants A et B de cette suite sont lus et nettoyés.
+  const scoped = () => health.getRoutersHealth(new Date(), [tenantA, tenantB]);
+  const clear = async () => {
+    await prisma.router.deleteMany({ where: { tenantId: { in: [tenantA, tenantB] } } });
+  };
+
   const mk = (
     tenantId: string,
     o: {
@@ -61,57 +67,67 @@ describe('ops-health routeurs — intégration réelle', () => {
     tenantB = (await prisma.user.findUniqueOrThrow({ where: { email: b.email } })).tenantId;
   });
 
-  // DB partagée entre suites (--runInBand) : on écarte les routeurs des autres suites.
-  beforeEach(async () => {
-    await prisma.router.updateMany({ where: { deletedAt: null }, data: { deletedAt: new Date() } });
+  beforeEach(clear);
+
+  afterAll(async () => {
+    await clear();
+    await app.close();
   });
 
-  afterAll(async () => app.close());
-
   it('aucun routeur → GREEN', async () => {
-    expect(await health.getRoutersHealth()).toMatchObject({ level: 'GREEN', total: 0, remote: 0, local: 0, items: [] });
+    expect(await scoped()).toMatchObject({ level: 'GREEN', total: 0, remote: 0, local: 0, items: [] });
   });
 
   it('tous ONLINE → GREEN', async () => {
     await mk(tenantA);
     await mk(tenantB);
-    expect(await health.getRoutersHealth()).toMatchObject({ level: 'GREEN', total: 2, remote: 2, online: 2 });
+    expect(await scoped()).toMatchObject({ level: 'GREEN', total: 2, remote: 2, online: 2 });
   });
 
   it('LOCAL OFFLINE jamais vu : compté local, aucun effet sur le niveau', async () => {
     await mk(tenantA, { mode: ManagementMode.LOCAL, health: RouterHealth.OFFLINE, hb: null, cred: false });
     await mk(tenantA);
-    const r = await health.getRoutersHealth();
+    const r = await scoped();
     expect(r).toMatchObject({ level: 'GREEN', total: 2, local: 1, remote: 1, offline: 0, neverSeen: 0, remoteWithoutCredentials: 0 });
     expect(r.items).toHaveLength(1);
   });
 
   it('OFFLINE récent → ORANGE ; OFFLINE ≥ 24 h → RED', async () => {
     await mk(tenantA, { health: RouterHealth.OFFLINE, hb: min(120) });
-    expect((await health.getRoutersHealth()).level).toBe('ORANGE');
+    expect((await scoped()).level).toBe('ORANGE');
     await mk(tenantB, { health: RouterHealth.OFFLINE, hb: min(20_456) });
-    const r = await health.getRoutersHealth();
+    const r = await scoped();
     expect(r).toMatchObject({ level: 'RED', offline: 2, offlineOver24h: 1 });
     expect(r.oldestOfflineMinutes).toBeGreaterThanOrEqual(20_455);
   });
 
   it('DEGRADED, sans identifiants, jamais vu (grâce 24 h)', async () => {
     await mk(tenantA, { health: RouterHealth.DEGRADED });
-    expect((await health.getRoutersHealth()).level).toBe('ORANGE');
-    await prisma.router.updateMany({ where: { deletedAt: null }, data: { deletedAt: new Date() } });
+    expect((await scoped()).level).toBe('ORANGE');
+    await clear();
     await mk(tenantA, { cred: false });
-    expect(await health.getRoutersHealth()).toMatchObject({ level: 'ORANGE', remoteWithoutCredentials: 1 });
-    await prisma.router.updateMany({ where: { deletedAt: null }, data: { deletedAt: new Date() } });
+    expect(await scoped()).toMatchObject({ level: 'ORANGE', remoteWithoutCredentials: 1 });
+    await clear();
     await mk(tenantA, { health: RouterHealth.OFFLINE, hb: null, createdAt: min(60) });
-    expect(await health.getRoutersHealth()).toMatchObject({ level: 'GREEN', neverSeen: 1 });
+    expect(await scoped()).toMatchObject({ level: 'GREEN', neverSeen: 1 });
     await mk(tenantA, { health: RouterHealth.OFFLINE, hb: null, createdAt: min(2000) });
-    expect(await health.getRoutersHealth()).toMatchObject({ level: 'ORANGE', neverSeen: 2, oldestOfflineMinutes: null });
+    expect(await scoped()).toMatchObject({ level: 'ORANGE', neverSeen: 2, oldestOfflineMinutes: null });
+  });
+
+  it('REMOTE UNKNOWN / ERROR → ORANGE et unknown ; LOCAL UNKNOWN ignoré', async () => {
+    await mk(tenantA, { mode: ManagementMode.LOCAL, health: RouterHealth.UNKNOWN });
+    expect(await scoped()).toMatchObject({ level: 'GREEN', unknown: 0 });
+    await mk(tenantA, { health: RouterHealth.UNKNOWN });
+    await mk(tenantB, { health: RouterHealth.ERROR });
+    const r = await scoped();
+    expect(r).toMatchObject({ level: 'ORANGE', remote: 2, unknown: 2, local: 1, total: 3 });
+    expect(r.online + r.degraded + r.offline + r.unknown).toBe(r.remote);
   });
 
   it('routeur supprimé exclu', async () => {
     await mk(tenantA, { health: RouterHealth.OFFLINE, hb: min(50_000), deleted: true });
     await mk(tenantA);
-    expect(await health.getRoutersHealth()).toMatchObject({ level: 'GREEN', total: 1, offline: 0 });
+    expect(await scoped()).toMatchObject({ level: 'GREEN', total: 1, offline: 0 });
   });
 
   it('HTTP 401 / 403 / 200 et aucun champ sensible', async () => {
@@ -124,13 +140,14 @@ describe('ops-health routeurs — intégration réelle', () => {
     const res = await request(http).get('/api/admin/system-health').set('Authorization', `Bearer ${accessToken}`).expect(200);
     const body = res.body.data ?? res.body;
     expect(body.expiry).toBeDefined();
-    expect(body.routers).toMatchObject({ level: 'RED', total: 1, offlineOver24h: 1 });
-    expect(body.routers.items[0]).toMatchObject({ name: 'Mon routeur', mode: 'REMOTE', credentialsConfigured: true });
+    expect(body.routers.level).toBe('RED'); // vue globale : au moins notre OFFLINE ≥ 24 h
+    const mine = body.routers.items.find((i: { name: string }) => i.name === 'Mon routeur');
+    expect(mine).toMatchObject({ mode: 'REMOTE', health: 'OFFLINE', credentialsConfigured: true });
     const raw = JSON.stringify(body);
     for (const forbidden of [SECRET, LAN, 'credEncrypted', 'localAddress', 'wgPublicKey', 'endpoint', 'password']) {
       expect(raw).not.toContain(forbidden);
     }
-    expect(body.routers.items[0].id).toHaveLength(8);
+    expect(mine.id).toHaveLength(8);
   });
 
   it('500 routeurs : exact et < 1 s', async () => {
@@ -145,7 +162,7 @@ describe('ops-health routeurs — intégration réelle', () => {
       })),
     });
     const t0 = Date.now();
-    const r = await health.getRoutersHealth();
+    const r = await scoped();
     expect(Date.now() - t0).toBeLessThan(1000);
     expect(r.total).toBe(500);
     expect(r.local).toBe(50);
