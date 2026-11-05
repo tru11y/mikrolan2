@@ -31,6 +31,12 @@ describe('ops-health — intégration réelle', () => {
   let planId: string;
   let seq = 0;
 
+  // DB partagée entre suites (--runInBand) : supprimer d'abord les lignes qui référencent les tickets.
+  const clearVouchers = async () => {
+    await prisma.session.deleteMany({});
+    await prisma.voucher.deleteMany({});
+  };
+
   const sendAlert = jest.fn().mockResolvedValue(undefined);
   const makeCron = (email: string) =>
     new OpsHealthAlertCron(
@@ -77,7 +83,7 @@ describe('ops-health — intégration réelle', () => {
   });
 
   beforeEach(async () => {
-    await prisma.voucher.deleteMany({});
+    await clearVouchers();
     sendAlert.mockClear();
     captureMessage.mockClear();
     jest.restoreAllMocks();
@@ -158,7 +164,7 @@ describe('ops-health — intégration réelle', () => {
     expect(sendAlert).toHaveBeenCalledTimes(2);
     nowSpy.mockRestore();
 
-    await prisma.voucher.deleteMany({}); // résolu → reset du throttle
+    await clearVouchers(); // résolu → reset du throttle
     await cron.checkExpiry();
     await voucher({ status: VoucherStatus.ACTIVE, usedAt: min(100) });
     await cron.checkExpiry();
@@ -176,7 +182,7 @@ describe('ops-health — intégration réelle', () => {
     await makeCron('a@b.c').checkExpiry();
     expect(captureMessage).not.toHaveBeenCalled();
     expect(sendAlert).not.toHaveBeenCalled();
-    await prisma.voucher.deleteMany({});
+    await clearVouchers();
     await prisma.router.delete({ where: { id: off.id } });
   });
 
