@@ -33,6 +33,7 @@ import { AdminModule } from './modules/admin/admin.module';
 import { AppReleasesModule } from './modules/app-releases/app-releases.module';
 import { AccountingModule } from './modules/accounting/accounting.module';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { OpsHealthModule } from './modules/ops-health/ops-health.module';
 import { MailModule } from './modules/mail/mail.module';
 import { SupportModule } from './modules/support/support.module';
 import { TelemetryModule } from './modules/telemetry/telemetry.module';
@@ -65,6 +66,7 @@ import { RouterGatewayModule } from './modules/router-gateway/router-gateway.mod
     EventsModule,
     AuthModule,
     AdminModule,
+    OpsHealthModule,
     AppReleasesModule,
     SubscriptionsModule,
     RoutersModule,
