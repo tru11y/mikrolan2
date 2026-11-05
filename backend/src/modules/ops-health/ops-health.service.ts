@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { RouterRow, RoutersHealth, summarizeRouters } from './router-health.logic';
 
 export type HealthLevel = 'GREEN' | 'ORANGE' | 'RED';
 
@@ -64,5 +65,35 @@ export class OpsHealthService {
       appliedLast24h: applied,
       lastExpiredAt: last._max.expiresAt,
     };
+  }
+
+  /** Une seule requête bornée aux routeurs non supprimés ; aucun secret n'est lu. */
+  async getRoutersHealth(now: Date = new Date()): Promise<RoutersHealth> {
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        id: string;
+        name: string;
+        mode: RouterRow['mode'];
+        health: RouterRow['health'];
+        has_cred: boolean;
+        last_heartbeat: Date | null;
+        created_at: Date;
+      }>
+    >`SELECT r.id, COALESCE(r.alias, r.identity) AS name, r.mode::text AS mode, r.health::text AS health,
+             (r."credEncrypted" IS NOT NULL) AS has_cred, r."lastHeartbeat" AS last_heartbeat,
+             r."createdAt" AS created_at
+      FROM "Router" r WHERE r."deletedAt" IS NULL`;
+    return summarizeRouters(
+      rows.map((r) => ({
+        id: r.id,
+        name: r.name,
+        mode: r.mode,
+        health: r.health,
+        credentialsConfigured: r.has_cred,
+        lastHeartbeat: r.last_heartbeat,
+        createdAt: r.created_at,
+      })),
+      now,
+    );
   }
 }
