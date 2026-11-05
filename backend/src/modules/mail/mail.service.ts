@@ -47,6 +47,11 @@ export class MailService {
     await this.send(to, `Facture MikroLan — ${period}`, invoiceHtml(invoiceId, amount, period));
   }
 
+  async sendAlert(to: string, title: string, detail: string): Promise<void> {
+    const safe = detail.replace(/[<>&]/g, '');
+    await this.send(to, `[MikroLan ALERTE] ${title}`, `<p><b>${title}</b></p><p>${safe}</p>`);
+  }
+
   private async send(to: string, subject: string, html: string): Promise<void> {
     if (!this.transporter) {
       this.logger.debug(`Mail skipped (no SMTP): ${subject} → ${to}`);
