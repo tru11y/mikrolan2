@@ -30,13 +30,13 @@ export class OpsHealthAlertCron {
       const now = Date.now();
       if (now - this.lastAlertAt < REALERT_AFTER_MS) return;
       this.lastAlertAt = now;
-      const msg = `${h.pending} tickets expirés non appliqués sur le routeur (plus ancien : ${h.oldestPendingMinutes} min)`;
-      this.logger.error({ errorCode: 'EXPIRY_PENDING_STUCK', pending: h.pending });
+      const msg = `${h.pendingOnline} tickets expirés non appliqués sur le routeur (plus ancien : ${h.oldestPendingMinutes} min)`;
+      this.logger.error({ errorCode: 'EXPIRY_PENDING_STUCK', pendingOnline: h.pendingOnline });
       Sentry.captureMessage(`EXPIRY_PENDING_STUCK: ${msg}`, {
         level: 'fatal',
         tags: { errorCode: 'EXPIRY_PENDING_STUCK', domain: 'voucher-expiry' },
         extra: {
-          pending: h.pending,
+          pendingOnline: h.pendingOnline,
           oldestPendingMinutes: h.oldestPendingMinutes,
           appliedLast24h: h.appliedLast24h,
           lastExpiredAt: h.lastExpiredAt,

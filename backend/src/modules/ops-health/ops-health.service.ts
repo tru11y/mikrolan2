@@ -6,9 +6,9 @@ export type HealthLevel = 'GREEN' | 'ORANGE' | 'RED';
 export interface ExpiryHealth {
   level: HealthLevel;
   /** Tickets expirés que le cron peut traiter (routeur joignable). */
-  pending: number;
+  pendingOnline: number;
   /** Expirés sur routeur hors ligne / sans identifiants / supprimé : le cron les saute volontairement. */
-  blockedOffline: number;
+  pendingOffline: number;
   oldestPendingMinutes: number | null;
   appliedLast24h: number;
   lastExpiredAt: Date | null;
@@ -17,8 +17,8 @@ export interface ExpiryHealth {
 /** Le cron d'expiration tourne toutes les 5 min : au-delà, il est considéré bloqué. */
 export const PENDING_RED_AFTER_MINUTES = 30;
 
-export function expiryLevel(pending: number, oldestMinutes: number | null): HealthLevel {
-  if (pending === 0) return 'GREEN';
+export function expiryLevel(pendingOnline: number, oldestMinutes: number | null): HealthLevel {
+  if (pendingOnline === 0) return 'GREEN';
   return (oldestMinutes ?? 0) >= PENDING_RED_AFTER_MINUTES ? 'RED' : 'ORANGE';
 }
 
@@ -50,16 +50,16 @@ export class OpsHealthService {
         where: { expiresAt: { lte: now } },
       }),
     ]);
-    const pending = Number(pendingRow[0]?.pending ?? 0n);
-    const blockedOffline = Number(pendingRow[0]?.blocked ?? 0n);
+    const pendingOnline = Number(pendingRow[0]?.pending ?? 0n);
+    const pendingOffline = Number(pendingRow[0]?.blocked ?? 0n);
     const oldest = pendingRow[0]?.oldest ?? null;
     const oldestPendingMinutes = oldest
       ? Math.floor((now.getTime() - oldest.getTime()) / 60_000)
       : null;
     return {
-      level: expiryLevel(pending, oldestPendingMinutes),
-      pending,
-      blockedOffline,
+      level: expiryLevel(pendingOnline, oldestPendingMinutes),
+      pendingOnline,
+      pendingOffline,
       oldestPendingMinutes,
       appliedLast24h: applied,
       lastExpiredAt: last._max.expiresAt,
