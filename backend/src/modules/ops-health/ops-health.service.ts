@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RouterRow, RoutersHealth, summarizeRouters } from './router-health.logic';
 
@@ -68,7 +69,8 @@ export class OpsHealthService {
   }
 
   /** Une seule requête bornée aux routeurs non supprimés ; aucun secret n'est lu. */
-  async getRoutersHealth(now: Date = new Date()): Promise<RoutersHealth> {
+  /** `tenantIds` restreint le périmètre (tests isolés) ; l'endpoint SUPER_ADMIN ne le passe pas. */
+  async getRoutersHealth(now: Date = new Date(), tenantIds?: string[]): Promise<RoutersHealth> {
     const rows = await this.prisma.$queryRaw<
       Array<{
         id: string;
@@ -82,7 +84,8 @@ export class OpsHealthService {
     >`SELECT r.id, COALESCE(r.alias, r.identity) AS name, r.mode::text AS mode, r.health::text AS health,
              (r."credEncrypted" IS NOT NULL) AS has_cred, r."lastHeartbeat" AS last_heartbeat,
              r."createdAt" AS created_at
-      FROM "Router" r WHERE r."deletedAt" IS NULL`;
+      FROM "Router" r WHERE r."deletedAt" IS NULL
+      ${tenantIds ? Prisma.sql`AND r."tenantId" = ANY(${tenantIds})` : Prisma.empty}`;
     return summarizeRouters(
       rows.map((r) => ({
         id: r.id,
