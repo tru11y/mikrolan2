@@ -103,7 +103,7 @@ describe('VoucherExpiryCron', () => {
     type Clause = { plan: { durationMinutes: number }; usedAt: { lte: Date } };
 
     // Base simulée qui applique réellement where / orderBy / take, comme PostgreSQL.
-    function fakeDb(rows: Row[]) {
+    function fakeDb(rows: Row[], runImpl: () => Promise<void> = async () => undefined) {
       const prisma = {
         plan: { findMany: jest.fn().mockResolvedValue(durationsOf(rows)) },
         voucher: {
@@ -123,10 +123,10 @@ describe('VoucherExpiryCron', () => {
         },
         session: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       };
-      const remote = { run: jest.fn(async () => undefined) };
+      const remote = { run: jest.fn(runImpl) };
       const eventLog = { success: jest.fn().mockResolvedValue(undefined) };
       const cron = new VoucherExpiryCron(prisma as never, remote as never, eventLog as never);
-      return { cron, prisma };
+      return { cron, prisma, remote };
     }
 
     const mk = (id: string, usedAgoMin: number, durationMinutes: number, routerId = 'r1'): Row => ({
@@ -172,6 +172,94 @@ describe('VoucherExpiryCron', () => {
           { plan: { durationMinutes: 4320 }, usedAt: { lte: ago(4320) } },
         ]),
       );
+    });
+
+    describe('non-régression volumes', () => {
+      const done = (rows: Row[], prefix: string) =>
+        rows.filter((r) => r.id.startsWith(prefix)).every((r) => r.expiresAt !== null);
+
+      it('300 valides devant 500 expirés : 200 + 200 + 100 sur passages successifs, puis plus rien', async () => {
+        const rows = [...nonExpired(300), ...expired(500)];
+        const { cron } = fakeDb(rows);
+        expect(await cron.run(now)).toBe(200);
+        expect(await cron.run(now)).toBe(200);
+        expect(await cron.run(now)).toBe(100);
+        expect(await cron.run(now)).toBe(0);
+        expect(done(rows, 'e')).toBe(true);
+        expect(rows.filter((r) => r.id.startsWith('n')).every((r) => r.expiresAt === null)).toBe(true);
+      });
+
+      it('lot plein : exactement 200 expirés = 1 passage, le suivant est vide', async () => {
+        const rows = [...nonExpired(300), ...expired(200)];
+        const { cron } = fakeDb(rows);
+        expect(await cron.run(now)).toBe(200);
+        expect(await cron.run(now)).toBe(0);
+      });
+
+      it('1000 expirés : arriéré résorbé en 5 passages de 200, aucun doublon de traitement', async () => {
+        const rows = [...nonExpired(500), ...expired(1000)];
+        const { cron, remote } = fakeDb(rows);
+        for (let i = 0; i < 5; i += 1) expect(await cron.run(now)).toBe(200);
+        expect(await cron.run(now)).toBe(0);
+        expect(done(rows, 'e')).toBe(true);
+        expect(remote.run).toHaveBeenCalledTimes(1000);
+      });
+
+      it('250 échecs permanents sur un routeur : terminaison garantie, 1 seul appel routeur par passage', async () => {
+        const bad = Array.from({ length: 250 }, (_, i) => mk(`bad${i}`, 600 + i, 60, 'r1'));
+        const good = Array.from({ length: 50 }, (_, i) => mk(`e${i}`, 120 + i, 60, 'r2'));
+        const rows = [...bad, ...good];
+        const { cron, remote } = fakeDb(rows, async () => {
+          throw new Error('timeout');
+        });
+        // r1 échoue en premier (tickets les plus anciens) : un seul appel, puis cooldown.
+        expect(await cron.run(now)).toBe(0);
+        expect(remote.run).toHaveBeenCalledTimes(1);
+        // passage suivant : r1 exclu, r2 traité (échoue aussi ici -> 1 appel), pas de boucle.
+        await cron.run(new Date(now.getTime() + 60_000));
+        expect(remote.run).toHaveBeenCalledTimes(2);
+        expect(rows.every((r) => r.expiresAt === null)).toBe(true);
+      });
+
+      it('routeur en échec permanent : r2 sain finit traité pendant que r1 reste en cooldown', async () => {
+        const bad = Array.from({ length: 250 }, (_, i) => mk(`bad${i}`, 600 + i, 60, 'r1'));
+        const good = Array.from({ length: 50 }, (_, i) => mk(`e${i}`, 120 + i, 60, 'r2'));
+        const rows = [...bad, ...good];
+        const { cron, remote } = fakeDb(rows, async () => {
+          throw new Error('timeout');
+        });
+        remote.run.mockImplementation(async () => {
+          // échec uniquement pour r1 : r2 réussit
+        });
+        remote.run.mockRejectedValueOnce(new Error('timeout')); // 1er appel = r1
+        await cron.run(now);
+        expect(await cron.run(new Date(now.getTime() + 60_000))).toBe(50);
+        expect(done(rows, 'e')).toBe(true);
+        expect(rows.filter((r) => r.id.startsWith('bad')).every((r) => r.expiresAt === null)).toBe(true);
+      });
+
+      it('cooldown 15 min : exclu à 14 min 59, retenté à 15 min pile', async () => {
+        const rows = [mk('a', 120, 60)];
+        const { cron, prisma, remote } = fakeDb(rows, async () => {
+          throw new Error('timeout');
+        });
+        await cron.run(now);
+        expect(remote.run).toHaveBeenCalledTimes(1);
+        await cron.run(new Date(now.getTime() + 14 * 60_000 + 59_000));
+        expect(remote.run).toHaveBeenCalledTimes(1);
+        expect(prisma.voucher.findMany.mock.calls.at(-1)![0].where.routerId).toEqual({ notIn: ['r1'] });
+        await cron.run(new Date(now.getTime() + 15 * 60_000));
+        expect(remote.run).toHaveBeenCalledTimes(2);
+      });
+
+      it('aucun routeur sain : un échec par routeur au maximum par passage (pas de boucle infinie)', async () => {
+        const rows = Array.from({ length: 400 }, (_, i) => mk(`e${i}`, 120 + i, 60, `r${i % 10}`));
+        const { cron, remote } = fakeDb(rows, async () => {
+          throw new Error('down');
+        });
+        expect(await cron.run(now)).toBe(0);
+        expect(remote.run.mock.calls.length).toBeLessThanOrEqual(10);
+      });
     });
   });
 });
