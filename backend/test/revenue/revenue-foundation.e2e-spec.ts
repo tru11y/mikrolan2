@@ -53,7 +53,7 @@ describe('Revenue foundation — intégration réelle (PostgreSQL isolé)', () =
         routerId: routerA,
         name: '1h',
         slug: '1h',
-        durationMinutes: 60,
+        durationMinutes: 60, sharedUsers: 1,
         priceXof: 500,
       },
     });
@@ -69,7 +69,7 @@ describe('Revenue foundation — intégration réelle (PostgreSQL isolé)', () =
         routerId: routerB,
         name: '1h',
         slug: '1h',
-        durationMinutes: 60,
+        durationMinutes: 60, sharedUsers: 1,
         priceXof: 700,
       },
     });

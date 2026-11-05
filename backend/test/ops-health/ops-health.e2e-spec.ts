@@ -77,7 +77,7 @@ describe('ops-health — intégration réelle', () => {
     ).id;
     planId = (
       await prisma.plan.create({
-        data: { tenantId, routerId, name: '1h', slug: '1h', durationMinutes: 60, priceXof: 500 },
+        data: { tenantId, routerId, name: '1h', slug: '1h', durationMinutes: 60, sharedUsers: 1, priceXof: 500 },
       })
     ).id;
   });
