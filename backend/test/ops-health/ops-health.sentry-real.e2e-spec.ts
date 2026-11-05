@@ -17,7 +17,7 @@ describe('ops-health — événement Sentry réel', () => {
     });
     const health = {
       getExpiryHealth: async () => ({
-        level: 'RED', pending: 7, oldestPendingMinutes: 45, appliedLast24h: 3, lastExpiredAt: null,
+        level: 'RED', pendingOnline: 7, oldestPendingMinutes: 45, appliedLast24h: 3, lastExpiredAt: null,
       }),
     };
     await new OpsHealthAlertCron(health as never, { sendAlert: jest.fn() } as never, { get: () => '' } as never).checkExpiry();
@@ -25,7 +25,7 @@ describe('ops-health — événement Sentry réel', () => {
     const event = JSON.stringify(envelopes);
     expect(event).toContain('"level":"fatal"');
     expect(event).toContain('EXPIRY_PENDING_STUCK');
-    expect(event).toContain('"pending":7');
+    expect(event).toContain('"pendingOnline":7');
     expect(event).toContain('"domain":"voucher-expiry"');
   });
 });

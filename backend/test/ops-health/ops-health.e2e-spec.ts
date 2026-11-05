@@ -39,6 +39,12 @@ describe('ops-health — intégration réelle', () => {
       { get: () => email } as never,
     );
 
+  // La base e2e est partagée entre suites : les compteurs sont globaux, on repart de zéro.
+  const clearVouchers = async () => {
+    await prisma.session.deleteMany({});
+    await prisma.voucher.deleteMany({});
+  };
+
   const voucher = (o: {
     status: VoucherStatus;
     usedAt?: Date | null;
@@ -77,7 +83,7 @@ describe('ops-health — intégration réelle', () => {
   });
 
   beforeEach(async () => {
-    await prisma.voucher.deleteMany({});
+    await clearVouchers();
     sendAlert.mockClear();
     captureMessage.mockClear();
     jest.restoreAllMocks();
@@ -92,7 +98,7 @@ describe('ops-health — intégration réelle', () => {
     await voucher({ status: VoucherStatus.USED, usedAt: min(500) });
     await voucher({ status: VoucherStatus.REVOKED, usedAt: min(500) });
     const h = await health.getExpiryHealth();
-    expect(h).toMatchObject({ level: 'GREEN', pending: 0, oldestPendingMinutes: null });
+    expect(h).toMatchObject({ level: 'GREEN', pendingOnline: 0, oldestPendingMinutes: null });
     const spy = captureMessage;
     await makeCron('a@b.c').checkExpiry();
     expect(spy).not.toHaveBeenCalled();
@@ -105,7 +111,7 @@ describe('ops-health — intégration réelle', () => {
     await voucher({ status: VoucherStatus.ACTIVE, usedAt: min(180), expiresAt: min(120) }); // appliqué <24h
     await voucher({ status: VoucherStatus.ACTIVE, usedAt: min(1900), expiresAt: min(1800) }); // appliqué >24h
     const h = await health.getExpiryHealth();
-    expect(h.pending).toBe(1);
+    expect(h.pendingOnline).toBe(1);
     expect(h.oldestPendingMinutes).toBeGreaterThanOrEqual(9);
     expect(h.oldestPendingMinutes).toBeLessThanOrEqual(11);
     expect(h.appliedLast24h).toBe(1);
@@ -122,7 +128,7 @@ describe('ops-health — intégration réelle', () => {
     await voucher({ status: VoucherStatus.ACTIVE, usedAt: min(100) }); // expiré il y a 40 min
     await voucher({ status: VoucherStatus.ACTIVE, usedAt: min(70) });
     const h = await health.getExpiryHealth();
-    expect(h.pending).toBe(2);
+    expect(h.pendingOnline).toBe(2);
     expect(h.oldestPendingMinutes).toBeGreaterThanOrEqual(39);
     expect(h.oldestPendingMinutes).toBeLessThanOrEqual(41);
     expect(h.level).toBe('RED');
@@ -136,7 +142,7 @@ describe('ops-health — intégration réelle', () => {
       expect.objectContaining({
         level: 'fatal',
         tags: expect.objectContaining({ errorCode: 'EXPIRY_PENDING_STUCK' }),
-        extra: expect.objectContaining({ pending: 2 }),
+        extra: expect.objectContaining({ pendingOnline: 2 }),
       }),
     );
     expect(sendAlert).toHaveBeenCalledTimes(1);
@@ -158,25 +164,25 @@ describe('ops-health — intégration réelle', () => {
     expect(sendAlert).toHaveBeenCalledTimes(2);
     nowSpy.mockRestore();
 
-    await prisma.voucher.deleteMany({}); // résolu → reset du throttle
+    await clearVouchers(); // résolu → reset du throttle
     await cron.checkExpiry();
     await voucher({ status: VoucherStatus.ACTIVE, usedAt: min(100) });
     await cron.checkExpiry();
     expect(sendAlert).toHaveBeenCalledTimes(3);
   });
 
-  it('routeur REMOTE hors ligne : compté en blockedOffline, jamais rouge', async () => {
+  it('routeur REMOTE hors ligne : compté en pendingOffline, jamais rouge', async () => {
     const off = await prisma.router.create({
       data: { tenantId, identity: 'r-off', mode: ManagementMode.REMOTE, health: 'OFFLINE', credEncrypted: 'x' },
     });
     const v = await voucher({ status: VoucherStatus.ACTIVE, usedAt: min(30000) });
     await prisma.voucher.update({ where: { id: v.id }, data: { routerId: off.id } });
     const h = await health.getExpiryHealth();
-    expect(h).toMatchObject({ level: 'GREEN', pending: 0, blockedOffline: 1, oldestPendingMinutes: null });
+    expect(h).toMatchObject({ level: 'GREEN', pendingOnline: 0, pendingOffline: 1, oldestPendingMinutes: null });
     await makeCron('a@b.c').checkExpiry();
     expect(captureMessage).not.toHaveBeenCalled();
     expect(sendAlert).not.toHaveBeenCalled();
-    await prisma.voucher.deleteMany({});
+    await clearVouchers();
     await prisma.router.delete({ where: { id: off.id } });
   });
 
@@ -198,7 +204,7 @@ describe('ops-health — intégration réelle', () => {
     const t0 = Date.now();
     const h = await health.getExpiryHealth();
     expect(Date.now() - t0).toBeLessThan(1000);
-    expect(h.pending).toBe(3000);
+    expect(h.pendingOnline).toBe(3000);
     expect(h.level).toBe('RED');
     expect(h.oldestPendingMinutes).toBeGreaterThanOrEqual(628);
   });
@@ -218,6 +224,6 @@ describe('ops-health — intégration réelle', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
     const body = res.body.data ?? res.body;
-    expect(body.expiry).toMatchObject({ level: 'RED', pending: 1 });
+    expect(body.expiry).toMatchObject({ level: 'RED', pendingOnline: 1, pendingOffline: 0 });
   });
 });
