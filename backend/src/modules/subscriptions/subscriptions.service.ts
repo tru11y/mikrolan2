@@ -15,6 +15,7 @@ import {
   ManagementMode,
   NotificationType,
   PaymentMethod,
+  PaymentProvider,
   PaymentStatus,
   Prisma,
   RemotePeerStatus,
@@ -310,6 +311,43 @@ export class SubscriptionsService {
    * existe : ressaisir la durée à la main était une source d'écart entre ce
    * que le client a payé et ce qu'il obtient.
    */
+  /**
+   * Activation directe par SUPER_ADMIN. Ne doit jamais court-circuiter un
+   * paiement SasPay : tant qu'une facture SASPAY est en attente (ou ciblée),
+   * seule la confirmation du webhook peut activer. Le webhook appelle
+   * `activate()` directement, sans passer par cette garde.
+   */
+  async activateManually(
+    tenantId: string,
+    actorId: string,
+    periodDays?: number,
+    invoiceId?: string,
+  ) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
+    if (!tenant) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.TENANT_NOT_FOUND, 'Compte introuvable');
+
+    // Facture ciblée résolue DANS ce tenant : inconnue ou d'un autre tenant → même 404.
+    const target = invoiceId
+      ? await this.prisma.invoice.findFirst({ where: { id: invoiceId, tenantId }, select: { provider: true } })
+      : null;
+    if (invoiceId && !target) {
+      throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.INVOICE_NOT_FOUND, 'Facture introuvable');
+    }
+
+    const saspayPending = await this.prisma.invoice.findFirst({
+      where: { tenantId, provider: PaymentProvider.SASPAY, status: PaymentStatus.PENDING },
+      select: { id: true },
+    });
+    if (target?.provider === PaymentProvider.SASPAY || saspayPending) {
+      throw new BusinessException(
+        HttpStatus.CONFLICT,
+        ErrorCode.SASPAY_PAYMENT_CONFIRMATION_REQUIRED,
+        "Un paiement SasPay est en attente : l'activation se fait uniquement à la confirmation du paiement.",
+      );
+    }
+    return this.activate(tenantId, actorId, periodDays, invoiceId);
+  }
+
   async activate(
     tenantId: string,
     actorId: string,
