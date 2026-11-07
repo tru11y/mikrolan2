@@ -323,18 +323,22 @@ export class SubscriptionsService {
     periodDays?: number,
     invoiceId?: string,
   ) {
-    const blocking = await this.prisma.invoice.findFirst({
-      where: {
-        tenantId,
-        provider: PaymentProvider.SASPAY,
-        OR: [
-          { status: PaymentStatus.PENDING },
-          ...(invoiceId ? [{ id: invoiceId }] : []),
-        ],
-      },
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
+    if (!tenant) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.TENANT_NOT_FOUND, 'Compte introuvable');
+
+    // Facture ciblée résolue DANS ce tenant : inconnue ou d'un autre tenant → même 404.
+    const target = invoiceId
+      ? await this.prisma.invoice.findFirst({ where: { id: invoiceId, tenantId }, select: { provider: true } })
+      : null;
+    if (invoiceId && !target) {
+      throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.INVOICE_NOT_FOUND, 'Facture introuvable');
+    }
+
+    const saspayPending = await this.prisma.invoice.findFirst({
+      where: { tenantId, provider: PaymentProvider.SASPAY, status: PaymentStatus.PENDING },
       select: { id: true },
     });
-    if (blocking) {
+    if (target?.provider === PaymentProvider.SASPAY || saspayPending) {
       throw new BusinessException(
         HttpStatus.CONFLICT,
         ErrorCode.SASPAY_PAYMENT_CONFIRMATION_REQUIRED,
