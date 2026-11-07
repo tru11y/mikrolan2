@@ -1,4 +1,7 @@
 import request from 'supertest';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { PrismaService } from '../../src/prisma/prisma.service';
 import { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { createTestApp } from '../helpers/app.helper';
 import { signupUser, loginUser, promoteToSuperAdmin } from '../helpers/auth.helper';
@@ -90,7 +93,7 @@ describe('Payments — config, upgrade request, proof, validation (e2e)', () => 
     });
   });
 
-  describe('Manual payment flow: request-upgrade → upload-proof → validate/reject', () => {
+  describe('Manual payment flow (MANUAL provider): request-upgrade → validate/reject', () => {
     it('validating an invoice activates the PRO subscription', async () => {
       const adminUser = await signupUser(app);
       const superAdmin = await promoteToSuperAdmin(app, adminUser.email, adminUser.password);
@@ -106,17 +109,6 @@ describe('Payments — config, upgrade request, proof, validation (e2e)', () => 
         .expect(200);
       const invoiceId = upgradeRes.body.data.invoice.id;
       expect(invoiceId).toBeDefined();
-
-      await request(app.getHttpServer())
-        .post('/api/subscriptions/upload-proof')
-        .set('Authorization', `Bearer ${ownerLogin.accessToken}`)
-        .field('invoiceId', invoiceId)
-        .field('method', 'WAVE')
-        .attach('file', PNG_FIXTURE, {
-          filename: 'proof.png',
-          contentType: 'image/png',
-        })
-        .expect(200);
 
       await request(app.getHttpServer())
         .post(`/api/admin/invoices/${invoiceId}/validate`)
@@ -168,173 +160,30 @@ describe('Payments — config, upgrade request, proof, validation (e2e)', () => 
     });
   });
 
-  describe('FIND-005: upload validation (magic bytes, whitelist, no double extension)', () => {
-    async function setupInvoice() {
-      const adminUser = await signupUser(app);
-      const superAdmin = await promoteToSuperAdmin(app, adminUser.email, adminUser.password);
-      const tier = await createTier(superAdmin.accessToken, `find005-${Date.now()}-${Math.floor(Math.random() * 1e9)}`);
-
+  describe('FIND-005 → upload-proof désactivé (410 pour tout payload)', () => {
+    async function setupOwner() {
       const owner = await signupUser(app);
-      const ownerLogin = await loginUser(app, owner.email, owner.password);
-
-      const upgradeRes = await request(app.getHttpServer())
-        .post('/api/subscriptions/request-upgrade')
-        .set('Authorization', `Bearer ${ownerLogin.accessToken}`)
-        .send({ tierKey: tier.key })
-        .expect(200);
-      return { ownerLogin, invoiceId: upgradeRes.body.data.invoice.id };
+      return loginUser(app, owner.email, owner.password);
     }
 
-    it('1. accepts a valid JPEG', async () => {
-      const { ownerLogin, invoiceId } = await setupInvoice();
+    it.each([
+      ['JPEG valide', JPEG_FIXTURE, 'proof.jpg', 'image/jpeg'],
+      ['PNG valide', PNG_FIXTURE, 'proof.png', 'image/png'],
+      ['HTML déguisé', HTML_FIXTURE, 'proof.png', 'image/png'],
+      ['SVG', SVG_FIXTURE, 'proof.svg', 'image/svg+xml'],
+      ['JS', JS_FIXTURE, 'proof.js', 'application/javascript'],
+      ['vide', Buffer.alloc(0), 'proof.png', 'image/png'],
+    ])('%s → 410, rien enregistré', async (_label, buf, filename, contentType) => {
+      const ownerLogin = await setupOwner();
+      const before = await app.get(PrismaService).paymentProof.count();
       await request(app.getHttpServer())
         .post('/api/subscriptions/upload-proof')
         .set('Authorization', `Bearer ${ownerLogin.accessToken}`)
-        .field('invoiceId', invoiceId)
+        .field('invoiceId', '00000000-0000-0000-0000-000000000000')
         .field('method', 'WAVE')
-        .attach('file', JPEG_FIXTURE, { filename: 'proof.jpg', contentType: 'image/jpeg' })
-        .expect(200);
-    });
-
-    it('2. accepts a valid PNG', async () => {
-      const { ownerLogin, invoiceId } = await setupInvoice();
-      await request(app.getHttpServer())
-        .post('/api/subscriptions/upload-proof')
-        .set('Authorization', `Bearer ${ownerLogin.accessToken}`)
-        .field('invoiceId', invoiceId)
-        .field('method', 'WAVE')
-        .attach('file', PNG_FIXTURE, { filename: 'proof.png', contentType: 'image/png' })
-        .expect(200);
-    });
-
-    it('3. rejects an HTML file disguised as image/png (mimetype declared but content rejected by controller whitelist)', async () => {
-      const { ownerLogin, invoiceId } = await setupInvoice();
-      await request(app.getHttpServer())
-        .post('/api/subscriptions/upload-proof')
-        .set('Authorization', `Bearer ${ownerLogin.accessToken}`)
-        .field('invoiceId', invoiceId)
-        .field('method', 'WAVE')
-        .attach('file', HTML_FIXTURE, { filename: 'proof.html', contentType: 'text/html' })
-        .expect(400);
-    });
-
-    it('4. rejects an SVG file (declared as image/svg+xml, off the MIME whitelist)', async () => {
-      const { ownerLogin, invoiceId } = await setupInvoice();
-      await request(app.getHttpServer())
-        .post('/api/subscriptions/upload-proof')
-        .set('Authorization', `Bearer ${ownerLogin.accessToken}`)
-        .field('invoiceId', invoiceId)
-        .field('method', 'WAVE')
-        .attach('file', SVG_FIXTURE, { filename: 'proof.svg', contentType: 'image/svg+xml' })
-        .expect(400);
-    });
-
-    it('5. rejects a JavaScript payload', async () => {
-      const { ownerLogin, invoiceId } = await setupInvoice();
-      await request(app.getHttpServer())
-        .post('/api/subscriptions/upload-proof')
-        .set('Authorization', `Bearer ${ownerLogin.accessToken}`)
-        .field('invoiceId', invoiceId)
-        .field('method', 'WAVE')
-        .attach('file', JS_FIXTURE, { filename: 'proof.js', contentType: 'application/javascript' })
-        .expect(400);
-    });
-
-    it('6. rejects a binary/executable-labeled file', async () => {
-      const { ownerLogin, invoiceId } = await setupInvoice();
-      await request(app.getHttpServer())
-        .post('/api/subscriptions/upload-proof')
-        .set('Authorization', `Bearer ${ownerLogin.accessToken}`)
-        .field('invoiceId', invoiceId)
-        .field('method', 'WAVE')
-        .attach('file', Buffer.from([0x4d, 0x5a, 0x90, 0x00]), {
-          filename: 'proof.exe',
-          contentType: 'application/x-msdownload',
-        })
-        .expect(400);
-    });
-
-    it('7. rejects an HTML payload with a spoofed image/png Content-Type (magic-byte defense, FIND-005 Scenario D)', async () => {
-      const { ownerLogin, invoiceId } = await setupInvoice();
-      await request(app.getHttpServer())
-        .post('/api/subscriptions/upload-proof')
-        .set('Authorization', `Bearer ${ownerLogin.accessToken}`)
-        .field('invoiceId', invoiceId)
-        .field('method', 'WAVE')
-        .attach('file', HTML_FIXTURE, { filename: 'proof.png', contentType: 'image/png' })
-        .expect(400);
-    });
-
-    it('8. a JPEG uploaded with a misleading .png client filename is still stored/served correctly as jpg (server-derived extension, not client filename)', async () => {
-      const { ownerLogin, invoiceId } = await setupInvoice();
-      const uploadRes = await request(app.getHttpServer())
-        .post('/api/subscriptions/upload-proof')
-        .set('Authorization', `Bearer ${ownerLogin.accessToken}`)
-        .field('invoiceId', invoiceId)
-        .field('method', 'WAVE')
-        .attach('file', JPEG_FIXTURE, { filename: 'proof.png', contentType: 'image/jpeg' })
-        .expect(200);
-      expect(uploadRes.body.data.proof.imageUrl).toMatch(/\.jpg$/);
-    });
-
-    it('9. a client filename containing ../../evil.png has no influence on the stored path', async () => {
-      const { ownerLogin, invoiceId } = await setupInvoice();
-      const uploadRes = await request(app.getHttpServer())
-        .post('/api/subscriptions/upload-proof')
-        .set('Authorization', `Bearer ${ownerLogin.accessToken}`)
-        .field('invoiceId', invoiceId)
-        .field('method', 'WAVE')
-        .attach('file', PNG_FIXTURE, { filename: '../../evil.png', contentType: 'image/png' })
-        .expect(200);
-      expect(uploadRes.body.data.proof.imageUrl).not.toMatch(/evil/);
-      expect(uploadRes.body.data.proof.imageUrl).not.toContain('..');
-    });
-
-    it('10. a double-extension client filename (proof.jpg.html) does not leak an .html-served file (stored extension is server-derived from mimetype)', async () => {
-      const { ownerLogin, invoiceId } = await setupInvoice();
-      const uploadRes = await request(app.getHttpServer())
-        .post('/api/subscriptions/upload-proof')
-        .set('Authorization', `Bearer ${ownerLogin.accessToken}`)
-        .field('invoiceId', invoiceId)
-        .field('method', 'WAVE')
-        .attach('file', PNG_FIXTURE, { filename: 'proof.jpg.html', contentType: 'image/png' })
-        .expect(200);
-      expect(uploadRes.body.data.proof.imageUrl).toMatch(/\.png$/);
-    });
-
-    it('11. rejects a file larger than the configured size limit', async () => {
-      const { ownerLogin, invoiceId } = await setupInvoice();
-      const oversized = Buffer.concat([
-        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-        Buffer.alloc(6 * 1024 * 1024, 0x41),
-      ]);
-      await request(app.getHttpServer())
-        .post('/api/subscriptions/upload-proof')
-        .set('Authorization', `Bearer ${ownerLogin.accessToken}`)
-        .field('invoiceId', invoiceId)
-        .field('method', 'WAVE')
-        .attach('file', oversized, { filename: 'proof.png', contentType: 'image/png' })
-        .expect((res) => {
-          // Pre-existing global multipart limit (fileSize: 5MB, set in main.ts,
-          // predates this phase). It throws a FastifyError that the current
-          // exception filter maps to 500 rather than 400/413 — out of scope
-          // to change here (would be an unrelated fix). What matters for
-          // FIND-005 is confirmed below: no oversized file reaches disk.
-          if (![400, 413, 500].includes(res.status)) {
-            throw new Error(`Expected 400, 413 or 500, got ${res.status}`);
-          }
-        });
-    });
-
-    it('12. rejects an empty file', async () => {
-      const { ownerLogin, invoiceId } = await setupInvoice();
-      await request(app.getHttpServer())
-        .post('/api/subscriptions/upload-proof')
-        .set('Authorization', `Bearer ${ownerLogin.accessToken}`)
-        .field('invoiceId', invoiceId)
-        .field('method', 'WAVE')
-        .attach('file', Buffer.alloc(0), { filename: 'proof.png', contentType: 'image/png' })
-        .expect(400);
+        .attach('file', buf, { filename, contentType })
+        .expect(410);
+      expect(await app.get(PrismaService).paymentProof.count()).toBe(before);
     });
   });
 
@@ -354,14 +203,15 @@ describe('Payments — config, upgrade request, proof, validation (e2e)', () => 
         .expect(200);
       const invoiceId = upgradeRes.body.data.invoice.id;
 
-      const uploadRes = await request(app.getHttpServer())
-        .post('/api/subscriptions/upload-proof')
-        .set('Authorization', `Bearer ${ownerLogin.accessToken}`)
-        .field('invoiceId', invoiceId)
-        .field('method', 'WAVE')
-        .attach('file', PNG_FIXTURE, { filename: 'proof.png', contentType: 'image/png' })
-        .expect(200);
-      const proofId = uploadRes.body.data.proof.id;
+      // Preuve historique : l'upload HTTP est désactivé (410), on amorce directement.
+      const proofsDir = join(process.cwd(), 'private-uploads', 'proofs');
+      mkdirSync(proofsDir, { recursive: true });
+      const fileName = `find004-${Date.now()}-${Math.floor(Math.random() * 1e9)}.png`;
+      writeFileSync(join(proofsDir, fileName), PNG_FIXTURE);
+      const proof = await app.get(PrismaService).paymentProof.create({
+        data: { invoiceId, method: 'WAVE', imageUrl: `/private-uploads/proofs/${fileName}` },
+      });
+      const proofId = proof.id;
 
       return { ownerLogin, superAdmin, invoiceId, proofId };
     }
