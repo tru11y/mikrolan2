@@ -222,7 +222,6 @@ describe('SasPay invoices — manual activation blocked (e2e)', () => {
       notifications: await prisma.notification.count({ where: { tenantId } }),
       uploadAudits: await prisma.auditLog.count({ where: { action: 'UPLOAD' } }),
       files: (await readdir(PROOFS_DIR)).length,
-      tmp: (await readdir(tmpdir())).length,
     });
 
     const variants: Array<[string, (r: request.Test) => request.Test]> = [
@@ -236,6 +235,7 @@ describe('SasPay invoices — manual activation blocked (e2e)', () => {
       const { ownerLogin, invoiceId, tenantId } = await setup(PaymentProvider.MANUAL);
       await mkdir(PROOFS_DIR, { recursive: true });
       const before = await sideEffects(tenantId, invoiceId);
+      const tmpBefore = new Set(await readdir(tmpdir()));
       const outcome = await build(
         request(app.getHttpServer()).post('/api/subscriptions/upload-proof').set('Authorization', `Bearer ${ownerLogin.accessToken}`),
       ).then(
@@ -252,6 +252,10 @@ describe('SasPay invoices — manual activation blocked (e2e)', () => {
         expect(typeof (outcome.body as Record<string, unknown>).message).toBe('string');
       }
       expect(await sideEffects(tenantId, invoiceId)).toEqual(before);
+      // tmpdir est partagé (autres processus peuvent y créer/supprimer) :
+      // on ne regarde que les NOUVELLES entrées liées à un upload multipart.
+      const tmpNew = (await readdir(tmpdir())).filter((f) => !tmpBefore.has(f));
+      expect(tmpNew.filter((f) => /multipart|busboy|fastify|upload|proof/i.test(f))).toEqual([]);
       expect(before.proofs).toBe(0);
     });
   });
