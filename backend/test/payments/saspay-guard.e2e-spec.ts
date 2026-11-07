@@ -5,6 +5,7 @@ import { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { PaymentProvider, PaymentStatus } from '@prisma/client';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { SaspayClient } from '../../src/modules/payments/saspay/saspay.client';
+import { SubscriptionsService } from '../../src/modules/subscriptions/subscriptions.service';
 import { SaspayService } from '../../src/modules/payments/saspay/saspay.service';
 import { signupUser, loginUser, promoteToSuperAdmin } from '../helpers/auth.helper';
 
@@ -227,6 +228,69 @@ describe('SasPay — blocage des actions manuelles (e2e)', () => {
       const t = await tenant();
       await invoice(t.tenantId, PaymentProvider.MANUAL, PaymentStatus.PENDING);
       await http().post(`/api/subscriptions/${t.tenantId}/activate`).set(auth(admin)).send({}).expect(200);
+    });
+
+    describe('scoping tenant / facture', () => {
+      const activate = (tenantId: string, body: object) =>
+        http().post(`/api/subscriptions/${tenantId}/activate`).set(auth(admin)).send(body);
+      const planOf = async (tenantId: string) =>
+        (await prisma.subscription.findUniqueOrThrow({ where: { tenantId } })).plan;
+
+      it('tenant inexistant → 404 TENANT_NOT_FOUND', async () => {
+        const res = await activate('00000000-0000-4000-8000-000000000000', {}).expect(404);
+        expect(JSON.stringify(res.body)).toContain('TENANT_NOT_FOUND');
+      });
+
+      it('invoiceId inexistant → 404 INVOICE_NOT_FOUND, aucune activation', async () => {
+        const t = await tenant();
+        const spy = jest.spyOn(app.get(SubscriptionsService), 'activate');
+        const res = await activate(t.tenantId, { invoiceId: '00000000-0000-4000-8000-000000000000' }).expect(404);
+        expect(JSON.stringify(res.body)).toContain('INVOICE_NOT_FOUND');
+        expect(spy).not.toHaveBeenCalled();
+        spy.mockRestore();
+        expect(await planOf(t.tenantId)).not.toBe('PRO');
+      });
+
+      it('invoiceId autre tenant → même 404 INVOICE_NOT_FOUND, aucune activation', async () => {
+        const t = await tenant();
+        const other = await tenant();
+        const foreign = await invoice(other.tenantId, PaymentProvider.MANUAL, PaymentStatus.PENDING);
+        const spy = jest.spyOn(app.get(SubscriptionsService), 'activate');
+        const res = await activate(t.tenantId, { invoiceId: foreign.id }).expect(404);
+        expect(JSON.stringify(res.body)).toContain('INVOICE_NOT_FOUND');
+        expect(spy).not.toHaveBeenCalled();
+        spy.mockRestore();
+        expect(await planOf(t.tenantId)).not.toBe('PRO');
+        expect((await prisma.invoice.findUniqueOrThrow({ where: { id: foreign.id } })).status).toBe('PENDING');
+      });
+
+      it.each(STATUSES)('invoiceId SASPAY %s → 409 SASPAY_PAYMENT_CONFIRMATION_REQUIRED', async (_l, status) => {
+        const t = await tenant();
+        const inv = await invoice(t.tenantId, PaymentProvider.SASPAY, status);
+        const res = await activate(t.tenantId, { invoiceId: inv.id }).expect(409);
+        expect(JSON.stringify(res.body)).toContain('SASPAY_PAYMENT_CONFIRMATION_REQUIRED');
+        expect(await planOf(t.tenantId)).not.toBe('PRO');
+      });
+
+      it('invoiceId MANUAL PENDING du bon tenant → comportement existant (200, PAID)', async () => {
+        const t = await tenant();
+        const inv = await invoice(t.tenantId, PaymentProvider.MANUAL, PaymentStatus.PENDING);
+        await activate(t.tenantId, { invoiceId: inv.id }).expect(200);
+        expect((await prisma.invoice.findUniqueOrThrow({ where: { id: inv.id } })).status).toBe('PAID');
+      });
+
+      it('sans invoiceId, SASPAY PENDING → 409', async () => {
+        const t = await tenant();
+        await invoice(t.tenantId, PaymentProvider.SASPAY, PaymentStatus.PENDING);
+        await activate(t.tenantId, {}).expect(409);
+      });
+
+      it('sans invoiceId, SASPAY PAID seule → comportement existant (200)', async () => {
+        const t = await tenant();
+        await invoice(t.tenantId, PaymentProvider.SASPAY, PaymentStatus.PAID);
+        await invoice(t.tenantId, PaymentProvider.MANUAL, PaymentStatus.PENDING);
+        await activate(t.tenantId, {}).expect(200);
+      });
     });
 
     it('non SUPER_ADMIN → 403', async () => {
