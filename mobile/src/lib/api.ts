@@ -1652,38 +1652,10 @@ export const api = {
       return unwrap(res);
     },
 
-    async paymentInfo(): Promise<PaymentInfo> {
-      const res = await apiClient.get<ApiEnvelope<PaymentInfo>>(
-        '/subscriptions/payment-info',
-      );
-      return unwrap(res);
-    },
     async invoiceHistory(): Promise<InvoiceHistoryItem[]> {
       const res = await apiClient.get<ApiEnvelope<InvoiceHistoryItem[]>>(
         '/subscriptions/invoices',
       );
-      return unwrap(res);
-    },
-    async uploadProof(
-      invoiceId: string,
-      method: 'WAVE' | 'ORANGE_MONEY',
-      imageUri: string,
-      note?: string,
-    ): Promise<{ proof: { id: string }; message: string }> {
-      const form = new FormData();
-      form.append('invoiceId', invoiceId);
-      form.append('method', method);
-      if (note) form.append('note', note);
-      form.append('image', {
-        uri: imageUri,
-        type: 'image/jpeg',
-        name: 'proof.jpg',
-      } as unknown as Blob);
-      const res = await apiClient.post<
-        ApiEnvelope<{ proof: { id: string }; message: string }>
-      >('/subscriptions/upload-proof', form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
       return unwrap(res);
     },
 
@@ -1876,22 +1848,6 @@ export const api = {
       },
     ): Promise<void> {
       await apiClient.patch(`/admin/tenants/${tenantId}/subscription`, patch);
-    },
-    async validateInvoice(
-      invoiceId: string,
-      periodDays?: number,
-    ): Promise<void> {
-      await apiClient.post(`/admin/invoices/${invoiceId}/validate`, {
-        ...(periodDays ? { periodDays } : {}),
-      });
-    },
-    async rejectInvoice(
-      invoiceId: string,
-      reason?: string,
-    ): Promise<void> {
-      await apiClient.post(`/admin/invoices/${invoiceId}/reject`, {
-        ...(reason ? { reason } : {}),
-      });
     },
     async invoiceProofs(invoiceId: string): Promise<PaymentProof[]> {
       const res = await apiClient.get<ApiEnvelope<PaymentProof[]>>(
@@ -2454,6 +2410,8 @@ export type AdminTenantDetail = {
     status: string;
     billingPeriod: BillingPeriod;
     note: string | null;
+    /** Non envoyé par le backend aujourd'hui (voir AdminInvoice.provider). */
+    provider?: 'MANUAL' | 'SASPAY' | null;
     createdAt: string;
     paidAt: string | null;
     tier: { key: string; name: string } | null;
@@ -2483,6 +2441,11 @@ export type AdminInvoice = {
   periodDays: number;
   /** Résumé laissé par le conseiller d'abonnement côté client. */
   note: string | null;
+  /**
+   * Prestataire de paiement. NON envoyé par le backend aujourd'hui (champ absent de GET /admin/invoices) :
+   * l'app reste neutre et n'affirme « SasPay » que si ce champ est explicitement présent.
+   */
+  provider?: 'MANUAL' | 'SASPAY' | null;
   tierKey: string | null;
   tierName: string | null;
   createdAt: string;
@@ -2514,12 +2477,6 @@ export type AuditEntry = {
   metadata: Record<string, unknown> | null;
   ip: string | null;
   createdAt: string;
-};
-
-export type PaymentInfo = {
-  wave: string | null;
-  orangeMoney: string | null;
-  instructions: string | null;
 };
 
 export type InvoiceHistoryItem = {

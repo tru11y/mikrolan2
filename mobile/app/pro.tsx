@@ -323,7 +323,8 @@ export default function ProScreen() {
         billingPeriod: billingPeriod(annual),
       });
       setRequested(true);
-      toast.success(res.instructions);
+      // Texte du flux réel : l'activation suit la confirmation du webhook SasPay (jamais immédiate).
+      toast.success(t('pro.activationAuto'));
       navRouter.push({
         pathname: '/payment-saspay',
         params: {
