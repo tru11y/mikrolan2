@@ -9,13 +9,11 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
-  Req,
   UseInterceptors,
 } from '@nestjs/common';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/error-codes';
-import { PaymentMethod, UserRole } from '@prisma/client';
-import type { FastifyRequest } from 'fastify';
+import { UserRole } from '@prisma/client';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { AlwaysAllowed } from '../../common/decorators/always-allowed.decorator';
 import { AdminBypassInterceptor } from '../../common/interceptors/admin-bypass.interceptor';
@@ -82,39 +80,11 @@ export class SubscriptionsController {
   @Post('upload-proof')
   @Roles(UserRole.OWNER)
   @HttpCode(200)
-  async uploadProof(
-    @CurrentUser() user: TenantContext,
-    @Req() req: FastifyRequest,
-  ) {
-    const data = await req.file();
-    if (!data) throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.FILE_REQUIRED, 'Image requise.');
-    if (!['image/jpeg', 'image/png'].includes(data.mimetype)) {
-      throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.FILE_TYPE_UNSUPPORTED, 'Seuls JPEG et PNG sont acceptés.');
-    }
-
-    const fields = data.fields as Record<string, { value?: string }>;
-    const invoiceId = fields['invoiceId']?.value;
-    const method = fields['method']?.value;
-    const note = fields['note']?.value;
-
-    if (!invoiceId) throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.INVOICE_ID_REQUIRED, 'invoiceId requis.');
-    if (!method || !['WAVE', 'ORANGE_MONEY'].includes(method)) {
-      throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.PAYMENT_METHOD_INVALID, 'method doit être WAVE ou ORANGE_MONEY.');
-    }
-
-    const buffer = await data.toBuffer();
-    const file = {
-      buffer,
-      originalname: data.filename,
-      mimetype: data.mimetype,
-    };
-
-    return this.subs.uploadProof(
-      user.tenantId,
-      invoiceId,
-      method as PaymentMethod,
-      file as any,
-      note,
+  uploadProof(): never {
+    throw new BusinessException(
+      HttpStatus.GONE,
+      ErrorCode.MANUAL_PAYMENT_PROOF_DISABLED,
+      "L'envoi de preuve de paiement manuel est désactivé. Mettez l'application à jour pour payer en ligne via SasPay.",
     );
   }
 
@@ -150,7 +120,7 @@ export class SubscriptionsController {
     @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @Body(new ZodValidationPipe(activateSchema)) dto: ActivateDto,
   ) {
-    return this.subs.activate(
+    return this.subs.activateManually(
       tenantId,
       actor.userId,
       dto.periodDays,
