@@ -11,6 +11,7 @@ import { ErrorCode } from '../../common/error-codes';
 import {
   AuditAction,
   BillingPeriod,
+  PaymentProvider,
   Prisma,
   RouterHealth,
   SubscriptionPlan,
@@ -177,6 +178,7 @@ export class AdminService {
             currency: true,
             status: true,
             billingPeriod: true,
+            provider: true,
             note: true,
             createdAt: true,
             paidAt: true,
@@ -361,6 +363,7 @@ export class AdminService {
         status: true,
         billingPeriod: true,
         periodDays: true,
+        provider: true,
         note: true,
         createdAt: true,
         paidAt: true,
@@ -378,6 +381,7 @@ export class AdminService {
       status: i.status,
       billingPeriod: i.billingPeriod,
       periodDays: i.periodDays,
+      provider: i.provider,
       // C'est le résumé laissé par le conseiller d'abonnement : il dit à
       // l'administrateur *pourquoi* le client demande cette formule.
       note: i.note,
@@ -586,6 +590,17 @@ export class AdminService {
 
   // ── Validation / rejet de facture ─────────────────────
 
+  /** Les factures SasPay sont pilotées par le webhook : aucune action manuelle, quel que soit leur statut. */
+  private assertNotSaspay(provider: PaymentProvider): void {
+    if (provider === PaymentProvider.SASPAY) {
+      throw new BusinessException(
+        HttpStatus.CONFLICT,
+        ErrorCode.SASPAY_INVOICE_MANAGED_BY_WEBHOOK,
+        'Cette facture SasPay est gérée automatiquement par le webhook de paiement.',
+      );
+    }
+  }
+
   validateInvoice(
     invoiceId: string,
     actor: { userId: string; tenantId: string },
@@ -603,6 +618,7 @@ export class AdminService {
       where: { id: invoiceId },
     });
     if (!invoice) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.INVOICE_NOT_FOUND, 'Facture introuvable');
+    this.assertNotSaspay(invoice.provider);
     if (invoice.status !== 'PENDING') {
       throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.INVOICE_NOT_PENDING, 'Cette facture n\'est pas en attente.');
     }
@@ -638,6 +654,7 @@ export class AdminService {
       where: { id: invoiceId },
     });
     if (!invoice) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.INVOICE_NOT_FOUND, 'Facture introuvable');
+    this.assertNotSaspay(invoice.provider);
     if (invoice.status !== 'PENDING') {
       throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.INVOICE_NOT_PENDING, 'Cette facture n\'est pas en attente.');
     }
