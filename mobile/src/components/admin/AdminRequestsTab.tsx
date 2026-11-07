@@ -1,16 +1,15 @@
-import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, type AdminInvoice } from '@/src/lib/api';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { api } from '@/src/lib/api';
+import { invoicePaymentKey } from '@/src/lib/invoicePayment';
 import { describeError } from '@/src/lib/errors';
 import { formatXof } from '@/src/config/tiers';
 import { useSseLive } from '@/src/providers/live-events-provider';
 import {
-  Button,
+  Badge,
   Card,
-  ConfirmDialog,
   Empty,
   ErrorState,
   FadeIn,
@@ -19,7 +18,6 @@ import {
   SkeletonCard,
   space,
   type,
-  useToast,
 } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
 import { shortDate } from '@/src/lib/format';
@@ -27,31 +25,12 @@ import { shortDate } from '@/src/lib/format';
 export function AdminRequestsTab() {
   const theme = useTheme();
   const { t } = useTranslation();
-  const qc = useQueryClient();
-  const toast = useToast();
   const sseLive = useSseLive();
-  const [confirming, setConfirming] = useState<AdminInvoice | null>(null);
-
   const query = useQuery({
     queryKey: ['admin', 'invoices', 'PENDING'],
     queryFn: () => api.admin.invoices({ status: 'PENDING', limit: 50 }),
     refetchInterval: sseLive ? false : 30_000,
     placeholderData: keepPreviousData,
-  });
-
-  const activate = useMutation({
-    mutationFn: (invoice: AdminInvoice) =>
-      api.subscriptions.activate(invoice.tenantId, invoice.periodDays),
-    onSuccess: async () => {
-      toast.success(t('admin.subscriptionActivated'));
-      setConfirming(null);
-      await Promise.all([
-        qc.invalidateQueries({ queryKey: ['admin', 'invoices'] }),
-        qc.invalidateQueries({ queryKey: ['admin', 'metrics'] }),
-        qc.invalidateQueries({ queryKey: ['admin', 'tenants'] }),
-      ]);
-    },
-    onError: (e) => toast.error(describeError(e).message),
   });
 
   if (query.isLoading) return <SkeletonCard lines={3} />;
@@ -77,6 +56,7 @@ export function AdminRequestsTab() {
 
   return (
     <View style={{ gap: space.md }}>
+      <Text style={{ color: theme.textMuted, fontSize: type.caption }}>{t('adminPayments.autoActivationInfo')}</Text>
       {items.map((inv, i) => (
         <FadeIn key={inv.id} delay={i * 50}>
           <Card>
@@ -125,30 +105,17 @@ export function AdminRequestsTab() {
               </Row>
             ) : null}
 
-            <Button
-              title={t('admin.validatePayment', { days: inv.periodDays })}
-              onPress={() => setConfirming(inv)}
-              loading={activate.isPending && confirming?.id === inv.id}
-            />
+            {/* Lecture seule : l'activation est automatique, après confirmation du webhook SasPay. */}
+            <Row style={{ gap: space.sm, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Badge label={inv.status} tone={inv.status === 'PAID' ? 'success' : inv.status === 'PENDING' ? 'gold' : 'danger'} />
+              {inv.provider ? <Badge label={inv.provider === 'SASPAY' ? 'SasPay' : t('adminPayments.manualBadge')} /> : null}
+            </Row>
+            <Text style={{ color: theme.textMuted, fontSize: type.caption }}>
+              {t(`adminPayments.${invoicePaymentKey(inv.provider, inv.status)}`, { defaultValue: inv.status })}
+            </Text>
           </Card>
         </FadeIn>
       ))}
-
-      <ConfirmDialog
-        visible={confirming !== null}
-        icon="cash-outline"
-        tone="primary"
-        title={t('admin.confirmCollection')}
-        message={
-          confirming
-            ? t('admin.confirmCollectionMessage', { amount: formatXof(confirming.amount), tenant: confirming.tenantName, days: confirming.periodDays })
-            : ''
-        }
-        confirmLabel={t('admin.activateButton')}
-        busy={activate.isPending}
-        onConfirm={() => confirming && activate.mutate(confirming)}
-        onCancel={() => setConfirming(null)}
-      />
     </View>
   );
 }
