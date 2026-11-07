@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/error-codes';
+import { saspayManagedError } from './saspay-managed.error';
 import {
   AuditAction,
   BillingPeriod,
@@ -310,6 +311,41 @@ export class SubscriptionsService {
    * existe : ressaisir la durée à la main était une source d'écart entre ce
    * que le client a payé et ce qu'il obtient.
    */
+  /**
+   * Activation directe SUPER_ADMIN (POST /subscriptions/:tenantId/activate).
+   * Une facture SasPay n'est réglée que par le webhook. Ordre :
+   *  1. résolution du tenant (404 TENANT_NOT_FOUND) ;
+   *  2. si `invoiceId` : résolution DANS ce tenant — inconnue ou appartenant
+   *     à un autre tenant → même 404 INVOICE_NOT_FOUND (pas de fuite) ;
+   *  3. recherche d'une facture SASPAY PENDING du tenant ;
+   *  4. garde 409 : facture ciblée SASPAY (tout statut) ou SASPAY PENDING ;
+   *  5. seulement alors `activate` (aussi appelé directement par le webhook).
+   */
+  async activateManually(
+    tenantId: string,
+    actorId: string,
+    periodDays?: number,
+    invoiceId?: string,
+  ) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { id: true } });
+    if (!tenant) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.TENANT_NOT_FOUND, 'Compte introuvable');
+
+    const target = invoiceId
+      ? await this.prisma.invoice.findFirst({ where: { id: invoiceId, tenantId }, select: { provider: true } })
+      : null;
+    if (invoiceId && !target) {
+      throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.INVOICE_NOT_FOUND, 'Facture introuvable');
+    }
+
+    const saspayPending = await this.prisma.invoice.findFirst({
+      where: { tenantId, provider: 'SASPAY', status: PaymentStatus.PENDING },
+      select: { id: true },
+    });
+    if (target?.provider === 'SASPAY' || saspayPending) throw saspayManagedError();
+
+    return this.activate(tenantId, actorId, periodDays, invoiceId);
+  }
+
   async activate(
     tenantId: string,
     actorId: string,
