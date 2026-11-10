@@ -94,7 +94,8 @@ export default function PlansScreen() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
-  const [maxUsers, setMaxUsers] = useState('1');
+  // Vide à la création : le nombre d'appareils simultanés est obligatoire, sans valeur par défaut.
+  const [maxUsers, setMaxUsers] = useState('');
   const [downMbps, setDownMbps] = useState('');
   const [upMbps, setUpMbps] = useState('');
   const [expirationMode, setExpirationMode] = useState<PlanExpiration>('ELAPSED');
@@ -152,7 +153,7 @@ export default function PlansScreen() {
     setEditingId(null);
     setName('');
     setPrice('');
-    setMaxUsers('1');
+    setMaxUsers('');
     setDownMbps('');
     setUpMbps('');
     setExpirationMode('ELAPSED');
@@ -425,7 +426,7 @@ export default function PlansScreen() {
                   onChangeValue={setMaxUsers}
                   min={1}
                   max={1000}
-                  placeholder="1"
+                  placeholder="Ex. 1"
                   error={shownError('sharedUsers')}
                 />
               </View>

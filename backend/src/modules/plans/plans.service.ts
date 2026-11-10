@@ -71,7 +71,7 @@ export class PlansService {
         downloadKbps: dto.downloadKbps ?? null,
         uploadKbps: dto.uploadKbps ?? null,
         dataLimitMb: dto.dataLimitMb ?? null,
-        sharedUsers: dto.sharedUsers ?? 1,
+        sharedUsers: dto.sharedUsers,
         expirationMode: dto.expirationMode ?? 'RADIO_PAUSE',
         userProfile: slug,
         codePrefix: dto.codePrefix || null,
