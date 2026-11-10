@@ -50,6 +50,7 @@ describe('PlansService', () => {
         name: '1h WiFi',
         durationMinutes: 60,
         priceXof: 500,
+        sharedUsers: 2,
       });
 
       expect(result.name).toBe('1h WiFi');
@@ -59,6 +60,7 @@ describe('PlansService', () => {
             routerId: 'r1',
             name: '1h WiFi',
             priceXof: 500,
+            sharedUsers: 2,
           }),
         }),
       );
@@ -69,7 +71,7 @@ describe('PlansService', () => {
       prisma.router.findFirst.mockResolvedValue(null);
 
       await expect(
-        service.create('bad-router', { name: 'Plan', durationMinutes: 60, priceXof: 100 }),
+        service.create('bad-router', { name: 'Plan', durationMinutes: 60, priceXof: 100, sharedUsers: 1 }),
       ).rejects.toMatchObject({ status: 404 });
     });
   });
@@ -127,6 +129,26 @@ describe('PlansService', () => {
           data: expect.objectContaining({ deletedAt: expect.any(Date) }),
         }),
       );
+    });
+  });
+
+  describe('sharedUsers (appareils simultanés) — jamais de valeur par défaut silencieuse', () => {
+    it('create : sharedUsers est écrit tel que fourni', async () => {
+      const { service, prisma } = makeService();
+      prisma.router.findFirst.mockResolvedValue({ id: 'r1' });
+      prisma.plan.create.mockResolvedValue({ id: 'p1', name: 'P', slug: 'p', priceXof: 500, durationMinutes: 60, createdAt: new Date() });
+      await service.create('r1', { name: 'P', durationMinutes: 60, priceXof: 500, sharedUsers: 3 });
+      expect(prisma.plan.create.mock.calls[0][0].data.sharedUsers).toBe(3);
+    });
+
+    it('update : sharedUsers transmis tel quel ; absent = champ non écrit', async () => {
+      const { service, prisma } = makeService();
+      prisma.plan.findFirst.mockResolvedValue({ id: 'p1', name: 'P' });
+      prisma.plan.update.mockResolvedValue({});
+      await service.update('r1', 'p1', { sharedUsers: 4 });
+      expect(prisma.plan.update.mock.calls[0][0].data).toEqual({ sharedUsers: 4 });
+      await service.update('r1', 'p1', { name: 'Autre' });
+      expect(prisma.plan.update.mock.calls[1][0].data).toEqual({ name: 'Autre' });
     });
   });
 });

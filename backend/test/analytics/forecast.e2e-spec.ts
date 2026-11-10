@@ -40,7 +40,7 @@ describe('Analytics Forecast — intégration réelle (PostgreSQL isolé)', () =
     });
     routerA = rA.id;
     const pA = await prisma.plan.create({
-      data: { tenantId: tenantA, routerId: routerA, name: '1h', slug: '1h-fc', durationMinutes: 60, priceXof: 200 },
+      data: { tenantId: tenantA, routerId: routerA, name: '1h', slug: '1h-fc', durationMinutes: 60, sharedUsers: 1, priceXof: 200 },
     });
     planA = pA.id;
 
