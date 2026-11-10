@@ -73,7 +73,7 @@ describe('EventLog unifié (e2e)', () => {
     const res = await request(app.getHttpServer())
       .post(`/api/routers/${routerId}/plans`)
       .set(auth(owner))
-      .send({ name: '1 heure', durationMinutes: 60, priceXof: 500 })
+      .send({ name: '1 heure', durationMinutes: 60, priceXof: 500, sharedUsers: 1 })
       .expect(201);
     planId = res.body.data.id;
     expect(await rows({ entityType: 'Plan', action: 'CREATE', outcome: 'SUCCESS' })).toHaveLength(1);
