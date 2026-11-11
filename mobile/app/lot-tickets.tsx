@@ -2,13 +2,14 @@ export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErr
 import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Share, Text, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { api, extractErrorMessage, type VoucherSearchItem } from '@/src/lib/api';
 import { printTickets, printTicketsDirect } from '@/src/lib/ticketsPdf';
 import { mergePages, normalizeSearch, ticketShareText, TICKET_STATUS_LABEL, TICKET_STATUS_TONE } from '@/src/lib/ticketSearch';
 import { reportSilent } from '@/src/lib/report';
-import { Badge, Banner, Button, Card, Empty, ErrorState, Field, Row, Skeleton, space, Title } from '@/src/components/ui';
+import { Badge, Banner, Button, Card, Empty, ErrorState, Field, Press, Row, Skeleton, space, Title, withAlpha } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
 import { AppHeader } from '@/src/components/AppHeader';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
@@ -103,17 +104,32 @@ export default function LotTicketsScreen() {
               <Badge label={TICKET_STATUS_LABEL[item.status]} tone={TICKET_STATUS_TONE[item.status]} />
             </Row>
             <Row style={{ gap: space.sm }}>
-              {(['share', 'print', 'download'] as const).map((kind) => (
-                <View key={kind} style={{ flex: 1 }}>
-                  <Button
-                    title={kind === 'share' ? t('common.share') : kind === 'print' ? t('common.print') : t('common.download')}
-                    variant="ghost"
+              {(['share', 'print', 'download'] as const).map((kind) => {
+                const label = kind === 'share' ? t('common.share') : kind === 'print' ? t('common.print') : t('common.download');
+                const icon = kind === 'share' ? 'share-outline' : kind === 'print' ? 'print-outline' : 'download-outline';
+                const mine = busy?.id === item.id;
+                const disabled = busy !== null || item.status === 'REVOKED';
+                return (
+                  <Press
+                    key={kind}
+                    accessibilityLabel={label}
                     onPress={() => act(item, kind)}
-                    loading={busy?.id === item.id && busy.kind === kind}
-                    disabled={busy !== null || item.status === 'REVOKED'}
-                  />
-                </View>
-              ))}
+                    disabled={disabled}
+                    style={{
+                      flex: 1,
+                      alignItems: 'center',
+                      gap: 4,
+                      paddingVertical: 10,
+                      borderRadius: 10,
+                      backgroundColor: withAlpha(theme.primary, 0.08),
+                      opacity: mine && busy?.kind === kind ? 0.6 : disabled ? 0.4 : 1,
+                    }}
+                  >
+                    <Ionicons name={icon} size={18} color={theme.primary} />
+                    <Text numberOfLines={1} style={{ color: theme.primary, fontSize: 12, fontWeight: '600' }}>{label}</Text>
+                  </Press>
+                );
+              })}
             </Row>
           </Card>
         )}
