@@ -3,7 +3,7 @@ import {
   FastifyAdapter,
   NestFastifyApplication,
 } from '@nestjs/platform-fastify';
-import { ThrottlerGuard, ThrottlerStorage } from '@nestjs/throttler';
+import { ThrottlerGuard, ThrottlerStorage, ThrottlerStorageService } from '@nestjs/throttler';
 import { getQueueToken } from '@nestjs/bullmq';
 import multipart from '@fastify/multipart';
 import { AppModule } from '../../src/app.module';
@@ -22,7 +22,8 @@ const noopRedis = {
   quit: jest.fn(),
 };
 
-export async function createTestApp(): Promise<NestFastifyApplication> {
+/** `realThrottle: true` : vrai limiteur de débit (les autres tests le neutralisent). */
+export async function createTestApp(opts: { realThrottle?: boolean } = {}): Promise<NestFastifyApplication> {
   const moduleRef = await Test.createTestingModule({
     imports: [AppModule],
   })
@@ -32,14 +33,18 @@ export async function createTestApp(): Promise<NestFastifyApplication> {
       sendPasswordReset: jest.fn().mockResolvedValue(undefined),
     })
     .overrideProvider(ThrottlerStorage)
-    .useValue({
-      increment: jest.fn().mockResolvedValue({
-        totalHits: 0,
-        timeToExpire: 0,
-        isBlocked: false,
-        timeToBlockExpire: 0,
-      }),
-    })
+    .useValue(
+      opts.realThrottle
+        ? new ThrottlerStorageService()
+        : {
+            increment: jest.fn().mockResolvedValue({
+              totalHits: 0,
+              timeToExpire: 0,
+              isBlocked: false,
+              timeToBlockExpire: 0,
+            }),
+          },
+    )
     .overrideProvider(REDIS_CLIENT)
     .useValue(noopRedis)
     .overrideProvider(CacheService)

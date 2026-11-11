@@ -86,6 +86,9 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
   const lastEventId = useRef<string | null>(null);
   const previousTier = useRef<typeof entitlement.tier | null>(null);
   const isSuperAdmin = me?.user.role === 'SUPER_ADMIN';
+  // Le vendeur de vérification n'a accès qu'à la vérification de tickets : le serveur lui refuse
+  // le flux d'évènements (403) ; on ne l'ouvre pas, et on ne bascule pas non plus en sondage.
+  const eventsEnabled = isAuthenticated && me?.user.role !== 'TICKET_VERIFIER';
 
   const handleEvent = useCallback(
     (event: LiveEvent) => {
@@ -150,7 +153,7 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
 
   // ── Flux serveur ────────────────────────────────────────
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!eventsEnabled) {
       setLive(false);
       lastEventId.current = null;
       return;
@@ -229,7 +232,7 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
       sub.remove();
       closeAll();
     };
-  }, [isAuthenticated, isSuperAdmin]);
+  }, [eventsEnabled, isSuperAdmin]);
 
   // ── Filet de sécurité ───────────────────────────────────
   // N'entre en jeu que si le flux ne tient pas.
@@ -237,7 +240,7 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
   const fallbackPrimed = useRef(false);
 
   useEffect(() => {
-    if (!isAuthenticated || !degraded) {
+    if (!eventsEnabled || !degraded) {
       fallbackSeen.current.clear();
       fallbackPrimed.current = false;
       return;
@@ -287,7 +290,7 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
     void tick();
     const id = setInterval(tick, FALLBACK_POLL_MS);
     return () => clearInterval(id);
-  }, [degraded, isAuthenticated, qc, toast]);
+  }, [degraded, eventsEnabled, qc, toast]);
 
   // Le basculement de l'abonnement est le seul évènement de paiement
   // observable côté client : c'est lui qui confirme que le versement est passé.

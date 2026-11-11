@@ -8,6 +8,7 @@ import { Reflector } from '@nestjs/core';
 import { UserRole } from '@prisma/client';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import { TenantContext } from '../context/tenant-context';
+import { isVerifierAllowed } from './verifier-allowlist';
 
 // Intra-tenant hierarchy; SUPER_ADMIN (platform) satisfies any requirement.
 // TICKET_VERIFIER is a DISJOINT role: it never participates in the ranking
@@ -30,26 +31,29 @@ export class RolesGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
-    if (!required?.length) return true;
-
     const req = context
       .switchToHttp()
       .getRequest<{ user?: TenantContext }>();
     const user = req.user;
-    if (!user) throw new ForbiddenException('Session invalide, reconnectez-vous.');
 
-    // SUPER_ADMIN is omnipotent across the platform (project convention — cf.
-    // EntitlementGuard). RolesGuard preserves this convention; endpoints that
-    // depend on scope (e.g. a verifier's hotspot assignment) use a dedicated
-    // scope guard that re-checks the role and the scope against the DB.
-    if (user.role === UserRole.SUPER_ADMIN) return true;
-
-    // Disjoint role: TICKET_VERIFIER passes iff explicitly listed.
-    if (user.role === UserRole.TICKET_VERIFIER) {
-      if (required.includes(UserRole.TICKET_VERIFIER)) return true;
+    // TICKET_VERIFIER : deny-by-default. Passe seulement si la route le déclare explicitement
+    // (@Roles(TICKET_VERIFIER)) ou figure dans l'allowlist centralisée. Une route sans @Roles
+    // ne lui est JAMAIS ouverte par défaut.
+    if (user?.role === UserRole.TICKET_VERIFIER) {
+      if (
+        required?.includes(UserRole.TICKET_VERIFIER) ||
+        isVerifierAllowed(context.getClass().name, context.getHandler().name)
+      ) {
+        return true;
+      }
       throw new ForbiddenException("Vous n'avez pas les droits pour cette action.");
     }
-    // Other roles: ranking over non-disjoint requirements only.
+
+    if (!required?.length) return true;
+    if (!user) throw new ForbiddenException('Session invalide, reconnectez-vous.');
+
+    if (user.role === UserRole.SUPER_ADMIN) return true;
+
     const ranked = required.filter((r) => r !== UserRole.TICKET_VERIFIER);
     if (ranked.length === 0) {
       throw new ForbiddenException("Vous n'avez pas les droits pour cette action.");
