@@ -79,9 +79,9 @@ test('stateHint : une piste pour chaque état anormal, aucune pour HEALTHY/REVOK
 test('stalenessLine : une ligne pour STALE_24H et NEVER_CONNECTED, rien pour OK', () => {
   const now = Date.parse('2026-11-11T12:00:00Z');
   assert.equal(stalenessLine({ staleness: 'OK', inactiveSince: null }, now), null);
-  assert.equal(stalenessLine({ staleness: 'STALE_24H', inactiveSince: '2026-10-23T12:00:00Z' }, now), 'Silencieux depuis 19 j (alerte envoyée)');
-  assert.equal(stalenessLine({ staleness: 'NEVER_CONNECTED', inactiveSince: '2026-09-19T12:00:00Z' }, now), 'Jamais connecté depuis 53 j (alerte envoyée)');
-  assert.equal(stalenessLine({ staleness: 'STALE_24H', inactiveSince: null }, now), 'Silencieux (alerte envoyée)');
+  assert.equal(stalenessLine({ staleness: 'STALE_24H', inactiveSince: '2026-10-23T12:00:00Z' }, now), 'Silencieux depuis 19 j');
+  assert.equal(stalenessLine({ staleness: 'NEVER_CONNECTED', inactiveSince: '2026-09-19T12:00:00Z' }, now), 'Jamais connecté depuis 53 j');
+  assert.equal(stalenessLine({ staleness: 'STALE_24H', inactiveSince: null }, now), 'Silencieux');
 });
 
 test('revokeConfirmed : alias sinon identité, casse et espaces ignorés, vide refusé', () => {
