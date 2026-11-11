@@ -59,7 +59,39 @@ function readFeatures(value: Prisma.JsonValue): TierFeatureDto[] {
   return parsed;
 }
 
+/**
+ * Les faits structurés (`routerLimit`, `remoteAccess`) sont la source de vérité :
+ * l'accroche et les lignes de fonctionnalités sont du texte libre saisi par le
+ * super admin et pouvaient annoncer « 3 routeurs » alors que la limite réelle
+ * était 2. On réécrit donc à la lecture les seules lignes qui énoncent l'un de
+ * ces deux faits ; tout autre texte reste tel que saisi.
+ */
+export function routerLimitLabel(limit: number | null): string {
+  if (limit === null) return 'Routeurs MikroTik illimités';
+  if (limit === 1) return '1 routeur MikroTik';
+  return `Jusqu’à ${limit} routeurs MikroTik`;
+}
+
+const ROUTER_CLAIM = /routeurs?\s+mikrotik|jusqu.à\s+\d+\s+routeurs?|routeurs?\s+illimités?/i;
+const REMOTE_CLAIM = /accès distant/i;
+
+export function reconcileTierText(
+  tier: Pick<SubscriptionTier, 'routerLimit' | 'remoteAccess' | 'tagline'>,
+  features: TierFeatureDto[],
+): { tagline: string | null; features: TierFeatureDto[] } {
+  const routerLine = routerLimitLabel(tier.routerLimit);
+  return {
+    tagline: tier.tagline && ROUTER_CLAIM.test(tier.tagline) ? routerLine.replace(' MikroTik', '') : tier.tagline,
+    features: features.map((f) => {
+      if (ROUTER_CLAIM.test(f.label)) return { ...f, label: routerLine, included: true };
+      if (REMOTE_CLAIM.test(f.label)) return { ...f, included: tier.remoteAccess };
+      return f;
+    }),
+  };
+}
+
 export function toTierView(tier: SubscriptionTier): TierView {
+  const text = reconcileTierText(tier, readFeatures(tier.features));
   return {
     id: tier.id,
     key: tier.key,
@@ -73,8 +105,8 @@ export function toTierView(tier: SubscriptionTier): TierView {
     cloudBackup: tier.cloudBackup,
     prioritySupport: tier.prioritySupport,
     badge: tier.badge,
-    tagline: tier.tagline,
-    features: readFeatures(tier.features),
+    tagline: text.tagline,
+    features: text.features,
     displayOrder: tier.displayOrder,
     active: tier.active,
   };

@@ -206,7 +206,7 @@ export default function MaisonScreen() {
   }
 
   const online = list.filter((r) => healthOf(r) === 'ONLINE').length;
-  const tenantName = me.data?.tenant?.name ?? 'MikroLan2';
+  const tenantName = me.data?.tenant?.name ?? 'MikroLan';
   const firstName = tenantName.split(/\s+/)[0];
   const isPro = entitlement.tier === 'PRO';
   const trial = entitlement.tier === 'TRIAL' ? entitlement.daysLeft : null;
@@ -517,18 +517,18 @@ export default function MaisonScreen() {
           doublon (le compte de routeurs vit déjà dans la section au-dessus). */}
       <Row style={{ gap: space.md, alignItems: 'stretch' }}>
         <StatCard
-          label={t('home.clients')}
+          label={t('home.soldCard')}
           value={`${metrics.data?.ticketsUsed ?? 0}`}
-          sub={t('home.ticketsUsed')}
+          sub={t('home.todaySub')}
           icon="people-circle-outline"
           iconColor={theme.primary}
           state={metricsState}
           onPress={() => router.push('/(tabs)/rapport')}
         />
         <StatCard
-          label={t('home.tickets')}
+          label={t('home.generatedCard')}
           value={`${metrics.data?.ticketsGenerated ?? 0}`}
-          sub={t('home.generatedToday')}
+          sub={t('home.todaySub')}
           icon="ticket-outline"
           iconColor={theme.primary}
           state={metricsState}

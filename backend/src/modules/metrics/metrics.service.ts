@@ -71,6 +71,9 @@ function periodStart(period: MetricsQueryDto['period']): Date {
   return new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
 }
 
+/** Sous ce nombre de ventes sur la période précédente, un pourcentage (ex. « +2064 % ») n'a pas de sens : on n'affiche pas de tendance. */
+export const TREND_MIN_PREVIOUS_SALES = 5;
+
 @Injectable()
 export class MetricsService {
   constructor(
@@ -128,7 +131,7 @@ export class MetricsService {
       activeSessions,
       previousRevenueXof: previous.revenueXof,
       trendPct:
-        previous.revenueXof > 0
+        previous.revenueXof > 0 && previous.valuedSalesCount >= TREND_MIN_PREVIOUS_SALES
           ? Math.round(
               ((current.revenueXof - previous.revenueXof) / previous.revenueXof) * 100,
             )
