@@ -73,7 +73,7 @@ export function stalenessLine(
   if (row.staleness === 'OK') return null;
   const since = row.inactiveSince ? (nowMs - Date.parse(row.inactiveSince)) / 1000 : Number.NaN;
   const age = Number.isFinite(since) ? ` depuis ${formatAge(since)}` : '';
-  return row.staleness === 'NEVER_CONNECTED' ? `Jamais connecté${age} (alerte envoyée)` : `Silencieux${age} (alerte envoyée)`;
+  return row.staleness === 'NEVER_CONNECTED' ? `Jamais connecté${age}` : `Silencieux${age}`;
 }
 
 /** `heartbeat il y a 4 j` (même format que le handshake) ; `aucun heartbeat` si absent ou illisible. */
