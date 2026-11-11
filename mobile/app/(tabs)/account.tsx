@@ -3,7 +3,7 @@ import { reportSilent, swallow } from '@/src/lib/report';
 import { useCallback, useState } from 'react';
 import { Linking, Modal, ScrollView, Switch, Text, View, Pressable, FlatList } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -18,6 +18,7 @@ import { useBackToDashboard } from '@/src/hooks/use-back-to-dashboard';
 import { useTheme } from '@/src/providers/theme-provider';
 import { useThemeMode } from '@/src/providers/theme-provider';
 import { api, extractErrorMessage } from '@/src/lib/api';
+import { loadTiers } from '@/src/config/tiers';
 import {
   Banner,
   Button,
@@ -111,6 +112,9 @@ export default function AccountScreen() {
   const router = useRouter();
   const qc = useQueryClient();
   const { me, isPro, logout, refreshProfile } = useAuth();
+  const tiersQuery = useQuery({ queryKey: ['tiers'], queryFn: loadTiers, enabled: isPro });
+  const planName =
+    tiersQuery.data?.find((tier) => tier.key === me?.entitlement.tierKey)?.name ?? t('account.planFallback');
   const pushStatus = usePushStatus();
   const {
     supported: appLockSupported,
@@ -293,7 +297,7 @@ export default function AccountScreen() {
                 borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4,
               }}>
                 <Ionicons name="diamond" size={12} color={theme.gold} />
-                <Text style={{ color: theme.gold, fontSize: 11, fontWeight: '700' }}>PRO</Text>
+                <Text style={{ color: theme.gold, fontSize: 11, fontWeight: '700' }}>{planName}</Text>
               </View>
             ) : null}
           </Card>

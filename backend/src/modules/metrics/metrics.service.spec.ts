@@ -79,10 +79,21 @@ describe('MetricsService.summary', () => {
     mockPrisma.session.count.mockResolvedValue(0);
     mockRevenue.computeRevenue
       .mockResolvedValueOnce(emptyRevenue({ revenueXof: 1000 }))
-      .mockResolvedValueOnce(emptyRevenue({ revenueXof: 500 }));
+      .mockResolvedValueOnce(emptyRevenue({ revenueXof: 500, valuedSalesCount: 5 }));
 
     const result = await buildService().summary({ period: '30d' });
     expect(result.trendPct).toBe(100);
+  });
+
+  it('trend is null when previous period has fewer than 5 sales (no +2064% on a tiny base)', async () => {
+    mockPrisma.voucher.count.mockResolvedValue(0);
+    mockPrisma.session.count.mockResolvedValue(0);
+    mockRevenue.computeRevenue
+      .mockResolvedValueOnce(emptyRevenue({ revenueXof: 54100 }))
+      .mockResolvedValueOnce(emptyRevenue({ revenueXof: 2500, valuedSalesCount: 4 }));
+
+    const result = await buildService().summary({ period: '30d' });
+    expect(result.trendPct).toBeNull();
   });
 
   it('trend is null when no previous revenue', async () => {
