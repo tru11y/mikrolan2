@@ -96,7 +96,7 @@ export function isProvisioned(v: { mikrotikId?: string | null }): boolean {
 }
 
 /** Filtre SQL équivalent à `isProvisioned` (la chaîne vide est un id invalide). */
-const PROVISIONED_WHERE = {
+export const PROVISIONED_WHERE = {
   NOT: [{ mikrotikId: null }, { mikrotikId: '' }],
 } satisfies Prisma.VoucherWhereInput;
 
