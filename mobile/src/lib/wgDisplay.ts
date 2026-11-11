@@ -62,6 +62,20 @@ export function handshakeLine(row: WgHandshakeInfo, nowMs: number = Date.now()):
   return row.state === 'UNKNOWN' ? 'Handshake indisponible' : 'Jamais de handshake';
 }
 
+/** Inactivité persistée (≥ 24 h) ; distincte de l'état live `state`. */
+export type WgStaleness = 'OK' | 'STALE_24H' | 'NEVER_CONNECTED';
+
+/** Ligne d'alerte « silencieux depuis … » sous la carte ; `null` si le tunnel est actif. */
+export function stalenessLine(
+  row: { staleness: WgStaleness; inactiveSince: string | null },
+  nowMs: number = Date.now(),
+): string | null {
+  if (row.staleness === 'OK') return null;
+  const since = row.inactiveSince ? (nowMs - Date.parse(row.inactiveSince)) / 1000 : Number.NaN;
+  const age = Number.isFinite(since) ? ` depuis ${formatAge(since)}` : '';
+  return row.staleness === 'NEVER_CONNECTED' ? `Jamais connecté${age} (alerte envoyée)` : `Silencieux${age} (alerte envoyée)`;
+}
+
 /** `heartbeat il y a 4 j` (même format que le handshake) ; `aucun heartbeat` si absent ou illisible. */
 export function heartbeatLine(lastHeartbeat: string | null, nowMs: number = Date.now()): string {
   const ts = lastHeartbeat ? Date.parse(lastHeartbeat) : Number.NaN;
