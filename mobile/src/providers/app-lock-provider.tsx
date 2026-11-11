@@ -118,7 +118,7 @@ export function AppLockProvider({ children }: PropsWithChildren) {
 
   async function unlock(): Promise<void> {
     const result = await LocalAuthentication.authenticateAsync({
-      promptMessage: 'Déverrouiller MikroLan2',
+      promptMessage: 'Déverrouiller MikroLan',
       cancelLabel: 'Annuler',
       disableDeviceFallback: false,
     });

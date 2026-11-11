@@ -26,7 +26,7 @@ const OFFLINE_FALLBACK: Tier[] = [
     annualMonthlyXof: 4000,
     annualDiscount: 20,
     routerLimit: 3,
-    remoteAccess: true,
+    remoteAccess: false,
     a4Printing: true,
     cloudBackup: false,
     prioritySupport: false,
@@ -39,7 +39,7 @@ const OFFLINE_FALLBACK: Tier[] = [
       { label: 'Génération de tickets illimitée', included: true },
       { label: 'Impression des tickets (PDF A4)', included: true },
       { label: 'Templates de tickets basiques', included: true },
-      { label: 'Accès distant multi-sites', included: true },
+      { label: 'Accès distant multi-sites', included: false },
     ],
   },
   {

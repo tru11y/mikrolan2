@@ -84,7 +84,7 @@ export function TicketCard({
               fontWeight: '800',
             }}
           >
-            MikroLan2{ticketNumber ? ` #${ticketNumber}` : ''}
+            MikroLan{ticketNumber ? ` #${ticketNumber}` : ''}
           </Text>
         </View>
 
