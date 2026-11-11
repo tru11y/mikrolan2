@@ -242,7 +242,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
   async function logout(): Promise<void> {
     setIsBusy(true);
     try {
-      await clearAllLocalRouterCredentials();
+      // Le vendeur de vérification n'a aucun routeur ni identifiant local (et le serveur lui refuse la liste).
+      if (me?.user.role !== 'TICKET_VERIFIER') await clearAllLocalRouterCredentials();
       await api.auth.logout();
     } catch (e) {
       reportSilent('auth.logout', e);
