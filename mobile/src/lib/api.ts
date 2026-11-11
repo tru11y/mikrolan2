@@ -327,6 +327,25 @@ export type VoucherStatus =
   | 'USED'
   | 'EXPIRED'
   | 'REVOKED';
+export type VoucherSearchItem = {
+  id: string;
+  code: string;
+  status: VoucherStatus;
+  batchId: string | null;
+  planId: string;
+  plan: { name: string; priceXof: number; durationMinutes: number };
+  createdAt: string;
+  usedAt: string | null;
+  expiresAt: string | null;
+};
+export type VoucherSearchPage = { items: VoucherSearchItem[]; nextCursor: string | null };
+export type VoucherReprint = {
+  id: string;
+  code: string;
+  password: string;
+  status: VoucherStatus;
+  plan: { name: string; priceXof: number; durationMinutes: number };
+};
 export type VoucherItem = {
   id: string;
   code: string;
@@ -1409,6 +1428,19 @@ export const api = {
         `/routers/${id}/vouchers/lookup`,
         { params: { code } },
       );
+      return unwrap(res);
+    },
+    /** Recherche paginée (curseur) par préfixe de code ; ne renvoie jamais le mot de passe. */
+    async searchVouchers(
+      id: string,
+      params: { q?: string; status?: VoucherStatus; batchId?: string; limit?: number; cursor?: string },
+    ): Promise<VoucherSearchPage> {
+      const res = await apiClient.get<ApiEnvelope<VoucherSearchPage>>(`/routers/${id}/vouchers/search`, { params });
+      return unwrap(res);
+    },
+    /** Réimpression d'un ticket précis (journalisée côté serveur). 409 si révoqué ou déjà utilisé hors propriétaire. */
+    async reprintVoucher(id: string, voucherId: string): Promise<VoucherReprint> {
+      const res = await apiClient.post<ApiEnvelope<VoucherReprint>>(`/routers/${id}/vouchers/${voucherId}/reprint`);
       return unwrap(res);
     },
     async listBatches(id: string): Promise<VoucherBatch[]> {
