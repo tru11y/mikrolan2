@@ -225,6 +225,19 @@ describe('NotificationsService', () => {
       });
     });
 
+    it('une alerte = un seul appel Expo, un message par token, accepted <= tokensFound', async () => {
+      prisma.user.findMany.mockResolvedValue([user('u1', tok('a')), user('u2', tok('b'))]);
+      global.fetch = okFetch([{ status: 'ok', id: '1' }, { status: 'ok', id: '2' }]);
+
+      const res = await service.sendPushToTenant(mockTenantId, 'T', 'C', null, undefined, ['OWNER', 'ADMIN']);
+
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+      const sent = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body) as Array<{ to: string }>;
+      expect(sent).toHaveLength(2);
+      expect(new Set(sent.map((m) => m.to)).size).toBe(2);
+      expect(res.accepted).toBeLessThanOrEqual(res.tokensFound);
+    });
+
     it('le résumé retourné ne contient jamais de token', async () => {
       prisma.user.findMany.mockResolvedValue([user('u1', tok('secret_value'))]);
       global.fetch = okFetch([{ status: 'ok', id: 't1' }]);

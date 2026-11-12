@@ -4,6 +4,9 @@ import * as nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 import type { AppConfig } from '../../config/configuration';
 
+/**
+ * `SENT` = accepté par le transport SMTP. Cela ne prouve ni la remise dans la boîte, ni la lecture.
+ */
 export type EmailDeliveryResult = 'SENT' | 'NO_RECIPIENT' | 'NOT_CONFIGURED' | 'FAILED';
 
 export interface MailSendResult {
