@@ -64,7 +64,7 @@ describe('WgAlertDeliveryRegistry — Ops Health', () => {
     expect(r.snapshot(T0 + 15 * MIN).level).toBe('ORANGE');
     const red = r.snapshot(T0 + 61 * MIN);
     expect(red.level).toBe('RED');
-    expect(red.wgOpenUndeliveredOver1h).toBe(1);
+    expect(red.wgOpenNoProviderAcceptedOver1h).toBe(1);
   });
 
   it('livraison nulle sur 24 h alors qu une alerte existe : RED, même résolue', () => {
@@ -78,7 +78,7 @@ describe('WgAlertDeliveryRegistry — Ops Health', () => {
     const r = scanned();
     r.record('p1', ok, T0);
     const s = r.snapshot(T0 + 2 * 60 * MIN);
-    expect(s).toMatchObject({ level: 'GREEN', wgAlertsCreated: 1, wgDeliveredEmail: 1, wgUndelivered: 0, wgOpenUndeliveredOver1h: 0 });
+    expect(s).toMatchObject({ level: 'GREEN', wgAlertsCreated: 1, wgEmailProviderAccepted: 1, wgNoProviderAccepted: 0, wgOpenNoProviderAcceptedOver1h: 0 });
   });
 
   it('compteurs par cause, sans donnée sensible', () => {
@@ -91,9 +91,9 @@ describe('WgAlertDeliveryRegistry — Ops Health', () => {
       wgAlertsCreated: 3,
       wgDeliveryAttemptsEmail: 2,
       wgDeliveryAttemptsPush: 2,
-      wgDeliveredEmail: 1,
-      wgDeliveredPush: 0,
-      wgUndelivered: 2,
+      wgEmailProviderAccepted: 1,
+      wgPushProviderAccepted: 0,
+      wgNoProviderAccepted: 2,
       wgNoRecipient: 1,
       wgNoPushToken: 1,
       wgInvalidPushToken: 1,
@@ -131,8 +131,8 @@ describe('WgAlertDeliveryRegistry — redémarrage', () => {
       level: 'ORANGE',
       wgUnknownDeliveryAfterRestart: 1,
       message: 'livraison inconnue après redémarrage',
-      wgDeliveredEmail: 0,
-      wgDeliveredPush: 0,
+      wgEmailProviderAccepted: 0,
+      wgPushProviderAccepted: 0,
       resetOnRestart: true,
       deliveryProofDurable: false,
       wgDeliveryProofDurable: false,
@@ -144,14 +144,14 @@ describe('WgAlertDeliveryRegistry — redémarrage', () => {
     const r = scanned();
     r.observeAlerted('peer-1');
     r.record('peer-1', accepted, T0);
-    expect(r.snapshot(T0 + MIN)).toMatchObject({ level: 'GREEN', wgUnknownDeliveryAfterRestart: 0, wgUndelivered: 0, wgDeliveredEmail: 1 });
+    expect(r.snapshot(T0 + MIN)).toMatchObject({ level: 'GREEN', wgUnknownDeliveryAfterRestart: 0, wgNoProviderAccepted: 0, wgEmailProviderAccepted: 1 });
   });
 
   it('registre avec échec : non livré', () => {
     const r = scanned();
     r.observeAlerted('peer-1');
     r.record('peer-1', failed, T0);
-    expect(r.snapshot(T0 + MIN)).toMatchObject({ wgUnknownDeliveryAfterRestart: 0, wgUndelivered: 1, level: 'RED' });
+    expect(r.snapshot(T0 + MIN)).toMatchObject({ wgUnknownDeliveryAfterRestart: 0, wgNoProviderAccepted: 1, level: 'RED' });
   });
 
   it('aucun incident stale : GREEN autorisé', () => {

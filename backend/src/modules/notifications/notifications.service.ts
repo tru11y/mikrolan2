@@ -154,9 +154,13 @@ export class NotificationsService {
     body: string,
     data?: Record<string, unknown>,
   ): Promise<PushSendSummary> {
-    const base = { tokensFound: recipients.length };
-    const sendable = recipients.filter((r) => EXPO_TOKEN_RE.test(r.token));
-    const malformed = recipients.length - sendable.length;
+    // Un même token (deux comptes sur un appareil) ne reçoit qu'un seul message.
+    const usersByToken = new Map<string, string[]>();
+    for (const r of recipients) usersByToken.set(r.token, [...(usersByToken.get(r.token) ?? []), r.userId]);
+    const tokens = [...usersByToken.keys()];
+    const base = { tokensFound: tokens.length };
+    const sendable = tokens.filter((t) => EXPO_TOKEN_RE.test(t));
+    const malformed = tokens.length - sendable.length;
     if (!sendable.length) {
       return { ...base, status: 'INVALID_TOKEN', accepted: 0, invalid: malformed, failureCode: 'INVALID_EXPO_TOKEN' };
     }
@@ -164,8 +168,8 @@ export class NotificationsService {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), EXPO_TIMEOUT_MS);
     try {
-      const messages = sendable.map((r) => ({
-        to: r.token,
+      const messages = sendable.map((token) => ({
+        to: token,
         title,
         body,
         sound: 'default' as const,
@@ -199,13 +203,13 @@ export class NotificationsService {
 
       let accepted = 0;
       let failureCode: string | undefined;
-      const dead: PushRecipient[] = [];
-      sendable.forEach((r, i) => {
+      const dead: string[] = [];
+      sendable.forEach((token, i) => {
         const t = tickets[i] as { status?: string; details?: { error?: string } } | undefined;
         if (t?.status === 'ok') {
           accepted++;
         } else if (t?.status === 'error' && t.details?.error === 'DeviceNotRegistered') {
-          dead.push(r);
+          dead.push(token);
         } else {
           failureCode ??= t?.status === 'error' ? (t.details?.error ?? 'EXPO_ERROR') : 'TICKET_MISSING';
         }
@@ -216,9 +220,9 @@ export class NotificationsService {
 
       // Invalidation strictement ciblée : même utilisateur, même tenant, même token (jamais de purge globale).
       await Promise.all(
-        dead.map((r) =>
+        dead.map((token) =>
           this.prisma.user
-            .updateMany({ where: { id: r.userId, tenantId, pushToken: r.token }, data: { pushToken: null } })
+            .updateMany({ where: { id: { in: usersByToken.get(token) ?? [] }, tenantId, pushToken: token }, data: { pushToken: null } })
             .catch((e: unknown) => this.logger.warn(`Dead token cleanup failed: ${e instanceof Error ? e.constructor.name : 'error'}`)),
         ),
       );
