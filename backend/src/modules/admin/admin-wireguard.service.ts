@@ -12,6 +12,7 @@ import {
   type WgPeerState,
 } from './wireguard-state';
 import type { ListWgPeersQueryDto, RevokeWgPeerDto } from './dto/admin.schemas';
+import { classifyWgStale, type WgStaleState } from '../ops-health/wg-stale.logic';
 
 export interface WgPeerRow {
   id: string;
@@ -24,6 +25,10 @@ export interface WgPeerRow {
   provisionedAt: string | null;
   revokedAt: string | null;
   lastHandshakeAt: string | null;
+  /** Inactivité ≥ 24 h (persistée) : `STALE_24H` (déjà connecté) ou `NEVER_CONNECTED` (jamais). */
+  staleness: WgStaleState;
+  /** Début de l'inactivité (dernier handshake, sinon mise en service) ; null si `staleness` = OK. */
+  inactiveSince: string | null;
   handshakeAgeS: number | null;
   rxBytes: number | null;
   txBytes: number | null;
@@ -36,6 +41,8 @@ export interface WgPeersResponse {
   total: number;
   summary: Record<Lowercase<WgPeerState>, number> & {
     total: number;
+    stale24h: number;
+    neverConnected: number;
     wgEnabled: boolean;
     liveAvailable: boolean;
     drift: { liveNotInDb: number; dbActiveNotLive: number };
@@ -75,6 +82,8 @@ export class AdminWireGuardService {
         status: true,
         provisionedAt: true,
         revokedAt: true,
+        createdAt: true,
+        lastHandshakeAt: true,
         router: {
           select: { id: true, alias: true, identity: true, health: true, mode: true, lastHeartbeat: true },
         },
@@ -97,10 +106,20 @@ export class AdminWireGuardService {
         live === null ? null : (lp?.latestHandshake ?? 0),
         nowS,
       );
+      // Dernier handshake connu : le plus récent entre la valeur persistée par le cron et le live.
+      const liveHs = lp && lp.latestHandshake > 0 ? new Date(lp.latestHandshake * 1000) : null;
+      const lastSeen =
+        liveHs && (!p.lastHandshakeAt || liveHs > p.lastHandshakeAt) ? liveHs : p.lastHandshakeAt;
+      const stale =
+        p.status === RemotePeerStatus.ACTIVE
+          ? classifyWgStale({ lastHandshakeAt: lastSeen, provisionedAt: p.provisionedAt, createdAt: p.createdAt }, nowS * 1000)
+          : null;
       return {
         id: p.id,
         status: p.status,
         state,
+        staleness: stale?.state ?? 'OK',
+        inactiveSince: stale && stale.state !== 'OK' ? stale.since.toISOString() : null,
         tenant: { id: p.tenantId, name: tenantName.get(p.tenantId) ?? '—' },
         router: {
           id: p.router.id,
@@ -129,6 +148,7 @@ export class AdminWireGuardService {
     const items = rows
       .filter((r) => !query.tenantId || r.tenant.id === query.tenantId)
       .filter((r) => !query.state || r.state === query.state)
+      .filter((r) => !query.staleness || r.staleness === query.staleness)
       .filter(
         (r) =>
           !needle ||
@@ -317,6 +337,8 @@ export class AdminWireGuardService {
     return {
       ...counts,
       total: rows.length,
+      stale24h: rows.filter((r) => r.staleness === 'STALE_24H').length,
+      neverConnected: rows.filter((r) => r.staleness === 'NEVER_CONNECTED').length,
       wgEnabled: this.wg.enabled,
       liveAvailable: live !== null,
       drift: {
