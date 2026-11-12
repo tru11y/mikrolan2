@@ -8,8 +8,8 @@ function ctxFor(role?: UserRole): ExecutionContext {
   const req = role ? { user: { role, tenantId: 't1', userId: 'u1' } } : {};
   return {
     switchToHttp: () => ({ getRequest: () => req }),
-    getHandler: () => undefined,
-    getClass: () => undefined,
+    getHandler: () => function someHandler() {},
+    getClass: () => class SomeController {},
   } as unknown as ExecutionContext;
 }
 
@@ -154,4 +154,20 @@ describe('RolesGuard', () => {
       ).toThrow(ForbiddenException);
     });
   });
+
+  describe('TICKET_VERIFIER : deny-by-default', () => {
+    it('route SANS @Roles : refusée au vendeur (403) mais ouverte à un MEMBER', () => {
+      expect(() => guardFor(undefined).canActivate(ctxFor(UserRole.TICKET_VERIFIER))).toThrow(ForbiddenException);
+      expect(guardFor(undefined).canActivate(ctxFor(UserRole.MEMBER))).toBe(true);
+    });
+    it('route SANS @Roles mais dans l’allowlist : ouverte au vendeur', () => {
+      const ctx = {
+        switchToHttp: () => ({ getRequest: () => ({ user: { role: UserRole.TICKET_VERIFIER, tenantId: 't', userId: 'u' } }) }),
+        getHandler: () => ({ name: 'me' }),
+        getClass: () => ({ name: 'AuthController' }),
+      } as unknown as ExecutionContext;
+      expect(guardFor(undefined).canActivate(ctx)).toBe(true);
+    });
+  });
 });
+
