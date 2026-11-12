@@ -147,7 +147,7 @@ describe('NotificationsService', () => {
       expect(res).toEqual({ status: 'SENT', tokensFound: 3, accepted: 2, invalid: 1 });
       expect(prisma.user.updateMany).toHaveBeenCalledTimes(1);
       expect(prisma.user.updateMany).toHaveBeenCalledWith({
-        where: { id: 'u2', tenantId: mockTenantId, pushToken: tok('dead') },
+        where: { id: { in: ['u2'] }, tenantId: mockTenantId, pushToken: tok('dead') },
         data: { pushToken: null },
       });
     });
@@ -236,6 +236,30 @@ describe('NotificationsService', () => {
       expect(sent).toHaveLength(2);
       expect(new Set(sent.map((m) => m.to)).size).toBe(2);
       expect(res.accepted).toBeLessThanOrEqual(res.tokensFound);
+    });
+
+    it('même token porté par deux utilisateurs du tenant : un seul message Expo, token mort purgé pour les deux, jamais hors tenant', async () => {
+      prisma.user.findMany.mockResolvedValue([user('u1', tok('shared')), user('u2', tok('shared'))]);
+      global.fetch = okFetch([{ status: 'error', details: { error: 'DeviceNotRegistered' } }]);
+
+      const res = await service.sendPushToTenant(mockTenantId, 'T', 'C');
+
+      const sent = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body) as Array<{ to: string }>;
+      expect(sent).toHaveLength(1);
+      expect(res).toMatchObject({ status: 'INVALID_TOKEN', tokensFound: 1, accepted: 0, invalid: 1 });
+      expect(prisma.user.updateMany).toHaveBeenCalledWith({
+        where: { id: { in: ['u1', 'u2'] }, tenantId: mockTenantId, pushToken: tok('shared') },
+        data: { pushToken: null },
+      });
+    });
+
+    it('même token partagé, accepté : un message, accepted 1 <= tokensFound 1', async () => {
+      prisma.user.findMany.mockResolvedValue([user('u1', tok('shared')), user('u2', tok('shared'))]);
+      global.fetch = okFetch([{ status: 'ok', id: '1' }]);
+
+      const res = await service.sendPushToTenant(mockTenantId, 'T', 'C');
+
+      expect(res).toEqual({ status: 'SENT', tokensFound: 1, accepted: 1, invalid: 0 });
     });
 
     it('le résumé retourné ne contient jamais de token', async () => {

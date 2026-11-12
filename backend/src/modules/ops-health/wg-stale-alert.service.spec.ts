@@ -31,6 +31,7 @@ function setup(
   enabled = true,
   alertEmail: string | undefined = 'ops@example.test',
   superAdmins: Array<{ email: string }> = [],
+  sharedRegistry?: WgAlertDeliveryRegistry,
 ) {
   const prisma = {
     remotePeer: {
@@ -50,7 +51,7 @@ function setup(
   const mail = { sendAlert: jest.fn().mockResolvedValue({ status: 'SENT' }) };
   const notifications = { sendPushToTenant: jest.fn().mockResolvedValue(PUSH_OK) };
   const config = { get: jest.fn().mockReturnValue(alertEmail) };
-  const registry = new WgAlertDeliveryRegistry();
+  const registry = sharedRegistry ?? new WgAlertDeliveryRegistry();
   const service = new WgStaleAlertService(prisma as never, wg as never, mail as never, notifications as never, config as never, registry);
   const logs = { error: jest.spyOn(service['logger'], 'error').mockImplementation(), log: jest.spyOn(service['logger'], 'log').mockImplementation(), warn: jest.spyOn(service['logger'], 'warn').mockImplementation() };
   return { service, prisma, wg, mail, notifications, registry, logs };
@@ -132,7 +133,7 @@ describe('WgStaleAlertService — preuve de livraison', () => {
     expect(mail.sendAlert).toHaveBeenCalledTimes(1);
     expect(mail.sendAlert).toHaveBeenCalledWith('ops@example.test', expect.anything(), expect.anything());
     expect(prisma.user.findMany).not.toHaveBeenCalled();
-    expect(registry.snapshot(T0).wgUndelivered).toBe(0);
+    expect(registry.snapshot(T0).wgNoProviderAccepted).toBe(0);
     expect(undelivered(logs)).toHaveLength(0);
     expect(logs.log).toHaveBeenCalledWith(expect.objectContaining({ event: 'WG_ALERT_ACCEPTED' }));
   });
@@ -166,7 +167,7 @@ describe('WgStaleAlertService — preuve de livraison', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0][0]).toMatchObject({ emailStatus: 'NO_RECIPIENT', pushStatus: 'NO_TOKEN', attempt: 1 });
     expect(logs.log).not.toHaveBeenCalledWith(expect.objectContaining({ event: 'WG_ALERT_ACCEPTED' }));
-    expect(registry.snapshot(T0)).toMatchObject({ wgUndelivered: 1, wgNoRecipient: 1, wgNoPushToken: 1 });
+    expect(registry.snapshot(T0)).toMatchObject({ wgNoProviderAccepted: 1, wgNoRecipient: 1, wgNoPushToken: 1 });
     // staleAlertedAt reste posé (pas de relance en rafale) : aucune remise à null.
     expect(prisma.remotePeer.update).not.toHaveBeenCalledWith(expect.objectContaining({ data: { staleAlertedAt: null } }));
   });
@@ -176,14 +177,14 @@ describe('WgStaleAlertService — preuve de livraison', () => {
     mail.sendAlert.mockResolvedValue({ status: 'NOT_CONFIGURED' });
     notifications.sendPushToTenant.mockResolvedValue(PUSH_NO_TOKEN);
     await service.check(T0);
-    expect(registry.snapshot(T0).wgUndelivered).toBe(1);
+    expect(registry.snapshot(T0).wgNoProviderAccepted).toBe(1);
   });
 
   it('e-mail OK, push KO : livrée, défaut push mesuré', async () => {
     const { service, notifications, registry, logs } = setup([peer()], {});
     notifications.sendPushToTenant.mockResolvedValue({ status: 'FAILED', tokensFound: 1, accepted: 0, invalid: 0, failureCode: 'HTTP_500' });
     await service.check(T0);
-    expect(registry.snapshot(T0)).toMatchObject({ wgUndelivered: 0, wgDeliveredEmail: 1, wgProviderFailures: 1 });
+    expect(registry.snapshot(T0)).toMatchObject({ wgNoProviderAccepted: 0, wgEmailProviderAccepted: 1, wgProviderFailures: 1 });
     expect(logs.warn).toHaveBeenCalledWith(expect.objectContaining({ event: 'WG_ALERT_CHANNEL_DEGRADED', failureCodes: ['HTTP_500'] }));
     expect(undelivered(logs)).toHaveLength(0);
   });
@@ -192,7 +193,7 @@ describe('WgStaleAlertService — preuve de livraison', () => {
     const { service, mail, registry } = setup([peer()], {});
     mail.sendAlert.mockResolvedValue({ status: 'FAILED', failureCode: 'TIMEOUT' });
     await service.check(T0);
-    expect(registry.snapshot(T0)).toMatchObject({ wgUndelivered: 0, wgDeliveredPush: 1, wgProviderFailures: 1 });
+    expect(registry.snapshot(T0)).toMatchObject({ wgNoProviderAccepted: 0, wgPushProviderAccepted: 1, wgProviderFailures: 1 });
   });
 
   it('les deux échouent : non livrée, Sentry error WG_ALERT_UNDELIVERED sans donnée sensible', async () => {
@@ -202,7 +203,7 @@ describe('WgStaleAlertService — preuve de livraison', () => {
     mail.sendAlert.mockResolvedValue({ status: 'FAILED', failureCode: 'SMTP_ERROR' });
     notifications.sendPushToTenant.mockResolvedValue({ status: 'FAILED', tokensFound: 1, accepted: 0, invalid: 0, failureCode: 'TIMEOUT' });
     await service.check(T0);
-    expect(registry.snapshot(T0)).toMatchObject({ wgUndelivered: 1, wgProviderFailures: 2 });
+    expect(registry.snapshot(T0)).toMatchObject({ wgNoProviderAccepted: 1, wgProviderFailures: 2 });
     expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
     const undeliveredSentry = Sentry.captureMessage.mock.calls.find(([m]) => m === 'WG_ALERT_UNDELIVERED');
     expect(undeliveredSentry).toBeDefined();
@@ -215,7 +216,7 @@ describe('WgStaleAlertService — preuve de livraison', () => {
     const { service, notifications, registry } = setup([peer()], {}, true, '', []);
     notifications.sendPushToTenant.mockRejectedValue(new Error('boom'));
     await service.check(T0);
-    expect(registry.snapshot(T0).wgUndelivered).toBe(1);
+    expect(registry.snapshot(T0).wgNoProviderAccepted).toBe(1);
   });
 
   it('staleAlertedAt seul ne produit jamais le libellé « alerte envoyée / délivrée »', async () => {
@@ -232,7 +233,7 @@ describe('WgStaleAlertService — preuve de livraison', () => {
     const { service, registry } = setup([peer({ staleAlertedAt: new Date(T0 - 5 * H) })], { [KEY]: { latestHandshake: fresh } }, true, '', []);
     registry.record('p1', { email: 'NO_RECIPIENT', push: 'NO_TOKEN', providerAccepted: false, attemptedAt: new Date(T0 - 5 * H), failureCodes: [] }, T0 - 5 * H);
     await service.check(T0);
-    expect(registry.snapshot(T0).wgOpenUndeliveredOver1h).toBe(0);
+    expect(registry.snapshot(T0).wgOpenNoProviderAcceptedOver1h).toBe(0);
   });
 });
 
@@ -340,6 +341,65 @@ describe('WgStaleAlertService — un seul envoi par destinataire et par token', 
     await service.check(T0);
     expect(mail.sendAlert).not.toHaveBeenCalled();
     expect(notifications.sendPushToTenant).not.toHaveBeenCalled();
-    expect(registry.snapshot(T0)).toMatchObject({ level: 'ORANGE', wgUnknownDeliveryAfterRestart: 1, wgUndelivered: 0 });
+    expect(registry.snapshot(T0)).toMatchObject({ level: 'ORANGE', wgUnknownDeliveryAfterRestart: 1, wgNoProviderAccepted: 0 });
+  });
+});
+
+describe('WgStaleAlertService — contrat Sentry WG_ALERT_UNDELIVERED', () => {
+  it('tags et extra limités au contrat, aucun identifiant brut ni texte utilisateur', async () => {
+    const Sentry = jest.requireMock('@sentry/node') as { captureMessage: jest.Mock };
+    Sentry.captureMessage.mockClear();
+    const raw = peer({ id: 'RAW-PEER-ID', tenantId: 'RAW-TENANT-ID', routerId: 'RAW-ROUTER-ID', wgPublicKey: 'RAW-WG-KEY', router: { alias: 'ALIAS-SECRET', identity: 'IDENTITY-SECRET' } });
+    const { service, mail, notifications } = setup([raw], { 'RAW-WG-KEY': { latestHandshake: 0 } }, true, 'boss@example.test');
+    mail.sendAlert.mockResolvedValue({ status: 'FAILED', failureCode: 'SMTP_ERROR' });
+    notifications.sendPushToTenant.mockResolvedValue({ status: 'FAILED', tokensFound: 1, accepted: 0, invalid: 0, failureCode: 'HTTP_500' });
+    await service.check(T0);
+
+    expect(Sentry.captureMessage).toHaveBeenCalledTimes(1);
+    const [message, ctx] = Sentry.captureMessage.mock.calls[0] as [string, { level: string; tags: Record<string, unknown>; extra: Record<string, unknown> }];
+    expect(message).toBe('WG_ALERT_UNDELIVERED');
+    expect(ctx.level).toBe('error');
+    expect(Object.keys(ctx.tags).sort()).toEqual(['alertType', 'domain', 'emailStatus', 'errorCode', 'pushStatus']);
+    expect(Object.keys(ctx.extra).sort()).toEqual(['attempt', 'failureCodes', 'peerRef', 'tenantRef']);
+    expect(ctx.extra.peerRef).toBe(deliveryEntityRef('RAW-PEER-ID'));
+    expect(ctx.extra.tenantRef).toBe(deliveryEntityRef('RAW-TENANT-ID'));
+    const json = JSON.stringify([message, ctx]);
+    for (const secret of ['RAW-PEER-ID', 'RAW-TENANT-ID', 'RAW-ROUTER-ID', 'RAW-WG-KEY', 'ALIAS-SECRET', 'IDENTITY-SECRET', 'boss@example.test', 'ExponentPushToken', 'injoignable']) {
+      expect(json).not.toContain(secret);
+    }
+  });
+});
+
+describe('WgStaleAlertService — cycle d épisode (incident, redémarrage, résolution, nouvel épisode)', () => {
+  it('non livré -> redémarrage = UNKNOWN_DELIVERY -> handshake sain = résolu -> 24 h d inactivité = nouvelle alerte unique, sans pollution', async () => {
+    const DAY = 24 * H;
+    // 1. Incident non livré.
+    const first = setup([peer()], {}, true, '', []);
+    first.notifications.sendPushToTenant.mockResolvedValue(PUSH_NO_TOKEN);
+    expect((await first.service.check(T0)).alerted).toBe(1);
+    expect(first.registry.snapshot(T0)).toMatchObject({ wgNoProviderAccepted: 1, wgAlertsCreated: 1 });
+
+    // 2-3. Redémarrage : registre neuf, le peer porte staleAlertedAt -> livraison inconnue, aucun envoi.
+    const stale = peer({ staleAlertedAt: new Date(T0) });
+    const restarted = setup([stale], {}, true, '', []);
+    await restarted.service.check(T0 + 2 * H);
+    expect(restarted.mail.sendAlert).not.toHaveBeenCalled();
+    expect(restarted.notifications.sendPushToTenant).not.toHaveBeenCalled();
+    expect(restarted.registry.snapshot(T0 + 2 * H)).toMatchObject({ level: 'ORANGE', wgUnknownDeliveryAfterRestart: 1, wgAlertsCreated: 0 });
+
+    // 4-5. Handshake sain : staleAlertedAt remis à null, registre résolu (plus d'inconnu).
+    const fresh = Math.floor((T0 + 3 * H) / 1000);
+    const healthy = setup([stale], { [KEY]: { latestHandshake: fresh } }, true, '', [], restarted.registry);
+    expect(await healthy.service.check(T0 + 3 * H)).toEqual({ alerted: 0, resolved: 1 });
+    expect(healthy.prisma.remotePeer.update).toHaveBeenCalledWith({ where: { id: 'p1' }, data: { staleAlertedAt: null } });
+    expect(healthy.registry.snapshot(T0 + 3 * H)).toMatchObject({ level: 'GREEN', wgUnknownDeliveryAfterRestart: 0, wgOpenNoProviderAcceptedOver1h: 0 });
+
+    // 6-7. Nouvelle inactivité de 24 h (staleAlertedAt nul) : une seule nouvelle tentative, comptée comme nouvelle alerte.
+    const relapse = setup([peer({ staleAlertedAt: null, lastHandshakeAt: new Date(T0 + 3 * H) })], {}, true, 'ops@example.test', [], restarted.registry);
+    expect((await relapse.service.check(T0 + 3 * H + DAY + H)).alerted).toBe(1);
+    expect(relapse.mail.sendAlert).toHaveBeenCalledTimes(1);
+    expect(relapse.notifications.sendPushToTenant).toHaveBeenCalledTimes(1);
+    const snap = relapse.registry.snapshot(T0 + 3 * H + DAY + H);
+    expect(snap).toMatchObject({ wgAlertsCreated: 1, wgNoProviderAccepted: 0, wgEmailProviderAccepted: 1, wgUnknownDeliveryAfterRestart: 0 });
   });
 });

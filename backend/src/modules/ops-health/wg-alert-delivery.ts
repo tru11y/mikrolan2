@@ -74,16 +74,19 @@ export interface WgAlertHealth {
   wgAlertsCreated: number;
   wgDeliveryAttemptsEmail: number;
   wgDeliveryAttemptsPush: number;
-  /** Acceptés par le SMTP (pas une preuve de remise en boîte). */
-  wgDeliveredEmail: number;
-  /** Acceptés par Expo (pas une preuve d'affichage). */
-  wgDeliveredPush: number;
-  wgUndelivered: number;
+  /** Alertes dont l'e-mail a été accepté par le transport SMTP (pas une preuve de remise en boîte ni de lecture). */
+  wgEmailProviderAccepted: number;
+  /** Alertes dont le push a été accepté par l'API Expo (pas une preuve d'affichage sur le téléphone). */
+  wgPushProviderAccepted: number;
+  /** Alertes pour lesquelles aucun fournisseur (SMTP, Expo) n'a accepté le message. */
+  wgNoProviderAccepted: number;
   wgNoRecipient: number;
   wgNoPushToken: number;
   wgInvalidPushToken: number;
   wgProviderFailures: number;
-  wgOpenUndeliveredOver1h: number;
+  wgOpenNoProviderAcceptedOver1h: number;
+  /** Codes d'échec distincts (jamais d'adresse, de token ni d'identifiant) des alertes de la fenêtre. */
+  recentFailureCodes: string[];
 }
 
 interface Event {
@@ -159,14 +162,15 @@ export class WgAlertDeliveryRegistry {
       wgAlertsCreated: ev.length,
       wgDeliveryAttemptsEmail: count((o) => o.email === 'SENT' || o.email === 'FAILED'),
       wgDeliveryAttemptsPush: count((o) => o.push === 'SENT' || o.push === 'FAILED' || o.push === 'INVALID_TOKEN'),
-      wgDeliveredEmail: count((o) => o.email === 'SENT'),
-      wgDeliveredPush: count((o) => o.push === 'SENT'),
-      wgUndelivered: ev.length - accepted,
+      wgEmailProviderAccepted: count((o) => o.email === 'SENT'),
+      wgPushProviderAccepted: count((o) => o.push === 'SENT'),
+      wgNoProviderAccepted: ev.length - accepted,
       wgNoRecipient: count((o) => o.email === 'NO_RECIPIENT'),
       wgNoPushToken: count((o) => o.push === 'NO_TOKEN'),
       wgInvalidPushToken: count((o) => o.push === 'INVALID_TOKEN'),
       wgProviderFailures: count((o) => o.email === 'FAILED') + count((o) => o.push === 'FAILED'),
-      wgOpenUndeliveredOver1h: over1h,
+      wgOpenNoProviderAcceptedOver1h: over1h,
+      recentFailureCodes: [...new Set(ev.flatMap((o) => o.failureCodes))].sort(),
     };
   }
 }

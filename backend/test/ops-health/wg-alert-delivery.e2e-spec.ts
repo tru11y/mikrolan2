@@ -165,7 +165,7 @@ describe('Alertes WireGuard — preuve de livraison (e2e)', () => {
     expect((await service.check(Date.now())).alerted).toBe(1);
 
     const after = registry.snapshot();
-    expect(after.wgUndelivered).toBe(before.wgUndelivered + 1);
+    expect(after.wgNoProviderAccepted).toBe(before.wgNoProviderAccepted + 1);
     expect(after.wgNoPushToken).toBe(before.wgNoPushToken + 1);
     expect(global.fetch).not.toHaveBeenCalled();
     expect((await prisma.remotePeer.findUniqueOrThrow({ where: { id: peer.id } })).staleAlertedAt).not.toBeNull();
@@ -173,7 +173,7 @@ describe('Alertes WireGuard — preuve de livraison (e2e)', () => {
     const res = await request(app.getHttpServer()).get('/api/admin/system-health').set('Authorization', `Bearer ${adminToken}`).expect(200);
     const wg = res.body.data.wgAlerts;
     expect(wg).toMatchObject({ persistence: 'MEMORY_ONLY', resetOnRestart: true, deliveryProofDurable: false, level: 'RED' });
-    expect(wg.wgUndelivered).toBeGreaterThanOrEqual(1);
+    expect(wg.wgNoProviderAccepted).toBeGreaterThanOrEqual(1);
     expect(JSON.stringify(res.body)).not.toMatch(/ExponentPushToken|@e2e\.local|@example/);
   });
 
@@ -187,9 +187,9 @@ describe('Alertes WireGuard — preuve de livraison (e2e)', () => {
     expect((await service.check(Date.now())).alerted).toBe(1);
 
     const after = registry.snapshot();
-    expect(after.wgDeliveredEmail).toBe(before.wgDeliveredEmail + 1);
-    expect(after.wgDeliveredPush).toBe(before.wgDeliveredPush + 1);
-    expect(after.wgUndelivered).toBe(before.wgUndelivered);
+    expect(after.wgEmailProviderAccepted).toBe(before.wgEmailProviderAccepted + 1);
+    expect(after.wgPushProviderAccepted).toBe(before.wgPushProviderAccepted + 1);
+    expect(after.wgNoProviderAccepted).toBe(before.wgNoProviderAccepted);
     // Repli e-mail : le SUPER_ADMIN actif a été lu en base (ALERT_EMAIL vide).
     expect(sendAlert).toHaveBeenCalledWith(expect.stringContaining('@e2e.local'), expect.anything(), expect.anything());
     void peer;
