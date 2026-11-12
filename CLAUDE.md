@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**MikroLan** is a commercial multi-tenant SaaS for onboarding and managing MikroTik routers (hotspot/FAI), with manual mobile money billing (Wave/Orange Money), an admin back-office, and RouterOS remote provisioning.
+**MikroLan** is a commercial multi-tenant SaaS for onboarding and managing MikroTik routers (hotspot/FAI), with automatic mobile money billing (SasPay: Wave/Orange Money, activation by signed webhook), an admin back-office, and RouterOS remote provisioning.
 
 - **Backend:** NestJS + Fastify + Prisma + PostgreSQL — `backend/`
 - **Mobile:** Expo / React Native — `mobile/` (includes the SUPER_ADMIN back-office screens, no separate web frontend)
@@ -28,7 +28,7 @@
 
 - NestJS modules under `src/modules/`: `auth`, `admin`, `subscriptions`, `remote-access`, `notifications`, `mail`, `health`, etc.
 - Prisma schema: `backend/prisma/schema.prisma` — `Tenant`, `User` (roles incl. `SUPER_ADMIN`), `Subscription`, `SubscriptionTier`, `Invoice`, `PaymentProof`, `PlatformConfig` (key/value app config).
-- Payment flow (manual mobile money, no payment API): client uploads a payment proof (`SubscriptionsService.uploadProof`) → SUPER_ADMIN validates in the admin back-office (`AdminService.validateInvoice`) → atomic transaction activates Invoice/Subscription/Tenant.
+- Payment flow (SasPay, automatic): the client pays through SasPay checkout → SasPay posts a signed event to the public `POST /payments/saspay/...` webhook (HMAC, anti-replay ±5 min) → `SaspayService` atomically activates Invoice/Subscription/Tenant. **There is no manual validation**: `POST /subscriptions/upload-proof` returns 410 (`MANUAL_PAYMENT_PROOF_DISABLED`) and the mobile manual-payment screens were removed. Wave/Orange numbers in `PlatformConfig` are a fallback display only (admin Config, labelled « paiement manuel désactivé »).
 - Global guards: JWT + `RolesGuard` (`@Roles(UserRole.SUPER_ADMIN)` etc.), Zod validation at every controller boundary, global rate limiting (`ThrottlerModule`), Helmet, CORS restricted via `CORS_ORIGINS`.
 - RouterOS credentials stored AES-256-GCM encrypted (`Tenant.credEncrypted`).
 - Tests: `npm test` (unit, `*.spec.ts`), `npm run test:e2e` (testcontainers, `test/jest-e2e.json`) — **CI currently only runs unit tests**, e2e must be run manually until wired into `ci.yml`.
