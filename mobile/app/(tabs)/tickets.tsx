@@ -25,6 +25,7 @@ import { useTheme } from '@/src/providers/theme-provider';
 import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 import { useBackToDashboard } from '@/src/hooks/use-back-to-dashboard';
+import { useActiveRouter } from '@/src/providers/active-router-provider';
 
 export default function TicketsScreen() {
   useBackToDashboard();
@@ -34,6 +35,9 @@ export default function TicketsScreen() {
   const router = useRouter();
   const routers = useQuery({ queryKey: ['routers'], queryFn: api.routers.list });
   const list = routers.data ?? [];
+  const { activeRouterId } = useActiveRouter();
+  // Routeur évident : celui déjà actif, ou le seul routeur du compte.
+  const direct = list.find((r) => r.id === activeRouterId) ?? (list.length === 1 ? list[0] : undefined);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -46,7 +50,16 @@ export default function TicketsScreen() {
           paddingBottom: navHeight,
         }}
       >
-      <Subtitle>{t('tickets.chooseRouter')}</Subtitle>
+      {direct ? (
+        <Button
+          title={t('tickets.createFor', { name: direct.alias || direct.identity })}
+          onPress={() =>
+            router.push({ pathname: '/generate-vouchers', params: { routerId: direct.id } })
+          }
+        />
+      ) : null}
+
+      <Subtitle>{direct ? t('tickets.otherRouter') : t('tickets.chooseRouter')}</Subtitle>
 
       <Press
         accessibilityRole="button"

@@ -28,6 +28,8 @@ import { useActiveRouter } from '@/src/providers/active-router-provider';
 import { useRouterLive } from '@/src/hooks/use-router-live';
 import { classifyLiveFailure } from '@/src/lib/credentialSync';
 import { cpuValue, memoryPercent, sessionsState, statsState } from '@/src/lib/liveDisplay';
+import { offlineSince } from '@/src/lib/offlineSince';
+import { formatAge } from '@/src/lib/wgDisplay';
 import { useSseLive } from '@/src/providers/live-events-provider';
 import {
   Badge,
@@ -455,6 +457,11 @@ export default function RouterDetailScreen() {
     void pushCredsToServer();
   }, [id, isPro, serverHasCreds, pushCredsToServer]);
 
+  const offline = offlineSince(live.data?.lastSuccessAt, Date.now());
+  const sessionsOfflineText =
+    offline.kind === 'since'
+      ? t('routerDetail.sessionsOfflineSince', { age: formatAge(offline.ageSeconds) })
+      : t('routerDetail.sessionsNeverRead');
   const liveFailure = classifyLiveFailure(
     live.error
       ? { errorCode: describeError(live.error).errorCode, message: describeError(live.error).message }
@@ -788,7 +795,9 @@ export default function RouterDetailScreen() {
                       ? t('routerDetail.liveFresh')
                       : sessionsState(live.data) === 'stale' || liveFailure === 'routeros-slow'
                         ? t('routerDetail.dataNotRefreshed')
-                        : t('routerDetail.sessionsUnknown')
+                        : live.isLoading
+                          ? t('routerDetail.sessionsUnknown')
+                          : sessionsOfflineText
                   }
                 />
                 <StatusLine
