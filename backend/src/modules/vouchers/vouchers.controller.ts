@@ -23,6 +23,8 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { TenantContext } from '../../common/context/tenant-context';
 import { VoucherService } from './voucher.service';
 import { TicketVaultService } from './ticket-vault.service';
+import { VoucherSearchService } from './voucher-search.service';
+import { voucherSearchQuerySchema, type VoucherSearchQuery } from './dto/voucher-search.schemas';
 import {
   confirmVouchersSchema,
   reportPushFailureSchema,
@@ -37,6 +39,7 @@ export class VouchersController {
   constructor(
     private readonly vouchers: VoucherService,
     private readonly vault: TicketVaultService,
+    private readonly search: VoucherSearchService,
   ) {}
 
   @Post('generate')
@@ -85,6 +88,28 @@ export class VouchersController {
   @Roles(UserRole.MEMBER)
   batches(@Param('id', ParseUUIDPipe) id: string) {
     return this.vouchers.listBatches(id);
+  }
+
+  // Recherche paginée (curseur) par préfixe de code — OWNER/ADMIN. Ne renvoie jamais le mot de passe.
+  // Doit rester au-dessus des routes `:voucherId`.
+  @Get('search')
+  @Roles(UserRole.ADMIN)
+  searchVouchers(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query(new ZodValidationPipe(voucherSearchQuerySchema)) query: VoucherSearchQuery,
+  ) {
+    return this.search.search(id, query);
+  }
+
+  // Réimpression d'un ticket précis : journalisée ; ticket utilisé = OWNER seulement.
+  @Post(':voucherId/reprint')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(200)
+  reprint(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('voucherId', ParseUUIDPipe) voucherId: string,
+  ) {
+    return this.search.reprint(id, voucherId);
   }
 
   // Point lookup by code — used at the counter to verify a ticket without

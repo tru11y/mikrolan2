@@ -1,7 +1,7 @@
 ﻿export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
 import { useState } from 'react';
 import { FlatList, Share, Text, View } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -157,6 +157,7 @@ export default function FichiersScreen() {
   const theme = useTheme();
   const { t } = useTranslation();
   const { routerId } = useLocalSearchParams<{ routerId: string }>();
+  const router = useRouter();
   const qc = useQueryClient();
   const navHeight = useBottomNavHeight();
   const [error, setError] = useState<string | null>(null);
@@ -492,6 +493,16 @@ export default function FichiersScreen() {
                       <Ionicons name="trash-outline" size={15} color={theme.danger} />
                     </Press>
                   </View>
+
+                  {lotState(b).available > 0 ? (
+                    <Press
+                      accessibilityRole="button"
+                      onPress={() => router.push({ pathname: '/lot-tickets', params: { routerId, batchId: b.id, batchSeq: String(b.seq) } })}
+                      disabled={busy !== null}
+                    >
+                      <Text style={{ color: theme.primary, fontWeight: '600' }}>{t('fichiers.viewTickets')} →</Text>
+                    </Press>
+                  ) : null}
 
                   {/* Distribution : uniquement si au moins un ticket provisionné */}
                   {lotState(b).available > 0 && lotState(b).state !== 'generating' ? (
