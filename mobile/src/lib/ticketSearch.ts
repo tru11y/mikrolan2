@@ -2,12 +2,13 @@ import type { VoucherStatus } from '@/src/lib/api';
 
 /**
  * Comportement de la requête paginée de « Voir les tickets » (propre à cet écran, le QueryClient global n'est pas modifié).
- * - `maxPages` : au plus 10 pages (300 tickets) en cache ; au-delà, les plus anciennes pages sont retirées.
- * - un rafraîchissement d'une requête paginée rejoue TOUTES les pages en cache : on supprime les rafraîchissements
+ * - Un rafraîchissement d'une requête paginée rejoue TOUTES les pages en cache : on supprime les rafraîchissements
  *   automatiques au retour dans l'app et à la reconnexion (staleTime de 5 min pour le reste).
+ * - PAS de `maxPages` : l'API n'expose qu'un curseur « suivant ». Avec `maxPages`, les premières pages seraient évincées
+ *   sans pouvoir être rechargées et les premiers tickets du lot deviendraient inaccessibles (constaté sur appareil :
+ *   après 13 pages, le haut de liste était 3d1090 au lieu de 3d1000). À n'ajouter qu'avec un vrai curseur précédent.
  */
 export const LOT_TICKETS_QUERY = {
-  maxPages: 10,
   staleTime: 5 * 60_000,
   refetchOnWindowFocus: false,
   refetchOnReconnect: false,

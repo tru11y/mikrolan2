@@ -40,8 +40,6 @@ export default function LotTicketsScreen() {
     queryFn: ({ pageParam }) =>
       api.routers.searchVouchers(routerId, { q: debounced, batchId, limit: PAGE, cursor: pageParam }),
     getNextPageParam: (last) => last.nextCursor ?? undefined,
-    // Curseur à sens unique : pas de page précédente à recharger (requis par maxPages).
-    getPreviousPageParam: () => undefined,
     ...LOT_TICKETS_QUERY,
   });
   const items = useMemo(() => mergePages(query.data?.pages ?? []), [query.data]);
