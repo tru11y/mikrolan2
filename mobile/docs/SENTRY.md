@@ -22,7 +22,8 @@ Le job CI actuel ne construit pas l'APK : l'injection se fait au build manuel si
 - Actifs par défaut : handlers d'erreurs React Native, erreurs liées, contexte appareil (modèle, OS, mémoire), contexte release, suivi de session, crash natif.
 - Inactifs par défaut : user interaction tracing, httpClient (capture des requêtes en échec), logs, screenshot, view hierarchy, replay.
 - `sendDefaultPii: false` empêche l'ajout automatique de l'IP et de l'identité utilisateur. Il n'empêche PAS : les messages d'erreur, les URL, le contexte appareil, ni les événements natifs (crash natif envoyé par le SDK Android sans passer par `beforeSend` JS). Ces points sont traités par le scrubber et la réduction à l'émission.
-- **À vérifier sur le build de laboratoire** : contenu d'un crash natif (breadcrumbs natifs, interactions utilisateur) — le scrubber JS ne s'y applique pas.
+- SDK natif Android (sentry-android 8.21.1) : le manifeste désactive PII, capture d'écran, hiérarchie de vues et les breadcrumbs d'interaction, système, réseau et composants (`io.sentry.*`, vérifié par `sentryNative.static.test.ts`). `expo prebuild` régénère le manifeste : ces clés doivent être conservées (ou portées par un plugin Expo) si on relance un prebuild.
+- **À vérifier sur le build de laboratoire** : le contenu d'un crash natif (le scrubber JS ne s'y applique pas) et que le SDK natif lit bien ces clés alors que l'init est faite par le JS.
 
 ## Nettoyage (`sentryScrub.ts`)
 - Événement : message, exceptions, extra, contexts, tags nettoyés ; `user` vidé ; corps/cookies de requête supprimés ; URL réduite à la route.
