@@ -1,7 +1,7 @@
 import * as Sentry from '@sentry/react-native';
 import Constants from 'expo-constants';
 import { applySentry } from './sentryConfig';
-import { scrubBreadcrumb, scrubEvent } from './sentryScrub';
+import { scrubBreadcrumb, scrubEvent, shouldDropBreadcrumb } from './sentryScrub';
 
 // DSN injecté au build (EXPO_PUBLIC_SENTRY_DSN), jamais versionné. Absent : Sentry reste inactif.
 applySentry(
@@ -14,7 +14,7 @@ applySentry(
         Sentry.breadcrumbsIntegration({ console: false, dom: false, history: false, fetch: true, xhr: true, sentry: true }),
       ],
       beforeSend: (event) => scrubEvent(event as never),
-      beforeBreadcrumb: (b) => scrubBreadcrumb(b),
+      beforeBreadcrumb: (b) => (shouldDropBreadcrumb(b) ? null : scrubBreadcrumb(b)),
     }),
   {
     dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,

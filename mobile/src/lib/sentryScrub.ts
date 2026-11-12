@@ -79,6 +79,15 @@ export function scrubValue(value: unknown, depth = 0): unknown {
 
 type Crumb = { category?: string; message?: string; data?: Record<string, unknown> };
 
+/**
+ * Interactions utilisateur : jamais conservées (le SDK y met des noms de composants et des libellés
+ * d'accessibilité, ex. un nom de routeur). Cycle de vie de l'app et écrans (`ui.lifecycle`) restent.
+ */
+export function shouldDropBreadcrumb(breadcrumb: { category?: string; type?: string }): boolean {
+  const c = breadcrumb.category ?? '';
+  return c === 'touch' || c === 'gesture' || c === 'ui.click' || c === 'ui.scroll' || c === 'ui.input' || breadcrumb.type === 'user';
+}
+
 /** Réseau : liste blanche stricte (méthode, route normalisée, statut, durée). Le reste est nettoyé. */
 export function scrubBreadcrumb<T extends Crumb>(breadcrumb: T): T {
   if (breadcrumb.category === 'xhr' || breadcrumb.category === 'fetch') {
