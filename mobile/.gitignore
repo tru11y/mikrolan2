@@ -9,3 +9,5 @@ android/sentry.properties
 
 # Sentry build plugin (peut contenir SENTRY_AUTH_TOKEN)
 .env.sentry-build-plugin
+.env.sentry*
+!.env.sentry*.example
