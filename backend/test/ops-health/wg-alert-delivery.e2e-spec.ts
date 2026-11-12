@@ -6,7 +6,6 @@ import { promoteToSuperAdmin, signupUser } from '../helpers/auth.helper';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { NotificationsService } from '../../src/modules/notifications/notifications.service';
 import { WgStaleAlertService } from '../../src/modules/ops-health/wg-stale-alert.service';
-import { WgAlertDeliveryRegistry } from '../../src/modules/ops-health/wg-alert-delivery';
 import { WireGuardService } from '../../src/common/wireguard/wireguard.service';
 
 /**
@@ -19,7 +18,6 @@ describe('Alertes WireGuard — preuve de livraison (e2e)', () => {
   let prisma: PrismaService;
   let notifications: NotificationsService;
   let service: WgStaleAlertService;
-  let registry: WgAlertDeliveryRegistry;
   let adminToken = '';
   const originalFetch = global.fetch;
   const sendAlert = jest.fn();
@@ -62,15 +60,18 @@ describe('Alertes WireGuard — preuve de livraison (e2e)', () => {
   const sentTokens = (mock: jest.Mock): string[] => (mock.mock.calls.flatMap(([, init]) => JSON.parse(init.body) as Array<{ to: string }>)).map((m) => m.to);
 
   /** Les autres fichiers e2e partagent la base : on gèle leurs peers pour que seuls les nôtres soient évalués. */
-  const freezeOtherPeers = () =>
-    prisma.remotePeer.updateMany({ where: { id: { notIn: peerIds } }, data: { staleAlertedAt: new Date(stamp) } });
+  const frozen: string[] = [];
+  const freezeOtherPeers = async () => {
+    const others = await prisma.remotePeer.findMany({ where: { status: RemotePeerStatus.ACTIVE, id: { notIn: peerIds } }, select: { id: true } });
+    frozen.push(...others.map((p) => p.id));
+    await prisma.remotePeer.updateMany({ where: { id: { in: others.map((p) => p.id) } }, data: { status: RemotePeerStatus.REVOKED } });
+  };
 
   beforeAll(async () => {
     app = await createTestApp();
     prisma = app.get(PrismaService);
     notifications = app.get(NotificationsService);
     service = app.get(WgStaleAlertService);
-    registry = app.get(WgAlertDeliveryRegistry);
     const wg = (service as unknown as { wg: WireGuardService }).wg;
     jest.spyOn(wg, 'enabled', 'get').mockReturnValue(true);
     jest.spyOn(wg, 'livePeers').mockResolvedValue({} as never);
@@ -111,6 +112,7 @@ describe('Alertes WireGuard — preuve de livraison (e2e)', () => {
   afterAll(async () => {
     // La base est partagée avec les autres fichiers e2e : on retire nos peers (wg-stale.e2e-spec compte les siens).
     await prisma.remotePeer.deleteMany({ where: { id: { in: peerIds } } });
+    await prisma.remotePeer.updateMany({ where: { id: { in: frozen } }, data: { status: RemotePeerStatus.ACTIVE } });
     await app.close();
   });
 
@@ -155,43 +157,40 @@ describe('Alertes WireGuard — preuve de livraison (e2e)', () => {
     await prisma.user.update({ where: { id: aAdmin.id }, data: { pushToken: t.adminA } });
   });
 
-  it('alerte non livrée (SMTP KO, tenant sans token) : visible comme non livrée en Ops Health, sans secret', async () => {
+  it('aucun fournisseur (SMTP KO, tenant sans token) : épisode OPEN sans acceptation, visible dans Ops Health sans secret', async () => {
     const peer = await mkPeer(tenantC, 'undelivered');
     await freezeOtherPeers();
     sendAlert.mockResolvedValue({ status: 'FAILED', failureCode: 'SMTP_ERROR' });
     global.fetch = jest.fn();
 
-    const before = registry.snapshot();
     expect((await service.check(Date.now())).alerted).toBe(1);
 
-    const after = registry.snapshot();
-    expect(after.wgNoProviderAccepted).toBe(before.wgNoProviderAccepted + 1);
-    expect(after.wgNoPushToken).toBe(before.wgNoPushToken + 1);
+    const ep = await prisma.wgAlertEpisode.findFirstOrThrow({ where: { remotePeerId: peer.id } });
+    expect(ep).toMatchObject({ status: 'OPEN', attemptCount: 1, providerAcceptedAt: null, tenantId: tenantC });
     expect(global.fetch).not.toHaveBeenCalled();
     expect((await prisma.remotePeer.findUniqueOrThrow({ where: { id: peer.id } })).staleAlertedAt).not.toBeNull();
 
     const res = await request(app.getHttpServer()).get('/api/admin/system-health').set('Authorization', `Bearer ${adminToken}`).expect(200);
-    const wg = res.body.data.wgAlerts;
-    expect(wg).toMatchObject({ persistence: 'MEMORY_ONLY', resetOnRestart: true, deliveryProofDurable: false, level: 'RED' });
+    const wg = (res.body.data ?? res.body).wgAlerts;
+    expect(wg).toMatchObject({ persistence: 'DATABASE', resetOnRestart: false, deliveryProofDurable: true });
+    expect(['ORANGE', 'RED']).toContain(wg.level);
     expect(wg.wgNoProviderAccepted).toBeGreaterThanOrEqual(1);
     expect(JSON.stringify(res.body)).not.toMatch(/ExponentPushToken|@e2e\.local|@example/);
   });
 
-  it('alerte livrée (e-mail SMTP accepté + push Expo accepté) : comptée comme livrée', async () => {
+  it('fournisseurs qui acceptent (SMTP + Expo) : épisode PROVIDER_ACCEPTED, 1 e-mail et 2 tokens ciblés', async () => {
     const peer = await mkPeer(tenantA, 'delivered');
     await freezeOtherPeers();
     sendAlert.mockResolvedValue({ status: 'SENT' });
     global.fetch = jest.fn().mockResolvedValue(expoOk(2));
 
-    const before = registry.snapshot();
     expect((await service.check(Date.now())).alerted).toBe(1);
 
-    const after = registry.snapshot();
-    expect(after.wgEmailProviderAccepted).toBe(before.wgEmailProviderAccepted + 1);
-    expect(after.wgPushProviderAccepted).toBe(before.wgPushProviderAccepted + 1);
-    expect(after.wgNoProviderAccepted).toBe(before.wgNoProviderAccepted);
-    // Repli e-mail : le SUPER_ADMIN actif a été lu en base (ALERT_EMAIL vide).
+    const ep = await prisma.wgAlertEpisode.findFirstOrThrow({ where: { remotePeerId: peer.id } });
+    expect(ep).toMatchObject({ status: 'PROVIDER_ACCEPTED', emailStatus: 'SENT', pushStatus: 'SENT', nextAttemptAt: null });
+    expect(ep.providerAcceptedAt).not.toBeNull();
     expect(sendAlert).toHaveBeenCalledWith(expect.stringContaining('@e2e.local'), expect.anything(), expect.anything());
-    void peer;
+    const push = await prisma.wgAlertDeliveryAttempt.findFirstOrThrow({ where: { episodeId: ep.id, channel: 'PUSH' } });
+    expect(push).toMatchObject({ status: 'PROVIDER_ACCEPTED', recipientCount: 2 });
   });
 });

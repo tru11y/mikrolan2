@@ -381,8 +381,92 @@ model RemotePeer {
   sshPort    Int @default(22)
   winboxPort Int @default(8291)
 
+  alertEpisodes WgAlertEpisode[]
+
   @@index([tenantId])
   @@index([status, revokedAt])
+}
+
+// ─── ALERTES WIREGUARD DURABLES ───
+//
+// Un épisode = une période d'injoignabilité d'un peer, de sa détection à sa résolution (handshake sain).
+// `PROVIDER_ACCEPTED` = SMTP ou Expo a accepté le message : jamais une preuve de réception, d'affichage ni de lecture.
+// Aucune donnée sensible : ni adresse, ni token, ni alias, ni IP, ni clé, ni texte de message.
+// Un seul épisode non résolu par (peer, type) : index unique PARTIEL créé dans la migration
+// (WHERE status <> 'RESOLVED'), que Prisma ne sait pas exprimer — ne pas le supprimer.
+enum WgAlertType {
+  STALE_24H
+  NEVER_CONNECTED
+}
+
+enum WgAlertEpisodeStatus {
+  OPEN
+  PROVIDER_ACCEPTED
+  EXHAUSTED
+  RESOLVED
+}
+
+enum WgAlertChannel {
+  EMAIL
+  PUSH
+}
+
+enum WgAlertAttemptStatus {
+  PROVIDER_ACCEPTED
+  NO_RECIPIENT
+  NOT_CONFIGURED
+  NO_TOKEN
+  DISABLED
+  INVALID_TOKEN
+  PROVIDER_FAILED
+  TIMEOUT
+}
+
+model WgAlertEpisode {
+  id               String               @id @default(uuid())
+  remotePeerId     String
+  remotePeer       RemotePeer           @relation(fields: [remotePeerId], references: [id], onDelete: Cascade)
+  tenantId         String
+  alertType        WgAlertType
+  detectedAt       DateTime
+  resolvedAt       DateTime?
+  status           WgAlertEpisodeStatus @default(OPEN)
+  lastAttemptAt    DateTime?
+  nextAttemptAt    DateTime?
+  attemptCount     Int                  @default(0)
+  /// Dernier statut e-mail / push (EmailDeliveryResult / PushDeliveryResult), jamais d'adresse ni de token.
+  emailStatus      String?
+  pushStatus       String?
+  providerAcceptedAt DateTime?
+  /// Claim atomique de la tentative en cours : un claim expiré peut être repris (crash du processus).
+  claimExpiresAt   DateTime?
+  /// Épisode reconstitué depuis un ancien `staleAlertedAt` : l'acceptation passée est INCONNUE (jamais présumée).
+  legacy           Boolean              @default(false)
+  failureCode      String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  attempts         WgAlertDeliveryAttempt[]
+
+  @@index([remotePeerId, status])
+  @@index([nextAttemptAt, status])
+  @@index([tenantId])
+}
+
+model WgAlertDeliveryAttempt {
+  id                 String               @id @default(uuid())
+  episodeId          String
+  episode            WgAlertEpisode       @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  channel            WgAlertChannel
+  attemptNumber      Int
+  status             WgAlertAttemptStatus
+  attemptedAt        DateTime
+  providerAcceptedAt DateTime?
+  failureCode        String?
+  recipientCount     Int                  @default(0)
+  createdAt          DateTime             @default(now())
+
+  @@unique([episodeId, channel, attemptNumber])
+  @@index([attemptedAt, channel, status])
 }
 
 // ─── SUBSCRIPTION TIER (grille tarifaire, hors tenant) ───
