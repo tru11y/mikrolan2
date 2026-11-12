@@ -32,6 +32,9 @@ export interface FakeEpisode {
   emailStatus: string | null;
   pushStatus: string | null;
   providerAcceptedAt: Date | null;
+  nextReminderAt: Date | null;
+  reminderCount: number;
+  lastReminderAt: Date | null;
   claimExpiresAt: Date | null;
   legacy: boolean;
   failureCode: string | null;
@@ -41,6 +44,8 @@ export interface FakeAttempt {
   episodeId: string;
   channel: string;
   attemptNumber: number;
+  kind: string;
+  reminderNumber?: number | null;
   status: string;
   attemptedAt: Date;
   providerAcceptedAt: Date | null;
@@ -112,6 +117,9 @@ export class FakeWgAlertPrisma {
         emailStatus: null,
         pushStatus: null,
         providerAcceptedAt: null,
+        nextReminderAt: null,
+        reminderCount: 0,
+        lastReminderAt: null,
         claimExpiresAt: null,
         legacy: false,
         failureCode: null,
@@ -143,7 +151,11 @@ export class FakeWgAlertPrisma {
     createMany: async ({ data }: { data: FakeAttempt[] }) => {
       await this.tick();
       for (const d of data) {
-        if (this.attempts.some((a) => a.episodeId === d.episodeId && a.channel === d.channel && a.attemptNumber === d.attemptNumber)) {
+        const dupAttempt = this.attempts.some((a) => a.episodeId === d.episodeId && a.channel === d.channel && a.attemptNumber === d.attemptNumber);
+        const dupReminder =
+          d.reminderNumber != null &&
+          this.attempts.some((a) => a.episodeId === d.episodeId && a.channel === d.channel && a.reminderNumber === d.reminderNumber);
+        if (dupAttempt || dupReminder) {
           throw new Prisma.PrismaClientKnownRequestError('Unique constraint failed', { code: 'P2002', clientVersion: 'test' });
         }
       }
