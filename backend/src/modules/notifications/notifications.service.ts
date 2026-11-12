@@ -8,9 +8,9 @@ import type { NotificationType, UserRole } from '@prisma/client';
 import type { ListNotificationsQueryDto } from './dto/notifications.schemas';
 import type { PushJobData } from './notification.processor';
 
+/** `SENT` = accepté par l'API Expo. Cela ne prouve pas l'affichage sur le téléphone. */
 export type PushDeliveryResult = 'SENT' | 'NO_TOKEN' | 'DISABLED' | 'FAILED' | 'INVALID_TOKEN';
 
-/** `SENT` = au moins un message accepté par Expo (pas une preuve de réception sur l'appareil). */
 export interface PushSendSummary {
   status: PushDeliveryResult;
   tokensFound: number;

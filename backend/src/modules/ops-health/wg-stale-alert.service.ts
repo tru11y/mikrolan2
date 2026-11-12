@@ -8,7 +8,13 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { WireGuardService } from '../../common/wireguard/wireguard.service';
 import { MailService, type MailSendResult } from '../mail/mail.service';
 import { NotificationsService, type PushSendSummary } from '../notifications/notifications.service';
-import { WgAlertDeliveryRegistry, buildDeliveryOutcome, combineEmailResults, type WgAlertDeliveryOutcome } from './wg-alert-delivery';
+import {
+  WgAlertDeliveryRegistry,
+  buildDeliveryOutcome,
+  combineEmailResults,
+  deliveryEntityRef,
+  type WgAlertDeliveryOutcome,
+} from './wg-alert-delivery';
 import {
   WG_HANDSHAKE_WRITE_MIN_MS,
   WG_STALE_AFTER_MS,
@@ -20,7 +26,7 @@ import {
 /**
  * Alerte « tunnel injoignable depuis 24 h » : e-mail (ALERT_EMAIL, sinon SUPER_ADMIN actifs) + Sentry + push OWNER/ADMIN du tenant.
  * `staleAlertedAt` = incident pris en charge (première tentative), jamais une preuve de livraison : la preuve est
- * `humanDelivered` (SMTP accepté ou Expo accepté), tracée par WgAlertDeliveryRegistry. Pas de relance dans cette PR.
+ * `providerAccepted` (SMTP ou Expo a accepté le message ; ni remise en boîte, ni affichage téléphone), tracée par WgAlertDeliveryRegistry. Pas de relance dans cette PR.
  * Le handshake n'existe qu'en live (`wg`) : le cron le persiste pour mesurer la durée d'inactivité.
  * Si `wg` est illisible, on n'alerte pas (état inconnu ≠ tunnel mort).
  *
@@ -98,11 +104,12 @@ export class WgStaleAlertService {
           // Résolution automatique : le tunnel a repris, l'épisode est clos.
           await this.prisma.remotePeer.update({ where: { id: p.id }, data: { staleAlertedAt: null } });
           this.deliveries.resolve(p.id);
-          this.logger.log({ event: 'WG_STALE_RESOLVED', routerId: p.routerId });
+          this.logger.log({ event: 'WG_STALE_RESOLVED', routerRef: deliveryEntityRef(p.routerId) });
           resolved++;
         }
         continue;
       }
+      if (p.staleAlertedAt) this.deliveries.observeAlerted(p.id);
       if (!shouldAlert(verdict.state, p.staleAlertedAt, nowMs)) continue;
 
       // Verrou atomique : si deux instances passent en même temps, une seule envoie.
@@ -117,6 +124,7 @@ export class WgStaleAlertService {
       await this.notify(p, verdict.state, verdict.ageMs);
       alerted++;
     }
+    this.deliveries.markScanned();
     return { alerted, resolved };
   }
 
@@ -131,18 +139,6 @@ export class WgStaleAlertService {
       state === 'NEVER_CONNECTED'
         ? `Le routeur ${name} ne s'est jamais connecté au tunnel depuis sa mise en service (${age}). Configuration WireGuard non poussée ou clés divergentes ?`
         : `Le routeur ${name} n'a pas de handshake WireGuard depuis ${age} (éteint, WAN coupé ou UDP bloqué ?).`;
-    this.logger.warn({ errorCode: 'WG_PEER_STALE', routerId: p.routerId, tenantId: p.tenantId, state, ageHours: Math.floor(ageMs / 3_600_000) });
-
-    // Chaque canal est isolé : l'échec de l'un n'empêche pas les autres.
-    try {
-      Sentry.captureMessage(`WG_PEER_STALE: ${detail}`, {
-        level: 'warning',
-        tags: { errorCode: 'WG_PEER_STALE', domain: 'wireguard', state },
-        extra: { routerId: p.routerId, tenantId: p.tenantId, ageMs },
-      });
-    } catch (e) {
-      this.logger.warn(`Sentry alert failed: ${e instanceof Error ? e.message : e}`);
-    }
     const attemptedAt = new Date();
     const email = await this.deliverEmail(detail);
     const push = await this.deliverPush(p, name, age);
@@ -200,28 +196,36 @@ export class WgStaleAlertService {
     }
   }
 
-  /** Ni adresse, ni token, ni nom : statuts et codes uniquement. Un canal en échec reste visible même si l'autre réussit. */
-  private report(p: { id: string; routerId: string; tenantId: string }, state: string, o: WgAlertDeliveryOutcome): void {
+  /**
+   * Un seul point de décision, APRÈS les canaux. Uniquement des références pseudonymisées, des statuts et des codes :
+   * ni adresse, ni token, ni identifiant brut, ni nom de routeur.
+   */
+  private report(p: { id: string; tenantId: string }, state: string, o: WgAlertDeliveryOutcome): void {
     const fields = {
       alertType: state,
-      peerId: p.id,
-      tenantId: p.tenantId,
-      email: o.email,
-      push: o.push,
+      tenantRef: deliveryEntityRef(p.tenantId),
+      peerRef: deliveryEntityRef(p.id),
+      emailStatus: o.email,
+      pushStatus: o.push,
       failureCodes: o.failureCodes,
       attempt: 1,
     };
-    if (o.humanDelivered) {
-      this.logger.log({ event: 'WG_ALERT_DELIVERED', ...fields });
+    if (o.providerAccepted) {
+      this.logger.log({ event: 'WG_ALERT_ACCEPTED', ...fields });
       if (o.email !== 'SENT' || o.push !== 'SENT') this.logger.warn({ event: 'WG_ALERT_CHANNEL_DEGRADED', ...fields });
+      try {
+        Sentry.addBreadcrumb({ category: 'wireguard', level: 'info', message: 'WG_ALERT_ACCEPTED', data: fields });
+      } catch (e) {
+        this.logger.warn(`Sentry breadcrumb failed: ${e instanceof Error ? e.constructor.name : 'error'}`);
+      }
       return;
     }
     this.logger.error({ errorCode: 'WG_ALERT_UNDELIVERED', ...fields });
     try {
       Sentry.captureMessage('WG_ALERT_UNDELIVERED', {
         level: 'error',
-        tags: { errorCode: 'WG_ALERT_UNDELIVERED', domain: 'wireguard', state, email: o.email, push: o.push },
-        extra: { peerId: p.id, tenantId: p.tenantId, failureCodes: o.failureCodes, attempt: 1 },
+        tags: { errorCode: 'WG_ALERT_UNDELIVERED', domain: 'wireguard', alertType: state, emailStatus: o.email, pushStatus: o.push },
+        extra: { tenantRef: fields.tenantRef, peerRef: fields.peerRef, failureCodes: o.failureCodes, attempt: 1 },
       });
     } catch (e) {
       this.logger.warn(`Sentry undelivered report failed: ${e instanceof Error ? e.constructor.name : 'error'}`);

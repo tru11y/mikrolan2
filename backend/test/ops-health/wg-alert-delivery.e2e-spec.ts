@@ -172,7 +172,7 @@ describe('Alertes WireGuard — preuve de livraison (e2e)', () => {
 
     const res = await request(app.getHttpServer()).get('/api/admin/system-health').set('Authorization', `Bearer ${adminToken}`).expect(200);
     const wg = res.body.data.wgAlerts;
-    expect(wg).toMatchObject({ source: 'process-memory', level: 'RED' });
+    expect(wg).toMatchObject({ persistence: 'MEMORY_ONLY', resetOnRestart: true, deliveryProofDurable: false, level: 'RED' });
     expect(wg.wgUndelivered).toBeGreaterThanOrEqual(1);
     expect(JSON.stringify(res.body)).not.toMatch(/ExponentPushToken|@e2e\.local|@example/);
   });
