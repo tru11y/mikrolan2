@@ -35,8 +35,8 @@ test('les cinq états ont un libellé', () => {
   assert.equal(TICKET_STATUS_LABEL.GENERATED, 'Disponible');
 });
 
-test('requête paginée : cache borné à 10 pages et aucun rafraîchissement automatique en masse', () => {
-  assert.equal(LOT_TICKETS_QUERY.maxPages, 10);
+test('requête paginée : pas de maxPages, aucun rafraîchissement automatique en masse', () => {
+  assert.equal('maxPages' in LOT_TICKETS_QUERY, false, 'maxPages rend les premières pages inaccessibles (curseur à sens unique)');
   assert.equal(LOT_TICKETS_QUERY.staleTime, 300_000);
   assert.equal(LOT_TICKETS_QUERY.refetchOnWindowFocus, false);
   assert.equal(LOT_TICKETS_QUERY.refetchOnReconnect, false);
@@ -45,7 +45,8 @@ test('requête paginée : cache borné à 10 pages et aucun rafraîchissement au
 test("l'écran applique ces réglages et laisse passer le premier tap quand le clavier est ouvert", () => {
   const src = readFileSync(join(import.meta.dirname, '..', '..', 'app', 'lot-tickets.tsx'), 'utf8');
   assert.match(src, /\.\.\.LOT_TICKETS_QUERY/);
-  assert.match(src, /getPreviousPageParam: \(\) => undefined/);
+  assert.doesNotMatch(src, /maxPages/);
+  assert.doesNotMatch(src, /getPreviousPageParam/);
   assert.match(src, /keyboardShouldPersistTaps="handled"/);
   assert.match(src, /queryKey: \['voucher-search', routerId, batchId \?\? null, debounced \?\? null\]/);
 });
