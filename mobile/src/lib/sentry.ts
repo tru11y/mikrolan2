@@ -1,22 +1,29 @@
 import * as Sentry from '@sentry/react-native';
+import Constants from 'expo-constants';
+import { applySentry } from './sentryConfig';
 import { scrubBreadcrumb, scrubEvent } from './sentryScrub';
 
-const dsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
-
-if (dsn) {
-  Sentry.init({
-    dsn,
-    tracesSampleRate: 0.2,
-    environment: __DEV__ ? 'development' : 'production',
-    enableAutoSessionTracking: true,
-    sessionTrackingIntervalMillis: 30_000,
-    attachStacktrace: true,
-    maxBreadcrumbs: 50,
-    // Aucune donnée personnelle par défaut : explicite, pas laissé au défaut du SDK.
-    sendDefaultPii: false,
-    beforeSend: (event) => scrubEvent(event as never),
-    beforeBreadcrumb: (b) => scrubBreadcrumb(b),
-  });
-}
+// DSN injecté au build (EXPO_PUBLIC_SENTRY_DSN), jamais versionné. Absent : Sentry reste inactif.
+applySentry(
+  (options) =>
+    Sentry.init({
+      ...options,
+      // Fil d'Ariane réseau seulement (réduit par beforeBreadcrumb) : ni console, ni DOM, ni navigation.
+      integrations: (defaults) => [
+        ...defaults.filter((d) => d.name !== 'Breadcrumbs'),
+        Sentry.breadcrumbsIntegration({ console: false, dom: false, history: false, fetch: true, xhr: true, sentry: true }),
+      ],
+      beforeSend: (event) => scrubEvent(event as never),
+      beforeBreadcrumb: (b) => scrubBreadcrumb(b),
+    }),
+  {
+    dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+    env: process.env.EXPO_PUBLIC_SENTRY_ENV,
+    isDev: __DEV__,
+    packageName: Constants.expoConfig?.android?.package,
+    version: Constants.expoConfig?.version,
+    versionCode: Constants.expoConfig?.android?.versionCode,
+  },
+);
 
 export { Sentry };
