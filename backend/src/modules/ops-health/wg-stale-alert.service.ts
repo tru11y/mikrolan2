@@ -2,12 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import * as Sentry from '@sentry/node';
-import { RemotePeerStatus } from '@prisma/client';
+import { RemotePeerStatus, UserRole, UserStatus } from '@prisma/client';
 import type { AppConfig } from '../../config/configuration';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WireGuardService } from '../../common/wireguard/wireguard.service';
-import { MailService } from '../mail/mail.service';
-import { NotificationsService } from '../notifications/notifications.service';
+import { MailService, type MailSendResult } from '../mail/mail.service';
+import { NotificationsService, type PushSendSummary } from '../notifications/notifications.service';
+import { WgAlertDeliveryRegistry, buildDeliveryOutcome, combineEmailResults, type WgAlertDeliveryOutcome } from './wg-alert-delivery';
 import {
   WG_HANDSHAKE_WRITE_MIN_MS,
   WG_STALE_AFTER_MS,
@@ -17,7 +18,9 @@ import {
 } from './wg-stale.logic';
 
 /**
- * Alerte « tunnel injoignable depuis 24 h » : e-mail SUPER_ADMIN + Sentry + push au propriétaire du tenant.
+ * Alerte « tunnel injoignable depuis 24 h » : e-mail (ALERT_EMAIL, sinon SUPER_ADMIN actifs) + Sentry + push OWNER/ADMIN du tenant.
+ * `staleAlertedAt` = incident pris en charge (première tentative), jamais une preuve de livraison : la preuve est
+ * `humanDelivered` (SMTP accepté ou Expo accepté), tracée par WgAlertDeliveryRegistry. Pas de relance dans cette PR.
  * Le handshake n'existe qu'en live (`wg`) : le cron le persiste pour mesurer la durée d'inactivité.
  * Si `wg` est illisible, on n'alerte pas (état inconnu ≠ tunnel mort).
  *
@@ -39,6 +42,7 @@ export class WgStaleAlertService {
     private readonly mail: MailService,
     private readonly notifications: NotificationsService,
     private readonly config: ConfigService<AppConfig, true>,
+    private readonly deliveries: WgAlertDeliveryRegistry,
   ) {}
 
   @Cron(CronExpression.EVERY_10_MINUTES)
@@ -93,6 +97,7 @@ export class WgStaleAlertService {
         if (p.staleAlertedAt) {
           // Résolution automatique : le tunnel a repris, l'épisode est clos.
           await this.prisma.remotePeer.update({ where: { id: p.id }, data: { staleAlertedAt: null } });
+          this.deliveries.resolve(p.id);
           this.logger.log({ event: 'WG_STALE_RESOLVED', routerId: p.routerId });
           resolved++;
         }
@@ -108,6 +113,7 @@ export class WgStaleAlertService {
       });
       if (claim.count === 0) continue;
 
+      // staleAlertedAt = incident pris en charge (première tentative), PAS « alerte livrée ».
       await this.notify(p, verdict.state, verdict.ageMs);
       alerted++;
     }
@@ -115,7 +121,7 @@ export class WgStaleAlertService {
   }
 
   private async notify(
-    p: { routerId: string; tenantId: string; router: { alias: string | null; identity: string } },
+    p: { id: string; routerId: string; tenantId: string; router: { alias: string | null; identity: string } },
     state: 'STALE_24H' | 'NEVER_CONNECTED',
     ageMs: number,
   ): Promise<void> {
@@ -137,16 +143,88 @@ export class WgStaleAlertService {
     } catch (e) {
       this.logger.warn(`Sentry alert failed: ${e instanceof Error ? e.message : e}`);
     }
+    const attemptedAt = new Date();
+    const email = await this.deliverEmail(detail);
+    const push = await this.deliverPush(p, name, age);
+    const failureCodes = [...email.failureCodes, ...(push.failureCode ? [push.failureCode] : [])];
+    const outcome = buildDeliveryOutcome(email.status, push.status, failureCodes, attemptedAt);
+    this.deliveries.record(p.id, outcome, attemptedAt.getTime());
+    this.report(p, state, outcome);
+  }
+
+  /** ALERT_EMAIL si configuré, sinon SUPER_ADMIN actifs (adresses dédupliquées), sinon NO_RECIPIENT. */
+  private async deliverEmail(detail: string): Promise<ReturnType<typeof combineEmailResults>> {
     try {
-      const to = this.config.get('ALERT_EMAIL', { infer: true });
-      if (to) await this.mail.sendAlert(to, 'Tunnel WireGuard injoignable', detail);
+      const recipients = await this.resolveEmailRecipients();
+      const results: MailSendResult[] = [];
+      for (const to of recipients) results.push(await this.mail.sendAlert(to, 'Tunnel WireGuard injoignable', detail));
+      return combineEmailResults(results);
     } catch (e) {
-      this.logger.warn(`Mail alert failed: ${e instanceof Error ? e.message : e}`);
+      this.logger.warn(`Mail alert failed: ${e instanceof Error ? e.constructor.name : 'error'}`);
+      return { status: 'FAILED', failureCodes: ['EMAIL_EXCEPTION'] };
     }
+  }
+
+  private async resolveEmailRecipients(): Promise<string[]> {
+    const explicit = this.config.get('ALERT_EMAIL', { infer: true })?.trim();
+    if (explicit) return [explicit];
+    const admins = await this.prisma.user.findMany({
+      where: { role: UserRole.SUPER_ADMIN, status: UserStatus.ACTIVE, deletedAt: null, anonymizedAt: null, email: { not: '' } },
+      select: { email: true },
+    });
+    const byLower = new Map<string, string>();
+    for (const a of admins) {
+      const e = a.email?.trim();
+      if (e && !byLower.has(e.toLowerCase())) byLower.set(e.toLowerCase(), e);
+    }
+    return [...byLower.values()];
+  }
+
+  private async deliverPush(
+    p: { routerId: string; tenantId: string },
+    name: string,
+    age: string,
+  ): Promise<PushSendSummary> {
     try {
-      await this.notifications.sendPushToTenant(p.tenantId, 'Routeur injoignable', `Le routeur ${name} est injoignable depuis ${age}.`, p.routerId);
+      return await this.notifications.sendPushToTenant(
+        p.tenantId,
+        'Routeur injoignable',
+        `Le routeur ${name} est injoignable depuis ${age}.`,
+        p.routerId,
+        undefined,
+        [UserRole.OWNER, UserRole.ADMIN],
+      );
     } catch (e) {
-      this.logger.warn(`Push alert failed: ${e instanceof Error ? e.message : e}`);
+      this.logger.warn(`Push alert failed: ${e instanceof Error ? e.constructor.name : 'error'}`);
+      return { status: 'FAILED', tokensFound: 0, accepted: 0, invalid: 0, failureCode: 'PUSH_EXCEPTION' };
+    }
+  }
+
+  /** Ni adresse, ni token, ni nom : statuts et codes uniquement. Un canal en échec reste visible même si l'autre réussit. */
+  private report(p: { id: string; routerId: string; tenantId: string }, state: string, o: WgAlertDeliveryOutcome): void {
+    const fields = {
+      alertType: state,
+      peerId: p.id,
+      tenantId: p.tenantId,
+      email: o.email,
+      push: o.push,
+      failureCodes: o.failureCodes,
+      attempt: 1,
+    };
+    if (o.humanDelivered) {
+      this.logger.log({ event: 'WG_ALERT_DELIVERED', ...fields });
+      if (o.email !== 'SENT' || o.push !== 'SENT') this.logger.warn({ event: 'WG_ALERT_CHANNEL_DEGRADED', ...fields });
+      return;
+    }
+    this.logger.error({ errorCode: 'WG_ALERT_UNDELIVERED', ...fields });
+    try {
+      Sentry.captureMessage('WG_ALERT_UNDELIVERED', {
+        level: 'error',
+        tags: { errorCode: 'WG_ALERT_UNDELIVERED', domain: 'wireguard', state, email: o.email, push: o.push },
+        extra: { peerId: p.id, tenantId: p.tenantId, failureCodes: o.failureCodes, attempt: 1 },
+      });
+    } catch (e) {
+      this.logger.warn(`Sentry undelivered report failed: ${e instanceof Error ? e.constructor.name : 'error'}`);
     }
   }
 }
