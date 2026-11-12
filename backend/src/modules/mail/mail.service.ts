@@ -4,6 +4,35 @@ import * as nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 import type { AppConfig } from '../../config/configuration';
 
+/**
+ * `SENT` = accepté par le transport SMTP. Cela ne prouve ni la remise dans la boîte, ni la lecture.
+ */
+export type EmailDeliveryResult = 'SENT' | 'NO_RECIPIENT' | 'NOT_CONFIGURED' | 'FAILED';
+
+export interface MailSendResult {
+  status: EmailDeliveryResult;
+  /** Code court, jamais d'adresse ni de contenu : TIMEOUT, REJECTED, SMTP_ERROR. */
+  failureCode?: string;
+}
+
+export const SMTP_TIMEOUT_MS = 10_000;
+
+export function maskEmail(address: string): string {
+  const at = address.lastIndexOf('@');
+  if (at < 1) return '[email]';
+  return `${address[0]}***${address.slice(at)}`;
+}
+
+function sanitizeMailError(err: unknown): string {
+  const text = err instanceof Error ? err.message : String(err);
+  return text.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]').slice(0, 300);
+}
+
+function failureCodeOf(err: unknown): string {
+  const code = (err as { code?: unknown } | null)?.code;
+  return code === 'ETIMEDOUT' || code === 'ESOCKET' || code === 'ECONNECTION' ? 'TIMEOUT' : 'SMTP_ERROR';
+}
+
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
@@ -19,6 +48,9 @@ export class MailService {
         host,
         port: config.get('SMTP_PORT', { infer: true }),
         secure: false,
+        connectionTimeout: SMTP_TIMEOUT_MS,
+        greetingTimeout: SMTP_TIMEOUT_MS,
+        socketTimeout: SMTP_TIMEOUT_MS,
         auth: {
           user: config.get('SMTP_USER', { infer: true }),
           pass: config.get('SMTP_PASS', { infer: true }),
@@ -31,37 +63,46 @@ export class MailService {
     }
   }
 
-  async sendWelcome(to: string, tenantName: string): Promise<void> {
-    await this.send(to, 'Bienvenue sur MikroLan', welcomeHtml(tenantName));
+  async sendWelcome(to: string, tenantName: string): Promise<MailSendResult> {
+    return this.send(to, 'Bienvenue sur MikroLan', welcomeHtml(tenantName));
   }
 
-  async sendPasswordReset(to: string, code: string, expiresMinutes: number): Promise<void> {
-    await this.send(to, 'Réinitialisation de mot de passe', resetHtml(code, expiresMinutes));
+  async sendPasswordReset(to: string, code: string, expiresMinutes: number): Promise<MailSendResult> {
+    return this.send(to, 'Réinitialisation de mot de passe', resetHtml(code, expiresMinutes));
   }
 
-  async sendRouterOffline(to: string, routerName: string): Promise<void> {
-    await this.send(to, `Routeur ${routerName} hors ligne`, routerOfflineHtml(routerName));
+  async sendRouterOffline(to: string, routerName: string): Promise<MailSendResult> {
+    return this.send(to, `Routeur ${routerName} hors ligne`, routerOfflineHtml(routerName));
   }
 
-  async sendInvoice(to: string, invoiceId: string, amount: number, period: string): Promise<void> {
-    await this.send(to, `Facture MikroLan — ${period}`, invoiceHtml(invoiceId, amount, period));
+  async sendInvoice(to: string, invoiceId: string, amount: number, period: string): Promise<MailSendResult> {
+    return this.send(to, `Facture MikroLan — ${period}`, invoiceHtml(invoiceId, amount, period));
   }
 
-  async sendAlert(to: string, title: string, detail: string): Promise<void> {
+  async sendAlert(to: string, title: string, detail: string): Promise<MailSendResult> {
     const safe = detail.replace(/[<>&]/g, '');
-    await this.send(to, `[MikroLan ALERTE] ${title}`, `<p><b>${title}</b></p><p>${safe}</p>`);
+    return this.send(to, `[MikroLan ALERTE] ${title}`, `<p><b>${title}</b></p><p>${safe}</p>`);
   }
 
-  private async send(to: string, subject: string, html: string): Promise<void> {
+  /** Un seul essai, timeout 10 s : un retry SMTP pourrait dupliquer un message déjà accepté. */
+  private async send(to: string, subject: string, html: string): Promise<MailSendResult> {
+    if (!to?.trim()) return { status: 'NO_RECIPIENT' };
     if (!this.transporter) {
-      this.logger.debug(`Mail skipped (no SMTP): ${subject} → ${to}`);
-      return;
+      this.logger.debug(`Mail skipped (no SMTP): ${subject}`);
+      return { status: 'NOT_CONFIGURED' };
     }
+    const masked = maskEmail(to);
     try {
-      await this.transporter.sendMail({ from: this.from, to, subject, html });
-      this.logger.log(`Mail sent: ${subject} → ${to}`);
+      const info = (await this.transporter.sendMail({ from: this.from, to, subject, html })) as { accepted?: unknown[] };
+      if (Array.isArray(info?.accepted) && info.accepted.length === 0) {
+        this.logger.error(`Mail rejected: ${subject} → ${masked}`);
+        return { status: 'FAILED', failureCode: 'REJECTED' };
+      }
+      this.logger.log(`Mail sent: ${subject} → ${masked}`);
+      return { status: 'SENT' };
     } catch (err) {
-      this.logger.error(`Mail failed: ${subject} → ${to}`, (err as Error).stack);
+      this.logger.error(`Mail failed: ${subject} → ${masked}: ${sanitizeMailError(err)}`);
+      return { status: 'FAILED', failureCode: failureCodeOf(err) };
     }
   }
 }

@@ -18,8 +18,8 @@ describe('Alerte WireGuard stale (e2e)', () => {
   let service: WgStaleAlertService;
   let live: Record<string, { latestHandshake: number }>;
   let healthyKey = '';
-  const sendAlert = jest.fn().mockResolvedValue(undefined);
-  const sendPush = jest.fn().mockResolvedValue(undefined);
+  const sendAlert = jest.fn().mockResolvedValue({ status: 'SENT' });
+  const sendPush = jest.fn().mockResolvedValue({ status: 'SENT', tokensFound: 1, accepted: 1, invalid: 0 });
   const DAY = 86_400_000;
   const NOW = Date.now();
   const ids: Record<string, string> = {};
