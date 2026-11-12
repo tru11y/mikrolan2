@@ -50,7 +50,11 @@ export default function LotTicketsScreen() {
       // Le serveur journalise chaque réimpression et refuse (409) un ticket annulé, ou utilisé hors propriétaire.
       const r = await api.routers.reprintVoucher(routerId, v.id);
       if (kind === 'share') {
-        await Share.share({ message: ticketShareText({ code: r.code, planName: r.plan.name, durationMinutes: r.plan.durationMinutes, priceXof: r.plan.priceXof }) });
+        // La feuille de partage Android ne rend pas la main avant d'être fermée : on ne bloque pas les boutons dessus.
+        Share.share({ message: ticketShareText({ code: r.code, planName: r.plan.name, durationMinutes: r.plan.durationMinutes, priceXof: r.plan.priceXof }) }).catch((e) => {
+          reportSilent('lot-tickets.share', e, { routerId });
+          setError(extractErrorMessage(e));
+        });
         return;
       }
       const opts = {
