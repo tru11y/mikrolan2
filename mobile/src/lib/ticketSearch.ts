@@ -1,5 +1,18 @@
 import type { VoucherStatus } from '@/src/lib/api';
 
+/**
+ * Comportement de la requête paginée de « Voir les tickets » (propre à cet écran, le QueryClient global n'est pas modifié).
+ * - `maxPages` : au plus 10 pages (300 tickets) en cache ; au-delà, les plus anciennes pages sont retirées.
+ * - un rafraîchissement d'une requête paginée rejoue TOUTES les pages en cache : on supprime les rafraîchissements
+ *   automatiques au retour dans l'app et à la reconnexion (staleTime de 5 min pour le reste).
+ */
+export const LOT_TICKETS_QUERY = {
+  maxPages: 10,
+  staleTime: 5 * 60_000,
+  refetchOnWindowFocus: false,
+  refetchOnReconnect: false,
+} as const;
+
 /** Libellé d'état affiché dans la liste des tickets d'un lot. */
 export const TICKET_STATUS_LABEL: Record<VoucherStatus, string> = {
   GENERATED: 'Disponible',

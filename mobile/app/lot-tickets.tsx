@@ -7,7 +7,7 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { api, extractErrorMessage, type VoucherSearchItem } from '@/src/lib/api';
 import { printTickets, printTicketsDirect } from '@/src/lib/ticketsPdf';
-import { mergePages, normalizeSearch, ticketShareText, TICKET_STATUS_LABEL, TICKET_STATUS_TONE } from '@/src/lib/ticketSearch';
+import { LOT_TICKETS_QUERY, mergePages, normalizeSearch, ticketShareText, TICKET_STATUS_LABEL, TICKET_STATUS_TONE } from '@/src/lib/ticketSearch';
 import { reportSilent } from '@/src/lib/report';
 import { Badge, Banner, Button, Card, Empty, ErrorState, Field, Press, Row, Skeleton, space, Title, withAlpha } from '@/src/components/ui';
 import { useTheme } from '@/src/providers/theme-provider';
@@ -40,6 +40,9 @@ export default function LotTicketsScreen() {
     queryFn: ({ pageParam }) =>
       api.routers.searchVouchers(routerId, { q: debounced, batchId, limit: PAGE, cursor: pageParam }),
     getNextPageParam: (last) => last.nextCursor ?? undefined,
+    // Curseur à sens unique : pas de page précédente à recharger (requis par maxPages).
+    getPreviousPageParam: () => undefined,
+    ...LOT_TICKETS_QUERY,
   });
   const items = useMemo(() => mergePages(query.data?.pages ?? []), [query.data]);
 
@@ -81,6 +84,7 @@ export default function LotTicketsScreen() {
       <FlatList
         data={items}
         keyExtractor={(v) => v.id}
+        keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ padding: space.lg, gap: space.md, paddingBottom: navHeight }}
         ListHeaderComponent={
           <View style={{ gap: space.md }}>
