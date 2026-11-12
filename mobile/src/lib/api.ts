@@ -1917,7 +1917,7 @@ export const api = {
       return unwrap(res);
     },
     async wgPeers(
-      params: { state?: WgPeerState; q?: string; tenantId?: string; limit?: number } = {},
+      params: { state?: WgPeerState; staleness?: 'STALE_24H' | 'NEVER_CONNECTED'; q?: string; tenantId?: string; limit?: number } = {},
     ): Promise<WgPeersResponse> {
       const res = await apiClient.get<ApiEnvelope<WgPeersResponse>>('/admin/wireguard/peers', {
         params,
@@ -2337,6 +2337,8 @@ export type WgPeerRow = {
   provisionedAt: string | null;
   revokedAt: string | null;
   lastHandshakeAt: string | null;
+  staleness: 'OK' | 'STALE_24H' | 'NEVER_CONNECTED';
+  inactiveSince: string | null;
   handshakeAgeS: number | null;
   rxBytes: number | null;
   txBytes: number | null;
@@ -2349,6 +2351,8 @@ export type WgPeersResponse = {
   total: number;
   summary: {
     total: number;
+    stale24h: number;
+    neverConnected: number;
     healthy: number;
     stale: number;
     never: number;

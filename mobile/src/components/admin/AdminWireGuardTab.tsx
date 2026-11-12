@@ -8,6 +8,7 @@ import {
   handshakeLine,
   heartbeatLine,
   revokeConfirmed,
+  stalenessLine,
   stateHint,
   WG_STATE_META,
   type WgPeerState,
@@ -36,13 +37,18 @@ import { useTheme } from '@/src/providers/theme-provider';
 
 const REFRESH_MS = 20_000;
 
-const FILTERS: { key: WgPeerState | null; label: string; count: (s: Summary) => number }[] = [
-  { key: null, label: 'Tous', count: (s) => s.total },
-  { key: 'HEALTHY', label: 'Healthy', count: (s) => s.healthy },
-  { key: 'STALE', label: 'Stale', count: (s) => s.stale },
-  { key: 'NEVER', label: 'Never', count: (s) => s.never },
-  { key: 'REVOKED', label: 'Revoked', count: (s) => s.revoked },
-  { key: 'ERROR', label: 'Error', count: (s) => s.error },
+type Filter = { state?: WgPeerState; staleness?: 'STALE_24H' | 'NEVER_CONNECTED' };
+
+// Les deux onglets « ≥ 24 h » et « Jamais connecté » filtrent sur l'inactivité persistée (celle qui déclenche l'alerte).
+const FILTERS: { id: string; filter: Filter; label: string; count: (s: Summary) => number }[] = [
+  { id: 'all', filter: {}, label: 'Tous', count: (s) => s.total },
+  { id: 'healthy', filter: { state: 'HEALTHY' }, label: 'Healthy', count: (s) => s.healthy },
+  { id: 'stale', filter: { state: 'STALE' }, label: 'Stale', count: (s) => s.stale },
+  { id: 'stale24h', filter: { staleness: 'STALE_24H' }, label: 'Stale ≥ 24 h', count: (s) => s.stale24h },
+  { id: 'never', filter: { state: 'NEVER' }, label: 'Never', count: (s) => s.never },
+  { id: 'neverConnected', filter: { staleness: 'NEVER_CONNECTED' }, label: 'Jamais connecté 24 h+', count: (s) => s.neverConnected },
+  { id: 'revoked', filter: { state: 'REVOKED' }, label: 'Revoked', count: (s) => s.revoked },
+  { id: 'error', filter: { state: 'ERROR' }, label: 'Error', count: (s) => s.error },
 ];
 
 type Summary = WgPeersResponse['summary'];
@@ -75,6 +81,7 @@ const PeerCard = memo(function PeerCard({
   const meta = WG_STATE_META[peer.state];
   const color = toneColor(meta.tone, theme);
   const hint = stateHint(peer);
+  const silence = stalenessLine(peer);
   const muted = { color: theme.textMuted, fontSize: type.micro } as const;
 
   return (
@@ -106,6 +113,10 @@ const PeerCard = memo(function PeerCard({
         ↓ {formatBytes(peer.rxBytes)} · ↑ {formatBytes(peer.txBytes)}
         {` · ${heartbeatLine(peer.lastHeartbeat)}`}
       </Text>
+
+      {silence ? (
+        <Text style={{ color: theme.danger, fontSize: type.caption, fontWeight: '700' }}>{silence}</Text>
+      ) : null}
 
       {hint ? (
         <Text style={{ color: meta.tone === 'danger' ? theme.danger : theme.warning, fontSize: type.micro }}>
@@ -202,7 +213,8 @@ export function AdminWireGuardTab() {
   const theme = useTheme();
   const toast = useToast();
   const qc = useQueryClient();
-  const [filter, setFilter] = useState<WgPeerState | null>(null);
+  const [filterId, setFilterId] = useState('all');
+  const filter = FILTERS.find((f) => f.id === filterId)?.filter ?? {};
   const [search, setSearch] = useState('');
   const [resyncTarget, setResyncTarget] = useState<WgPeerRow | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<WgPeerRow | null>(null);
@@ -210,8 +222,8 @@ export function AdminWireGuardTab() {
   const q = search.trim().length >= 3 ? search.trim() : undefined;
 
   const query = useQuery({
-    queryKey: ['admin', 'wireguard', filter, q],
-    queryFn: () => api.admin.wgPeers({ state: filter ?? undefined, q, limit: 200 }),
+    queryKey: ['admin', 'wireguard', filterId, q],
+    queryFn: () => api.admin.wgPeers({ ...filter, q, limit: 200 }),
     refetchInterval: REFRESH_MS,
     placeholderData: keepPreviousData,
   });
@@ -283,13 +295,13 @@ export function AdminWireGuardTab() {
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -space.lg }}>
         <Row style={{ gap: space.sm, paddingHorizontal: space.lg }}>
           {FILTERS.map((f) => {
-            const active = filter === f.key;
+            const active = filterId === f.id;
             return (
               <Press
-                key={f.label}
+                key={f.id}
                 accessibilityRole="button"
                 accessibilityLabel={`${f.label}, ${f.count(summary)}`}
-                onPress={() => setFilter(f.key)}
+                onPress={() => setFilterId(f.id)}
                 style={{
                   backgroundColor: active ? withAlpha(theme.primary, 0.1) : theme.surfaceAlt,
                   borderRadius: radius.md,

@@ -361,6 +361,12 @@ model RemotePeer {
   revokedAt       DateTime?
   createdAt       DateTime         @default(now())
 
+  // Suivi de l'inactivité du tunnel (alerte « injoignable depuis 24 h »). `lastHandshakeAt` : dernier
+  // handshake observé par le cron (persisté car `wg` ne l'expose qu'en live) ; `staleAlertedAt` : date
+  // de la dernière alerte envoyée pour l'épisode en cours (NULL = aucun épisode ouvert).
+  lastHandshakeAt DateTime?
+  staleAlertedAt  DateTime?
+
   // Fenêtre d'accès temporaire WebFig/SSH/Winbox : les ports DNAT ne sont
   // publiés sur le VPS que jusqu'à accessOpenUntil, et seulement pour
   // accessSourceIp. NULL = aucun port exposé (état par défaut).

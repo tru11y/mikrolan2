@@ -148,6 +148,8 @@ export const listWgPeersQuerySchema = z.object({
   state: z
     .enum(['HEALTHY', 'STALE', 'NEVER', 'UNKNOWN', 'PENDING', 'REVOKED', 'ERROR'])
     .optional(),
+  // Inactivité mesurée sur la durée (persistée), distincte de `state` qui vient du `wg` live : voir wg-stale.logic.
+  staleness: z.enum(['STALE_24H', 'NEVER_CONNECTED']).optional(),
   q: search,
   tenantId: z.string().uuid().optional(),
   // Pas de curseur : l'état vient de `wg` en direct et le nombre de peers est borné par le sous-réseau.
