@@ -12,6 +12,17 @@
 
 `_legacy/` contains the original Python/FastAPI prototype (main.py, models.py, onboarding.py, routeros_api.py, etc.) and early design docs — superseded by `backend/`, kept for reference only, not deployed anywhere.
 
+## RÈGLE FONDAMENTALE — Clean room (APK concurrents)
+
+Rien qui sort de l'APK d'un concurrent ne franchit la porte de ce repo.
+
+- jadx et Claude servent à **comprendre** (logique métier, trous produit, architecture) — jamais à **extraire**.
+- Aucune classe, string, drawable, layout, ni morceau de logique copié-collé-adapté ne doit entrer dans `D:\dev\mikrolan2`.
+- Test avant chaque commit : « Ce code aurait-il pu exister si je n'avais jamais ouvert leur APK ? »
+  - Oui (rôle SELLER codé depuis nos specs, SasPay, alerte WireGuard) → propriété MikroLan.
+  - Non (constante, message d'erreur, fonction trop ressemblante) → réécrire de zéro, avec notre propre structure.
+- Audit, benchmark, quick wins : documentables librement. À l'implémentation, on code depuis la **spec**, jamais depuis leurs fichiers.
+
 ## Repository Structure
 
 ```
