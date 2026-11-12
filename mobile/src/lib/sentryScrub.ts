@@ -18,12 +18,26 @@ const PATTERNS: [RegExp, string][] = [
   [/\b(?:[0-9A-Fa-f]{1,4}:){1,6}:(?:[0-9A-Fa-f]{1,4})?|::1\b/g, '[ip]'],
   [/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '[ip]'],
   [/\b[A-Za-z0-9+/]{43}=/g, '[clé]'],
-  [/\+?\d[\d .-]{7,}\d/g, '[tel]'],
+  // Identifiants opaques (CUID/CUID2, UUID, ULID, ObjectId) : avant le filtre téléphone.
+  [/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi, '[id]'],
+  [/\bc[a-z0-9]{20,}\b/g, '[id]'],
+  [/\b[0-9A-HJKMNP-TV-Z]{26}\b/g, '[id]'],
+  [/\b[0-9a-f]{24}\b/gi, '[id]'],
+  // Code de ticket (ex. 3d1005, 1m60477416, 7h5421251) où qu'il soit dans un texte.
+  [/\b\d{1,2}[a-z]\d{4,}\b/gi, '[ticket]'],
+  // Mot-clé suivi d'une valeur secrète en texte libre : on garde le mot-clé, on masque la valeur.
+  [/\b(pass(?:word)?|pwd|mot de passe|secret|saspay|ref(?:erence)?|txn|transaction|ticket(?:[ _-]?code)?|voucher(?:[ _-]?code)?|code)\s*[:=]?\s*(?!\[)[^\s,;)]+/gi, '$1 [Filtré]'],
+  // Téléphone : indicatif + chiffres, ou 9 à 14 chiffres groupés ; jamais une date ISO ni un numéro de build.
+  [/\+\d{1,3}(?:[ -]?\d){8,13}\b/g, '[tel]'],
+  [/\b\d(?:[ -]?\d){8,13}\b/g, '[tel]'],
   [/([?&](?:code|token|password|pass|pwd|q|search|key|secret|voucher|username|user)=)[^&\s"']*/gi, '$1[Filtré]'],
 ];
 
 export function scrubString(s: string): string {
-  return PATTERNS.reduce((acc, [re, to]) => acc.replace(re, to), s);
+  // « status code 401 » est un diagnostic utile : on le protège du filtre « code <valeur> ».
+  const protectedText = s.replace(/\b(status) code (\d{3})\b/gi, '$1_code_$2');
+  const cleaned = PATTERNS.reduce((acc, [re, to]) => acc.replace(re, to), protectedText);
+  return cleaned.replace(/\b(status)_code_(\d{3})\b/gi, '$1 code $2');
 }
 
 function safeDecode(s: string): string {
@@ -82,6 +96,23 @@ export function scrubBreadcrumb<T extends Crumb>(breadcrumb: T): T {
   return breadcrumb;
 }
 
+/** Contextes générés par le SDK (appareil, OS, app…) laissés intacts ; les autres sont nettoyés à l'intérieur. */
+const SDK_CONTEXTS = new Set(['app', 'device', 'os', 'ota_updates', 'react_native_context', 'trace', 'culture', 'runtime', 'browser']);
+
+function scrubContexts(contexts: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [name, ctx] of Object.entries(contexts)) {
+    if (SDK_CONTEXTS.has(name)) {
+      out[name] = ctx;
+    } else {
+      out[name] = ctx && typeof ctx === 'object' ? scrubValue(ctx) : { value: REDACTED };
+    }
+  }
+  const device = out.device as Record<string, unknown> | undefined;
+  if (device && typeof device === 'object') delete device.id;
+  return out;
+}
+
 type ScrubbableEvent = {
   message?: string;
   request?: { url?: string; data?: unknown; headers?: Record<string, unknown>; cookies?: unknown; query_string?: unknown };
@@ -105,7 +136,7 @@ export function scrubEvent<T extends ScrubbableEvent>(event: T): T {
   if (event.user) event.user = {};
   if (event.extra) event.extra = scrubValue(event.extra) as Record<string, unknown>;
   if (event.tags) event.tags = scrubValue(event.tags) as Record<string, unknown>;
-  if (event.contexts) event.contexts = scrubValue(event.contexts) as Record<string, unknown>;
+  if (event.contexts) event.contexts = scrubContexts(event.contexts);
   event.exception?.values?.forEach((v) => {
     if (v.value) v.value = scrubString(v.value);
   });

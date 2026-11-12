@@ -9,7 +9,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "type-check": "tsc --noEmit",
-    "test:unit": "node --test --experimental-strip-types src/lib/verifierMapping.test.ts src/lib/verifyScreen.static.test.ts src/lib/verifierMgmt.test.ts src/lib/hardTimeout.test.ts src/lib/actionLock.test.ts src/lib/vendeursScreen.static.test.ts src/lib/fichiersPreview.static.test.ts src/lib/invoicePayment.test.ts src/lib/manualPaymentRemoval.static.test.ts src/lib/sentryScrub.test.ts src/lib/sentryConfig.test.ts src/lib/sentryNative.static.test.ts src/lib/verifierNetwork.static.test.ts src/lib/offlineSince.test.ts src/lib/wgDisplay.test.ts src/lib/ticketSearch.test.ts",
+    "test:unit": "node --test --experimental-strip-types src/lib/verifierMapping.test.ts src/lib/verifyScreen.static.test.ts src/lib/verifierMgmt.test.ts src/lib/hardTimeout.test.ts src/lib/actionLock.test.ts src/lib/vendeursScreen.static.test.ts src/lib/fichiersPreview.static.test.ts src/lib/invoicePayment.test.ts src/lib/manualPaymentRemoval.static.test.ts src/lib/sentryScrub.test.ts src/lib/sentryConfig.test.ts src/lib/sentryScrub.freetext.test.ts src/lib/sentryNative.static.test.ts src/lib/verifierNetwork.static.test.ts src/lib/offlineSince.test.ts src/lib/wgDisplay.test.ts src/lib/ticketSearch.test.ts",
     "lint": "expo lint"
   },
   "dependencies": {
