@@ -54,3 +54,9 @@ test('contexts : l’intérieur est nettoyé, les contextes système du SDK sont
   assert.equal(e.contexts.os?.build, 'CP2A.260205.001');
   assert.equal(typeof e.contexts.saspay, 'object');
 });
+
+test('marqueurs bien formés : pas de crochet orphelin après masquage', () => {
+  const out = scrubString('échec code 6x4408 voucher ckvoucher000000000000002 saspay REF-1');
+  assert.equal((out.match(/\[/g) ?? []).length, (out.match(/\]/g) ?? []).length, out);
+  assert.equal(out.includes('6x4408'), false);
+});

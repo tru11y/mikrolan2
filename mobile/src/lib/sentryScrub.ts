@@ -26,7 +26,7 @@ const PATTERNS: [RegExp, string][] = [
   // Code de ticket (ex. 3d1005, 1m60477416, 7h5421251) où qu'il soit dans un texte.
   [/\b\d{1,2}[a-z]\d{4,}\b/gi, '[ticket]'],
   // Mot-clé suivi d'une valeur secrète en texte libre : on garde le mot-clé, on masque la valeur.
-  [/\b(pass(?:word)?|pwd|mot de passe|secret|saspay|ref(?:erence)?|txn|transaction|ticket(?:[ _-]?code)?|voucher(?:[ _-]?code)?|code)\s*[:=]?\s*(?!\[)[^\s,;)]+/gi, '$1 [Filtré]'],
+  [/\b(pass(?:word)?|pwd|mot de passe|secret|saspay|ref(?:erence)?|txn|transaction|voucher(?:[ _-]?code)?|code)\s*[:=]?\s*(?!\[)[^\s,;)]+/gi, '$1 [Filtré]'],
   // Téléphone : indicatif + chiffres, ou 9 à 14 chiffres groupés ; jamais une date ISO ni un numéro de build.
   [/\+\d{1,3}(?:[ -]?\d){8,13}\b/g, '[tel]'],
   [/\b\d(?:[ -]?\d){8,13}\b/g, '[tel]'],
