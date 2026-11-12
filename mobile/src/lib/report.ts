@@ -1,4 +1,5 @@
 import { Sentry } from '@/src/lib/sentry';
+import { safeData, scrubString } from '@/src/lib/sentryScrub';
 
 /**
  * Best-effort side effects must never be swallowed: the failure is kept as a
@@ -7,10 +8,10 @@ import { Sentry } from '@/src/lib/sentry';
 export function reportSilent(scope: string, err: unknown, data?: Record<string, unknown>): void {
   const message = err instanceof Error ? err.message : String(err);
   if (__DEV__) console.warn(`[${scope}] ${message}`);
-  Sentry.addBreadcrumb({ category: scope, level: 'warning', message, data });
-  Sentry.captureException(err instanceof Error ? err : new Error(message), {
+  Sentry.addBreadcrumb({ category: scope, level: 'warning', message: scrubString(message), data: safeData(data) });
+  Sentry.captureException(err instanceof Error ? err : new Error(scrubString(message)), {
     level: 'warning',
-    extra: { scope, ...data },
+    extra: { scope, ...safeData(data) },
   });
 }
 
