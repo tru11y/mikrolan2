@@ -23,10 +23,12 @@ interface EmailOutcome {
 /**
  * Alerte « tunnel injoignable depuis 24 h », avec preuve durable d'acceptation par un fournisseur.
  *
- * Un épisode (WgAlertEpisode) naît à la détection et vit jusqu'au retour d'un handshake sain. Tentatives :
- * T0 (immédiate), T0 + 1 h, puis + 6 h après la deuxième (≈ T0 + 7 h), jamais plus. Un épisode accepté, épuisé ou
- * résolu n'est jamais relancé. « Accepté » = SMTP ou Expo a accepté le message : ni remise, ni affichage, ni lecture.
- * Pas de rappel à 24 h tant qu'un épisode non résolu existe (EXHAUSTED reste visible en RED jusqu'à résolution).
+ * Un épisode (WgAlertEpisode) naît à la détection et vit jusqu'au retour d'un handshake sain.
+ * Alerte initiale : T0 (immédiate), T0 + 1 h, puis + 6 h après la deuxième (≈ T0 + 7 h), jamais plus ; sans acceptation
+ * après la 3e : EXHAUSTED (RED), pas de boucle de rappel. « Accepté » = SMTP ou Expo a accepté le message : ni remise,
+ * ni affichage, ni lecture, et surtout pas « routeur réparé ».
+ * Rappels : un épisode accepté dont le peer reste stale reçoit un rappel à détection + 24 h puis toutes les 24 h
+ * (max 7), un seul passage logique par jour (1 EMAIL, 1 PUSH, jamais de retry du rappel), stoppé au handshake sain.
  *
  * Le handshake n'existe qu'en live (`wg`) : le cron le persiste pour mesurer la durée d'inactivité.
  * Si `wg` est illisible, on n'alerte pas (état inconnu ≠ tunnel mort).
@@ -128,6 +130,13 @@ export class WgStaleAlertService {
         this.logger.error({ errorCode: 'WG_ALERT_ATTEMPT_ERROR', episodeRef: deliveryEntityRef(ep.id), error: err instanceof Error ? err.constructor.name : 'error' });
       }
     }
+    for (const ep of await this.episodes.findRemindersDue(nowMs)) {
+      try {
+        await this.runReminder(ep, nowMs);
+      } catch (err) {
+        this.logger.error({ errorCode: 'WG_ALERT_REMINDER_ERROR', episodeRef: deliveryEntityRef(ep.id), error: err instanceof Error ? err.constructor.name : 'error' });
+      }
+    }
     return firstAttempts;
   }
 
@@ -155,11 +164,50 @@ export class WgStaleAlertService {
     const email = await this.deliverEmail(detail);
     const push = await this.deliverPush(ep.tenantId, peer.routerId, name, age);
     const record = this.toRecord(email, push);
-    const done = await this.episodes.complete(ep.id, ep.attemptCount, record, nowMs);
+    const done = await this.episodes.complete(ep.id, ep.attemptCount, record, nowMs, { detectedAt: ep.detectedAt, legacy: ep.legacy });
     if (!done.saved) return false;
 
     this.report(ep, record, email, push, done);
     return done.attemptNumber === 1;
+  }
+
+  /**
+   * Rappel quotidien d'un incident toujours non résolu après acceptation. Un seul passage logique : une tentative
+   * EMAIL, une tentative PUSH, jamais de retry du rappel (le prochain est celui de J+1, max 7). Tunnel sain : pas de rappel.
+   */
+  private async runReminder(ep: DueEpisode, nowMs: number): Promise<void> {
+    const peer = ep.remotePeer;
+    if (peer.status !== RemotePeerStatus.ACTIVE || peer.router.deletedAt) {
+      await this.episodes.resolvePeer(ep.remotePeerId, nowMs);
+      return;
+    }
+    const verdict = classifyWgStale({ lastHandshakeAt: peer.lastHandshakeAt, provisionedAt: peer.provisionedAt, createdAt: peer.createdAt }, nowMs);
+    if (verdict.state === 'OK') {
+      await this.episodes.resolvePeer(ep.remotePeerId, nowMs);
+      return;
+    }
+    if (!(await this.episodes.claimReminder(ep.id, ep.reminderCount, nowMs))) return;
+
+    const name = peer.router.alias ?? peer.router.identity;
+    const age = formatAge(verdict.ageMs);
+    const email = await this.deliverEmail(`Rappel : le routeur ${name} est toujours injoignable (${age} sans handshake WireGuard).`, 'Rappel — tunnel WireGuard injoignable');
+    const push = await this.deliverPush(ep.tenantId, peer.routerId, name, age, 'Rappel — routeur injoignable');
+    const record = this.toRecord(email, push);
+    const done = await this.episodes.completeReminder(ep.id, ep.reminderCount, record, nowMs);
+    if (!done.saved) return;
+
+    const fields = {
+      episodeRef: deliveryEntityRef(ep.id),
+      tenantRef: deliveryEntityRef(ep.tenantId),
+      peerRef: deliveryEntityRef(ep.remotePeerId),
+      alertType: ep.alertType as WgAlertType,
+      reminderNumber: done.reminderNumber,
+      emailStatus: record.emailStatus,
+      pushStatus: record.pushStatus,
+    };
+    if (done.providerAccepted) this.logger.log({ event: 'WG_ALERT_REMINDER_PROVIDER_ACCEPTED', ...fields });
+    else this.logger.warn({ event: 'WG_ALERT_REMINDER_NO_PROVIDER_ACCEPTED', ...fields });
+    if (done.limitReached) this.logger.warn({ event: 'WG_ALERT_REMINDER_LIMIT_REACHED', ...fields });
   }
 
   private toRecord(email: EmailOutcome, push: PushSendSummary): AttemptRecord {
@@ -197,11 +245,11 @@ export class WgStaleAlertService {
   }
 
   /** ALERT_EMAIL si configuré, sinon SUPER_ADMIN actifs (adresses dédupliquées), sinon NO_RECIPIENT. */
-  private async deliverEmail(detail: string): Promise<EmailOutcome> {
+  private async deliverEmail(detail: string, title = 'Tunnel WireGuard injoignable'): Promise<EmailOutcome> {
     try {
       const recipients = await this.resolveEmailRecipients();
       const results: MailSendResult[] = [];
-      for (const to of recipients) results.push(await this.mail.sendAlert(to, 'Tunnel WireGuard injoignable', detail));
+      for (const to of recipients) results.push(await this.mail.sendAlert(to, title, detail));
       return { ...combineEmailResults(results), recipientCount: recipients.length };
     } catch (e) {
       this.logger.warn(`Mail alert failed: ${e instanceof Error ? e.constructor.name : 'error'}`);
@@ -225,11 +273,11 @@ export class WgStaleAlertService {
   }
 
   /** Push OWNER/ADMIN actifs du tenant, un seul appel (tokens dédupliqués et invalidation limitée au tenant côté NotificationsService). */
-  private async deliverPush(tenantId: string, routerId: string, name: string, age: string): Promise<PushSendSummary> {
+  private async deliverPush(tenantId: string, routerId: string, name: string, age: string, title = 'Routeur injoignable'): Promise<PushSendSummary> {
     try {
       return await this.notifications.sendPushToTenant(
         tenantId,
-        'Routeur injoignable',
+        title,
         `Le routeur ${name} est injoignable depuis ${age}.`,
         routerId,
         undefined,

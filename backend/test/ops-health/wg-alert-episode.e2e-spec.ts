@@ -180,6 +180,61 @@ describe('Épisodes d’alerte WireGuard (e2e)', () => {
     expect(eps[0].status).toBe('RESOLVED');
   });
 
+  it('rappels quotidiens : rien avant 24 h, un seul rappel logique à 24 h, un seul sous concurrence, jamais de doublon en base', async () => {
+    sendAlert.mockResolvedValue({ status: 'SENT' });
+    sendPush.mockResolvedValue({ status: 'NO_TOKEN', tokensFound: 0, accepted: 0, invalid: 0 });
+    await mkPeer('rem', 'B');
+    const R = NOW + 200 * H;
+    await service.check(R);
+    let [e] = await episodesOf('rem');
+    expect(e).toMatchObject({ status: 'PROVIDER_ACCEPTED', reminderCount: 0 });
+    expect(e.nextReminderAt?.getTime()).toBe(R + 24 * H);
+
+    await service.check(R + 23 * H);
+    expect((await episodesOf('rem'))[0].reminderCount).toBe(0);
+
+    await service.check(R + 24 * H);
+    [e] = await episodesOf('rem');
+    expect(e).toMatchObject({ reminderCount: 1, status: 'PROVIDER_ACCEPTED' });
+    expect(e.nextReminderAt?.getTime()).toBe(R + 48 * H);
+    const rows = await prisma.wgAlertDeliveryAttempt.findMany({ where: { episodeId: e.id, kind: 'REMINDER' } });
+    expect(rows.map((r) => `${r.channel}:${r.reminderNumber}`).sort()).toEqual(['EMAIL:1', 'PUSH:1']);
+
+    await Promise.all([service.check(R + 48 * H), service.check(R + 48 * H)]);
+    [e] = await episodesOf('rem');
+    expect(e.reminderCount).toBe(2);
+    expect(await prisma.wgAlertDeliveryAttempt.count({ where: { episodeId: e.id, kind: 'REMINDER', reminderNumber: 2 } })).toBe(2);
+
+    // PostgreSQL refuse un second rappel pour le même (épisode, canal, numéro).
+    await expect(
+      prisma.wgAlertDeliveryAttempt.create({
+        data: { episodeId: e.id, channel: 'EMAIL', attemptNumber: 99, kind: 'REMINDER', reminderNumber: 1, status: 'PROVIDER_ACCEPTED', attemptedAt: new Date(R) },
+      }),
+    ).rejects.toMatchObject({ code: 'P2002' });
+  });
+
+  it('limite de 7 rappels : aucun huitième, épisode toujours actif ; tunnel sain : RESOLVED sans rappel', async () => {
+    const R = NOW + 200 * H;
+    for (let k = 3; k <= 12; k++) await service.check(R + k * 24 * H);
+    let [e] = await episodesOf('rem');
+    expect(e).toMatchObject({ status: 'PROVIDER_ACCEPTED', reminderCount: 7, nextReminderAt: null, resolvedAt: null });
+    expect(await prisma.wgAlertDeliveryAttempt.count({ where: { episodeId: e.id, kind: 'REMINDER' } })).toBe(14);
+
+    live = { [peers.rem.key]: { latestHandshake: Math.floor((R + 13 * 24 * H) / 1000) } };
+    await service.check(R + 13 * 24 * H + 60_000);
+    [e] = await episodesOf('rem');
+    expect(e).toMatchObject({ status: 'RESOLVED', nextReminderAt: null });
+    expect(await prisma.wgAlertDeliveryAttempt.count({ where: { episodeId: e.id, kind: 'REMINDER' } })).toBe(14);
+    live = {};
+  });
+
+  it('valeurs persistées fermées : un statut inconnu est refusé par PostgreSQL / Prisma', async () => {
+    const [e] = await episodesOf('b1');
+    await expect(prisma.wgAlertEpisode.update({ where: { id: e.id }, data: { emailStatus: 'DELIVERED_TO_HUMAN' as never } })).rejects.toThrow();
+    await expect(prisma.wgAlertEpisode.update({ where: { id: e.id }, data: { pushStatus: 'whatever' as never } })).rejects.toThrow();
+    await expect(prisma.$executeRawUnsafe(`UPDATE "WgAlertEpisode" SET "emailStatus" = 'BOGUS' WHERE id = '${e.id}'`)).rejects.toThrow();
+  });
+
   it('aucune donnée sensible en base (adresse, token, alias, IP, clé, message)', async () => {
     const eps = await prisma.wgAlertEpisode.findMany({ where: { remotePeerId: { in: mine } } });
     const attempts = await prisma.wgAlertDeliveryAttempt.findMany({ where: { episodeId: { in: eps.map((e) => e.id) } } });

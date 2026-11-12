@@ -411,6 +411,28 @@ enum WgAlertChannel {
   PUSH
 }
 
+/// Statuts persistés d'un canal : valeurs fermées (jamais de chaîne libre en production).
+enum WgAlertEmailStatus {
+  SENT
+  NO_RECIPIENT
+  NOT_CONFIGURED
+  FAILED
+}
+
+enum WgAlertPushStatus {
+  SENT
+  NO_TOKEN
+  DISABLED
+  FAILED
+  INVALID_TOKEN
+}
+
+enum WgAlertAttemptKind {
+  INITIAL
+  RETRY
+  REMINDER
+}
+
 enum WgAlertAttemptStatus {
   PROVIDER_ACCEPTED
   NO_RECIPIENT
@@ -434,10 +456,14 @@ model WgAlertEpisode {
   lastAttemptAt    DateTime?
   nextAttemptAt    DateTime?
   attemptCount     Int                  @default(0)
-  /// Dernier statut e-mail / push (EmailDeliveryResult / PushDeliveryResult), jamais d'adresse ni de token.
-  emailStatus      String?
-  pushStatus       String?
+  /// Statut e-mail / push de la dernière tentative INITIALE ou RETRY (pas des rappels), jamais d'adresse ni de token.
+  emailStatus      WgAlertEmailStatus?
+  pushStatus       WgAlertPushStatus?
   providerAcceptedAt DateTime?
+  /// Rappels quotidiens d'un incident toujours non résolu après acceptation (max 7). Un rappel = un passage logique.
+  nextReminderAt   DateTime?
+  reminderCount    Int                  @default(0)
+  lastReminderAt   DateTime?
   /// Claim atomique de la tentative en cours : un claim expiré peut être repris (crash du processus).
   claimExpiresAt   DateTime?
   /// Épisode reconstitué depuis un ancien `staleAlertedAt` : l'acceptation passée est INCONNUE (jamais présumée).
@@ -449,6 +475,7 @@ model WgAlertEpisode {
 
   @@index([remotePeerId, status])
   @@index([nextAttemptAt, status])
+  @@index([nextReminderAt, status])
   @@index([tenantId])
 }
 
@@ -457,7 +484,11 @@ model WgAlertDeliveryAttempt {
   episodeId          String
   episode            WgAlertEpisode       @relation(fields: [episodeId], references: [id], onDelete: Cascade)
   channel            WgAlertChannel
+  /// Séquence de l'épisode : 1 à 3 = alerte initiale puis retries ; 3 + N = rappel numéro N.
   attemptNumber      Int
+  kind               WgAlertAttemptKind   @default(INITIAL)
+  /// Numéro du rappel (1..7), NULL hors rappel. Unique par (épisode, canal) : un rappel logique ne part qu'une fois.
+  reminderNumber     Int?
   status             WgAlertAttemptStatus
   attemptedAt        DateTime
   providerAcceptedAt DateTime?
@@ -466,6 +497,7 @@ model WgAlertDeliveryAttempt {
   createdAt          DateTime             @default(now())
 
   @@unique([episodeId, channel, attemptNumber])
+  @@unique([episodeId, channel, reminderNumber])
   @@index([attemptedAt, channel, status])
 }
 

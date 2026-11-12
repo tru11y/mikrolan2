@@ -173,7 +173,7 @@ describe('Ops Health — wgAlerts durables (e2e)', () => {
     const t = NOW + 90 * H + 60_000;
     await service.check(t);
     const snap = await health.snapshot(t);
-    expect(snap).toMatchObject({ level: 'GREEN', wgAlertEpisodesProviderAccepted: 1, wgEmailProviderAccepted: 1, wgNoProviderAccepted: 0, message: null });
+    expect(snap).toMatchObject({ level: 'GREEN', wgAlertEpisodesProviderAccepted: 1, wgEmailProviderAccepted: 1, wgNoProviderAccepted: 0, message: 'incident toujours ouvert : alerte acceptée par un fournisseur, pas résolu' });
     expect(JSON.stringify(snap)).not.toMatch(/@|ExponentPushToken|pk-/);
   });
 
@@ -181,5 +181,35 @@ describe('Ops Health — wgAlerts durables (e2e)', () => {
     const t = NOW + 91 * H;
     expect((await checkAt(t, { [`pk-accepted-${stamp}`]: { latestHandshake: Math.floor(t / 1000) } })).resolved).toBe(1);
     expect(await health.snapshot(t)).toMatchObject({ level: 'GREEN', wgAlertEpisodesProviderAccepted: 0, wgAlertEpisodesResolved24h: 1 });
+  });
+
+  it('H. rappels : accepté < 24 h = incident toujours ouvert (GREEN), rappel dû = ORANGE, bloqué > 1 h = RED, exécuté = métriques, limite de 7 = RED', async () => {
+    await prisma.wgAlertEpisode.deleteMany({});
+    await prisma.remotePeer.updateMany({ where: { id: { in: mine } }, data: { status: RemotePeerStatus.REVOKED } });
+    await mkPeer('rem');
+    sendAlert.mockResolvedValue({ status: 'SENT' });
+    const R = NOW + 300 * H;
+    await service.check(R);
+
+    expect(await health.snapshot(R + 23 * H)).toMatchObject({ level: 'GREEN', wgReminderDue: 0, wgAlertEpisodesProviderAccepted: 1, wgOldestUnresolvedAgeMs: 23 * H });
+    expect(await health.snapshot(R + 24 * H)).toMatchObject({ level: 'ORANGE', wgReminderDue: 1, message: 'rappel quotidien dû' });
+    expect((await health.snapshot(R + 26 * H)).level).toBe('RED'); // rappel dû depuis plus d'une heure : bloqué
+
+    await service.check(R + 24 * H);
+    expect(await health.snapshot(R + 24 * H + 60_000)).toMatchObject({
+      level: 'GREEN',
+      wgReminderDue: 0,
+      wgRemindersAttempted24h: 2,
+      wgRemindersProviderAccepted24h: 1,
+      wgReminderFailures24h: 0,
+      wgEpisodesReminderLimitReached: 0,
+    });
+
+    for (let k = 2; k <= 9; k++) await service.check(R + k * 24 * H);
+    const limit = await health.snapshot(R + 9 * 24 * H + 60_000);
+    expect(limit).toMatchObject({ level: 'RED', wgEpisodesReminderLimitReached: 1, message: 'limite de 7 rappels atteinte, incident toujours actif' });
+    expect(limit.wgOldestUnresolvedAgeMs).toBeGreaterThan(8 * 24 * H);
+    // Redémarrage : même lecture avec une instance neuve.
+    expect(await new WgAlertHealthService(prisma).snapshot(R + 9 * 24 * H + 60_000)).toEqual(limit);
   });
 });

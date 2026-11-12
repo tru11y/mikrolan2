@@ -1,11 +1,24 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, WgAlertAttemptStatus, WgAlertChannel, WgAlertEpisodeStatus, type WgAlertType } from '@prisma/client';
+import {
+  Prisma,
+  WgAlertAttemptKind,
+  WgAlertAttemptStatus,
+  WgAlertChannel,
+  WgAlertEpisodeStatus,
+  type WgAlertEmailStatus,
+  type WgAlertPushStatus,
+  type WgAlertType,
+} from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
-/** Tentatives automatiques : T0 (immédiate), T0 + 1 h, puis + 6 h après la deuxième (≈ T0 + 7 h). Jamais de quatrième. */
+/** Alerte initiale : T0 (immédiate), T0 + 1 h, puis + 6 h après la deuxième (≈ T0 + 7 h). Jamais de quatrième. */
 export const WG_ALERT_MAX_ATTEMPTS = 3;
 /** Délai appliqué après la tentative N (index N-1). */
 export const WG_ALERT_RETRY_DELAYS_MS: readonly number[] = [3_600_000, 6 * 3_600_000];
+/** Rappels d'un incident toujours non résolu après acceptation : 24 h après la détection, puis toutes les 24 h. */
+export const WG_ALERT_REMINDER_INTERVAL_MS = 24 * 3_600_000;
+/** Limite métier documentée : au plus 7 rappels, puis l'épisode reste visible (RED) jusqu'au handshake sain. */
+export const WG_ALERT_MAX_REMINDERS = 7;
 /** Durée de validité d'un claim : au-delà, un autre passage peut reprendre la tentative (crash du processus). */
 export const WG_ALERT_CLAIM_TTL_MS = 5 * 60_000;
 
@@ -16,6 +29,10 @@ export const WG_ACTIVE_EPISODE_STATUSES: WgAlertEpisodeStatus[] = [
   WgAlertEpisodeStatus.EXHAUSTED,
 ];
 
+const VALID_EMAIL_STATUS: ReadonlySet<string> = new Set<WgAlertEmailStatus>(['SENT', 'NO_RECIPIENT', 'NOT_CONFIGURED', 'FAILED']);
+const VALID_PUSH_STATUS: ReadonlySet<string> = new Set<WgAlertPushStatus>(['SENT', 'NO_TOKEN', 'DISABLED', 'FAILED', 'INVALID_TOKEN']);
+const FAILURE_CODE_RE = /^[A-Z0-9_]{1,40}$/;
+
 export interface ChannelAttempt {
   channel: WgAlertChannel;
   status: WgAlertAttemptStatus;
@@ -24,8 +41,8 @@ export interface ChannelAttempt {
 }
 
 export interface AttemptRecord {
-  emailStatus: string;
-  pushStatus: string;
+  emailStatus: WgAlertEmailStatus;
+  pushStatus: WgAlertPushStatus;
   channels: ChannelAttempt[];
 }
 
@@ -37,9 +54,34 @@ export interface CompletedAttempt {
   nextAttemptAt: Date | null;
 }
 
+export interface CompletedReminder {
+  saved: boolean;
+  reminderNumber: number;
+  providerAccepted: boolean;
+  limitReached: boolean;
+  nextReminderAt: Date | null;
+}
+
+/** Valeurs fermées à l'écriture : une valeur inconnue est rejetée avant toute écriture. */
+export function assertValidRecord(record: AttemptRecord): AttemptRecord {
+  if (!VALID_EMAIL_STATUS.has(record.emailStatus) || !VALID_PUSH_STATUS.has(record.pushStatus)) {
+    throw new Error('INVALID_ALERT_STATUS');
+  }
+  const known = new Set<string>(Object.values(WgAlertAttemptStatus));
+  for (const c of record.channels) {
+    if (!known.has(c.status)) throw new Error('INVALID_ALERT_STATUS');
+  }
+  return {
+    ...record,
+    channels: record.channels.map((c) => ({ ...c, failureCode: c.failureCode && FAILURE_CODE_RE.test(c.failureCode) ? c.failureCode : c.failureCode ? 'UNKNOWN_FAILURE' : null })),
+  };
+}
+
 /**
  * Persistance des épisodes d'alerte. Séquence d'une tentative : claim atomique court → appel fournisseur
  * (hors transaction, hors verrou SQL) → écriture du résultat conditionnée à l'état attendu.
+ * Alerte initiale et retries : épisode OPEN. Rappels quotidiens : épisode PROVIDER_ACCEPTED, un seul passage
+ * logique par période de 24 h (une tentative EMAIL, une PUSH, jamais de retry du rappel).
  */
 @Injectable()
 export class WgAlertEpisodeService {
@@ -84,14 +126,35 @@ export class WgAlertEpisodeService {
     }
   }
 
-  /** Handshake sain : tout épisode non résolu du peer est clos, plus aucun retry. */
+  /** Handshake sain : tout épisode non résolu du peer est clos, plus aucun retry ni rappel. */
   async resolvePeer(remotePeerId: string, nowMs: number): Promise<number> {
     const res = await this.prisma.wgAlertEpisode.updateMany({
       where: { remotePeerId, status: { in: WG_ACTIVE_EPISODE_STATUSES } },
-      data: { status: WgAlertEpisodeStatus.RESOLVED, resolvedAt: new Date(nowMs), nextAttemptAt: null, claimExpiresAt: null },
+      data: { status: WgAlertEpisodeStatus.RESOLVED, resolvedAt: new Date(nowMs), nextAttemptAt: null, nextReminderAt: null, claimExpiresAt: null },
     });
     return res.count;
   }
+
+  private static readonly DUE_SELECT = {
+    id: true,
+    remotePeerId: true,
+    tenantId: true,
+    alertType: true,
+    attemptCount: true,
+    reminderCount: true,
+    detectedAt: true,
+    legacy: true,
+    remotePeer: {
+      select: {
+        status: true,
+        routerId: true,
+        lastHandshakeAt: true,
+        provisionedAt: true,
+        createdAt: true,
+        router: { select: { alias: true, identity: true, deletedAt: true } },
+      },
+    },
+  } as const;
 
   findDue(nowMs: number, limit = 50) {
     const now = new Date(nowMs);
@@ -103,24 +166,22 @@ export class WgAlertEpisodeService {
       },
       orderBy: { nextAttemptAt: 'asc' },
       take: limit,
-      select: {
-        id: true,
-        remotePeerId: true,
-        tenantId: true,
-        alertType: true,
-        attemptCount: true,
-        legacy: true,
-        remotePeer: {
-          select: {
-            status: true,
-            routerId: true,
-            lastHandshakeAt: true,
-            provisionedAt: true,
-            createdAt: true,
-            router: { select: { alias: true, identity: true, deletedAt: true } },
-          },
-        },
+      select: WgAlertEpisodeService.DUE_SELECT,
+    });
+  }
+
+  /** Rappels quotidiens dus : épisode accepté, toujours non résolu, `nextReminderAt` échu, sans claim valide. */
+  findRemindersDue(nowMs: number, limit = 50) {
+    const now = new Date(nowMs);
+    return this.prisma.wgAlertEpisode.findMany({
+      where: {
+        status: WgAlertEpisodeStatus.PROVIDER_ACCEPTED,
+        nextReminderAt: { lte: now },
+        OR: [{ claimExpiresAt: null }, { claimExpiresAt: { lte: now } }],
       },
+      orderBy: { nextReminderAt: 'asc' },
+      take: limit,
+      select: WgAlertEpisodeService.DUE_SELECT,
     });
   }
 
@@ -140,17 +201,44 @@ export class WgAlertEpisodeService {
     return res.count === 1;
   }
 
+  /** Claim atomique du rappel numéro `reminderCount + 1` : un seul appelant, jamais deux rappels pour le même numéro. */
+  async claimReminder(id: string, expectedReminderCount: number, nowMs: number): Promise<boolean> {
+    const now = new Date(nowMs);
+    const res = await this.prisma.wgAlertEpisode.updateMany({
+      where: {
+        id,
+        status: WgAlertEpisodeStatus.PROVIDER_ACCEPTED,
+        reminderCount: expectedReminderCount,
+        nextReminderAt: { lte: now },
+        OR: [{ claimExpiresAt: null }, { claimExpiresAt: { lte: now } }],
+      },
+      data: { claimExpiresAt: new Date(nowMs + WG_ALERT_CLAIM_TTL_MS) },
+    });
+    return res.count === 1;
+  }
+
   /**
-   * Écrit le résultat d'une tentative, une seule fois : la mise à jour est conditionnée à `attemptCount`
-   * attendu, donc un second écrivain (claim expiré) est ignoré. Transaction courte : aucun appel externe dedans.
+   * Écrit le résultat d'une tentative initiale ou d'un retry, une seule fois : la mise à jour est conditionnée à
+   * `attemptCount` attendu, donc un second écrivain (claim expiré) est ignoré. Transaction courte : aucun appel externe.
+   * Acceptation : premier rappel programmé à détection + 24 h (legacy : acceptation + 24 h, pour ne pas renvoyer aussitôt).
    */
-  async complete(id: string, previousAttemptCount: number, record: AttemptRecord, nowMs: number): Promise<CompletedAttempt> {
+  async complete(
+    id: string,
+    previousAttemptCount: number,
+    rawRecord: AttemptRecord,
+    nowMs: number,
+    ctx: { detectedAt: Date; legacy: boolean },
+  ): Promise<CompletedAttempt> {
+    const record = assertValidRecord(rawRecord);
     const attemptNumber = previousAttemptCount + 1;
     const attemptedAt = new Date(nowMs);
     const providerAccepted = record.channels.some((c) => c.status === WgAlertAttemptStatus.PROVIDER_ACCEPTED);
     const exhausted = !providerAccepted && attemptNumber >= WG_ALERT_MAX_ATTEMPTS;
     const delay = WG_ALERT_RETRY_DELAYS_MS[attemptNumber - 1];
     const nextAttemptAt = providerAccepted || exhausted || delay === undefined ? null : new Date(nowMs + delay);
+    const nextReminderAt = providerAccepted
+      ? new Date(Math.max(ctx.detectedAt.getTime() + WG_ALERT_REMINDER_INTERVAL_MS, ctx.legacy ? nowMs + WG_ALERT_REMINDER_INTERVAL_MS : 0))
+      : null;
     const status = providerAccepted
       ? WgAlertEpisodeStatus.PROVIDER_ACCEPTED
       : exhausted
@@ -165,6 +253,8 @@ export class WgAlertEpisodeService {
           attemptCount: attemptNumber,
           lastAttemptAt: attemptedAt,
           nextAttemptAt,
+          nextReminderAt,
+          reminderCount: 0,
           claimExpiresAt: null,
           emailStatus: record.emailStatus,
           pushStatus: record.pushStatus,
@@ -177,6 +267,7 @@ export class WgAlertEpisodeService {
           episodeId: id,
           channel: c.channel,
           attemptNumber,
+          kind: attemptNumber === 1 ? WgAlertAttemptKind.INITIAL : WgAlertAttemptKind.RETRY,
           status: c.status,
           attemptedAt,
           providerAcceptedAt: c.status === WgAlertAttemptStatus.PROVIDER_ACCEPTED ? attemptedAt : null,
@@ -187,5 +278,43 @@ export class WgAlertEpisodeService {
       return true;
     });
     return { saved, attemptNumber, providerAccepted, exhausted, nextAttemptAt };
+  }
+
+  /**
+   * Écrit un rappel logique, une seule fois : conditionné à `reminderCount` attendu, et l'unicité
+   * (épisode, canal, reminderNumber) de PostgreSQL interdit un doublon même si le claim expire pendant l'envoi.
+   * Un rappel n'est jamais réessayé : réussi ou non, le prochain est dans 24 h (max 7).
+   */
+  async completeReminder(id: string, previousReminderCount: number, rawRecord: AttemptRecord, nowMs: number): Promise<CompletedReminder> {
+    const record = assertValidRecord(rawRecord);
+    const reminderNumber = previousReminderCount + 1;
+    const attemptedAt = new Date(nowMs);
+    const providerAccepted = record.channels.some((c) => c.status === WgAlertAttemptStatus.PROVIDER_ACCEPTED);
+    const limitReached = reminderNumber >= WG_ALERT_MAX_REMINDERS;
+    const nextReminderAt = limitReached ? null : new Date(nowMs + WG_ALERT_REMINDER_INTERVAL_MS);
+
+    const saved = await this.prisma.$transaction(async (tx) => {
+      const res = await tx.wgAlertEpisode.updateMany({
+        where: { id, status: WgAlertEpisodeStatus.PROVIDER_ACCEPTED, reminderCount: previousReminderCount },
+        data: { reminderCount: reminderNumber, lastReminderAt: attemptedAt, nextReminderAt, claimExpiresAt: null },
+      });
+      if (res.count !== 1) return false;
+      await tx.wgAlertDeliveryAttempt.createMany({
+        data: record.channels.map((c) => ({
+          episodeId: id,
+          channel: c.channel,
+          attemptNumber: WG_ALERT_MAX_ATTEMPTS + reminderNumber,
+          kind: WgAlertAttemptKind.REMINDER,
+          reminderNumber,
+          status: c.status,
+          attemptedAt,
+          providerAcceptedAt: c.status === WgAlertAttemptStatus.PROVIDER_ACCEPTED ? attemptedAt : null,
+          failureCode: c.failureCode,
+          recipientCount: c.recipientCount,
+        })),
+      });
+      return true;
+    });
+    return { saved, reminderNumber, providerAccepted, limitReached, nextReminderAt };
   }
 }

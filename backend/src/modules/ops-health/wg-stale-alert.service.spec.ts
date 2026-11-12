@@ -83,15 +83,15 @@ describe('WgAlertEpisodeService', () => {
     const { db, episodes } = setup();
     await episodes.open({ id: 'p1', tenantId: 't1' }, 'STALE_24H', new Date(T0), T0, false);
     const record = {
-      emailStatus: 'FAILED',
-      pushStatus: 'NO_TOKEN',
+      emailStatus: 'FAILED' as const,
+      pushStatus: 'NO_TOKEN' as const,
       channels: [
         { channel: 'EMAIL' as const, status: 'PROVIDER_FAILED' as const, failureCode: 'SMTP_ERROR', recipientCount: 1 },
         { channel: 'PUSH' as const, status: 'NO_TOKEN' as const, failureCode: null, recipientCount: 0 },
       ],
     };
-    const first = await episodes.complete(ep(db).id, 0, record, T0);
-    const second = await episodes.complete(ep(db).id, 0, record, T0);
+    const first = await episodes.complete(ep(db).id, 0, record, T0, { detectedAt: new Date(T0), legacy: false });
+    const second = await episodes.complete(ep(db).id, 0, record, T0, { detectedAt: new Date(T0), legacy: false });
     expect([first.saved, second.saved]).toEqual([true, false]);
     expect(db.attempts).toHaveLength(2);
     expect(ep(db).attemptCount).toBe(1);
@@ -181,14 +181,13 @@ describe('WgStaleAlertService — épisode durable', () => {
     expect(ep(db).status).toBe('EXHAUSTED');
   });
 
-  it('aucun retry (ni rappel) pour un épisode PROVIDER_ACCEPTED', async () => {
+  it('aucun retry pour un épisode PROVIDER_ACCEPTED : tentatives jamais relancées, prochain rappel à détection + 24 h', async () => {
     const { db, mail, service } = setup();
     await service.check(T0);
-    mail.sendAlert.mockClear();
+    expect(ep(db)).toMatchObject({ nextAttemptAt: null, nextReminderAt: new Date(T0 + 24 * H), reminderCount: 0 });
     await service.check(T0 + 10 * H);
-    await service.check(T0 + 40 * H);
-    expect(mail.sendAlert).not.toHaveBeenCalled();
-    expect(db.episodes).toHaveLength(1);
+    expect(mail.sendAlert).toHaveBeenCalledTimes(1);
+    expect(ep(db).attemptCount).toBe(1);
   });
 
   it('deux crons concurrents : une seule tentative, un seul épisode', async () => {
@@ -400,5 +399,206 @@ describe('WgStaleAlertService — aucune donnée sensible', () => {
     });
     await service.check(T0);
     expect(seen).toEqual([0]);
+  });
+});
+
+describe('WgStaleAlertService — rappels quotidiens (incident toujours non résolu)', () => {
+  const DAY = 24 * H;
+  const remindersOf = (db: FakeWgAlertPrisma) => db.attempts.filter((a) => a.kind === 'REMINDER');
+
+  it('alerte initiale acceptée, peer toujours stale avant 24 h : aucun rappel', async () => {
+    const { db, mail, service } = setup();
+    await service.check(T0);
+    await service.check(T0 + 23 * H);
+    expect(mail.sendAlert).toHaveBeenCalledTimes(1);
+    expect(remindersOf(db)).toHaveLength(0);
+  });
+
+  it('à 24 h : exactement un rappel logique, une tentative EMAIL et une PUSH, planning +24 h', async () => {
+    const { db, mail, notifications, service } = setup();
+    await service.check(T0);
+    await service.check(T0 + DAY);
+    expect(mail.sendAlert).toHaveBeenCalledTimes(2);
+    expect(notifications.sendPushToTenant).toHaveBeenCalledTimes(2);
+    expect(ep(db)).toMatchObject({ status: 'PROVIDER_ACCEPTED', reminderCount: 1, lastReminderAt: new Date(T0 + DAY), nextReminderAt: new Date(T0 + 2 * DAY), attemptCount: 1 });
+    expect(remindersOf(db).map((a) => `${a.channel}:${a.reminderNumber}:${a.attemptNumber}`).sort()).toEqual(['EMAIL:1:4', 'PUSH:1:4']);
+  });
+
+  it('deux crons concurrents à 24 h : un seul rappel logique', async () => {
+    const { db, mail, service } = setup();
+    await service.check(T0);
+    await Promise.all([service.check(T0 + DAY), service.check(T0 + DAY)]);
+    expect(mail.sendAlert).toHaveBeenCalledTimes(2);
+    expect(ep(db).reminderCount).toBe(1);
+    expect(remindersOf(db)).toHaveLength(2);
+  });
+
+  it('un rappel n est jamais réessayé toutes les 10 minutes, même en échec : prochain essai = J+1', async () => {
+    const { db, mail, service } = setup();
+    await service.check(T0);
+    mail.sendAlert.mockResolvedValue(MAIL_FAIL);
+    await service.check(T0 + DAY);
+    await service.check(T0 + DAY + 10 * MIN);
+    await service.check(T0 + DAY + 20 * MIN);
+    expect(mail.sendAlert).toHaveBeenCalledTimes(2);
+    expect(ep(db)).toMatchObject({ reminderCount: 1, nextReminderAt: new Date(T0 + 2 * DAY), status: 'PROVIDER_ACCEPTED' });
+    expect(Sentry.captureMessage).not.toHaveBeenCalled();
+  });
+
+  it('à 48 h : rappel numéro 2', async () => {
+    const { db, service } = setup();
+    for (const dt of [0, DAY, 2 * DAY]) await service.check(T0 + dt);
+    expect(ep(db)).toMatchObject({ reminderCount: 2, nextReminderAt: new Date(T0 + 3 * DAY) });
+    expect(remindersOf(db).filter((a) => a.reminderNumber === 2)).toHaveLength(2);
+  });
+
+  it('handshake sain : aucun rappel, épisode RESOLVED, nextReminderAt null', async () => {
+    const { db, mail, wg, service } = setup();
+    await service.check(T0);
+    wg.livePeers.mockResolvedValue({ 'pk-p1': { latestHandshake: Math.floor((T0 + DAY - MIN) / 1000) } });
+    await service.check(T0 + DAY);
+    expect(mail.sendAlert).toHaveBeenCalledTimes(1);
+    expect(ep(db)).toMatchObject({ status: 'RESOLVED', nextReminderAt: null, nextAttemptAt: null });
+    await service.check(T0 + DAY + H); // tunnel toujours sain : ni rappel ni nouvel épisode
+    expect(mail.sendAlert).toHaveBeenCalledTimes(1);
+    expect(db.episodes).toHaveLength(1);
+  });
+
+  it('rappel dû mais tunnel redevenu sain entre-temps : pas de rappel, épisode résolu', async () => {
+    const { db, mail, episodes, service } = setup();
+    await service.check(T0);
+    db.peers[0].lastHandshakeAt = new Date(T0 + DAY - MIN); // handshake observé hors cron
+    await service.check(T0 + DAY);
+    expect(mail.sendAlert).toHaveBeenCalledTimes(1);
+    expect(ep(db).status).toBe('RESOLVED');
+    expect(await episodes.hasActive('p1')).toBe(false);
+  });
+
+  it('course entre le scan et le rappel : tunnel redevenu sain après la lecture des rappels dus -> aucun envoi, épisode résolu', async () => {
+    const { db, mail, episodes, service } = setup();
+    await service.check(T0);
+    const [due] = await episodes.findRemindersDue(T0 + DAY);
+    expect(due).toBeDefined();
+    db.peers[0].lastHandshakeAt = new Date(T0 + DAY - MIN); // le tunnel reprend entre la lecture et l'envoi
+    await (service as unknown as { runReminder(ep: unknown, now: number): Promise<void> }).runReminder(due, T0 + DAY);
+    expect(mail.sendAlert).toHaveBeenCalledTimes(1);
+    expect(ep(db)).toMatchObject({ status: 'RESOLVED', nextReminderAt: null, reminderCount: 0 });
+  });
+
+  it('nouvel épisode après résolution : reminderCount repart à zéro, nouveau planning', async () => {
+    const { db, wg, service } = setup();
+    await service.check(T0);
+    await service.check(T0 + DAY);
+    expect(ep(db).reminderCount).toBe(1);
+    wg.livePeers.mockResolvedValue({ 'pk-p1': { latestHandshake: Math.floor((T0 + DAY + 20 * MIN) / 1000) } });
+    await service.check(T0 + DAY + 30 * MIN);
+    wg.livePeers.mockResolvedValue({});
+    const t = T0 + DAY + 30 * MIN + 25 * H;
+    await service.check(t);
+    expect(db.episodes).toHaveLength(2);
+    expect(db.episodes[1]).toMatchObject({ reminderCount: 0, lastReminderAt: null, status: 'PROVIDER_ACCEPTED', nextReminderAt: new Date(t + DAY) });
+    expect(db.episodes[0]).toMatchObject({ status: 'RESOLVED', reminderCount: 1 });
+  });
+
+  it('après 7 rappels : aucun huitième, épisode actif conservé', async () => {
+    const { db, mail, service } = setup();
+    for (let k = 0; k <= 12; k++) await service.check(T0 + k * DAY);
+    expect(ep(db)).toMatchObject({ status: 'PROVIDER_ACCEPTED', reminderCount: 7, nextReminderAt: null, resolvedAt: null });
+    expect(mail.sendAlert).toHaveBeenCalledTimes(1 + 7);
+    expect(remindersOf(db)).toHaveLength(14);
+  });
+
+  it('crash après claim du rappel : reprise après expiration, un seul rappel enregistré par numéro et canal', async () => {
+    const { db, mail, episodes, service } = setup();
+    await service.check(T0);
+    const spy = jest.spyOn(episodes, 'completeReminder').mockRejectedValueOnce(new Error('process killed'));
+    await service.check(T0 + DAY);
+    expect(ep(db)).toMatchObject({ reminderCount: 0 });
+    expect(ep(db).claimExpiresAt).toEqual(new Date(T0 + DAY + WG_ALERT_CLAIM_TTL_MS));
+    await service.check(T0 + DAY + MIN); // claim valide : rien
+    expect(mail.sendAlert).toHaveBeenCalledTimes(2);
+    spy.mockRestore();
+    await service.check(T0 + DAY + WG_ALERT_CLAIM_TTL_MS + MIN); // claim expiré : repris
+    expect(ep(db)).toMatchObject({ reminderCount: 1, claimExpiresAt: null });
+    expect(remindersOf(db).filter((a) => a.reminderNumber === 1)).toHaveLength(2); // une ligne par canal, jamais de doublon
+  });
+
+  it('redémarrage du backend : le planning du rappel est conservé (état en base, nouvelles instances)', async () => {
+    const a = setup();
+    await a.service.check(T0);
+    const before = { ...ep(a.db) };
+    const episodes2 = new WgAlertEpisodeService(a.db as never);
+    const mail2 = { sendAlert: jest.fn().mockResolvedValue(MAIL_OK) };
+    const service2 = new WgStaleAlertService(a.db as never, a.wg as never, mail2 as never, a.notifications as never, a.config as never, episodes2);
+    expect(before.nextReminderAt).toEqual(new Date(T0 + DAY));
+    await service2.check(T0 + 2 * H);
+    expect(mail2.sendAlert).not.toHaveBeenCalled();
+    await service2.check(T0 + DAY);
+    expect(mail2.sendAlert).toHaveBeenCalledTimes(1);
+    expect(ep(a.db).reminderCount).toBe(1);
+  });
+
+  it('autre tenant non affecté : chaque rappel notifie son tenant, la résolution d un peer garde l autre', async () => {
+    const { db, notifications, episodes, service } = setup();
+    db.addPeer({ id: 'p2', tenantId: 't2', lastHandshakeAt: OLD, provisionedAt: OLD });
+    await service.check(T0);
+    notifications.sendPushToTenant.mockClear();
+    await service.check(T0 + DAY);
+    expect(notifications.sendPushToTenant.mock.calls.map((c) => c[0]).sort()).toEqual(['t1', 't2']);
+    await episodes.resolvePeer('p1', T0 + DAY + MIN);
+    expect(db.episodes.find((e) => e.tenantId === 't2')).toMatchObject({ status: 'PROVIDER_ACCEPTED', reminderCount: 1 });
+  });
+
+  it('push du rappel : un seul appel, OWNER et ADMIN seulement (TICKET_VERIFIER exclu)', async () => {
+    const { notifications, service } = setup();
+    await service.check(T0);
+    notifications.sendPushToTenant.mockClear();
+    await service.check(T0 + DAY);
+    expect(notifications.sendPushToTenant).toHaveBeenCalledTimes(1);
+    expect([...(notifications.sendPushToTenant.mock.calls[0][5] as string[])].sort()).toEqual(['ADMIN', 'OWNER']);
+  });
+
+  it('aucun secret dans la base, les logs ni Sentry après plusieurs rappels', async () => {
+    const { db, service, logs } = setup({ push: PUSH_FAIL });
+    for (const k of [0, 1, 2, 3]) await service.check(T0 + k * DAY);
+    const rows = JSON.stringify([db.episodes, db.attempts]);
+    expect(rows).not.toMatch(/@|ExponentPushToken|FREEDOM|freedom-id|pk-p1|10\.\d+\.\d+\.\d+|injoignable/i);
+    const out = JSON.stringify([logs.log.mock.calls, logs.warn.mock.calls, logs.error.mock.calls, Sentry.captureMessage.mock.calls, Sentry.addBreadcrumb.mock.calls]);
+    expect(out).not.toMatch(/@|ExponentPushToken|FREEDOM|freedom-id|pk-p1|"p1"|"t1"|r-p1|injoignable/i);
+  });
+});
+
+describe('WgAlertEpisodeService — valeurs persistées fermées', () => {
+  const record = (over: Record<string, unknown> = {}) =>
+    ({
+      emailStatus: 'FAILED',
+      pushStatus: 'NO_TOKEN',
+      channels: [
+        { channel: 'EMAIL', status: 'PROVIDER_FAILED', failureCode: 'SMTP_ERROR', recipientCount: 1 },
+        { channel: 'PUSH', status: 'NO_TOKEN', failureCode: null, recipientCount: 0 },
+      ],
+      ...over,
+    }) as never;
+
+  it('statut e-mail ou push inconnu : rejeté avant toute écriture', async () => {
+    const { db, episodes } = setup();
+    await episodes.open({ id: 'p1', tenantId: 't1' }, 'STALE_24H', new Date(T0), T0, false);
+    const ctx = { detectedAt: new Date(T0), legacy: false };
+    await expect(episodes.complete(ep(db).id, 0, record({ emailStatus: 'DELIVERED_TO_HUMAN' }), T0, ctx)).rejects.toThrow('INVALID_ALERT_STATUS');
+    await expect(episodes.complete(ep(db).id, 0, record({ pushStatus: 'whatever' }), T0, ctx)).rejects.toThrow('INVALID_ALERT_STATUS');
+    await expect(episodes.completeReminder(ep(db).id, 0, record({ emailStatus: 'x' }), T0)).rejects.toThrow('INVALID_ALERT_STATUS');
+    expect(db.attempts).toHaveLength(0);
+    expect(ep(db).attemptCount).toBe(0);
+  });
+
+  it('statut de tentative inconnu : rejeté ; code d échec libre (texte, adresse) neutralisé', async () => {
+    const { db, episodes } = setup();
+    await episodes.open({ id: 'p1', tenantId: 't1' }, 'STALE_24H', new Date(T0), T0, false);
+    const ctx = { detectedAt: new Date(T0), legacy: false };
+    const bad = record({ channels: [{ channel: 'EMAIL', status: 'BOGUS', failureCode: null, recipientCount: 0 }] });
+    await expect(episodes.complete(ep(db).id, 0, bad, T0, ctx)).rejects.toThrow('INVALID_ALERT_STATUS');
+    const leaky = record({ channels: [{ channel: 'EMAIL', status: 'PROVIDER_FAILED', failureCode: '550 bob@example.test refused', recipientCount: 1 }] });
+    await episodes.complete(ep(db).id, 0, leaky, T0, ctx);
+    expect(db.attempts[0].failureCode).toBe('UNKNOWN_FAILURE');
   });
 });

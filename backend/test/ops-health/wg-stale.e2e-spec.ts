@@ -95,12 +95,12 @@ describe('Alerte WireGuard stale (e2e)', () => {
     expect(sendPush).not.toHaveBeenCalled();
   });
 
-  it('pas de rappel tant que l’épisode est accepté par un fournisseur (un épisode = une alerte, résolution au handshake)', async () => {
+  it('rappel quotidien à 24 h pour un épisode accepté (un par épisode), jamais de nouvel épisode ni de nouvelle alerte initiale', async () => {
     sendAlert.mockClear();
     live[healthyKey] = { latestHandshake: Math.floor((NOW + DAY - 30_000) / 1000) }; // le peer sain reste sain
-    expect((await service.check(NOW + DAY)).alerted).toBe(0);
-    expect(sendAlert).not.toHaveBeenCalled();
-    expect(await prisma.wgAlertEpisode.count({ where: { remotePeerId: { in: [ids.freedom, ids.never] }, status: 'PROVIDER_ACCEPTED' } })).toBe(2);
+    expect((await service.check(NOW + DAY)).alerted).toBe(0); // aucune première tentative
+    expect(sendAlert).toHaveBeenCalledTimes(2); // un rappel logique par épisode (FREEDOM et JAMAIS)
+    expect(await prisma.wgAlertEpisode.count({ where: { remotePeerId: { in: [ids.freedom, ids.never] }, status: 'PROVIDER_ACCEPTED', reminderCount: 1 } })).toBe(2);
   });
 
   it('résolution automatique au handshake : épisode clos dans la base', async () => {

@@ -8,6 +8,15 @@ CREATE TYPE "WgAlertEpisodeStatus" AS ENUM ('OPEN', 'PROVIDER_ACCEPTED', 'EXHAUS
 CREATE TYPE "WgAlertChannel" AS ENUM ('EMAIL', 'PUSH');
 
 -- CreateEnum
+CREATE TYPE "WgAlertEmailStatus" AS ENUM ('SENT', 'NO_RECIPIENT', 'NOT_CONFIGURED', 'FAILED');
+
+-- CreateEnum
+CREATE TYPE "WgAlertPushStatus" AS ENUM ('SENT', 'NO_TOKEN', 'DISABLED', 'FAILED', 'INVALID_TOKEN');
+
+-- CreateEnum
+CREATE TYPE "WgAlertAttemptKind" AS ENUM ('INITIAL', 'RETRY', 'REMINDER');
+
+-- CreateEnum
 CREATE TYPE "WgAlertAttemptStatus" AS ENUM ('PROVIDER_ACCEPTED', 'NO_RECIPIENT', 'NOT_CONFIGURED', 'NO_TOKEN', 'DISABLED', 'INVALID_TOKEN', 'PROVIDER_FAILED', 'TIMEOUT');
 
 -- CreateTable
@@ -22,9 +31,12 @@ CREATE TABLE "WgAlertEpisode" (
     "lastAttemptAt" TIMESTAMP(3),
     "nextAttemptAt" TIMESTAMP(3),
     "attemptCount" INTEGER NOT NULL DEFAULT 0,
-    "emailStatus" TEXT,
-    "pushStatus" TEXT,
+    "emailStatus" "WgAlertEmailStatus",
+    "pushStatus" "WgAlertPushStatus",
     "providerAcceptedAt" TIMESTAMP(3),
+    "nextReminderAt" TIMESTAMP(3),
+    "reminderCount" INTEGER NOT NULL DEFAULT 0,
+    "lastReminderAt" TIMESTAMP(3),
     "claimExpiresAt" TIMESTAMP(3),
     "legacy" BOOLEAN NOT NULL DEFAULT false,
     "failureCode" TEXT,
@@ -40,6 +52,8 @@ CREATE TABLE "WgAlertDeliveryAttempt" (
     "episodeId" TEXT NOT NULL,
     "channel" "WgAlertChannel" NOT NULL,
     "attemptNumber" INTEGER NOT NULL,
+    "kind" "WgAlertAttemptKind" NOT NULL DEFAULT 'INITIAL',
+    "reminderNumber" INTEGER,
     "status" "WgAlertAttemptStatus" NOT NULL,
     "attemptedAt" TIMESTAMP(3) NOT NULL,
     "providerAcceptedAt" TIMESTAMP(3),
@@ -57,6 +71,9 @@ CREATE INDEX "WgAlertEpisode_remotePeerId_status_idx" ON "WgAlertEpisode"("remot
 CREATE INDEX "WgAlertEpisode_nextAttemptAt_status_idx" ON "WgAlertEpisode"("nextAttemptAt", "status");
 
 -- CreateIndex
+CREATE INDEX "WgAlertEpisode_nextReminderAt_status_idx" ON "WgAlertEpisode"("nextReminderAt", "status");
+
+-- CreateIndex
 CREATE INDEX "WgAlertEpisode_tenantId_idx" ON "WgAlertEpisode"("tenantId");
 
 -- CreateIndex
@@ -64,6 +81,9 @@ CREATE INDEX "WgAlertDeliveryAttempt_attemptedAt_channel_status_idx" ON "WgAlert
 
 -- CreateIndex
 CREATE UNIQUE INDEX "WgAlertDeliveryAttempt_episodeId_channel_attemptNumber_key" ON "WgAlertDeliveryAttempt"("episodeId", "channel", "attemptNumber");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "WgAlertDeliveryAttempt_episodeId_channel_reminderNumber_key" ON "WgAlertDeliveryAttempt"("episodeId", "channel", "reminderNumber");
 
 -- AddForeignKey
 ALTER TABLE "WgAlertEpisode" ADD CONSTRAINT "WgAlertEpisode_remotePeerId_fkey" FOREIGN KEY ("remotePeerId") REFERENCES "RemotePeer"("id") ON DELETE CASCADE ON UPDATE CASCADE;
