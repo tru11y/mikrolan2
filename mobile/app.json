@@ -48,7 +48,7 @@
         "@sentry/react-native/expo",
         {
           "organization": "solqueflo-balley",
-          "project": "react-native"
+          "project": "mikrolan2"
         }
       ],
       "@sentry/react-native",
