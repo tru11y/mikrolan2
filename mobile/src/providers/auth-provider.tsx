@@ -28,6 +28,8 @@ import {
 } from '@/src/lib/api';
 import { deleteLocalCredentials } from '@/src/lib/router-credentials';
 import { clearSeenNotifications } from '@/src/providers/push-notifications-provider';
+import { fetchProfileWithRetry, isTransientError } from '@/src/lib/authRestore';
+import NetInfo from '@react-native-community/netinfo';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -89,6 +91,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [isReady, setIsReady] = useState(false);
   const [isBusy, setIsBusy] = useState(false);
   const [me, setMe] = useState<Me | null>(null);
+  const [restorePending, setRestorePending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [apiBaseUrl, setApiBaseUrlState] = useState(getApiBaseUrl());
 
@@ -136,10 +139,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
           setMe(null);
           return;
         }
-        setMe(await api.auth.me());
+        setMe(await fetchProfileWithRetry(() => api.auth.me()));
       } catch (e) {
         reportSilent('auth.restore-session', e);
-        await clearAuthTokens();
+        if (isTransientError(e)) {
+          // Réseau coupé ou serveur indisponible : on garde les jetons et on retentera au retour du réseau.
+          if (mounted) setRestorePending(true);
+        } else {
+          await clearAuthTokens();
+        }
         if (mounted) setMe(null);
       } finally {
         if (mounted) setIsReady(true);
@@ -150,6 +158,29 @@ export function AuthProvider({ children }: PropsWithChildren) {
       mounted = false;
     };
   }, [router]);
+
+  useEffect(() => {
+    if (!restorePending || me) return;
+    let active = true;
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      if (!state.isConnected || !active) return;
+      fetchProfileWithRetry(() => api.auth.me(), { delaysMs: [] })
+        .then((profile) => {
+          if (!active) return;
+          setMe(profile);
+          setRestorePending(false);
+        })
+        .catch(async (e) => {
+          if (isTransientError(e) || !active) return;
+          await clearAuthTokens();
+          if (active) setRestorePending(false);
+        });
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [restorePending, me]);
 
   async function afterAuth(): Promise<void> {
     const fresh = await api.auth.me();

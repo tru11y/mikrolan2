@@ -1,6 +1,6 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
 import { reportSilent, swallow } from '@/src/lib/report';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   Image,
@@ -49,10 +49,15 @@ export default function LoginScreen() {
     clearError,
     apiBaseUrl,
     updateApiBaseUrl,
+    isAuthenticated,
   } = useAuth();
   const { t } = useTranslation();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  useEffect(() => {
+    // Session restaurée après un démarrage hors ligne : on quitte l'écran de connexion.
+    if (isAuthenticated) router.replace('/');
+  }, [isAuthenticated, router]);
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [tenantName, setTenantName] = useState('');
   const [email, setEmail] = useState('');

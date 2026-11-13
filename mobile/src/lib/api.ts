@@ -4,6 +4,7 @@ import axios, {
   type AxiosInstance,
   type AxiosRequestConfig,
 } from 'axios';
+import { isTransientError } from './authRestore';
 import {
   deleteStoredValue,
   getStoredValue,
@@ -854,7 +855,7 @@ type ApiEvents = {
   onTokensChanged?: (tokens: AuthTokens | null) => void;
 };
 const apiEvents: ApiEvents = {};
-let refreshInFlight: Promise<AuthTokens | null> | null = null;
+let refreshInFlight: Promise<AuthTokens | null | 'transient'> | null = null;
 
 function looksLikeIpOrLocalhost(value: string): boolean {
   return /^(localhost|\d{1,3}(?:\.\d{1,3}){3})(:\d+)?(?:\/|$)/i.test(value);
@@ -953,7 +954,7 @@ function unwrap<T>(response: { data: ApiEnvelope<T> }): T {
   return response.data.data;
 }
 
-async function refreshTokens(): Promise<AuthTokens | null> {
+async function refreshTokens(): Promise<AuthTokens | null | 'transient'> {
   if (!refreshToken) return null;
   try {
     const response = await axios.post<ApiEnvelope<AuthTokens>>(
@@ -965,6 +966,8 @@ async function refreshTokens(): Promise<AuthTokens | null> {
     await setAuthTokens(next);
     return next;
   } catch (err) {
+    // Réseau coupé, délai dépassé ou panne serveur : la session reste valable, on ne déconnecte pas.
+    if (isTransientError(err)) return 'transient';
     const status = (err as AxiosError)?.response?.status;
     if (status === 401 || status === 403) {
       await clearAuthTokens(true);
@@ -1003,6 +1006,7 @@ apiClient.interceptors.response.use(
         refreshInFlight = null;
       });
       const refreshed = await refreshInFlight;
+      if (refreshed === 'transient') return Promise.reject(error);
       if (!refreshed) {
         if (isInitiator) await clearAuthTokens(true);
         return Promise.reject(error);
