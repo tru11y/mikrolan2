@@ -262,6 +262,23 @@ describe('NotificationsService', () => {
       expect(res).toEqual({ status: 'SENT', tokensFound: 1, accepted: 1, invalid: 0 });
     });
 
+    it('aucun token : le log ne contient que tenantRef pseudonymisé, jamais l identifiant brut du tenant', async () => {
+      const warn = jest.spyOn(service['logger'], 'warn').mockImplementation();
+      prisma.user.findMany.mockResolvedValue([]);
+
+      await service.sendPushToTenant(mockTenantId, 'Routeur injoignable', 'C');
+      prisma.notification.create.mockResolvedValue({ id: 'notif-1' });
+      await service.createAndPush(mockTenantId, 'INFO' as never, 'T', 'B', null);
+
+      const lines = warn.mock.calls.map((c) => String(c[0]));
+      expect(lines).toHaveLength(2);
+      for (const line of lines) {
+        expect(line).toContain('tenantRef ');
+        expect(line).toMatch(/tenantRef [0-9a-f]{16} /);
+        expect(line).not.toContain(mockTenantId);
+      }
+    });
+
     it('le résumé retourné ne contient jamais de token', async () => {
       prisma.user.findMany.mockResolvedValue([user('u1', tok('secret_value'))]);
       global.fetch = okFetch([{ status: 'ok', id: 't1' }]);
