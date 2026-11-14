@@ -1,16 +1,9 @@
-import { createHash } from 'node:crypto';
 import type { EmailDeliveryResult, MailSendResult } from '../mail/mail.service';
 import type { PushDeliveryResult } from '../notifications/notifications.service';
 
 export type { EmailDeliveryResult, PushDeliveryResult };
 
-/**
- * Référence stable et non réversible d'une entité (tenant, peer) pour les logs et Sentry :
- * SHA-256 tronqué à 16 hex. Aucun identifiant brut ne doit sortir de l'application.
- */
-export function deliveryEntityRef(value: string): string {
-  return createHash('sha256').update(value).digest('hex').slice(0, 16);
-}
+export { entityRef as deliveryEntityRef } from '../../common/utils/entity-ref';
 
 /**
  * `SENT` (e-mail) = accepté par le transport SMTP ; `SENT` (push) = accepté par l'API Expo.

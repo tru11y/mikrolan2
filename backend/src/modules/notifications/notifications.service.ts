@@ -4,6 +4,7 @@ import { ErrorCode } from '../../common/error-codes';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../../prisma/prisma.service';
+import { entityRef } from '../../common/utils/entity-ref';
 import type { NotificationType, UserRole } from '@prisma/client';
 import type { ListNotificationsQueryDto } from './dto/notifications.schemas';
 import type { PushJobData } from './notification.processor';
@@ -69,7 +70,7 @@ export class NotificationsService {
     const { recipients } = await this.collectPushRecipients(tenantId, routerId);
     const tokens = recipients.map((r) => r.token);
     if (!tokens.length) {
-      this.logger.warn(`No push token for tenant ${tenantId} (notification ${notification.id}, type ${type})`);
+      this.logger.warn(`No push token for tenantRef ${entityRef(tenantId)} (notification ${notification.id}, type ${type})`);
       return;
     }
 
@@ -104,7 +105,7 @@ export class NotificationsService {
       return { status: 'FAILED', tokensFound: 0, accepted: 0, invalid: 0, failureCode: collected.failureCode };
     }
     if (!collected.recipients.length) {
-      this.logger.warn(`No push token for tenant ${tenantId} ("${title}")${collected.disabled ? ' (notifications disabled)' : ''}`);
+      this.logger.warn(`No push token for tenantRef ${entityRef(tenantId)} ("${title}")${collected.disabled ? ' (notifications disabled)' : ''}`);
       return { status: collected.disabled ? 'DISABLED' : 'NO_TOKEN', tokensFound: 0, accepted: 0, invalid: 0 };
     }
 
