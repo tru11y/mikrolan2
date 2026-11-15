@@ -5,6 +5,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { Prisma, PrismaClient, UserRole } from '@prisma/client';
+import { PrismaPoolStats, isPoolTimeout } from './prisma-pool-stats';
 import { getTenantContext, isAdminBypass, type TenantContext } from '../common/context/tenant-context';
 
 // Models carrying a tenantId column — subject to row-level isolation.
@@ -92,10 +93,29 @@ export class PrismaService
   implements OnModuleInit, OnModuleDestroy
 {
   private readonly logger = new Logger(PrismaService.name);
+  /** Durée des requêtes (attente de connexion comprise) et erreurs P2024, pour /admin/system-health. */
+  readonly poolStats = new PrismaPoolStats();
 
   constructor() {
     super();
+    // Enregistré en premier = middleware le plus externe : la durée mesurée inclut l'attente d'une connexion du pool.
+    this.$use(this.statsMiddleware.bind(this));
     this.$use(this.tenantMiddleware.bind(this));
+  }
+
+  private async statsMiddleware(
+    params: Prisma.MiddlewareParams,
+    next: (p: Prisma.MiddlewareParams) => Promise<unknown>,
+  ): Promise<unknown> {
+    const startedAt = Date.now();
+    try {
+      return await next(params);
+    } catch (err) {
+      if (isPoolTimeout(err)) this.poolStats.recordPoolTimeout();
+      throw err;
+    } finally {
+      this.poolStats.recordQuery(Date.now() - startedAt);
+    }
   }
 
   async onModuleInit(): Promise<void> {

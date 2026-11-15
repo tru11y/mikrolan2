@@ -242,5 +242,12 @@ describe('ops-health — intégration réelle', () => {
       .expect(200);
     const body = res.body.data ?? res.body;
     expect(body.expiry).toMatchObject({ level: 'RED', pendingOnline: 1 });
+    // Santé du runtime : mémoire Node, swap système, pool Prisma (P2024/h) — aucune donnée sensible.
+    expect(body.runtime.node.rssMb).toBeGreaterThan(0);
+    expect(body.runtime.node.heapUsedMb).toBeGreaterThan(0);
+    expect(body.runtime.prisma.queriesLast1h).toBeGreaterThan(0);
+    expect(body.runtime.prisma).toMatchObject({ p2024Last1h: 0, p2024Total: 0 });
+    expect(['GREEN', 'ORANGE', 'RED']).toContain(body.runtime.level);
+    expect(JSON.stringify(body.runtime)).not.toMatch(/@|token|password/i);
   });
 });

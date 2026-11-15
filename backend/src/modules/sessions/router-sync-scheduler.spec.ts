@@ -1,6 +1,7 @@
 import {
   RouterSyncScheduler,
   SYNC_BACKOFF_CAP_MS,
+  tunnelDownBackoffMs,
   type SchedulerRouter,
   type SyncRunStatus,
 } from './router-sync-scheduler';
@@ -179,14 +180,30 @@ describe('RouterSyncScheduler', () => {
     expect(g[g.length - 1]).toBeGreaterThanOrEqual(SYNC_BACKOFF_CAP_MS / 1000);
   });
 
-  it('E2. tunnel mort : une sonde toutes les 3 min au lieu d\'une tentative toutes les 25 s', async () => {
+  it('E2. tunnel mort : échecs espacés 1 min, 5 min, 15 min puis 1 h (au lieu de 25 s à 5 min)', async () => {
     const sim = makeSim(() => [router('dead', { tunnelDown: true })], {
       dead: { durationMs: 26_000, status: 'failed' },
     });
-    await sim.run(900_000); // 15 min
-    const n = sim.starts['dead'].length;
-    expect(n).toBeLessThanOrEqual(5); // contre 6 avec le seul backoff et ~36 à cadence fixe de 25 s
-    for (const g of gaps(sim.starts['dead'])) expect(g).toBeGreaterThanOrEqual(180); // sonde : ≥ 3 min entre deux tentatives
+    await sim.run(3 * 3_600_000); // 3 h
+    const g = gaps(sim.starts['dead']);
+    // intervalle entre débuts = durée (26 s) + délai de backoff, au pas du dispatcheur (5 s)
+    expect(g[0]).toBeGreaterThanOrEqual(26 + 60);
+    expect(g[1]).toBeGreaterThanOrEqual(26 + 300);
+    expect(g[2]).toBeGreaterThanOrEqual(26 + 900);
+    for (const x of g.slice(3)) expect(x).toBeGreaterThanOrEqual(26 + 3_600);
+    expect(g[0]).toBeLessThan(26 + 60 + 15);
+    expect(sim.starts['dead'].length).toBeLessThanOrEqual(6); // contre ~60 avec la sonde de 3 min
+  });
+
+  it('E2b. tunnelDownBackoffMs : 1 min, 5 min, 15 min, puis 1 h plafonné', () => {
+    expect([1, 2, 3, 4, 5, 20].map(tunnelDownBackoffMs)).toEqual([60_000, 300_000, 900_000, 3_600_000, 3_600_000, 3_600_000]);
+    expect(tunnelDownBackoffMs(0)).toBe(60_000);
+  });
+
+  it('E2c. un routeur dont le tunnel n est PAS mort garde le backoff normal plafonné à 5 min', async () => {
+    const sim = makeSim(() => [router('slow')], { slow: { durationMs: 1_000, status: 'failed' } });
+    await sim.run(3_600_000);
+    expect(Math.max(...gaps(sim.starts['slow']))).toBeLessThanOrEqual((SYNC_BACKOFF_CAP_MS + 1_000 + 5_000) / 1000);
   });
 
   it('E3. le handshake revient : lecture immédiate, sans attendre le backoff', async () => {
