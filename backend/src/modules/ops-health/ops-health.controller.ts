@@ -6,6 +6,7 @@ import { AdminBypassInterceptor } from '../../common/interceptors/admin-bypass.i
 import { OpsHealthService } from './ops-health.service';
 import { WgAlertDeliveryRegistry } from './wg-alert-delivery';
 import { AuthEventsService } from '../auth/auth-events.service';
+import { RuntimeHealthService } from './runtime-health';
 
 @Controller('admin/system-health')
 @Roles(UserRole.SUPER_ADMIN)
@@ -16,6 +17,7 @@ export class OpsHealthController {
     private readonly health: OpsHealthService,
     private readonly wgAlerts: WgAlertDeliveryRegistry,
     private readonly authEvents: AuthEventsService,
+    private readonly runtime: RuntimeHealthService,
   ) {}
 
   @Get()
@@ -25,6 +27,6 @@ export class OpsHealthController {
       this.health.getRoutersHealth(),
       this.authEvents.metrics(),
     ]);
-    return { expiry, routers, wgAlerts: this.wgAlerts.snapshot(), authSessions };
+    return { expiry, routers, wgAlerts: this.wgAlerts.snapshot(), authSessions, runtime: this.runtime.snapshot() };
   }
 }
