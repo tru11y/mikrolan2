@@ -11,14 +11,23 @@
  *   toujours un emplacement pour les routeurs sains ;
  * - cadence propre à chaque routeur, backoff exponentiel en cas d'échecs ;
  * - routeur sans identifiants ou sans tunnel provisionné : jamais lu ;
- * - tunnel manifestement mort : une seule lecture de sonde toutes les 3 min.
+ * - tunnel manifestement mort : échecs espacés 1 min, 5 min, 15 min puis 1 h (au lieu de 25 s à 5 min) ;
+ *   le retour du handshake déclenche une lecture immédiate et remet le compteur à zéro.
  */
 
 export const SYNC_BASE_MS = 25_000;
 export const SYNC_POOL_MAX = 3;
 export const SYNC_SLOW_MS = 5_000;
 export const SYNC_BACKOFF_CAP_MS = 5 * 60_000;
+/** Un succès sur un tunnel signalé mort reste une sonde espacée d'au moins 3 min. */
 export const SYNC_TUNNEL_DOWN_PROBE_MS = 3 * 60_000;
+/** Délai avant la nouvelle tentative d'un routeur au tunnel mort : échec 1 → 1 min, 2 → 5 min, 3 → 15 min, 4 et + → 1 h. */
+export const SYNC_TUNNEL_DOWN_BACKOFF_MS: readonly number[] = [60_000, 5 * 60_000, 15 * 60_000, 60 * 60_000];
+
+export function tunnelDownBackoffMs(consecutiveFailures: number): number {
+  const i = Math.min(Math.max(consecutiveFailures, 1), SYNC_TUNNEL_DOWN_BACKOFF_MS.length) - 1;
+  return SYNC_TUNNEL_DOWN_BACKOFF_MS[i];
+}
 export const SYNC_ROUTER_LIST_TTL_MS = 15_000;
 export const SYNC_SUMMARY_EVERY_MS = 60_000;
 // Un « skipped » (verrou du routeur déjà pris) ne compte ni comme succès ni comme échec.
@@ -152,6 +161,8 @@ export class RouterSyncScheduler {
 
   private dueAt(s: RouterState): number {
     if (!s.tunnelDown || s.lastEndedAt === null) return s.nextDueAt;
+    // Après des échecs, le planning (1 min, 5 min, 15 min, 1 h) est déjà dans nextDueAt.
+    if (s.consecutiveFailures > 0) return s.nextDueAt;
     return Math.max(s.nextDueAt, s.lastEndedAt + SYNC_TUNNEL_DOWN_PROBE_MS);
   }
 
@@ -216,7 +227,9 @@ export class RouterSyncScheduler {
       s.consecutiveFailures += 1;
       s.lastEndedAt = endedAt;
       s.lastDurationMs = durationMs;
-      backoffMs = Math.min(SYNC_BACKOFF_CAP_MS, SYNC_BASE_MS * 2 ** (s.consecutiveFailures - 1));
+      backoffMs = s.tunnelDown
+        ? tunnelDownBackoffMs(s.consecutiveFailures)
+        : Math.min(SYNC_BACKOFF_CAP_MS, SYNC_BASE_MS * 2 ** (s.consecutiveFailures - 1));
       s.nextDueAt = endedAt + backoffMs;
     }
     this.deps.log(
