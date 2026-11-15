@@ -8,7 +8,7 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   backend:
@@ -69,11 +69,80 @@ jobs:
       - name: Lint
         run: npx eslint .
 
-  deploy:
-    name: Deploy to VPS
+  build-artifact:
+    name: Build release artifact
     needs: [backend, mobile]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DEPLOY_MODE == 'artifact'
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci --legacy-peer-deps
+      - run: npx prisma generate
+      - run: npm run build
+      - name: Prod modules + Prisma client
+        run: |
+          rm -rf node_modules
+          npm ci --omit=dev --legacy-peer-deps
+          npx prisma generate
+      - name: Package
+        run: |
+          mkdir -p ../out
+          cp deploy/artifact/release.sh ./release.sh
+          tar -czf ../out/artifact.tar.gz dist prisma node_modules package.json package-lock.json release.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ github.sha }}
+          path: out/artifact.tar.gz
+          retention-days: 14
+
+  deploy-artifact:
+    name: Deploy artifact to VPS
+    needs: [build-artifact]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-${{ github.sha }}
+      - name: Upload artifact
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: artifact.tar.gz
+          target: /tmp/mikrolan-${{ github.sha }}
+      - name: Release (preflight, migrate, switch, healthcheck, rollback)
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -euo pipefail
+            T=/tmp/mikrolan-${{ github.sha }}
+            tar -xzf $T/artifact.tar.gz -C $T release.sh
+            sudo bash $T/release.sh ${{ github.sha }} $T/artifact.tar.gz
+            rm -rf $T
+
+  deploy-legacy:
+    name: Deploy to VPS (legacy, DEPLOY_MODE != artifact)
+    needs: [backend, mobile]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DEPLOY_MODE != 'artifact'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1
