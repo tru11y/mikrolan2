@@ -242,11 +242,11 @@ describe('generate — what the operator receives as distributable tickets', () 
       genPrisma({ peer: true, created: rows('batch-1', 10, 8), batch: { status: 'PARTIAL_SUCCESS', generated: 8 } }),
       { run: jest.fn((_id: string, cb: (c: unknown) => Promise<void>) => cb({})) },
     );
-    const res = await service.generate('router-1', { planId: 'plan-1', quantity: 10 } as any);
+    const res = (await service.generate('router-1', { planId: 'plan-1', quantity: 10 } as any)) as any;
     expect(res.pushedByServer).toBe(true);
     expect(res.vouchers).toHaveLength(8);
-    expect(res.vouchers.every((v) => v.provisioned)).toBe(true);
-    expect(res.vouchers.some((v) => 'mikrotikId' in v)).toBe(false);
+    expect(res.vouchers.every((v: { provisioned: boolean }) => v.provisioned)).toBe(true);
+    expect(res.vouchers.some((v: object) => 'mikrotikId' in v)).toBe(false);
   });
 
   it('REMOTE FAILED: nothing provisioned -> the response carries 0 distributable tickets', async () => {
@@ -262,11 +262,11 @@ describe('generate — what the operator receives as distributable tickets', () 
 
   it('(H) LOCAL: all codes are returned (the phone pushes them over the LAN), flagged provisioned=false, with the push params', async () => {
     const service = build(genPrisma({ peer: false, created: rows('batch-1', 3, 0), batch: { status: 'GENERATING', generated: 0 } }));
-    const res = await service.generate('router-1', { planId: 'plan-1', quantity: 3 } as any);
+    const res = (await service.generate('router-1', { planId: 'plan-1', quantity: 3 } as any)) as any;
     expect(res.pushedByServer).toBe(false);
     expect(res.push).toBeDefined();
     expect(res.vouchers).toHaveLength(3);
-    expect(res.vouchers.every((v) => v.provisioned === false)).toBe(true);
+    expect(res.vouchers.every((v: { provisioned: boolean }) => v.provisioned === false)).toBe(true);
   });
 });
 

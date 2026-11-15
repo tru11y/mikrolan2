@@ -20,6 +20,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { NoEnvelope } from '../../common/decorators/no-envelope.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { IdempotencyKey } from '../../common/decorators/idempotency-key.decorator';
 import { TenantContext } from '../../common/context/tenant-context';
 import { VoucherService } from './voucher.service';
 import { TicketVaultService } from './ticket-vault.service';
@@ -44,12 +45,27 @@ export class VouchersController {
 
   @Post('generate')
   @Roles(UserRole.ADMIN)
-  @HttpCode(200)
-  generate(
+  @HttpCode(HttpStatus.OK)
+  async generate(
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(generateVouchersSchema)) dto: GenerateVouchersDto,
+    @IdempotencyKey() idempotencyKey: string | undefined,
+    @Res({ passthrough: true }) res: FastifyReply,
   ) {
-    return this.vouchers.generate(id, dto);
+    const result = await this.vouchers.generate(id, dto, idempotencyKey);
+    // Replay d'un batch GENERATING récent : 202 + Retry-After. Le mobile peut
+    // relancer le POST avec la même clé jusqu'à obtenir un statut terminal.
+    if (result && typeof result === 'object' && '__replay' in result && result.__replay === 'in_progress') {
+      res.status(HttpStatus.ACCEPTED);
+      res.header('Retry-After', String(result.retryAfterSec));
+      const { __replay: _r, retryAfterSec: _s, ...body } = result;
+      return body;
+    }
+    if (result && typeof result === 'object' && '__replay' in result) {
+      const { __replay: _r, ...body } = result;
+      return body;
+    }
+    return result;
   }
 
   @Post('confirm')

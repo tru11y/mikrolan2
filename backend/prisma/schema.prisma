@@ -607,7 +607,27 @@ model VoucherBatch {
   ticketVaults TicketVault[]
   createdAt    DateTime           @default(now())
   completedAt  DateTime?
+  // Idempotence B-01 : UUID v4 fourni par le client via header Idempotency-Key
+  // sur POST /routers/:id/vouchers/generate. NULL autorisé (ancien APK). En
+  // PostgreSQL, NULL != NULL dans un index unique standard → plusieurs lignes
+  // à NULL coexistent sans conflit, pas besoin d'index partiel manuel.
+  clientRequestId    String?
+  // SHA-256 hex de la canonicalisation JSON stable : JSON.stringify
+  // ([tenantId, routerId, planId, quantity]). Format figé = contrat persistant.
+  // Comparé au replay pour détecter la réutilisation d'une clé avec payload différent.
+  requestFingerprint String?
+  // Snapshot du mode de push effectif à la génération initiale (REMOTE + peer
+  // actif → true, chemin LAN → false). NULL = legacy. Permet un replay fidèle
+  // même si le routeur a changé de mode entre-temps.
+  pushedByServer     Boolean?
+  // Snapshot immuable des paramètres RouterOS pour le chemin LAN uniquement.
+  // Strictement : userProfile, rateLimit, sharedUsers, limitUptime,
+  // limitBytesTotal, comment. AUCUN secret, credential, token ou code de
+  // ticket. NULL pour REMOTE (le serveur a poussé, le mobile n'a rien à faire)
+  // et pour les lots legacy.
+  pushParamsSnapshot Json?
 
+  @@unique([tenantId, clientRequestId])
   @@index([tenantId])
   @@index([tenantId, createdAt])
 }

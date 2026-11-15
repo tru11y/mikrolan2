@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/error-codes';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import {
   AuditAction,
   ManagementMode,
@@ -28,6 +28,15 @@ import {
 } from '../../common/routeros/hotspot.ops';
 import { MIN_CODE_LENGTH } from '../plans/dto/plan.schemas';
 import { getTenantContext } from '../../common/context/tenant-context';
+import {
+  canonicalFingerprint,
+  hashIdempotencyKey,
+  isIdempotencyConstraintViolation,
+  isStaleGenerating,
+  parseLanPushParamsSnapshot,
+  RETRY_AFTER_SECONDS,
+  type LanPushParamsSnapshot,
+} from './voucher-idempotency';
 import type {
   ConfirmVouchersDto,
   ReportPushFailureDto,
@@ -173,9 +182,9 @@ export class VoucherService {
     private readonly eventLog: EventLogService,
   ) {}
 
-  async generate(routerId: string, dto: GenerateVouchersDto) {
+  async generate(routerId: string, dto: GenerateVouchersDto, idempotencyKey?: string) {
     try {
-      return await this.doGenerate(routerId, dto);
+      return await this.doGenerate(routerId, dto, idempotencyKey);
     } catch (err) {
       await this.eventLog.failure(AuditAction.CREATE, 'VoucherBatch', routerId, err, {
         routerId,
@@ -186,7 +195,7 @@ export class VoucherService {
     }
   }
 
-  private async doGenerate(routerId: string, dto: GenerateVouchersDto) {
+  private async doGenerate(routerId: string, dto: GenerateVouchersDto, idempotencyKey?: string) {
     const router = await this.prisma.router.findFirst({
       where: { id: routerId, deletedAt: null },
       select: { id: true, mode: true },
@@ -214,12 +223,44 @@ export class VoucherService {
     const tenantId = ctx?.tenantId;
     if (!tenantId) throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.TENANT_CONTEXT_MISSING, 'Contexte tenant manquant');
 
+    // Idempotence B-01 : si le client fournit un header Idempotency-Key, on tente
+    // d'abord un lookup (optimisation), puis on compte sur la contrainte unique
+    // PostgreSQL pour départager deux requêtes concurrentes au moment du create.
+    const fingerprint = idempotencyKey
+      ? canonicalFingerprint({ tenantId, routerId, planId: plan.id, quantity: dto.quantity })
+      : null;
+    if (idempotencyKey && fingerprint) {
+      // Le tenant middleware Prisma ajoute automatiquement `tenantId` au
+      // `where`. On passe donc uniquement `clientRequestId` ici (la contrainte
+      // unique composite tenantId+clientRequestId en DB garantit l'unicité).
+      const existing = await this.prisma.voucherBatch.findFirst({
+        where: { clientRequestId: idempotencyKey },
+      });
+      if (existing) {
+        return this.buildIdempotentReplay(existing, fingerprint, idempotencyKey);
+      }
+    }
 
-    const codes = await this.uniqueCodes(dto.quantity, {
-      codePrefix: plan.codePrefix,
-      codeLength: plan.codeLength,
-      codeFormat: plan.codeFormat,
-    });
+    // Le mode de push effectif est figé AVANT la création du batch pour être
+    // persisté avec lui : au replay, on relira cette valeur plutôt que de
+    // recalculer depuis l'état courant du routeur (qui peut avoir changé de mode).
+    const peer =
+      router.mode === ManagementMode.REMOTE
+        ? await this.prisma.remotePeer.findFirst({
+            where: { routerId, status: RemotePeerStatus.ACTIVE },
+            select: { id: true },
+          })
+        : null;
+    const pushedByServerSnapshot = Boolean(peer);
+
+    // On fige l'id du batch côté client pour pouvoir composer `push.comment =
+    // "mikrolan:${id}"` AVANT la création : le snapshot JSONB immuable est ainsi
+    // écrit dans la même INSERT, sans UPDATE ultérieur qui pourrait diverger.
+    const plannedBatchId = randomUUID();
+    // Push params calculés depuis le Plan courant AU MOMENT de la génération.
+    // Pour le chemin LAN, cette même structure est persistée en JSONB immuable
+    // (`pushParamsSnapshot`) : au replay, on la relit telle quelle plutôt que
+    // de recalculer depuis le Plan actuel (qui peut avoir muté).
     const push: VoucherPushParams = {
       userProfile: plan.userProfile,
       // RouterOS rate-limit = "rx/tx" (client upload/download). Only when both set.
@@ -229,24 +270,72 @@ export class VoucherService {
           : undefined,
       sharedUsers: plan.sharedUsers,
       limitUptime: `${plan.durationMinutes}m`,
-      limitBytesTotal: plan.dataLimitMb
-        ? plan.dataLimitMb * 1024 * 1024
-        : undefined,
-      comment: '', // filled per batch below
+      limitBytesTotal: plan.dataLimitMb ? plan.dataLimitMb * 1024 * 1024 : undefined,
+      comment: `mikrolan:${plannedBatchId}`,
     };
+    const lanSnapshot: LanPushParamsSnapshot | null = peer
+      ? null
+      : {
+          userProfile: push.userProfile,
+          ...(push.rateLimit !== undefined ? { rateLimit: push.rateLimit } : {}),
+          ...(push.sharedUsers !== undefined ? { sharedUsers: push.sharedUsers } : {}),
+          limitUptime: push.limitUptime,
+          ...(push.limitBytesTotal !== undefined ? { limitBytesTotal: push.limitBytesTotal } : {}),
+          comment: push.comment,
+        };
 
-    const batch = await this.prisma.voucherBatch.create({
-      data: {
-        tenantId,
-        planId: plan.id,
-        routerId,
-        quantity: dto.quantity,
-        status: VoucherBatchStatus.GENERATING,
-        createdById: ctx.userId,
-      } satisfies Prisma.VoucherBatchUncheckedCreateInput,
-      select: { id: true, seq: true },
+    let batch: { id: string; seq: number };
+    try {
+      batch = await this.prisma.voucherBatch.create({
+        data: {
+          id: plannedBatchId,
+          tenantId,
+          planId: plan.id,
+          routerId,
+          quantity: dto.quantity,
+          status: VoucherBatchStatus.GENERATING,
+          createdById: ctx.userId,
+          clientRequestId: idempotencyKey ?? null,
+          requestFingerprint: fingerprint ?? null,
+          pushedByServer: pushedByServerSnapshot,
+          pushParamsSnapshot: (lanSnapshot ?? Prisma.JsonNull) as Prisma.InputJsonValue | typeof Prisma.JsonNull,
+        } satisfies Prisma.VoucherBatchUncheckedCreateInput,
+        select: { id: true, seq: true },
+      });
+    } catch (err) {
+      // Course PostgreSQL : un autre appel concurrent avec la même clé a créé
+      // le batch pendant notre fenêtre lookup/create. La requête perdante NE
+      // génère AUCUN code, NE crée AUCUN voucher et N'APPELLE PAS RouterOS.
+      // On restreint volontairement la détection à l'index composite
+      // (tenantId, clientRequestId) : toute autre violation unique (ex.
+      // `Voucher @@unique([tenantId, code])`) doit remonter telle quelle.
+      if (
+        idempotencyKey &&
+        fingerprint &&
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002' &&
+        isIdempotencyConstraintViolation(err.meta)
+      ) {
+        // Relecture via findFirst (findUnique + where composite n'est pas
+        // compatible avec le tenant middleware — cf. commentaire plus haut).
+        const winner = await this.prisma.voucherBatch.findFirst({
+          where: { clientRequestId: idempotencyKey },
+        });
+        if (winner) {
+          return this.buildIdempotentReplay(winner, fingerprint, idempotencyKey);
+        }
+      }
+      throw err;
+    }
+
+    // Les codes ne sont générés QU'APRÈS la création réussie du batch. Une
+    // requête qui a perdu la course P2002 est sortie plus haut et ne génère
+    // donc jamais de codes.
+    const codes = await this.uniqueCodes(dto.quantity, {
+      codePrefix: plan.codePrefix,
+      codeLength: plan.codeLength,
+      codeFormat: plan.codeFormat,
     });
-    push.comment = `mikrolan:${batch.id}`;
 
     await this.prisma.voucher.createMany({
       data: codes.map((code) => ({
@@ -263,14 +352,7 @@ export class VoucherService {
     // REMOTE router with an active tunnel → the server pushes over WireGuard.
     // LOCAL (free) router → hand the codes + push params to the client, which
     // writes them to the router over the LAN and confirms back.
-    const peer =
-      router.mode === ManagementMode.REMOTE
-        ? await this.prisma.remotePeer.findFirst({
-            where: { routerId, status: RemotePeerStatus.ACTIVE },
-            select: { id: true },
-          })
-        : null;
-
+    // `peer` est déjà résolu avant batch.create (snapshot pushedByServer).
     if (peer) {
       let pushedCount = 0;
       try {
@@ -381,6 +463,135 @@ export class VoucherService {
       // restent en base pour diagnostic). Chemin LAN : le mobile a besoin de TOUS les codes
       // pour les pousser lui-même puis confirmer (confirmPush => mikrotikId).
       vouchers: peer ? publicVouchers.filter((v) => v.provisioned) : publicVouchers,
+    };
+  }
+
+  /**
+   * Replay idempotent : la clé existe déjà pour ce tenant. On vérifie l'empreinte
+   * puis on construit la réponse UNIQUEMENT à partir des colonnes persistées sur
+   * VoucherBatch et Voucher au moment de l'opération initiale. On ne recalcule
+   * rien depuis Plan ou Router courant : ces entités sont mutables entre la
+   * génération et le replay.
+   *
+   * - COMPLETED / PARTIAL_SUCCESS / FAILED → 200 avec l'état figé en base, sans
+   *   `push` (les paramètres RouterOS ne sont pas persistés sur VoucherBatch —
+   *   on documente qu'un replay ne fournit pas de push params).
+   * - GENERATING récent → marqueur `inProgress` (le contrôleur positionne 202).
+   * - GENERATING ancien (> seuil) → 409 VOUCHER_GENERATION_STALE, pas de repush.
+   * - Empreinte différente de celle enregistrée → 409 IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD.
+   */
+  private async buildIdempotentReplay(
+    existing: {
+      id: string;
+      seq: number;
+      status: VoucherBatchStatus;
+      generated: number;
+      quantity: number;
+      createdAt: Date;
+      requestFingerprint: string | null;
+      pushedByServer: boolean | null;
+      pushParamsSnapshot: Prisma.JsonValue | null;
+    },
+    expectedFingerprint: string,
+    idempotencyKey: string,
+  ) {
+    if (existing.requestFingerprint !== expectedFingerprint) {
+      this.logger.warn({
+        event: 'voucher.idempotent.payload_mismatch',
+        batchId: existing.id,
+        keyHash: hashIdempotencyKey(idempotencyKey),
+      });
+      throw new BusinessException(
+        HttpStatus.CONFLICT,
+        ErrorCode.IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD,
+        "Cette clé d'idempotence a déjà été utilisée avec une intention différente.",
+      );
+    }
+
+    if (existing.status === VoucherBatchStatus.GENERATING) {
+      if (isStaleGenerating(existing.createdAt)) {
+        this.logger.warn({
+          event: 'voucher.idempotent.stale_generating',
+          batchId: existing.id,
+          keyHash: hashIdempotencyKey(idempotencyKey),
+        });
+        throw new BusinessException(
+          HttpStatus.CONFLICT,
+          ErrorCode.VOUCHER_GENERATION_STALE,
+          'Génération précédente bloquée : à réconcilier avant tout nouvel essai.',
+          { batchId: existing.id },
+        );
+      }
+      // Le contrôleur reconnaît ce marqueur et répond 202 + Retry-After.
+      return {
+        __replay: 'in_progress' as const,
+        batchId: existing.id,
+        batchSeq: existing.seq,
+        batchStatus: existing.status,
+        retryAfterSec: RETRY_AFTER_SECONDS,
+      };
+    }
+
+    // Statut terminal (COMPLETED / PARTIAL_SUCCESS / FAILED) : reconstruire la
+    // réponse à partir de la DB UNIQUEMENT. On distingue trois cas :
+    //   • pushedByServer === true  → REMOTE : push params non nécessaires côté
+    //                                mobile (le serveur a tout poussé) → push
+    //                                absent.
+    //   • pushedByServer === false → LAN : le mobile peut avoir besoin du
+    //                                snapshot pour rejouer son push LAN. On
+    //                                le relit SEULEMENT depuis la colonne
+    //                                immuable, jamais depuis le Plan courant.
+    //                                Absence/invalidité → fail-closed.
+    //   • pushedByServer === null  → batch legacy (origine inconnue). Fail-closed
+    //                                (conservateur) : on refuse le replay.
+    if (existing.pushedByServer === null) {
+      this.logger.warn({
+        event: 'voucher.idempotent.replay_legacy_unknown_origin',
+        batchId: existing.id,
+        keyHash: hashIdempotencyKey(idempotencyKey),
+      });
+      throw new BusinessException(
+        HttpStatus.CONFLICT,
+        ErrorCode.VOUCHER_REPLAY_SNAPSHOT_MISSING,
+        "Lot antérieur à l'idempotence : replay refusé (origine inconnue).",
+        { batchId: existing.id },
+      );
+    }
+    const pushedByServer = existing.pushedByServer === true;
+    let replayedPush: LanPushParamsSnapshot | undefined;
+    if (!pushedByServer) {
+      const snapshot = parseLanPushParamsSnapshot(existing.pushParamsSnapshot);
+      if (!snapshot) {
+        this.logger.warn({
+          event: 'voucher.idempotent.replay_snapshot_invalid',
+          batchId: existing.id,
+          keyHash: hashIdempotencyKey(idempotencyKey),
+        });
+        throw new BusinessException(
+          HttpStatus.CONFLICT,
+          ErrorCode.VOUCHER_REPLAY_SNAPSHOT_MISSING,
+          'Snapshot de génération manquant ou invalide : replay refusé.',
+          { batchId: existing.id },
+        );
+      }
+      replayedPush = snapshot;
+    }
+    const vouchers = await this.prisma.voucher.findMany({
+      where: { batchId: existing.id },
+      select: VOUCHER_PUBLIC,
+      orderBy: { createdAt: 'asc' },
+    });
+    const publicVouchers = vouchers.map(toPublicVoucher);
+    return {
+      __replay: 'terminal' as const,
+      batchId: existing.id,
+      batchSeq: existing.seq,
+      batchStatus: existing.status,
+      pushedByServer,
+      pushedCount: existing.generated,
+      totalCount: existing.quantity,
+      push: replayedPush,
+      vouchers: pushedByServer ? publicVouchers.filter((v) => v.provisioned) : publicVouchers,
     };
   }
 
