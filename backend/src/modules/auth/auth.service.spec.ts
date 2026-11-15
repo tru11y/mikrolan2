@@ -39,6 +39,7 @@ const mockTokens = {
     expiresIn: 900,
   }),
   revoke: jest.fn().mockResolvedValue(undefined),
+  recordSessionEvent: jest.fn(),
 };
 
 const mockSubscriptions = {
