@@ -34,6 +34,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { useTheme, type ThemeColors, darkColors } from '@/src/providers/theme-provider';
+// MikroLan Connect — tokens Connect utilisés par les variantes `accent` /
+// `secondary` de Button et les variantes `alt` / `hero` / `critical` de Card.
+// Les variantes legacy (primary / ghost / danger / gold ; Card sans variant)
+// continuent de lire `useTheme()` et ne changent pas visuellement.
+import { connectColors as cConnect } from '@/src/design/tokens/colors';
+import { connectRadius as rConnect } from '@/src/design/tokens/radius';
+import { connectSize as szConnect } from '@/src/design/tokens/sizes';
 
 export type IoniconName = keyof typeof Ionicons.glyphMap;
 
@@ -446,6 +453,7 @@ export function Press({
   onPress,
   onLongPress,
   disabled,
+  busy,
   scaleTo = 0.97,
   style,
   accessibilityLabel,
@@ -456,6 +464,8 @@ export function Press({
   onPress?: () => void;
   onLongPress?: () => void;
   disabled?: boolean;
+  /** MikroLan Connect — expose accessibilityState.busy. Rétrocompatible. */
+  busy?: boolean;
   scaleTo?: number;
   style?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
@@ -486,7 +496,7 @@ export function Press({
       accessibilityRole={accessibilityRole}
       accessibilityLabel={accessibilityLabel}
       accessibilityHint={accessibilityHint}
-      accessibilityState={{ disabled: Boolean(disabled) }}
+      accessibilityState={{ disabled: Boolean(disabled), busy: Boolean(busy) }}
       onPress={onPress}
       onLongPress={onLongPress}
       onPressIn={() => animate(scaleTo)}
@@ -635,9 +645,48 @@ export function Screen({ children }: PropsWithChildren) {
 export function Card({
   children,
   style,
-}: PropsWithChildren<{ style?: ViewStyle }>) {
+  variant,
+  density,
+}: PropsWithChildren<{
+  style?: ViewStyle;
+  /** MikroLan Connect — variantes additives. Si non fournie, rendu legacy
+   * identique à avant (aucune régression). */
+  variant?: 'default' | 'alt' | 'hero' | 'critical';
+  /** MikroLan Connect — densité. Si non fournie, rendu legacy. */
+  density?: 'confort' | 'compact';
+}>) {
   const s = useStyles();
-  return <View style={[s.card, style]}>{children}</View>;
+  if (!variant && !density) return <View style={[s.card, style]}>{children}</View>;
+  // Nouvelles variantes : lisent les tokens Connect, pas le thème legacy.
+  const padding = density === 'compact' ? 12 : 18;
+  const radius = density === 'compact' ? rConnect.md : variant === 'hero' ? rConnect.xl : rConnect.lg;
+  const bg =
+    variant === 'alt' ? cConnect.surfaceAlt :
+    variant === 'hero' ? cConnect.primary :
+    variant === 'critical' ? cConnect.dangerBg :
+    cConnect.surface;
+  const border =
+    variant === 'critical' ? cConnect.danger :
+    variant === 'hero' ? 'transparent' :
+    cConnect.divider;
+  const borderWidth = variant === 'critical' ? 2 : 1;
+  return (
+    <View
+      style={[
+        {
+          backgroundColor: bg,
+          borderRadius: radius,
+          borderWidth,
+          borderColor: border,
+          padding,
+          gap: density === 'compact' ? 8 : 12,
+        },
+        style,
+      ]}
+    >
+      {children}
+    </View>
+  );
 }
 
 export function Title({ children }: PropsWithChildren) {
@@ -838,48 +887,62 @@ export function Button({
   variant = 'primary',
   disabled,
   accessibilityLabel,
+  size,
 }: {
   title: string;
   onPress: () => void;
   loading?: boolean;
-  variant?: 'primary' | 'ghost' | 'danger' | 'gold';
+  /** MikroLan Connect — ajout des variantes `accent` (CTA commercial ambre) et
+   * `secondary` (contour teal). Les variantes legacy conservent leur rendu. */
+  variant?: 'primary' | 'ghost' | 'danger' | 'gold' | 'accent' | 'secondary';
   disabled?: boolean;
   accessibilityLabel?: string;
+  /** MikroLan Connect — `sm`=48 pt, `md`=52 pt. Omis = hauteur legacy. */
+  size?: 'sm' | 'md';
 }) {
   const t = useTheme();
   const s = useStyles();
-  const bg =
-    variant === 'primary'
-      ? t.primary
-      : variant === 'gold'
-        ? t.gold
-        : 'transparent';
-  const border =
-    variant === 'ghost'
-      ? t.border
-      : variant === 'danger'
-        ? t.danger
-        : bg;
-  const labelColor =
-    variant === 'primary'
-      ? t.primaryText
-      : variant === 'gold'
-        ? t.goldText
-        : variant === 'danger'
-          ? t.danger
-          : t.text;
+  const isConnect = variant === 'accent' || variant === 'secondary';
+  // Chemin legacy : rendu EXACTEMENT identique à avant.
+  const legacyBg =
+    variant === 'primary' ? t.primary :
+    variant === 'gold'    ? t.gold :
+    'transparent';
+  const legacyBorder =
+    variant === 'ghost'  ? t.border :
+    variant === 'danger' ? t.danger :
+    legacyBg;
+  const legacyLabel =
+    variant === 'primary' ? t.primaryText :
+    variant === 'gold'    ? t.goldText :
+    variant === 'danger'  ? t.danger :
+    t.text;
+  // Chemin Connect.
+  const bg       = isConnect ? (variant === 'accent' ? cConnect.accent : cConnect.surface) : legacyBg;
+  const border   = isConnect ? (variant === 'accent' ? cConnect.accent : cConnect.primary) : legacyBorder;
+  const labelCol = isConnect ? (variant === 'accent' ? cConnect.onAccent : cConnect.primary) : legacyLabel;
+  const minH = size === 'md' ? szConnect.btnMd : size === 'sm' ? szConnect.btnSm : undefined;
+  const borderW = variant === 'secondary' ? 2 : (isConnect ? 0 : undefined);
+  const radius = isConnect ? rConnect.lg : undefined;
   return (
     <Press
       accessibilityLabel={accessibilityLabel ?? title}
       onPress={onPress}
       disabled={disabled || loading}
+      busy={loading}
       scaleTo={0.98}
-      style={[s.button, { backgroundColor: bg, borderColor: border }]}
+      style={[
+        s.button,
+        { backgroundColor: bg, borderColor: border },
+        minH !== undefined ? { minHeight: minH } : null,
+        borderW !== undefined ? { borderWidth: borderW } : null,
+        radius !== undefined ? { borderRadius: radius } : null,
+      ]}
     >
       {loading ? (
-        <ActivityIndicator color={labelColor} />
+        <ActivityIndicator color={labelCol} />
       ) : (
-        <Text style={[s.buttonText, { color: labelColor }]}>{title}</Text>
+        <Text style={[s.buttonText, { color: labelCol }]}>{title}</Text>
       )}
     </Press>
   );
