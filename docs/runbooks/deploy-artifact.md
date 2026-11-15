@@ -38,6 +38,19 @@ archive + somme de contrôle + manifeste  ──scp──▶   /opt/mikrolan2-re
 
 **Limite à connaître :** une migration déjà appliquée n'est pas annulée par un retour arrière. Les migrations doivent rester **compatibles avec la version précédente du code** (colonnes ajoutées nullables, pas de suppression avant un déploiement intermédiaire).
 
+## Données persistantes
+Audit du code (`process.cwd()` + écritures disque) : l'API n'écrit que dans deux répertoires relatifs au répertoire de travail. `deploy-release.sh` les **lie** dans chaque version vers `DATA_ROOT` (`/opt/mikrolan2/backend`) ; ils ne vivent jamais dans `releases/<sha>`, ne sont jamais copiés ni supprimés par le nettoyage.
+
+| Répertoire (lien dans `<sha>/`) | Cible permanente | Contenu | Conservé au déploiement | Conservé au rollback |
+|---|---|---|---|---|
+| `private-uploads/proofs` | `/opt/mikrolan2/backend/private-uploads/proofs` | preuves de paiement (SasPay, Wave/Orange) | oui | oui |
+| `private-uploads/ticket-vault/<tenantId>` | `/opt/mikrolan2/backend/private-uploads/ticket-vault` | PDF de tickets par tenant | oui | oui |
+| `uploads/proofs` | `/opt/mikrolan2/backend/uploads/proofs` | preuves historiques (ancien chemin) | oui | oui |
+| `.env` | `/opt/mikrolan2/backend/.env` | secrets | oui | oui |
+| `public/legal` | (dans l'archive, versionné dans Git) | CGU / confidentialité | remplacé par la version déployée | suit la version |
+
+Aucun autre dossier métier (exports, `storage/`, `payments/`) n'est écrit par le code actuel. **Avant toute activation** : lister `/opt/mikrolan2/backend` sur le VPS pour confirmer qu'aucun autre dossier de données n'existe, et sauvegarder `private-uploads/` et `uploads/`. Tout nouveau chemin d'écriture ajouté au code doit être ajouté à la boucle `shared` de `deploy-release.sh` (le test « données privées partagées » le vérifie).
+
 ## Prérequis (à vérifier AVANT d'activer, sur le VPS, par le propriétaire)
 1. `node -v` = **20.x** (le workflow construit avec Node 20). Sinon, ajuster `node-version` dans `ci.yml`.
 2. Système compatible avec l'artefact construit sur Ubuntu 22.04 : `ldd --version` (glibc ≥ 2.35) et `openssl version` (3.x). À défaut, le contrôle « modules natifs » refuse la version avant toute bascule ; ajuster `runs-on` ou les `binaryTargets` Prisma.
