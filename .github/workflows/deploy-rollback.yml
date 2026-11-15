@@ -1,0 +1,43 @@
+name: Rollback production
+
+# Retour arrière MANUEL vers la version précédente (ou un sha donné). Ne touche ni à la base ni aux données.
+# Nécessite le déploiement par artefact installé sur le serveur (docs/runbooks/deploy-artifact.md).
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Version cible (sha déjà déployé) ; vide = version précédente"
+        required: false
+        default: ""
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  rollback:
+    name: Rollback
+    runs-on: ubuntu-22.04
+    environment: production
+    timeout-minutes: 10
+    steps:
+      - name: Rollback via SSH
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          TARGET: ${{ github.event.inputs.target }}
+        run: |
+          set -euo pipefail
+          if [ -n "$TARGET" ] && ! [[ "$TARGET" =~ ^[0-9a-f]{7,40}$ ]]; then
+            echo "::error::version cible invalide (sha hexadécimal attendu)"
+            exit 1
+          fi
+          [ -n "$VPS_KNOWN_HOSTS" ] || { echo "::error::secret VPS_KNOWN_HOSTS absent"; exit 1; }
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i "$HOME/.ssh/id_deploy" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=15 \
+            "$VPS_USER@$VPS_HOST" "sudo /usr/local/lib/mikrolan-deploy/rollback.sh $TARGET"

@@ -69,10 +69,23 @@ jobs:
       - name: Lint
         run: npx eslint .
 
+  # Scripts de déploiement par artefact : analysés (shellcheck) et testés sans serveur ni réseau.
+  deploy-scripts:
+    name: Deploy scripts — shellcheck + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck -x -S warning backend/deploy/release/*.sh backend/deploy/release/test/run-tests.sh
+      - name: Tests
+        run: bash backend/deploy/release/test/run-tests.sh
+
+  # Ancien déploiement (npm ci + build SUR le VPS). Reste le mode PAR DÉFAUT tant que la variable de dépôt
+  # DEPLOY_MODE n'est pas « artifact » : fusionner ce changement ne modifie donc rien en production.
   deploy:
     name: Deploy to VPS
     needs: [backend, mobile]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DEPLOY_MODE != 'artifact'
     runs-on: ubuntu-latest
     steps:
       - name: Deploy via SSH
@@ -94,3 +107,83 @@ jobs:
             sudo npm run build
             sudo chown -R mikrolan:mikrolan $REPO
             sudo systemctl restart mikrolan-api
+
+  # ── Déploiement par artefact (activé par la variable de dépôt DEPLOY_MODE=artifact) ──────────────────
+  # Compilation et dépendances de production en CI ; le VPS ne reçoit qu'une archive vérifiée.
+  # Procédure : docs/runbooks/deploy-artifact.md
+  build-artifact:
+    name: Build release artifact
+    needs: [backend, mobile, deploy-scripts]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DEPLOY_MODE == 'artifact'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      # La version majeure de Node doit être celle du serveur (modules natifs) ; le manifeste l'enregistre
+      # et le déploiement refuse une archive construite pour une autre version.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build artifact
+        run: bash backend/deploy/release/build-release.sh "$RUNNER_TEMP/release" "$GITHUB_SHA"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ github.sha }}
+          path: ${{ runner.temp }}/release/mikrolan-api-*
+          retention-days: 14
+          if-no-files-found: error
+
+  deploy-artifact:
+    name: Deploy artifact to VPS
+    needs: [build-artifact]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DEPLOY_MODE == 'artifact'
+    runs-on: ubuntu-22.04
+    environment: production
+    timeout-minutes: 20
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-${{ github.sha }}
+          path: release
+
+      - name: Deploy
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          if [ -z "$VPS_KNOWN_HOSTS" ]; then
+            echo "::error::secret VPS_KNOWN_HOSTS absent : l'empreinte du serveur doit être épinglée (voir docs/runbooks/deploy-artifact.md)"
+            exit 1
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          opts="-i $HOME/.ssh/id_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=8"
+          sha="$GITHUB_SHA"
+          remote_dir="/tmp/mikrolan-deploy-$sha"
+          archive="mikrolan-api-$sha.tar.gz"
+          # shellcheck disable=SC2086,SC2029
+          ssh $opts "$VPS_USER@$VPS_HOST" "umask 077 && mkdir -p '$remote_dir'"
+          # shellcheck disable=SC2086,SC2029
+          scp $opts "release/$archive" "release/$archive.sha256" "$VPS_USER@$VPS_HOST:$remote_dir/"
+          # shellcheck disable=SC2086,SC2029
+          ssh $opts "$VPS_USER@$VPS_HOST" "sudo /usr/local/lib/mikrolan-deploy/deploy-release.sh '$remote_dir/$archive' '$remote_dir/$archive.sha256' '$sha'"
+
+      - name: Nettoyage du dossier temporaire distant
+        if: always()
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          [ -f "$HOME/.ssh/id_deploy" ] || exit 0
+          ssh -i "$HOME/.ssh/id_deploy" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes "$VPS_USER@$VPS_HOST" "rm -rf '/tmp/mikrolan-deploy-$GITHUB_SHA'" || true
