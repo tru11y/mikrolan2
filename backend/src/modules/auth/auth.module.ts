@@ -5,9 +5,10 @@ import { AuthService } from './auth.service';
 import { TokenService } from './token.service';
 import { MfaService } from './mfa.service';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
+import { AuthEventsModule } from './auth-events.module';
 
 @Module({
-  imports: [JwtModule.register({}), SubscriptionsModule],
+  imports: [JwtModule.register({}), SubscriptionsModule, AuthEventsModule],
   controllers: [AuthController],
   providers: [AuthService, TokenService, MfaService],
 })
