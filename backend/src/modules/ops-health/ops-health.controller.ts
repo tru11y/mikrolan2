@@ -5,6 +5,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { AdminBypassInterceptor } from '../../common/interceptors/admin-bypass.interceptor';
 import { OpsHealthService } from './ops-health.service';
 import { WgAlertDeliveryRegistry } from './wg-alert-delivery';
+import { AuthEventsService } from '../auth/auth-events.service';
 
 @Controller('admin/system-health')
 @Roles(UserRole.SUPER_ADMIN)
@@ -14,14 +15,16 @@ export class OpsHealthController {
   constructor(
     private readonly health: OpsHealthService,
     private readonly wgAlerts: WgAlertDeliveryRegistry,
+    private readonly authEvents: AuthEventsService,
   ) {}
 
   @Get()
   async get() {
-    const [expiry, routers] = await Promise.all([
+    const [expiry, routers, authSessions] = await Promise.all([
       this.health.getExpiryHealth(),
       this.health.getRoutersHealth(),
+      this.authEvents.metrics(),
     ]);
-    return { expiry, routers, wgAlerts: this.wgAlerts.snapshot() };
+    return { expiry, routers, wgAlerts: this.wgAlerts.snapshot(), authSessions };
   }
 }

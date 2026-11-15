@@ -337,7 +337,7 @@ export class AuthService {
     await this.prisma.refreshToken.updateMany({
       where: { userId, revoked: false },
       data: { revoked: true },
-    });
+    });    this.tokens.recordSessionEvent('PASSWORD_CHANGED', userId, 'change_password');
   }
 
   async setPassword(userId: string, dto: SetPasswordDto): Promise<void> {
@@ -691,6 +691,7 @@ export class AuthService {
       where: { userId, revoked: false },
       data: { revoked: true },
     });
+    this.tokens.recordSessionEvent('LOGOUT_ALL_SESSIONS', userId, 'user_logout_all');
     return { revoked: true };
   }
 
