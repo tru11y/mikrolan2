@@ -239,6 +239,11 @@
     "provisionFailed": "Les tickets n'ont pas pu être enregistrés sur le routeur.",
     "availableOfTotal": "{{available}} disponible(s) sur {{total}}",
     "generateTimeout": "Le serveur met plus de temps que prévu à terminer la création. Vérifiez l'état du lot dans Fichiers avant de créer un nouveau lot.",
+    "generateInProgress": "Génération en cours sur le serveur. Réessayez dans {{seconds}} s avec la même action, ou vérifiez le lot dans Fichiers.",
+    "replayBlocked": "Lot précédent non confirmé ou expiré : reprise automatique impossible. Vérifiez l'état dans Fichiers ou contactez le support avant toute nouvelle génération.",
+    "idempotencyUnavailable": "Protection anti-doublons indisponible sur l'appareil. Vérifiez le lot dans Fichiers ou contactez le support avant de réessayer.",
+    "idempotencyIncoherent": "Protection anti-doublons incohérente sur l'appareil. Vérifiez le lot dans Fichiers ou contactez le support — ne régénérez pas aveuglément.",
+    "idempotencyLimitReached": "Plusieurs lots sont encore en attente de résolution. Vérifiez-les dans Fichiers avant d'en créer un nouveau.",
     "viewFiles": "Voir Fichiers"
   },
   "verifyTicket": {

@@ -239,6 +239,11 @@
     "provisionFailed": "The tickets could not be registered on the router.",
     "availableOfTotal": "{{available}} available out of {{total}}",
     "generateTimeout": "The server is taking longer than expected to finish creating the batch. Check the batch status in Files before creating a new batch.",
+    "generateInProgress": "Generation is still running on the server. Retry in {{seconds}} s with the same action, or check the batch in Files.",
+    "replayBlocked": "Previous batch not confirmed or expired: automatic retry disabled. Check its status in Files or contact support before any new generation.",
+    "idempotencyUnavailable": "Duplicate protection is unavailable on this device. Check the batch in Files or contact support before retrying.",
+    "idempotencyIncoherent": "Duplicate protection is in an inconsistent state on this device. Check the batch in Files or contact support — do not blindly regenerate.",
+    "idempotencyLimitReached": "Several batches are still pending resolution. Check them in Files before creating a new one.",
     "viewFiles": "View Files"
   },
   "verifyTicket": {

@@ -1372,12 +1372,27 @@ export const api = {
     async generateVouchers(
       id: string,
       payload: { planId: string; quantity: number },
-    ): Promise<GenerateResult> {
+      options?: { idempotencyKey?: string },
+    ): Promise<{ status: number; data: GenerateResult; retryAfter: string | null }> {
+      const headers: Record<string, string> = {};
+      // Header optionnel : si fourni, le backend dédoublonne par (tenant, clé).
+      // Un retry après timeout/202 doit réutiliser la MÊME clé.
+      if (options?.idempotencyKey) {
+        headers['Idempotency-Key'] = options.idempotencyKey;
+      }
       const res = await apiClient.post<ApiEnvelope<GenerateResult>>(
         `/routers/${id}/vouchers/generate`,
         payload,
+        Object.keys(headers).length > 0 ? { headers } : undefined,
       );
-      return unwrap(res);
+      const retryAfterRaw = res.headers?.['retry-after'] ?? res.headers?.['Retry-After'];
+      const retryAfter =
+        typeof retryAfterRaw === 'string'
+          ? retryAfterRaw
+          : Array.isArray(retryAfterRaw) && retryAfterRaw.length > 0
+            ? String(retryAfterRaw[0])
+            : null;
+      return { status: res.status, data: unwrap(res), retryAfter };
     },
     async confirmVouchers(
       id: string,
