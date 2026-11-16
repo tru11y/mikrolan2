@@ -91,3 +91,52 @@ preflight_resources() {
 record_deploy() {
   printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >> "$RELEASES_DIR/deploys.log" 2>/dev/null || true
 }
+
+# Convertit une valeur MemoryHigh systemd (720M, 1.5G, 536870912, infinity) en octets.
+# Retourne vide si la valeur est "infinity" ou non parsable.
+to_bytes() {
+  local v="$1"
+  [ -z "$v" ] || [ "$v" = "infinity" ] || [ "$v" = "[not set]" ] && return 0
+  local num unit
+  if [[ "$v" =~ ^([0-9]+(\.[0-9]+)?)([KMGT]?)$ ]]; then
+    num="${BASH_REMATCH[1]}"; unit="${BASH_REMATCH[3]}"
+    case "$unit" in
+      K) awk -v n="$num" 'BEGIN{ printf "%d", n * 1024 }' ;;
+      M) awk -v n="$num" 'BEGIN{ printf "%d", n * 1024 * 1024 }' ;;
+      G) awk -v n="$num" 'BEGIN{ printf "%d", n * 1024 * 1024 * 1024 }' ;;
+      T) awk -v n="$num" 'BEGIN{ printf "%d", n * 1024 * 1024 * 1024 * 1024 }' ;;
+      *) awk -v n="$num" 'BEGIN{ printf "%d", n }' ;;
+    esac
+  fi
+}
+
+# Lit la mémoire actuelle du service et alerte si > 80% de MemoryHigh.
+# Jamais fatal : c'est une alerte, pas un critère de rollback. Les erreurs de lecture
+# (service absent, systemctl indisponible) sont loguées en warning et le déploiement continue.
+post_restart_rss_check() {
+  local show cur_raw high_raw cur high threshold
+  show="$("$SYSTEMCTL" show "$SERVICE" -p MemoryCurrent -p MemoryHigh 2>/dev/null || true)"
+  if [ -z "$show" ]; then
+    log "RSS post-restart : systemctl show indisponible, contrôle ignoré"
+    return 0
+  fi
+  cur_raw="$(printf '%s\n' "$show" | awk -F= '$1 == "MemoryCurrent" { print $2 }')"
+  high_raw="$(printf '%s\n' "$show" | awk -F= '$1 == "MemoryHigh" { print $2 }')"
+  cur="$(to_bytes "$cur_raw")"
+  high="$(to_bytes "$high_raw")"
+  if [ -z "$cur" ] || [ "$cur" = "0" ]; then
+    log "RSS post-restart : MemoryCurrent indisponible ($cur_raw), contrôle ignoré"
+    return 0
+  fi
+  if [ -z "$high" ]; then
+    log "RSS post-restart : $((cur / 1024 / 1024)) Mo (MemoryHigh non configuré : installer backend/deploy/systemd/mikrolan-api.service)"
+    return 0
+  fi
+  threshold=$(( high * 80 / 100 ))
+  if [ "$cur" -gt "$threshold" ]; then
+    log "WARN RSS post-restart : $((cur / 1024 / 1024)) Mo > 80% de MemoryHigh ($((high / 1024 / 1024)) Mo) — surveiller / envisager bump (docs/runbooks/vps-resource-limits.md)"
+  else
+    log "RSS post-restart : $((cur / 1024 / 1024)) Mo / MemoryHigh $((high / 1024 / 1024)) Mo (OK)"
+  fi
+  return 0
+}
