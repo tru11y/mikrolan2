@@ -571,11 +571,14 @@
     "omPlaceholder": "e.g. 78 987 65 43",
     "paymentInstructions": "Payment instructions",
     "paymentInstructionsPlaceholder": "Text shown to the client during payment",
+    "supportWhatsapp": "Support / sales WhatsApp",
+    "supportWhatsappPlaceholder": "Country code + number, e.g. 2250700000000",
     "saveConfig": "Save"
   },
   "support": {
     "title": "Support",
     "myTickets": "My tickets",
+    "whatsapp": "Message us on WhatsApp",
     "newTicket": "+ New",
     "noTicket": "No tickets yet.\nCreate one if you need help.",
     "newTicketTitle": "New ticket",

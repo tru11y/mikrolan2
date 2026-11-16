@@ -571,11 +571,14 @@
     "omPlaceholder": "Ex: 78 987 65 43",
     "paymentInstructions": "Instructions de paiement",
     "paymentInstructionsPlaceholder": "Texte affiché au client lors du paiement",
+    "supportWhatsapp": "WhatsApp support / vente",
+    "supportWhatsappPlaceholder": "Indicatif + numéro, ex. 2250700000000",
     "saveConfig": "Sauvegarder"
   },
   "support": {
     "title": "Support / SAV",
     "myTickets": "Mes tickets",
+    "whatsapp": "Écrire sur WhatsApp",
     "newTicket": "+ Nouveau",
     "noTicket": "Aucun ticket pour le moment.\nCréez-en un si vous avez besoin d'aide.",
     "newTicketTitle": "Nouveau ticket",

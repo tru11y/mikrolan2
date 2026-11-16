@@ -4,6 +4,8 @@ import { IS_PUBLIC_KEY } from '../../common/decorators/public.decorator';
 import { NO_ENVELOPE_KEY } from '../../common/decorators/no-envelope.decorator';
 import { AppReleasesService } from './app-releases.service';
 import { PublicDownloadController } from './public-download.controller';
+import { PrismaService } from '../../prisma/prisma.service';
+import { TiersService } from '../subscriptions/tiers.service';
 
 const release = {
   versionName: '1.1.6',
@@ -16,11 +18,17 @@ const release = {
 describe('PublicDownloadController', () => {
   let app: NestFastifyApplication;
   const latestForTenant = jest.fn();
+  const listActive = jest.fn();
+  const findConfig = jest.fn();
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [PublicDownloadController],
-      providers: [{ provide: AppReleasesService, useValue: { latestForTenant } }],
+      providers: [
+        { provide: AppReleasesService, useValue: { latestForTenant } },
+        { provide: TiersService, useValue: { listActive } },
+        { provide: PrismaService, useValue: { platformConfig: { findUnique: findConfig } } },
+      ],
     }).compile();
     app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     await app.init();
@@ -31,7 +39,11 @@ describe('PublicDownloadController', () => {
     await app.close();
   });
 
-  beforeEach(() => latestForTenant.mockReset());
+  beforeEach(() => {
+    latestForTenant.mockReset();
+    listActive.mockReset().mockResolvedValue([]);
+    findConfig.mockReset().mockResolvedValue(null);
+  });
 
   it('est public et sans enveloppe JSON', () => {
     expect(Reflect.getMetadata(IS_PUBLIC_KEY, PublicDownloadController)).toBe(true);
@@ -68,6 +80,26 @@ describe('PublicDownloadController', () => {
     expect(res.body).not.toContain('X-Amz-Signature');
     expect(res.headers['content-security-policy']).toContain("default-src 'none'");
     expect(res.headers['content-security-policy']).not.toContain('script-src');
+  });
+
+  it('GET /download : tarifs de la grille active et bouton WhatsApp quand le numéro est configuré', async () => {
+    latestForTenant.mockResolvedValue(release);
+    listActive.mockResolvedValue([{ name: 'Essentiel', monthlyXof: 5000, tagline: 'Jusqu’à 3 routeurs', badge: null }]);
+    findConfig.mockResolvedValue({ key: 'support_whatsapp', value: '+225 07 00 00 00 00' });
+    const res = await app.inject({ method: 'GET', url: '/download' });
+    expect(res.body).toContain('Essentiel');
+    expect(res.body).toContain('5 000 FCFA');
+    expect(res.body).toContain('href="https://wa.me/2250700000000"');
+  });
+
+  it('GET /download : ni tarifs ni WhatsApp si la grille est en panne ou le numéro invalide', async () => {
+    latestForTenant.mockResolvedValue(release);
+    listActive.mockRejectedValue(new Error('db'));
+    findConfig.mockResolvedValue({ key: 'support_whatsapp', value: 'abc' });
+    const res = await app.inject({ method: 'GET', url: '/download' });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).not.toContain('Tarifs');
+    expect(res.body).not.toContain('wa.me');
   });
 
   it('GET /download : le nom de version est échappé', async () => {

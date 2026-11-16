@@ -5,8 +5,10 @@ import { AppReleasesService } from './app-releases.service';
 import { ReleasesPortalController } from './releases-portal.controller';
 import { ReleaseStorageService } from './release-storage.service';
 import { PublicDownloadController } from './public-download.controller';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
+  imports: [SubscriptionsModule],
   controllers: [
     AppReleasesController,
     ReleasesPortalController,
