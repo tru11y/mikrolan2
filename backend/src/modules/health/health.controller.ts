@@ -34,34 +34,4 @@ export class HealthController {
       },
     ]);
   }
-
-  @Get('system')
-  async system() {
-    const mem = process.memoryUsage();
-    const uptime = process.uptime();
-
-    const [tenantCount, routerCount, activeSessionCount, openTicketCount] =
-      await Promise.all([
-        this.prisma.tenant.count({ where: { status: 'ACTIVE' } }),
-        this.prisma.router.count({ where: { deletedAt: null } }),
-        this.prisma.session.count({ where: { status: 'ACTIVE' } }),
-        this.prisma.supportTicket.count({
-          where: { status: { in: ['OPEN', 'IN_PROGRESS'] } },
-        }),
-      ]);
-
-    return {
-      uptime: Math.round(uptime),
-      memory: {
-        heapUsedMb: Math.round(mem.heapUsed / 1024 / 1024),
-        rssMb: Math.round(mem.rss / 1024 / 1024),
-      },
-      counts: {
-        tenants: tenantCount,
-        routers: routerCount,
-        activeSessions: activeSessionCount,
-        openTickets: openTicketCount,
-      },
-    };
-  }
 }
