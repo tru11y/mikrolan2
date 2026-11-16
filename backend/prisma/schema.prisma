@@ -381,8 +381,124 @@ model RemotePeer {
   sshPort    Int @default(22)
   winboxPort Int @default(8291)
 
+  alertEpisodes WgAlertEpisode[]
+
   @@index([tenantId])
   @@index([status, revokedAt])
+}
+
+// ─── ALERTES WIREGUARD DURABLES ───
+//
+// Un épisode = une période d'injoignabilité d'un peer, de sa détection à sa résolution (handshake sain).
+// `PROVIDER_ACCEPTED` = SMTP ou Expo a accepté le message : jamais une preuve de réception, d'affichage ni de lecture.
+// Aucune donnée sensible : ni adresse, ni token, ni alias, ni IP, ni clé, ni texte de message.
+// Un seul épisode non résolu par (peer, type) : index unique PARTIEL créé dans la migration
+// (WHERE status <> 'RESOLVED'), que Prisma ne sait pas exprimer — ne pas le supprimer.
+enum WgAlertType {
+  STALE_24H
+  NEVER_CONNECTED
+}
+
+enum WgAlertEpisodeStatus {
+  OPEN
+  PROVIDER_ACCEPTED
+  EXHAUSTED
+  RESOLVED
+}
+
+enum WgAlertChannel {
+  EMAIL
+  PUSH
+}
+
+/// Statuts persistés d'un canal : valeurs fermées (jamais de chaîne libre en production).
+enum WgAlertEmailStatus {
+  SENT
+  NO_RECIPIENT
+  NOT_CONFIGURED
+  FAILED
+}
+
+enum WgAlertPushStatus {
+  SENT
+  NO_TOKEN
+  DISABLED
+  FAILED
+  INVALID_TOKEN
+}
+
+enum WgAlertAttemptKind {
+  INITIAL
+  RETRY
+  REMINDER
+}
+
+enum WgAlertAttemptStatus {
+  PROVIDER_ACCEPTED
+  NO_RECIPIENT
+  NOT_CONFIGURED
+  NO_TOKEN
+  DISABLED
+  INVALID_TOKEN
+  PROVIDER_FAILED
+  TIMEOUT
+}
+
+model WgAlertEpisode {
+  id               String               @id @default(uuid())
+  remotePeerId     String
+  remotePeer       RemotePeer           @relation(fields: [remotePeerId], references: [id], onDelete: Cascade)
+  tenantId         String
+  alertType        WgAlertType
+  detectedAt       DateTime
+  resolvedAt       DateTime?
+  status           WgAlertEpisodeStatus @default(OPEN)
+  lastAttemptAt    DateTime?
+  nextAttemptAt    DateTime?
+  attemptCount     Int                  @default(0)
+  /// Statut e-mail / push de la dernière tentative INITIALE ou RETRY (pas des rappels), jamais d'adresse ni de token.
+  emailStatus      WgAlertEmailStatus?
+  pushStatus       WgAlertPushStatus?
+  providerAcceptedAt DateTime?
+  /// Rappels quotidiens d'un incident toujours non résolu après acceptation (max 7). Un rappel = un passage logique.
+  nextReminderAt   DateTime?
+  reminderCount    Int                  @default(0)
+  lastReminderAt   DateTime?
+  /// Claim atomique de la tentative en cours : un claim expiré peut être repris (crash du processus).
+  claimExpiresAt   DateTime?
+  /// Épisode reconstitué depuis un ancien `staleAlertedAt` : l'acceptation passée est INCONNUE (jamais présumée).
+  legacy           Boolean              @default(false)
+  failureCode      String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  attempts         WgAlertDeliveryAttempt[]
+
+  @@index([remotePeerId, status])
+  @@index([nextAttemptAt, status])
+  @@index([nextReminderAt, status])
+  @@index([tenantId])
+}
+
+model WgAlertDeliveryAttempt {
+  id                 String               @id @default(uuid())
+  episodeId          String
+  episode            WgAlertEpisode       @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  channel            WgAlertChannel
+  /// Séquence de l'épisode : 1 à 3 = alerte initiale puis retries ; 3 + N = rappel numéro N.
+  attemptNumber      Int
+  kind               WgAlertAttemptKind   @default(INITIAL)
+  /// Numéro du rappel (1..7), NULL hors rappel. Unique par (épisode, canal) : un rappel logique ne part qu'une fois.
+  reminderNumber     Int?
+  status             WgAlertAttemptStatus
+  attemptedAt        DateTime
+  providerAcceptedAt DateTime?
+  failureCode        String?
+  recipientCount     Int                  @default(0)
+  createdAt          DateTime             @default(now())
+
+  @@unique([episodeId, channel, attemptNumber])
+  @@unique([episodeId, channel, reminderNumber])
+  @@index([attemptedAt, channel, status])
 }
 
 // ─── SUBSCRIPTION TIER (grille tarifaire, hors tenant) ───

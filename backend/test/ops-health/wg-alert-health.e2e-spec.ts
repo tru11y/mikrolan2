@@ -4,54 +4,66 @@ import request from 'supertest';
 import { createTestApp } from '../helpers/app.helper';
 import { promoteToSuperAdmin, signupUser } from '../helpers/auth.helper';
 import { PrismaService } from '../../src/prisma/prisma.service';
-import { OpsHealthController } from '../../src/modules/ops-health/ops-health.controller';
+import { WgAlertHealthService } from '../../src/modules/ops-health/wg-alert-health';
 import { WgStaleAlertService } from '../../src/modules/ops-health/wg-stale-alert.service';
-import { WgAlertDeliveryRegistry } from '../../src/modules/ops-health/wg-alert-delivery';
 import { WireGuardService } from '../../src/common/wireguard/wireguard.service';
 
 /**
- * Contrat de la réponse GET /admin/system-health (bloc `wgAlerts`) au fil de la vie du processus :
- * démarrage, scan sans incident, alerte acceptée, alerte non acceptée, redémarrage avec `staleAlertedAt`.
+ * GET /admin/system-health (bloc `wgAlerts`) basé sur la base : niveaux, métriques d'acceptation fournisseur,
+ * ancien `staleAlertedAt` sans épisode (9 peers dont 2 incidents), redémarrage sans perte.
  * Canaux simulés : aucun envoi réel, aucun token réel.
  */
-describe('Ops Health — wgAlerts (e2e)', () => {
+describe('Ops Health — wgAlerts durables (e2e)', () => {
   let app: NestFastifyApplication;
   let prisma: PrismaService;
   let service: WgStaleAlertService;
-  let controller: OpsHealthController;
+  let health: WgAlertHealthService;
   let adminToken = '';
   let tenantId = '';
   const sendAlert = jest.fn();
   const sendPush = jest.fn();
   const DAY = 86_400_000;
+  const H = 3_600_000;
   const stamp = Date.now();
-  const mineIds: string[] = [];
-  let frozenIds: string[] = [];
+  const NOW = stamp;
+  const mine: string[] = [];
+  let frozen: string[] = [];
 
-  const health = async () => {
+  const othersKeys = [...Array.from({ length: 7 }, (_, i) => `pk-ok${i}-${stamp}`), `pk-legacy1-${stamp}`, `pk-legacy2-${stamp}`];
+  /** Passe du cron à l'instant t, les 9 autres peers étant sains (handshake frais) : seul le peer testé reste muet. */
+  const checkAt = (t: number, extra: Record<string, { latestHandshake: number }> = {}) => {
+    const wg = (service as unknown as { wg: WireGuardService }).wg;
+    (wg.livePeers as jest.Mock).mockResolvedValue({
+      ...Object.fromEntries(othersKeys.map((k) => [k, { latestHandshake: Math.floor(t / 1000) }])),
+      ...extra,
+    });
+    return service.check(t);
+  };
+
+  const http = async () => {
     const res = await request(app.getHttpServer()).get('/api/admin/system-health').set('Authorization', `Bearer ${adminToken}`).expect(200);
     return (res.body.data ?? res.body).wgAlerts as Record<string, unknown>;
   };
 
   const mkPeer = async (tag: string, over: Record<string, unknown> = {}) => {
     const router = await prisma.router.create({ data: { tenantId, identity: `${tag}-${stamp}`, alias: tag } });
-    const n = mineIds.length + 1;
+    const n = mine.length + 1;
     const peer = await prisma.remotePeer.create({
       data: {
         routerId: router.id,
         tenantId,
         wgPublicKey: `pk-${tag}-${stamp}`,
-        wgIp: `10.97.${n}.${n}`,
-        allocatedPort: 32000 + n + (stamp % 1000),
+        wgIp: `10.95.${n}.${n}`,
+        allocatedPort: 34000 + n + (stamp % 1000),
         serverPublicKey: 'srv',
         endpoint: 'vps:51820',
         status: RemotePeerStatus.ACTIVE,
-        provisionedAt: new Date(stamp - 60 * DAY),
-        lastHandshakeAt: new Date(stamp - 19 * DAY),
+        provisionedAt: new Date(NOW - 60 * DAY),
+        lastHandshakeAt: new Date(NOW - 19 * DAY),
         ...over,
       },
     });
-    mineIds.push(peer.id);
+    mine.push(peer.id);
     return peer;
   };
 
@@ -59,7 +71,7 @@ describe('Ops Health — wgAlerts (e2e)', () => {
     app = await createTestApp();
     prisma = app.get(PrismaService);
     service = app.get(WgStaleAlertService);
-    controller = app.get(OpsHealthController);
+    health = app.get(WgAlertHealthService);
     const wg = (service as unknown as { wg: WireGuardService }).wg;
     jest.spyOn(wg, 'enabled', 'get').mockReturnValue(true);
     jest.spyOn(wg, 'livePeers').mockResolvedValue({} as never);
@@ -69,79 +81,135 @@ describe('Ops Health — wgAlerts (e2e)', () => {
     tenantId = (await prisma.user.findUniqueOrThrow({ where: { email: owner.email } })).tenantId;
     adminToken = (await promoteToSuperAdmin(app, owner.email, owner.password)).accessToken;
 
-    // La base est partagée : on écarte temporairement les peers des autres fichiers (restaurés en afterAll).
-    frozenIds = (await prisma.remotePeer.findMany({ where: { status: RemotePeerStatus.ACTIVE }, select: { id: true } })).map((p) => p.id);
-    await prisma.remotePeer.updateMany({ where: { id: { in: frozenIds } }, data: { status: RemotePeerStatus.REVOKED } });
+    frozen = (await prisma.remotePeer.findMany({ where: { status: RemotePeerStatus.ACTIVE }, select: { id: true } })).map((p) => p.id);
+    await prisma.remotePeer.updateMany({ where: { id: { in: frozen } }, data: { status: RemotePeerStatus.REVOKED } });
+    await prisma.wgAlertEpisode.deleteMany({});
   });
 
   afterAll(async () => {
-    await prisma.remotePeer.deleteMany({ where: { id: { in: mineIds } } });
-    await prisma.remotePeer.updateMany({ where: { id: { in: frozenIds } }, data: { status: RemotePeerStatus.ACTIVE } });
+    await prisma.remotePeer.deleteMany({ where: { id: { in: mine } } });
+    await prisma.remotePeer.updateMany({ where: { id: { in: frozen } }, data: { status: RemotePeerStatus.ACTIVE } });
     await app.close();
   });
 
-  it('A. démarrage : MEMORY_ONLY, non durable, scan en attente, ORANGE', async () => {
-    expect(await health()).toMatchObject({
-      persistence: 'MEMORY_ONLY',
-      resetOnRestart: true,
-      deliveryProofDurable: false,
-      wgDeliveryProofDurable: false,
-      scanPending: true,
-      level: 'ORANGE',
+  it('A. aucun incident : GREEN, métadonnées DATABASE / durable', async () => {
+    expect(await http()).toMatchObject({
+      level: 'GREEN',
+      persistence: 'DATABASE',
+      resetOnRestart: false,
+      deliveryProofDurable: true,
+      wgAlertEpisodesOpen: 0,
+      wgAlertEpisodesExhausted: 0,
+      wgAcceptanceUnknownLegacy: 0,
+      wgOldestOpenAgeMs: null,
     });
   });
 
-  it('B. scan sans incident : scanPending=false, GREEN', async () => {
-    expect((await service.check(Date.now())).alerted).toBe(0);
-    expect(await health()).toMatchObject({ scanPending: false, level: 'GREEN', wgAlertsCreated: 0, wgUnknownDeliveryAfterRestart: 0 });
-  });
-
-  it('C. incident accepté par un fournisseur : métriques d acceptation, niveau GREEN', async () => {
-    await mkPeer('accepted');
-    sendAlert.mockResolvedValue({ status: 'SENT' });
-    sendPush.mockResolvedValue({ status: 'NO_TOKEN', tokensFound: 0, accepted: 0, invalid: 0 });
-    expect((await service.check(Date.now())).alerted).toBe(1);
-    expect(await health()).toMatchObject({ level: 'GREEN', wgAlertsCreated: 1, wgEmailProviderAccepted: 1, wgPushProviderAccepted: 0, wgNoProviderAccepted: 0 });
-  });
-
-  it('D. incident sans fournisseur : RED, codes d échec visibles sans secret', async () => {
-    await mkPeer('refused');
+  it('B. 9 peers dont 2 anciens incidents : acceptation inconnue, jamais présumée, 2 épisodes legacy rejoués une seule fois', async () => {
+    for (let i = 0; i < 7; i++) await mkPeer(`ok${i}`, { lastHandshakeAt: new Date(NOW - 20_000) });
+    const old = new Date(NOW - 5 * H);
+    await mkPeer('legacy1', { staleAlertedAt: old });
+    await mkPeer('legacy2', { staleAlertedAt: old });
     sendAlert.mockResolvedValue({ status: 'FAILED', failureCode: 'SMTP_ERROR' });
-    sendPush.mockResolvedValue({ status: 'FAILED', tokensFound: 1, accepted: 0, invalid: 0, failureCode: 'HTTP_500' });
-    expect((await service.check(Date.now())).alerted).toBe(1);
-    // Seuils : ORANGE après 15 min, RED après 1 h sans acceptation -> on lit la réponse 2 h plus tard.
-    expect(await health()).toMatchObject({ level: 'GREEN', wgNoProviderAccepted: 1 });
-    const real = Date.now();
-    const spy = jest.spyOn(Date, 'now').mockReturnValue(real + 2 * 3_600_000);
-    let h: Record<string, unknown>;
-    try {
-      // Le JWT (15 min) expirerait avec l'horloge décalée : on lit le même contrôleur sans passer par HTTP.
-      h = (await controller.get()).wgAlerts as unknown as Record<string, unknown>;
-    } finally {
-      spy.mockRestore();
+    sendPush.mockResolvedValue({ status: 'NO_TOKEN', tokensFound: 0, accepted: 0, invalid: 0 });
+
+    expect(await health.snapshot(NOW)).toMatchObject({ level: 'ORANGE', wgAcceptanceUnknownLegacy: 2, wgAlertEpisodesProviderAccepted: 0 });
+
+    expect((await service.check(NOW)).alerted).toBe(2);
+    const eps = await prisma.wgAlertEpisode.findMany({ where: { remotePeerId: { in: mine } } });
+    expect(eps).toHaveLength(2);
+    for (const e of eps) {
+      expect(e).toMatchObject({ legacy: true, failureCode: 'LEGACY_ACCEPTANCE_UNKNOWN', status: 'OPEN', providerAcceptedAt: null, attemptCount: 1 });
+      expect(e.detectedAt.getTime()).toBe(NOW - 5 * H);
     }
-    expect(h).toMatchObject({ level: 'RED', wgNoProviderAccepted: 1, wgProviderFailures: 2, wgOpenNoProviderAcceptedOver1h: 1 });
-    expect(h.recentFailureCodes).toEqual(expect.arrayContaining(['SMTP_ERROR', 'HTTP_500']));
-    expect(JSON.stringify(h)).not.toMatch(/@|ExponentPushToken|pk-|refused|accepted-/);
+    await service.check(NOW + 60_000); // idempotent : ni nouvel épisode ni nouvel envoi
+    expect(await prisma.wgAlertEpisode.count({ where: { remotePeerId: { in: mine } } })).toBe(2);
+    expect(sendAlert).toHaveBeenCalledTimes(2);
+    expect(await health.snapshot(NOW + 60_000)).toMatchObject({ wgAcceptanceUnknownLegacy: 0, wgAlertEpisodesOpen: 2, wgAlertEpisodesProviderAccepted: 0 });
   });
 
-  it('E. redémarrage simulé avec staleAlertedAt : UNKNOWN_DELIVERY, ORANGE, aucune fausse acceptation, aucun nouvel envoi', async () => {
-    const fresh = new WgAlertDeliveryRegistry();
-    (service as unknown as { deliveries: WgAlertDeliveryRegistry }).deliveries = fresh;
-    (controller as unknown as { wgAlerts: WgAlertDeliveryRegistry }).wgAlerts = fresh;
+  it('C. épisode OPEN sans acceptation : ORANGE immédiat (retry programmé), RED au-delà d’une heure, HTTP = même contrat', async () => {
+    await prisma.wgAlertEpisode.deleteMany({});
+    await prisma.remotePeer.updateMany({ where: { id: { in: mine } }, data: { staleAlertedAt: null, lastHandshakeAt: new Date(NOW + 10 * 60_000) } });
+    await mkPeer('fresh');
+    const t = NOW + 10 * 60_000;
+    await service.check(t);
+    const snap = await health.snapshot(t);
+    expect(snap).toMatchObject({ level: 'ORANGE', wgAlertEpisodesOpen: 1, wgRetryScheduled: 1, wgRetryDue: 0, wgNoProviderAccepted: 1, wgNoRecipient: 0 });
+    expect(snap.wgProviderFailures).toBe(1);
+    expect((await health.snapshot(t + 2 * H)).level).toBe('RED');
+    expect(['ORANGE', 'RED']).toContain((await http()).level);
+  });
+
+  it('D. tentatives épuisées : RED, EXHAUSTED visible, plus aucune relance', async () => {
+    const t = NOW + 10 * 60_000;
+    await checkAt(t + H);
+    await checkAt(t + 7 * H);
+    const snap = await health.snapshot(t + 8 * H);
+    expect(snap).toMatchObject({ level: 'RED', wgAlertEpisodesExhausted: 1, wgAlertEpisodesOpen: 0, wgRetryScheduled: 0, message: 'tentatives épuisées sans fournisseur accepté' });
+    sendAlert.mockClear();
+    await checkAt(t + 30 * H);
+    expect(sendAlert).not.toHaveBeenCalled();
+  });
+
+  it('E. redémarrage simulé : nouvelles instances, même état en base, aucune perte, aucun nouvel envoi, jamais GREEN', async () => {
+    const t = NOW + 10 * 60_000 + 40 * H;
+    const before = await health.snapshot(t);
+    const after = await new WgAlertHealthService(prisma).snapshot(t);
+    expect(after).toEqual(before);
+    expect(after.level).toBe('RED');
     sendAlert.mockClear();
     sendPush.mockClear();
-
-    await service.check(Date.now()); // les deux peers portent staleAlertedAt
+    await checkAt(t);
     expect(sendAlert).not.toHaveBeenCalled();
     expect(sendPush).not.toHaveBeenCalled();
-    expect(await health()).toMatchObject({
-      level: 'ORANGE',
-      wgUnknownDeliveryAfterRestart: 2,
-      message: 'livraison inconnue après redémarrage',
-      wgEmailProviderAccepted: 0,
-      wgPushProviderAccepted: 0,
-      wgAlertsCreated: 0,
+  });
+
+  it('F. fournisseur accepté : épisode PROVIDER_ACCEPTED, métriques e-mail, niveau GREEN', async () => {
+    await prisma.wgAlertEpisode.deleteMany({});
+    await prisma.remotePeer.updateMany({ where: { id: { in: mine } }, data: { staleAlertedAt: null, lastHandshakeAt: new Date(NOW + 90 * H) } });
+    await mkPeer('accepted');
+    sendAlert.mockResolvedValue({ status: 'SENT' });
+    const t = NOW + 90 * H + 60_000;
+    await service.check(t);
+    const snap = await health.snapshot(t);
+    expect(snap).toMatchObject({ level: 'GREEN', wgAlertEpisodesProviderAccepted: 1, wgEmailProviderAccepted: 1, wgNoProviderAccepted: 0, message: 'incident toujours ouvert : alerte acceptée par un fournisseur, pas résolu' });
+    expect(JSON.stringify(snap)).not.toMatch(/@|ExponentPushToken|pk-/);
+  });
+
+  it('G. résolution : épisode clos compté en Resolved24h, retour GREEN', async () => {
+    const t = NOW + 91 * H;
+    expect((await checkAt(t, { [`pk-accepted-${stamp}`]: { latestHandshake: Math.floor(t / 1000) } })).resolved).toBe(1);
+    expect(await health.snapshot(t)).toMatchObject({ level: 'GREEN', wgAlertEpisodesProviderAccepted: 0, wgAlertEpisodesResolved24h: 1 });
+  });
+
+  it('H. rappels : accepté < 24 h = incident toujours ouvert (GREEN), rappel dû = ORANGE, bloqué > 1 h = RED, exécuté = métriques, limite de 7 = RED', async () => {
+    await prisma.wgAlertEpisode.deleteMany({});
+    await prisma.remotePeer.updateMany({ where: { id: { in: mine } }, data: { status: RemotePeerStatus.REVOKED } });
+    await mkPeer('rem');
+    sendAlert.mockResolvedValue({ status: 'SENT' });
+    const R = NOW + 300 * H;
+    await service.check(R);
+
+    expect(await health.snapshot(R + 23 * H)).toMatchObject({ level: 'GREEN', wgReminderDue: 0, wgAlertEpisodesProviderAccepted: 1, wgOldestUnresolvedAgeMs: 23 * H });
+    expect(await health.snapshot(R + 24 * H)).toMatchObject({ level: 'ORANGE', wgReminderDue: 1, message: 'rappel quotidien dû' });
+    expect((await health.snapshot(R + 26 * H)).level).toBe('RED'); // rappel dû depuis plus d'une heure : bloqué
+
+    await service.check(R + 24 * H);
+    expect(await health.snapshot(R + 24 * H + 60_000)).toMatchObject({
+      level: 'GREEN',
+      wgReminderDue: 0,
+      wgRemindersAttempted24h: 2,
+      wgRemindersProviderAccepted24h: 1,
+      wgReminderFailures24h: 0,
+      wgEpisodesReminderLimitReached: 0,
     });
+
+    for (let k = 2; k <= 9; k++) await service.check(R + k * 24 * H);
+    const limit = await health.snapshot(R + 9 * 24 * H + 60_000);
+    expect(limit).toMatchObject({ level: 'RED', wgEpisodesReminderLimitReached: 1, message: 'limite de 7 rappels atteinte, incident toujours actif' });
+    expect(limit.wgOldestUnresolvedAgeMs).toBeGreaterThan(8 * 24 * H);
+    // Redémarrage : même lecture avec une instance neuve.
+    expect(await new WgAlertHealthService(prisma).snapshot(R + 9 * 24 * H + 60_000)).toEqual(limit);
   });
 });
