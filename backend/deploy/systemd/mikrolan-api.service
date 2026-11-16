@@ -1,0 +1,43 @@
+[Unit]
+Description=MikroLan API (NestJS)
+Documentation=https://github.com/Solqueflo/mikrolan2/blob/main/docs/runbooks/vps-resource-limits.md
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mikrolan
+Group=mikrolan
+WorkingDirectory=/opt/mikrolan2-releases/current
+EnvironmentFile=/opt/mikrolan2/backend/.env
+ExecStart=/usr/bin/node --max-old-space-size=512 /opt/mikrolan2-releases/current/dist/main.js
+
+# Redémarrage automatique borné (voir docs/runbooks/vps-resource-limits.md).
+Restart=on-failure
+RestartSec=5s
+StartLimitBurst=5
+StartLimitIntervalSec=120
+
+# Limites mémoire / CPU : surchargables via drop-in /etc/systemd/system/mikrolan-api.service.d/.
+MemoryMax=720M
+MemoryHigh=600M
+CPUQuota=180%
+TasksMax=512
+
+# En cas d'OOM, on arrête proprement plutôt que de laisser le kernel tuer un enfant au hasard.
+OOMScoreAdjust=-100
+OOMPolicy=stop
+
+# Durcissement : surface minimale, FS en lecture seule hors zones écrites explicitement.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/mikrolan2 /opt/mikrolan2-releases /var/log/mikrolan
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mikrolan-api
+
+[Install]
+WantedBy=multi-user.target
