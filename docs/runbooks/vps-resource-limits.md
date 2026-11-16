@@ -3,7 +3,7 @@
 Durcit le VPS contre les saturations RAM/CPU. À lire avec [`vps-capacity.md`](./vps-capacity.md) (capacités constatées) et [`runtime-memory-hardening.md`](./runtime-memory-hardening.md) (mesures côté Node/Prisma).
 
 Unit systemd : [`backend/deploy/systemd/mikrolan-api.service`](../../backend/deploy/systemd/mikrolan-api.service).
-Installation : `sudo backend/deploy/systemd/install.sh` (idempotent — daemon-reload + enable au boot).
+Installation : `sudo backend/deploy/systemd/install.sh` (idempotent — crée user/groupe système `mikrolan`, `/var/log/mikrolan`, pose l'unit, daemon-reload + enable au boot). Les limites ne s'appliquent qu'au **prochain démarrage** du service : après l'install, un service déjà en cours continue sans limites jusqu'au prochain `systemctl restart` (ou deploy).
 
 ---
 
@@ -15,6 +15,7 @@ Installation : `sudo backend/deploy/systemd/install.sh` (idempotent — daemon-r
 | `MemoryHigh=600M` | Seuil mou. Au-dessus, systemd throttle (reclaim) sans tuer. Zone de confort visée. |
 | `CPUQuota=180%` | 1,8 vCPU max. Laisse Postgres + nginx respirer même sous burst. |
 | `TasksMax=512` | Garde-fou contre fork-bomb / fuite de threads (BullMQ workers, Prisma engines). |
+| `LimitNOFILE=65536` | Descripteurs de fichiers ouverts (BullMQ + Prisma + sockets). Évite `EMFILE` sous charge. |
 | `OOMScoreAdjust=-100` | Rend l'API moins candidate à l'OOM-killer kernel que Postgres / sshd. |
 | `OOMPolicy=stop` | Si OOM, systemd arrête proprement (plutôt que de laisser le kernel tuer un enfant random). `Restart=on-failure` reprend derrière. |
 | `Restart=on-failure` + `RestartSec=5s` | Reprise automatique après crash, 5s de backoff. |

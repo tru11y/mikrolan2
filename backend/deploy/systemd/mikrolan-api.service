@@ -23,6 +23,7 @@ MemoryMax=720M
 MemoryHigh=600M
 CPUQuota=180%
 TasksMax=512
+LimitNOFILE=65536
 
 # En cas d'OOM, on arrête proprement plutôt que de laisser le kernel tuer un enfant au hasard.
 OOMScoreAdjust=-100
