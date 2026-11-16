@@ -3,6 +3,16 @@ import { createContext, PropsWithChildren, useCallback, useContext, useEffect, u
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
+// MikroLan Connect — ajout additif. L'ancien thème (darkColors/lightColors,
+// useTheme, useThemeMode) reste inchangé pendant toute la migration et ne
+// sera retiré qu'après la fin du lot D7. useConnectTheme renvoie toujours la
+// palette claire Connect ; le mode sombre Connect est hors D1.
+export { connectColors as connectTheme } from '@/src/design/tokens/colors';
+import { connectColors as _connectColors } from '@/src/design/tokens/colors';
+export function useConnectTheme() {
+  return _connectColors;
+}
+
 export type ThemeMode = 'light' | 'dark';
 
 const STORAGE_KEY = 'mikrolan_theme_mode';
