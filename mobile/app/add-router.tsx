@@ -61,7 +61,7 @@ function dedupeIdentity(base: string, taken: Set<string>): string {
 }
 
 export default function AddRouterScreen() {
-  const { isPro } = useAuth();
+  const { hasRemote } = useAuth();
   const theme = useTheme();
   const { t } = useTranslation();
   const router = useRouter();
@@ -153,7 +153,7 @@ export default function AddRouterScreen() {
         mode: 'LOCAL',
         // Tenant payant : identifiants chiffrés côté serveur dès la création
         // (source durable, indépendante du téléphone). Gratuit : local uniquement.
-        ...(isPro && address.trim() && password ? { credentials: { username, password } } : {}),
+        ...(hasRemote && address.trim() && password ? { credentials: { username, password } } : {}),
       });
       if (address.trim() && password) {
         await saveLocalCredentials(created.id, {

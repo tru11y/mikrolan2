@@ -62,7 +62,7 @@ export default function RouterSettingsScreen() {
   const router = useRouter();
   const qc = useQueryClient();
   const { clearActiveRouter } = useActiveRouter();
-  const { isPro } = useAuth();
+  const { hasRemote } = useAuth();
   const [rebootOpen, setRebootOpen] = useState(false);
   const [sheet, setSheet] = useState<{
     icon: IoniconName;
@@ -86,7 +86,7 @@ export default function RouterSettingsScreen() {
   const remoteQuery = useQuery({
     queryKey: ['router-remote', routerId],
     queryFn: () => api.routers.remoteStatus(routerId),
-    enabled: Boolean(routerId) && isPro,
+    enabled: Boolean(routerId) && hasRemote,
   });
 
   // Les ports WebFig/SSH/Winbox du VPS ne sont ouverts que sur demande, pour
@@ -263,7 +263,7 @@ export default function RouterSettingsScreen() {
       color: theme.gold,
       onPress: () => go('/ticket-settings'),
     },
-    ...(isPro
+    ...(hasRemote
       ? [
           // WebFig / SSH / Winbox : ALWAYS go through the VPS DNAT URL, never
           // LAN. Matches mikroserver v1 behaviour: the dashboard button just

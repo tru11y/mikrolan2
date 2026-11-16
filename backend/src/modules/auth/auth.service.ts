@@ -131,8 +131,8 @@ export class AuthService {
         : null;
     if (acceptance) assertCurrentLegalVersions(acceptance);
     const passwordHash = await argon2.hash(dto.password, ARGON);
-    // Essai gratuit ouvert à l'inscription : l'app entière est utilisable en
-    // local pendant TRIAL_DAYS, puis tout se verrouille jusqu'au passage PRO.
+    // Essai ouvert à l'inscription : accès PRO complet pendant TRIAL_DAYS, puis
+    // retour au gratuit (gestion locale) tant qu'aucun forfait n'est payé.
     const now = new Date();
 
     let user;

@@ -94,7 +94,7 @@ export type RemoteAccessAuthorization = {
  * dessine ses cadenas à partir d'ici — elle ne les invente pas.
  */
 export type Entitlement = {
-  tier: 'TRIAL' | 'PRO' | 'LOCKED';
+  tier: 'FREE' | 'TRIAL' | 'PRO' | 'LOCKED';
   localAllowed: boolean;
   remoteAllowed: boolean;
   endsAt: string | null;
