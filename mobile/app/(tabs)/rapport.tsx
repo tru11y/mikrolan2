@@ -1,6 +1,6 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
 import { useCallback, useMemo, useState } from 'react';
-import { RefreshControl, ScrollView, View, Text, useWindowDimensions } from 'react-native';
+import { RefreshControl, ScrollView, View, Text } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
@@ -14,8 +14,6 @@ import {
 import { exportMetricsCsv } from '@/src/lib/metricsCsv';
 import { exportMetricsPdf } from '@/src/lib/metricsPdf';
 import {
-  AnimatedNumber,
-  AuroraCard,
   Card,
   Empty,
   ErrorState,
@@ -34,24 +32,20 @@ import { BottomNav, useBottomNavHeight } from '@/src/components/BottomNav';
 import { AppHeader } from '@/src/components/AppHeader';
 import { useActiveRouter } from '@/src/providers/active-router-provider';
 import { useBackToDashboard } from '@/src/hooks/use-back-to-dashboard';
-import { RapportKpi } from '@/src/components/rapport/RapportKpi';
 import { RapportSectionHeader } from '@/src/components/rapport/RapportSectionHeader';
-import { RapportPlanPieChart } from '@/src/components/rapport/RapportPlanPieChart';
-import { RapportRouterCard } from '@/src/components/rapport/RapportRouterCard';
-import { RapportMonthYearPicker } from '@/src/components/rapport/RapportMonthYearPicker';
-import { RapportRevenueChart } from '@/src/components/rapport/RapportRevenueChart';
-import { RapportTicketsChart } from '@/src/components/rapport/RapportTicketsChart';
 import { RapportHourlyHeatmap } from '@/src/components/rapport/RapportHourlyHeatmap';
-import { fmtBytes, fmtXof } from '@/src/components/rapport/shared';
+import { RapportDateRangeModal } from '@/src/components/rapport/RapportDateRangeModal';
+import {
+  RapportHero,
+  RapportPeriodBar,
+  RapportPlanBar,
+  RapportRouterBars,
+  RapportStat,
+} from '@/src/components/rapport/RapportV3';
+import { fmtBytes, fmtDay, fmtXof } from '@/src/components/rapport/shared';
+import { addDays, fmtDate, fmtRange, rangeDays, startOfDay, toApiBounds, type DayRange } from '@/src/lib/rapportPeriod';
 
-type FilterMode = 'preset' | 'month';
-
-const ANALYTICS_PERIODS: { key: string; value: AnalyticsPeriod }[] = [
-  { key: 'rapport.today', value: 'today' },
-  { key: 'rapport.last7d', value: 'last7days' },
-  { key: 'rapport.last30d', value: 'last30days' },
-  { key: 'rapport.currentMonth', value: 'currentMonth' },
-];
+type PeriodKey = 'today' | 'yesterday' | 'last7days' | 'last30days' | 'custom';
 
 const METRICS_BY_ANALYTICS: Record<AnalyticsPeriod, MetricsPeriod> = {
   today: 'today',
@@ -74,66 +68,52 @@ export default function RapportScreen() {
   const navHeight = useBottomNavHeight();
   const qc = useQueryClient();
   const router = useRouter();
-  const { width: screenWidth } = useWindowDimensions();
-  const chartWidth = screenWidth - space.lg * 2;
 
-  const [filterMode, setFilterMode] = useState<FilterMode>('preset');
-  const [analyticsPeriod, setAnalyticsPeriod] = useState<AnalyticsPeriod>('last30days');
-  const now = new Date();
-  const [selectedMonth, setSelectedMonth] = useState(now.getMonth());
-  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+  const [periodKey, setPeriodKey] = useState<PeriodKey>('today');
+  const [customRange, setCustomRange] = useState<DayRange | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const effectivePeriod = filterMode === 'month' ? 'custom' as AnalyticsPeriod : analyticsPeriod;
-  // Le backend exige des datetimes ISO (z.string().datetime()) avec `to` exclusif :
-  // [1er du mois 00:00Z, 1er du mois suivant 00:00Z).
-  const customFrom = useMemo(
-    () => (filterMode === 'month' ? new Date(Date.UTC(selectedYear, selectedMonth, 1)).toISOString() : undefined),
-    [filterMode, selectedMonth, selectedYear],
+  const effectivePeriod: AnalyticsPeriod = periodKey;
+  const bounds = useMemo(
+    () => (periodKey === 'custom' && customRange ? toApiBounds(customRange) : null),
+    [periodKey, customRange],
   );
-  const customTo = useMemo(
-    () => (filterMode === 'month' ? new Date(Date.UTC(selectedYear, selectedMonth + 1, 1)).toISOString() : undefined),
-    [filterMode, selectedMonth, selectedYear],
-  );
-
+  const customFrom = bounds?.from;
+  const customTo = bounds?.to;
   const period = METRICS_BY_ANALYTICS[effectivePeriod] ?? '30d';
 
-  const AP = ANALYTICS_PERIODS.map((p) => ({ value: p.value, label: t(p.key) }));
-  // Le libellé d'export doit refléter ce que l'opérateur a réellement choisi
-  // (fenêtre glissante "30 derniers jours" vs mois calendaire) — jamais dérivé
-  // du bucket backend `MetricsPeriod` ('30d' sert aux deux, ce qui affichait
-  // à tort "Ce mois" pour un export "30 derniers jours").
-  const monthNames = t('rapport.months', { returnObjects: true }) as string[];
-  const exportPeriodLabel =
-    filterMode === 'month'
-      ? `${monthNames[selectedMonth]} ${selectedYear}`
-      : (AP.find((p) => p.value === analyticsPeriod)?.label ?? '');
+  const periodItems: { key: PeriodKey; label: string; flex: number }[] = [
+    { key: 'today', label: t('rapport.today'), flex: 1.5 },
+    { key: 'yesterday', label: t('rapport.yesterday'), flex: 1 },
+    { key: 'last7days', label: t('rapport.last7Short'), flex: 0.8 },
+    { key: 'last30days', label: t('rapport.last30Short'), flex: 0.8 },
+    { key: 'custom', label: t('rapport.dates'), flex: 1.1 },
+  ];
+  const onSelectPeriod = (key: PeriodKey) => {
+    // « Dates » sans plage choisie ouvre le calendrier ; la période ne change qu'à la validation.
+    if (key === 'custom') setPickerOpen(true);
+    else setPeriodKey(key);
+  };
 
-  const rangeCaption = useMemo(() => {
-    const fmt = (d: Date) =>
-      `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
-    const today = new Date();
-    const daysBack = (n: number) => new Date(today.getFullYear(), today.getMonth(), today.getDate() - n);
-    if (filterMode === 'month') {
-      return t('rapport.rangeMonth', {
-        from: fmt(new Date(selectedYear, selectedMonth, 1)),
-        to: fmt(new Date(selectedYear, selectedMonth + 1, 0)),
-      });
-    }
-    switch (analyticsPeriod) {
-      case 'last30days':
-        return t('rapport.rangeRolling', { days: 30, from: fmt(daysBack(29)), to: fmt(today) });
+  // Plage réellement affichée, pour la légende et le libellé d'export.
+  const shownRange: DayRange = useMemo(() => {
+    const today = startOfDay(new Date());
+    switch (periodKey) {
+      case 'yesterday':
+        return { from: addDays(today, -1), to: addDays(today, -1) };
       case 'last7days':
-        return t('rapport.rangeRolling', { days: 7, from: fmt(daysBack(6)), to: fmt(today) });
-      case 'currentMonth':
-        return t('rapport.rangeMonth', {
-          from: fmt(new Date(today.getFullYear(), today.getMonth(), 1)),
-          to: fmt(new Date(today.getFullYear(), today.getMonth() + 1, 0)),
-        });
+        return { from: addDays(today, -6), to: today };
+      case 'last30days':
+        return { from: addDays(today, -29), to: today };
+      case 'custom':
+        return customRange ?? { from: today, to: today };
       default:
-        return fmt(today);
+        return { from: today, to: today };
     }
-  }, [filterMode, analyticsPeriod, selectedMonth, selectedYear, t]);
+  }, [periodKey, customRange]);
+  const singleDay = rangeDays(shownRange) === 1;
+  const exportPeriodLabel = fmtRange(shownRange);
 
   const metrics = useQuery({
     queryKey: ['metrics', period, routerId],
@@ -203,15 +183,30 @@ export default function RapportScreen() {
   const data = metrics.data;
   const timeSeries = overview.data?.timeSeries ?? [];
 
-  const monthlyRevenue = useMemo(() => {
-    if (!timeSeries.length) return 0;
-    return timeSeries.reduce((sum, d) => sum + d.revenueXof, 0);
-  }, [timeSeries]);
+  const hourly = useMemo(() => {
+    const byHour = new Map((overview.data?.peakHours ?? []).map((h) => [h.hour, h.sales]));
+    return Array.from({ length: 24 }, (_, h) => byHour.get(h) ?? 0);
+  }, [overview.data?.peakHours]);
+  const bars = singleDay ? hourly : timeSeries.map((d) => d.revenueXof);
+  const firstDay = timeSeries[0];
+  const lastDay = timeSeries[timeSeries.length - 1];
+  const axis: [string, string] = singleDay
+    ? ['0 h', '23 h']
+    : [firstDay ? fmtDay(firstDay.date) : fmtDate(shownRange.from), lastDay ? fmtDay(lastDay.date) : fmtDate(shownRange.to)];
 
-  const totalSalesCount = useMemo(
-    () => timeSeries.reduce((s, d) => s + d.salesCount, 0),
-    [timeSeries],
-  );
+  const planRows = (overview.data?.topPlans ?? []).map((p) => ({
+    id: p.planId,
+    name: p.name,
+    revenueXof: p.revenueXof,
+    percent: p.revenueContributionPercent,
+  }));
+  const routerRows = (analyticsRouters.data ?? []).slice(0, 5).map((r) => ({
+    id: r.routerId,
+    name: r.routerName,
+    revenueXof: r.revenueXof,
+    percent: r.contributionPercent,
+    growthPercent: r.growthPercent,
+  }));
 
   const error = metrics.error;
 
@@ -268,158 +263,72 @@ export default function RapportScreen() {
           <ErrorState message={t('rapport.loadError')} onRetry={onRefresh} />
         ) : (
           <>
-            {/* Filter mode toggle */}
             <FadeIn>
-              <Row style={{ gap: 6 }}>
-                <Press
-                  onPress={() => setFilterMode('preset')}
-                  style={{
-                    paddingVertical: 6, paddingHorizontal: 12, borderRadius: 10,
-                    backgroundColor: filterMode === 'preset' ? theme.primary : theme.surface,
-                  }}
-                >
-                  <Text style={{
-                    color: filterMode === 'preset' ? theme.primaryText : theme.textMuted,
-                    fontSize: 11, fontWeight: '700',
-                  }}>
-                    {t('rapport.periodMode')}
-                  </Text>
-                </Press>
-                <Press
-                  onPress={() => setFilterMode('month')}
-                  style={{
-                    paddingVertical: 6, paddingHorizontal: 12, borderRadius: 10,
-                    backgroundColor: filterMode === 'month' ? theme.primary : theme.surface,
-                  }}
-                >
-                  <Text style={{
-                    color: filterMode === 'month' ? theme.primaryText : theme.textMuted,
-                    fontSize: 11, fontWeight: '700',
-                  }}>
-                    {t('rapport.month')} / {t('rapport.year')}
-                  </Text>
-                </Press>
-              </Row>
-            </FadeIn>
-
-            {/* Period filter or month/year picker */}
-            <FadeIn>
-              {filterMode === 'preset' ? (
-                <Row style={{
-                  backgroundColor: theme.surface,
-                  borderRadius: 14, padding: 3, gap: 3,
-                }}>
-                  {AP.map((p) => {
-                    const active = p.value === analyticsPeriod;
-                    return (
-                      <Press
-                        key={p.value}
-                        onPress={() => setAnalyticsPeriod(p.value)}
-                        style={{
-                          flex: 1, paddingVertical: 8, borderRadius: 11, alignItems: 'center',
-                          backgroundColor: active ? theme.primary : 'transparent',
-                        }}
-                      >
-                        <Text style={{
-                          color: active ? theme.primaryText : theme.textMuted,
-                          fontSize: 11, fontWeight: '700',
-                        }}>
-                          {p.label}
-                        </Text>
-                      </Press>
-                    );
-                  })}
+              <View style={{ gap: 8 }}>
+                <RapportPeriodBar items={periodItems} selected={periodKey} onSelect={onSelectPeriod} />
+                <Row>
+                  <Text style={{ color: theme.textMuted, fontSize: 12, fontWeight: '600' }}>{fmtRange(shownRange)}</Text>
+                  {periodKey === 'custom' ? (
+                    <Press onPress={() => setPickerOpen(true)} style={{ minHeight: 44, justifyContent: 'center' }}>
+                      <Text style={{ color: theme.primary, fontSize: 13, fontWeight: '700' }}>{t('rapport.changeDates')}</Text>
+                    </Press>
+                  ) : null}
                 </Row>
-              ) : (
-                <Card style={{ gap: 8 }}>
-                  <RapportMonthYearPicker
-                    month={selectedMonth}
-                    year={selectedYear}
-                    onChangeMonth={setSelectedMonth}
-                    onChangeYear={setSelectedYear}
-                  />
-                </Card>
-              )}
+              </View>
             </FadeIn>
 
-            <Text style={{ color: theme.textMuted, fontSize: 11, textAlign: 'center' }}>
-              {filterMode === 'month' ? `${monthNames[selectedMonth]} ${selectedYear} · ` : ''}
-              {rangeCaption}
-            </Text>
-
-            {/* Hero revenue */}
             <FadeIn delay={50}>
-              <AuroraCard style={{ gap: 10, padding: 20 }}>
-                <Text style={{ color: withAlpha('#FFFFFF', 0.7), fontSize: 11, fontWeight: '700', letterSpacing: 0.5 }}>
-                  {filterMode === 'month' ? t('rapport.monthlyRevenue') : t('rapport.revenue')}
-                </Text>
-                {metrics.isLoading && overview.isLoading ? (
-                  <Skeleton height={36} width="60%" />
-                ) : (
-                  <AnimatedNumber
-                    value={filterMode === 'month' ? monthlyRevenue : (data?.revenueXof ?? 0)}
-                    format={(n) => fmtXof(n)}
-                    style={{ color: '#FFFFFF', fontSize: 32, fontWeight: '900', fontFamily: theme.mono }}
-                  />
-                )}
-                {data?.trendPct != null && filterMode === 'preset' ? (
-                  <Row style={{ justifyContent: 'flex-start', gap: 6 }}>
-                    <View style={{
-                      backgroundColor: withAlpha('#FFFFFF', 0.18), borderRadius: 8,
-                      paddingHorizontal: 8, paddingVertical: 3,
-                      flexDirection: 'row', alignItems: 'center', gap: 4,
-                    }}>
-                      <Ionicons name={data.trendPct >= 0 ? 'trending-up' : 'trending-down'} size={13} color="#FFFFFF" />
-                      <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '700' }}>
-                        {data.trendPct >= 0 ? '+' : ''}{data.trendPct.toFixed(0)}%
-                      </Text>
-                    </View>
-                    <Text style={{ color: withAlpha('#FFFFFF', 0.6), fontSize: 11 }}>
-                      {data.ticketsUsed} {t('rapport.sales')}
-                    </Text>
-                  </Row>
-                ) : null}
-              </AuroraCard>
+              <RapportHero
+                label={t('rapport.revenue')}
+                revenueXof={overview.data?.revenueXof ?? 0}
+                growthPercent={overview.data?.revenueGrowthPercent}
+                loading={overview.isLoading}
+                chartLabel={singleDay ? t('rapport.salesPerHour') : t('rapport.revenuePerDay')}
+                bars={bars}
+                axis={axis}
+                emptyText={t('rapport.noChartData')}
+              />
             </FadeIn>
 
-            {/* KPIs — sessions en ligne + tickets vendus + CA moyen/jour */}
             <FadeIn delay={100}>
               <Row style={{ gap: 8 }}>
-                <RapportKpi
-                  icon="people-outline"
-                  iconColor={theme.success}
-                  value={`${data?.activeSessions ?? 0}`}
-                  label={t('rapport.onlineNow')}
+                <RapportStat
+                  label={t('rapport.tickets')}
+                  value={String(overview.data?.salesCount ?? 0)}
+                  growthPercent={overview.data?.salesGrowthPercent}
                 />
-                <RapportKpi
-                  icon="ticket-outline"
-                  iconColor={theme.primary}
-                  value={`${totalSalesCount}`}
-                  label={t('rapport.ticketsSoldPerDay')}
-                />
-                <RapportKpi
-                  icon="cash-outline"
-                  iconColor={theme.warning}
-                  value={timeSeries.length ? fmtXof(Math.round(monthlyRevenue / timeSeries.length)) : '—'}
-                  label={t('rapport.avgDailyRevenue')}
-                />
-                <RapportKpi
-                  icon="calendar-outline"
-                  iconColor="#EAB308"
-                  value={fmtXof(monthlyRevenue)}
-                  label={t('rapport.monthlyRevenue')}
-                />
+                <RapportStat label={t('rapport.avgBasket')} value={fmtXof(overview.data?.averageSaleXof ?? 0)} />
+                <RapportStat label={t('rapport.onlineNow')} value={String(sessionStats.data?.activeSessions ?? 0)} />
               </Row>
             </FadeIn>
 
-            {/* CA journalier — interactive line chart */}
-            <FadeIn delay={130}>
-              <RapportRevenueChart timeSeries={timeSeries} chartWidth={chartWidth} />
+            <FadeIn delay={150}>
+              <Card style={{ gap: 12 }}>
+                <RapportSectionHeader icon="pricetags-outline" label={t('rapport.plansSection')} color={theme.warning} />
+                {overview.isLoading ? (
+                  <Skeleton height={100} />
+                ) : planRows.length ? (
+                  <RapportPlanBar rows={planRows} />
+                ) : (
+                  <Empty icon="pricetags-outline" text={t('rapport.noPlanSales')} />
+                )}
+              </Card>
             </FadeIn>
 
-            {/* Tickets vendus par jour — bar chart */}
-            <FadeIn delay={160}>
-              <RapportTicketsChart timeSeries={timeSeries} chartWidth={chartWidth} />
+            <FadeIn delay={200}>
+              <Card style={{ gap: 12 }}>
+                <RapportSectionHeader icon="hardware-chip-outline" label={t('rapport.routersSection')} color={theme.primary} />
+                {analyticsRouters.isLoading ? (
+                  <Skeleton height={80} />
+                ) : routerRows.length ? (
+                  <RapportRouterBars
+                    rows={routerRows}
+                    onPress={(id) => router.push(`/analytics-router/${id}?period=${effectivePeriod}`)}
+                  />
+                ) : (
+                  <Empty icon="hardware-chip-outline" text={t('rapport.noRouterSales')} />
+                )}
+              </Card>
             </FadeIn>
 
             {/* Heatmap horaire */}
@@ -463,37 +372,6 @@ export default function RapportScreen() {
               </FadeIn>
             ) : null}
 
-            {/* Plan breakdown */}
-            <FadeIn delay={220}>
-              <Card style={{ gap: 12 }}>
-                <RapportSectionHeader icon="pie-chart-outline" label={t('rapport.planBreakdown')} color={theme.warning} />
-                {metrics.isLoading ? <Skeleton height={100} /> : <RapportPlanPieChart data={data?.byPlan ?? []} t={t} />}
-              </Card>
-            </FadeIn>
-
-            {/* Router ranking */}
-            <FadeIn delay={250}>
-              <View style={{ gap: 10 }}>
-                <RapportSectionHeader icon="hardware-chip-outline" label={t('rapport.routersSection')} color={theme.primary} />
-                {overview.isLoading && analyticsRouters.isLoading ? (
-                  <Skeleton height={80} />
-                ) : !(analyticsRouters.data?.length) ? (
-                  <Empty icon="hardware-chip-outline" text={t('rapport.noRouterSales')} />
-                ) : (
-                  <View style={{ gap: 8 }}>
-                    {analyticsRouters.data.slice(0, 5).map((r) => (
-                      <RapportRouterCard
-                        key={r.routerId}
-                        r={r}
-                        onPress={() => router.push(`/analytics-router/${r.routerId}?period=${effectivePeriod}`)}
-                        t={t}
-                      />
-                    ))}
-                  </View>
-                )}
-              </View>
-            </FadeIn>
-
             {/* Recent clients */}
             <FadeIn delay={280}>
               <View style={{ gap: 10 }}>
@@ -532,6 +410,17 @@ export default function RapportScreen() {
           </>
         )}
       </ScrollView>
+      <RapportDateRangeModal
+        key={pickerOpen ? 'open' : 'closed'}
+        visible={pickerOpen}
+        initial={customRange}
+        onClose={() => setPickerOpen(false)}
+        onApply={(range) => {
+          setCustomRange(range);
+          setPeriodKey('custom');
+          setPickerOpen(false);
+        }}
+      />
       <BottomNav active="rapport" />
     </View>
   );
