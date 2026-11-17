@@ -34,7 +34,7 @@ function setup(overrides: { handshakes?: Record<string, number>; tcpReachable?: 
       update: jest.fn().mockResolvedValue({}),
     },
     tenant: {
-      findUnique: jest.fn().mockResolvedValue({ remoteAccessVersion: 0 }),
+      findUnique: jest.fn().mockResolvedValue({ remoteAccessVersion: '2026-10-18' }),
       update: jest.fn().mockResolvedValue({}),
     },
     $transaction: jest.fn((fn: (tx: unknown) => Promise<void>) =>
