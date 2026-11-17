@@ -24,6 +24,7 @@ import appleSignin from 'apple-signin-auth';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TokenService, TokenPair } from './token.service';
 import { MfaService } from './mfa.service';
+import { LoginThrottleService } from './login-throttle.service';
 import {
   SubscriptionsService,
   TRIAL_DAYS,
@@ -112,6 +113,7 @@ export class AuthService {
     private readonly config: ConfigService,
     private readonly mail: MailService,
     private readonly mfa: MfaService,
+    private readonly loginThrottle: LoginThrottleService,
   ) {
     const clientId = this.config.get<string>('GOOGLE_CLIENT_ID');
     if (clientId) {
@@ -190,23 +192,42 @@ export class AuthService {
   }
 
   async login(dto: LoginDto): Promise<TokenPair> {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email.toLowerCase() },
-    });
+    const email = dto.email.toLowerCase();
 
     // Uniform failure to avoid user-enumeration.
     const invalid = new UnauthorizedException('Invalid credentials');
+
+    // Reject locked accounts BEFORE the user lookup and argon2 verify: blunts
+    // distributed brute-force the per-IP limit can't catch, removes the argon2
+    // CPU-exhaustion vector, and bounds TOTP guessing. A locked account is
+    // indistinguishable from a wrong password.
+    if (await this.loginThrottle.isLocked(email)) throw invalid;
+
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
     if (!user || user.status !== UserStatus.ACTIVE) {
       // Still spend time hashing to reduce timing signal.
       await argon2
         .hash(dto.password, ARGON)
         .catch(logAndContinue(this.logger, 'Dummy hash (anti-timing)'));
+      await this.loginThrottle.recordFailure(email);
       throw invalid;
     }
 
     const ok = await argon2.verify(user.passwordHash, dto.password);
-    if (!ok) throw invalid;
-    this.mfa.assertLogin(user, dto.totpCode);
+    if (!ok) {
+      await this.loginThrottle.recordFailure(email);
+      throw invalid;
+    }
+    try {
+      this.mfa.assertLogin(user, dto.totpCode);
+    } catch (err) {
+      await this.loginThrottle.recordFailure(email);
+      throw err;
+    }
+    await this.loginThrottle.reset(email);
 
     // Le back-office affiche la dernière connexion pour distinguer un compte
     // abandonné d'un compte actif. Sans await bloquant sur l'échec : ne pas
