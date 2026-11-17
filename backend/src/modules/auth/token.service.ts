@@ -35,7 +35,20 @@ export class TokenService {
     private readonly config: ConfigService<AppConfig, true>,
   ) {}
 
+  // A refresh whose rotation response is lost (flaky mobile network, app killed
+  // mid-flight) leaves the client holding the just-revoked predecessor. Replaying
+  // it within this window, while its successor is still unused, is treated as that
+  // lost retry rather than token theft.
+  private static readonly ROTATION_GRACE_MS = 60_000;
+
   async issueTokens(user: Principal, family?: string): Promise<TokenPair> {
+    return (await this.createPair(user, family)).pair;
+  }
+
+  private async createPair(
+    user: Principal,
+    family?: string,
+  ): Promise<{ pair: TokenPair; refreshId: string }> {
     const accessTtl = this.config.get('JWT_ACCESS_TTL', { infer: true });
     const refreshTtl = this.config.get('JWT_REFRESH_TTL', { infer: true });
 
@@ -48,7 +61,7 @@ export class TokenService {
     );
 
     const raw = randomBytes(32).toString('hex');
-    await this.prisma.refreshToken.create({
+    const record = await this.prisma.refreshToken.create({
       data: {
         userId: user.id,
         tokenHash: sha256(raw),
@@ -57,7 +70,10 @@ export class TokenService {
       },
     });
 
-    return { accessToken, refreshToken: raw, expiresIn: accessTtl };
+    return {
+      pair: { accessToken, refreshToken: raw, expiresIn: accessTtl },
+      refreshId: record.id,
+    };
   }
 
   async rotate(rawRefresh: string): Promise<TokenPair> {
@@ -68,8 +84,11 @@ export class TokenService {
 
     if (!record) throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_TOKEN_INVALID, 'Invalid refresh token');
 
-    // Reuse of an already-rotated token → compromise: revoke the whole family.
     if (record.revoked) {
+      const next = await this.rotateWithinGrace(record);
+      if (next) return next;
+
+      // Genuine reuse of a rotated token → compromise: revoke the whole family.
       await this.prisma.refreshToken.updateMany({
         where: { family: record.family, revoked: false },
         data: { revoked: true },
@@ -81,7 +100,7 @@ export class TokenService {
       throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_TOKEN_EXPIRED, 'Refresh token expired');
     }
 
-    const next = await this.issueTokens(
+    const { pair, refreshId } = await this.createPair(
       {
         id: record.user.id,
         tenantId: record.user.tenantId,
@@ -91,13 +110,52 @@ export class TokenService {
     );
 
     // Keep the original tokenHash so a later replay of this token is detected
-    // as reuse (revoked=true) and triggers family-wide revocation.
+    // as reuse (revoked=true); link the successor so a lost-response retry of
+    // this token can be recovered within the grace window instead of punished.
     await this.prisma.refreshToken.update({
       where: { id: record.id },
-      data: { revoked: true },
+      data: { revoked: true, replacedById: refreshId },
     });
 
-    return next;
+    return pair;
+  }
+
+  // Recovers a lost rotation response: if the replayed token's successor exists,
+  // is still unused, and is fresh, re-issue a pair in the same family. The
+  // successor is claimed atomically so concurrent replays can't both succeed.
+  // Returns null when this is not a recoverable retry (→ caller treats as reuse).
+  private async rotateWithinGrace(
+    record: { id: string; family: string; replacedById: string | null; user: { id: string; tenantId: string; role: UserRole } },
+  ): Promise<TokenPair | null> {
+    if (!record.replacedById) return null;
+
+    const successor = await this.prisma.refreshToken.findUnique({
+      where: { id: record.replacedById },
+    });
+    if (
+      !successor ||
+      successor.revoked ||
+      Date.now() - successor.createdAt.getTime() >= TokenService.ROTATION_GRACE_MS
+    ) {
+      return null;
+    }
+
+    const claimed = await this.prisma.refreshToken.updateMany({
+      where: { id: successor.id, revoked: false },
+      data: { revoked: true },
+    });
+    if (claimed.count !== 1) return null;
+
+    const { pair, refreshId } = await this.createPair(
+      { id: record.user.id, tenantId: record.user.tenantId, role: record.user.role },
+      record.family,
+    );
+    await this.prisma.refreshToken.update({
+      where: { id: successor.id },
+      data: { replacedById: refreshId },
+    });
+
+    return pair;
   }
 
   async revoke(rawRefresh: string): Promise<void> {
