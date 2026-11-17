@@ -33,7 +33,7 @@ export const TERMS_HTML = `<!DOCTYPE html>
 
 <h2>4. Services et abonnement</h2>
 <ul>
-  <li><strong>Essai gratuit :</strong> un essai de 7 jours est accordé à l'inscription, limité à la gestion locale des routeurs.</li>
+  <li><strong>Essai gratuit :</strong> un essai de 7 jours est accordé à l'inscription, avec toutes les fonctions de l'abonnement PRO, gestion à distance comprise. À la fin de l'essai, la gestion locale des routeurs reste gratuite.</li>
   <li><strong>Abonnement PRO :</strong> donne accès à la gestion à distance (WireGuard), multi-routeurs, et aux rapports avancés.</li>
   <li>Le paiement s'effectue par mobile money (Wave ou Orange Money). Le client envoie une preuve de paiement qui est validée manuellement par l'administrateur.</li>
   <li>L'abonnement n'est pas renouvelé automatiquement. L'accès PRO expire à la fin de la période payée.</li>
