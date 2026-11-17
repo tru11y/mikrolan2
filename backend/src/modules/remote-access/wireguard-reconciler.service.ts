@@ -108,11 +108,16 @@ export class WireGuardReconciler implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(`Auto-revoking stale PENDING peer for router ${peer.routerId} (provisioned > 5 min ago)`);
       try {
         await this.wg.removePeer(peer.wgPublicKey);
-        await this.wg.removeDnat(peer.wgIp, peer.allocatedPort, {
-          webfigPort: peer.webfigPort,
-          sshPort: peer.sshPort,
-          winboxPort: peer.winboxPort,
-        });
+        await this.wg.removeDnat(
+          peer.wgIp,
+          peer.allocatedPort,
+          {
+            webfigPort: peer.webfigPort,
+            sshPort: peer.sshPort,
+            winboxPort: peer.winboxPort,
+          },
+          null,
+        );
       } catch (err) {
         this.logger.warn(`WG cleanup for stale peer failed: ${err instanceof Error ? err.message : err}`);
       }

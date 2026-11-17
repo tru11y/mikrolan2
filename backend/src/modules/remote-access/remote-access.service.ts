@@ -300,11 +300,16 @@ export class RemoteAccessService {
 
     try {
       await this.wg.removePeer(peer.wgPublicKey);
-      await this.wg.removeDnat(peer.wgIp, peer.allocatedPort, {
-        webfigPort: peer.webfigPort,
-        sshPort: peer.sshPort,
-        winboxPort: peer.winboxPort,
-      });
+      await this.wg.removeDnat(
+        peer.wgIp,
+        peer.allocatedPort,
+        {
+          webfigPort: peer.webfigPort,
+          sshPort: peer.sshPort,
+          winboxPort: peer.winboxPort,
+        },
+        null,
+      );
     } catch (err) {
       this.logger.warn(`WireGuard cleanup on cancel failed (proceeding): ${err instanceof Error ? err.message : err}`);
     }
