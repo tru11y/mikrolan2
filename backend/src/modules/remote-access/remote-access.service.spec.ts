@@ -33,6 +33,10 @@ function setup(overrides: { handshakes?: Record<string, number>; tcpReachable?: 
       findFirst: jest.fn().mockResolvedValue({ id: 'r1' }),
       update: jest.fn().mockResolvedValue({}),
     },
+    tenant: {
+      findUnique: jest.fn().mockResolvedValue({ remoteAccessVersion: 0 }),
+      update: jest.fn().mockResolvedValue({}),
+    },
     $transaction: jest.fn((fn: (tx: unknown) => Promise<void>) =>
       fn({
         remotePeer: { update: jest.fn(), create: jest.fn() },
