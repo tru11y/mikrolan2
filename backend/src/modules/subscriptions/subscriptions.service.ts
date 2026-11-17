@@ -35,7 +35,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { PERIOD_DAYS, TiersService, periodAmount } from './tiers.service';
 
 /** Essai à l'inscription : accès PRO complet (distant compris). À l'expiration, retour au gratuit (local). */
-export const TRIAL_DAYS = 15;
+export const TRIAL_DAYS = 7;
 
 export type EntitlementTier = 'FREE' | 'TRIAL' | 'PRO' | 'LOCKED';
 

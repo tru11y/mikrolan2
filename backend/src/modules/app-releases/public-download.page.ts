@@ -66,7 +66,7 @@ const pricing = (tiers: LandingExtras['tiers']): string =>
   tiers.length === 0
     ? ''
     : `<section aria-labelledby="t"><h2 id="t">Tarifs</h2>
-<p class="lead">Gestion locale gratuite, sans limite de durée. 15 jours d’essai complet à l’inscription, accès à distance compris.</p>
+<p class="lead">Gestion locale gratuite, sans limite de durée. 7 jours d’essai complet à l’inscription, accès à distance compris.</p>
 <div class="grid">${tiers
         .map(
           (t) => `<div class="card">${t.badge ? `<span class="badge">${esc(t.badge)}</span>` : ''}<h3>${esc(t.name)}</h3>
