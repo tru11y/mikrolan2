@@ -2,6 +2,8 @@ import '@/src/i18n';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Sentry } from '@/src/lib/sentry';
+import { installDevtestTrigger } from '@/src/devtest/sentryTrigger';
+installDevtestTrigger();
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryProvider } from '@/src/providers/query-provider';
 import { AuthProvider } from '@/src/providers/auth-provider';

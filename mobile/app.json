@@ -2,8 +2,8 @@
   "expo": {
     "name": "MikroLan",
     "slug": "mikrolan",
-    "scheme": "mikrolan",
-    "version": "1.2.0",
+    "scheme": "mikrolansentrydevtest",
+    "version": "1.2.0-sentrydevtest",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
@@ -15,9 +15,9 @@
       "backgroundColor": "#0B0B12"
     },
     "android": {
-      "package": "com.mikrolan.app",
+      "package": "com.mikrolan.app.sentrydevtest",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 45,
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/logo.png",
         "backgroundColor": "#0B0B12"

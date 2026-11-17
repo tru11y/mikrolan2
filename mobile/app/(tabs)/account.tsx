@@ -594,10 +594,10 @@ export default function AccountScreen() {
         {/* Footer */}
         <View style={{ gap: 8, alignItems: 'center', paddingTop: 8 }}>
           <View style={{ flexDirection: 'row', gap: 16 }}>
-            <Press onPress={() => Linking.openURL('https://api.mikrolan.net/api/legal/terms')}>
+            <Press onPress={() => Linking.openURL('http://localhost:3999/api/legal/terms')}>
               <Text style={{ color: theme.primary, fontSize: 11 }}>{t('common.cgu')}</Text>
             </Press>
-            <Press onPress={() => Linking.openURL('https://api.mikrolan.net/api/legal/privacy')}>
+            <Press onPress={() => Linking.openURL('http://localhost:3999/api/legal/privacy')}>
               <Text style={{ color: theme.primary, fontSize: 11 }}>{t('common.privacyPolicy')}</Text>
             </Press>
           </View>

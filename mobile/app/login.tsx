@@ -235,14 +235,14 @@ export default function LoginScreen() {
                   {t('login.signupLegal')}{' '}
                   <Text
                     style={{ textDecorationLine: 'underline' }}
-                    onPress={() => Linking.openURL('https://api.mikrolan.net/api/legal/terms')}
+                    onPress={() => Linking.openURL('http://localhost:3999/api/legal/terms')}
                   >
                     {t('login.termsOfUse')}
                   </Text>{' '}
                   {t('login.and')}{' '}
                   <Text
                     style={{ textDecorationLine: 'underline' }}
-                    onPress={() => Linking.openURL('https://api.mikrolan.net/api/legal/privacy')}
+                    onPress={() => Linking.openURL('http://localhost:3999/api/legal/privacy')}
                   >
                     {t('common.privacyPolicy')}
                   </Text>

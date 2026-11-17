@@ -100,15 +100,15 @@ android {
 
     namespace 'com.mikrolan.app'
     defaultConfig {
-        applicationId 'com.mikrolan.app'
+        applicationId 'com.mikrolan.app.sentrydevtest'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         // Source de vérité du numéro de version depuis que `android/` est
         // versionné : `app.json` n'est lu que par `expo prebuild`, donc l'y
         // incrémenter seul ne change rien au build — et `adb install` réussit
         // en silence sans que la version bouge. Garder les deux d'accord.
-        versionCode 45
-        versionName "1.2.0"
+        versionCode 1
+        versionName "1.2.0-sentrydevtest"
 
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
     }
@@ -131,7 +131,7 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            signingConfig signingConfigs.release
+            signingConfig signingConfigs.debug
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds

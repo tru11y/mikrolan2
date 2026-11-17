@@ -8,7 +8,7 @@ import { api, extractErrorMessage } from '@/src/lib/api';
 import { Banner, Button, Press, space, type } from './ui';
 import { ConsentCheckbox } from './ConsentCheckbox';
 
-const REMOTE_ACCESS_URL = 'https://api.mikrolan.net/api/legal/remote-access';
+const REMOTE_ACCESS_URL = 'http://localhost:3999/api/legal/remote-access';
 
 type Props = {
   visible: boolean;

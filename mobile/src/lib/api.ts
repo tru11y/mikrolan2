@@ -843,7 +843,7 @@ export type UpdateRouterPayload = {
 
 const DEFAULT_API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL?.trim() ||
-  (__DEV__ ? 'http://10.0.2.2:3001/api' : 'https://api.mikrolan.net/api');
+  (__DEV__ ? 'http://10.0.2.2:3001/api' : 'http://localhost:3999/api');
 
 let apiBaseUrl = normalizeApiBaseUrl(DEFAULT_API_BASE_URL);
 let accessToken: string | null = null;

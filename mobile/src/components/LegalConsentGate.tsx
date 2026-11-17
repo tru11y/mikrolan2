@@ -9,8 +9,8 @@ import { extractErrorMessage } from '@/src/lib/api';
 import { Banner, Button, Press, radius, space, type, withAlpha } from './ui';
 import { ConsentCheckbox } from './ConsentCheckbox';
 
-const TERMS_URL = 'https://api.mikrolan.net/api/legal/terms';
-const PRIVACY_URL = 'https://api.mikrolan.net/api/legal/privacy';
+const TERMS_URL = 'http://localhost:3999/api/legal/terms';
+const PRIVACY_URL = 'http://localhost:3999/api/legal/privacy';
 
 /**
  * Écran bloquant tant que l'utilisateur connecté n'a pas accepté les versions
