@@ -506,6 +506,7 @@
     "perMonth": "/ month",
     "perYear": "i.e. {{price}} / year",
     "requestSent": "Request recorded. Your subscription will be activated automatically once the SasPay payment is confirmed, and you'll be notified in the app.",
+    "renew": "Renew {{name}} — {{price}}",
     "requestActivation": "Request activation {{name}} — {{price}}",
     "downgradeViaSupport": "Contact support to change plan",
     "manualPayment": "Secure payment by SasPay (Mobile Money). Your subscription is activated automatically once the payment is confirmed. No commitment.",
