@@ -84,7 +84,7 @@ async function seedTiers(): Promise<void> {
         { label: 'Génération de tickets illimitée', included: true },
         { label: 'Impression des tickets (PDF A4)', included: true },
         { label: 'Templates de tickets basiques', included: true },
-        { label: 'Accès distant multi-sites', included: false },
+        { label: 'Accès distant multi-sites', included: true },
       ],
     },
     {
