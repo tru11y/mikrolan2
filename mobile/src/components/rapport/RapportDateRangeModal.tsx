@@ -104,15 +104,15 @@ export function RapportDateRangeModal({
 
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
             {presets.map((p) => (
-              <Press
-                key={p.label}
-                onPress={() => preset(p.range)}
-                style={{
-                  height: CELL, paddingHorizontal: space.md, justifyContent: 'center',
-                  borderRadius: radius.pill, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
-                }}
-              >
-                <Text style={{ color: theme.text, fontSize: type.body, fontWeight: weight.semibold }}>{p.label}</Text>
+              <Press key={p.label} onPress={() => preset(p.range)}>
+                <View
+                  style={{
+                    height: CELL, paddingHorizontal: space.md, justifyContent: 'center',
+                    borderRadius: radius.pill, backgroundColor: theme.surface, borderWidth: 1, borderColor: theme.border,
+                  }}
+                >
+                  <Text style={{ color: theme.text, fontSize: type.body, fontWeight: weight.semibold }}>{p.label}</Text>
+                </View>
               </Press>
             ))}
           </View>
@@ -182,17 +182,17 @@ export function RapportDateRangeModal({
             </View>
           </View>
 
-          <Press
-            onPress={() => range && onApply(range)}
-            disabled={!range}
-            style={{
-              height: 52, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center',
-              backgroundColor: range ? theme.primary : theme.surfaceAlt,
-            }}
-          >
-            <Text style={{ color: range ? theme.primaryText : theme.textMuted, fontSize: type.title, fontWeight: weight.bold }}>
-              {range ? t('rapport.applyDays', { count: rangeDays(range) }) : t('rapport.pickTwoDates')}
-            </Text>
+          <Press onPress={() => range && onApply(range)} disabled={!range}>
+            <View
+              style={{
+                height: 52, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center',
+                backgroundColor: range ? theme.primary : theme.surfaceAlt,
+              }}
+            >
+              <Text style={{ color: range ? theme.primaryText : theme.textMuted, fontSize: type.title, fontWeight: weight.bold }}>
+                {range ? t('rapport.applyDays', { count: rangeDays(range) }) : t('rapport.pickTwoDates')}
+              </Text>
+            </View>
           </Press>
         </View>
       </View>

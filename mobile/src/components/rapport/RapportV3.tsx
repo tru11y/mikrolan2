@@ -22,19 +22,18 @@ export function RapportPeriodBar<K extends string>({
       {items.map((p) => {
         const on = p.key === selected;
         return (
-          <Press
-            key={p.key}
-            onPress={() => onSelect(p.key)}
-            accessibilityLabel={p.label}
-            style={{
-              flex: p.flex, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md,
-              backgroundColor: on ? theme.primary : theme.surface,
-              borderWidth: 1, borderColor: on ? theme.primary : theme.border,
-            }}
-          >
-            <Text numberOfLines={1} style={{ color: on ? theme.primaryText : theme.text, fontSize: 13, fontWeight: weight.bold }}>
-              {p.label}
-            </Text>
+          <Press key={p.key} onPress={() => onSelect(p.key)} accessibilityLabel={p.label} style={{ flex: p.flex }}>
+            <View
+              style={{
+                height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md,
+                backgroundColor: on ? theme.primary : theme.surface,
+                borderWidth: 1, borderColor: on ? theme.primary : theme.border,
+              }}
+            >
+              <Text numberOfLines={1} style={{ color: on ? theme.primaryText : theme.text, fontSize: 13, fontWeight: weight.bold }}>
+                {p.label}
+              </Text>
+            </View>
           </Press>
         );
       })}

@@ -298,7 +298,7 @@ export default function RapportScreen() {
                   growthPercent={overview.data?.salesGrowthPercent}
                 />
                 <RapportStat label={t('rapport.avgBasket')} value={fmtXof(overview.data?.averageSaleXof ?? 0)} />
-                <RapportStat label={t('rapport.onlineNow')} value={String(sessionStats.data?.activeSessions ?? 0)} />
+                <RapportStat label={t('rapport.online')} value={String(sessionStats.data?.activeSessions ?? 0)} />
               </Row>
             </FadeIn>
 
