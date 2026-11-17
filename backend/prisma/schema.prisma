@@ -3,6 +3,8 @@
 
 generator client {
   provider = "prisma-client-js"
+  // Le VPS (Ubuntu 22.04) exige le moteur OpenSSL 3 ; le runner CI ne génère que 1.1 par défaut.
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
