@@ -26,6 +26,11 @@ import {
 export class SupportController {
   constructor(private readonly support: SupportService) {}
 
+  @Get('contact')
+  contact() {
+    return this.support.contact();
+  }
+
   @Post('tickets')
   @HttpCode(201)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })

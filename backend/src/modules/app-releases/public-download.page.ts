@@ -4,6 +4,12 @@ export interface PublicRelease {
   publishedAt: Date | string;
 }
 
+export interface LandingExtras {
+  tiers: Array<{ name: string; monthlyXof: number; tagline: string | null; badge: string | null }>;
+  /** Lien wa.me déjà validé, ou null. */
+  whatsapp: string | null;
+}
+
 export const esc = (s: string): string =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string);
 
@@ -33,6 +39,9 @@ ol.steps li{counter-increment:s;display:flex;gap:14px;margin:0 0 14px;color:#d3d
 ol.steps li:before{content:counter(s);flex:none;width:30px;height:30px;border-radius:50%;background:#6c5ce7;color:#fff;
 font-weight:800;display:flex;align-items:center;justify-content:center}
 .note{background:#14141f;border-left:3px solid #6c5ce7;border-radius:8px;padding:12px 14px;color:#b4b8cf;font-size:14px}
+.price{font-size:22px;font-weight:800;color:#fff;margin:2px 0 4px}.price small{font-size:14px;font-weight:400;color:#9aa0b8}
+.badge{display:inline-block;background:#6c5ce7;color:#fff;font-size:11px;font-weight:800;letter-spacing:.4px;border-radius:6px;padding:2px 7px;margin-bottom:6px}
+.btn.wa{background:#128c7e;box-shadow:none;margin-top:14px}
 footer{padding:36px 0 40px;color:#8b90a8;font-size:14px}footer nav{display:flex;flex-wrap:wrap;gap:6px 18px;margin-bottom:10px}`;
 
 const LOGO = `<svg width="34" height="34" viewBox="0 0 34 34" role="img" aria-label="MikroLan" fill="none" stroke="#a99cff" stroke-width="3" stroke-linecap="round">
@@ -51,7 +60,27 @@ export const unavailablePage = (): string =>
     `<div class="hero"><h1>MikroLan</h1><p class="lead">Le téléchargement est momentanément indisponible. Réessayez dans quelques minutes.</p></div>`,
   );
 
-export const landingPage = (r: PublicRelease): string =>
+const xof = (n: number): string => n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+
+const pricing = (tiers: LandingExtras['tiers']): string =>
+  tiers.length === 0
+    ? ''
+    : `<section aria-labelledby="t"><h2 id="t">Tarifs</h2>
+<p class="lead">Gestion locale gratuite, sans limite de durée. 15 jours d’essai complet à l’inscription, accès à distance compris.</p>
+<div class="grid">${tiers
+        .map(
+          (t) => `<div class="card">${t.badge ? `<span class="badge">${esc(t.badge)}</span>` : ''}<h3>${esc(t.name)}</h3>
+<p class="price">${xof(t.monthlyXof)} FCFA <small>/ mois</small></p>${t.tagline ? `<p>${esc(t.tagline)}</p>` : ''}</div>`,
+        )
+        .join('')}</div></section>`;
+
+const contact = (whatsapp: string | null): string =>
+  whatsapp
+    ? `<section aria-labelledby="c"><h2 id="c">Une question ? Besoin d’aide pour l’installation ?</h2>
+<a class="btn wa" href="${esc(whatsapp)}" rel="noopener">Écrire sur WhatsApp</a></section>`
+    : '';
+
+export const landingPage = (r: PublicRelease, extras: LandingExtras = { tiers: [], whatsapp: null }): string =>
   shell(
     'MikroLan — Gérez votre hotspot MikroTik depuis votre téléphone',
     `<div class="hero">
@@ -68,7 +97,7 @@ export const landingPage = (r: PublicRelease): string =>
 <li><span>Si Android demande d’autoriser l’installation depuis cette source, acceptez (une seule fois).</span></li>
 <li><span>Si Google Play Protect affiche « Analyse d’appli recommandée », touchez <strong>Analyser l’appli</strong> (et non « Ne pas installer »). Quand il indique « Cette appli semble sûre », touchez <strong>Installer</strong>.</span></li>
 <li><span>Ouvrez MikroLan, créez votre compte et acceptez les conditions d’utilisation.</span></li></ol>
-<p class="note">MikroLan est disponible sur Android pour le moment. Le fichier fait environ 87 Mo : sur une connexion lente, le téléchargement peut prendre plusieurs minutes. N’éteignez pas l’écran avant la fin.</p></section>`,
+<p class="note">MikroLan est disponible sur Android pour le moment. Le fichier fait environ 87 Mo : sur une connexion lente, le téléchargement peut prendre plusieurs minutes. N’éteignez pas l’écran avant la fin.</p></section>${pricing(extras.tiers)}${contact(extras.whatsapp)}`,
   );
 
 function shell(title: string, body: string): string {

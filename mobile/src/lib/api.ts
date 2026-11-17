@@ -2002,6 +2002,10 @@ export const api = {
     },
   },
   support: {
+    async contact(): Promise<{ whatsapp: string | null }> {
+      const res = await apiClient.get<ApiEnvelope<{ whatsapp: string | null }>>('/support/contact');
+      return unwrap(res);
+    },
     async createTicket(subject: string, body: string): Promise<SupportTicket> {
       const res = await apiClient.post<ApiEnvelope<SupportTicket>>(
         '/support/tickets',
