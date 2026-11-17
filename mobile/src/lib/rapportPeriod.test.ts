@@ -68,3 +68,28 @@ test('barHeights : échelle sur le maximum, valeur non nulle toujours visible, t
   assert.deepEqual(barHeights([0, 0], 140), [0, 0]);
   assert.deepEqual(barHeights([], 140), []);
 });
+
+test('meaningfulGrowth : masque les variations sans base sérieuse', async () => {
+  const { meaningfulGrowth } = await import('./rapportPeriod.ts');
+  assert.equal(meaningfulGrowth(-41), -41);
+  assert.equal(meaningfulGrowth(300), 300);
+  assert.equal(meaningfulGrowth(2817), null);
+  assert.equal(meaningfulGrowth(-301), null);
+  assert.equal(meaningfulGrowth(null), null);
+});
+
+test('peakIndex : première plus forte valeur, -1 si tout est nul', async () => {
+  const { peakIndex } = await import('./rapportPeriod.ts');
+  assert.equal(peakIndex([0, 500, 1000, 1000]), 2);
+  assert.equal(peakIndex([0, 0]), -1);
+  assert.equal(peakIndex([]), -1);
+});
+
+test('axisTickIndexes : toutes les 6 h, sinon début, milieu, fin', async () => {
+  const { axisTickIndexes } = await import('./rapportPeriod.ts');
+  assert.deepEqual(axisTickIndexes(24, true), [0, 6, 12, 18]);
+  assert.deepEqual(axisTickIndexes(30, false), [0, 14, 29]);
+  assert.deepEqual(axisTickIndexes(7, false), [0, 3, 6]);
+  assert.deepEqual(axisTickIndexes(2, false), [0, 1]);
+  assert.deepEqual(axisTickIndexes(0, false), []);
+});
