@@ -56,7 +56,7 @@ export const DeviceProfileCard = memo(function DeviceProfileCard({
             </Text>
             <Row style={{ justifyContent: 'flex-start', gap: 8, marginTop: 2 }}>
               <Text style={{ color: theme.textMuted, fontSize: 11 }}>
-                {p.sharedUsers} user{p.sharedUsers > 1 ? 's' : ''}
+                {p.sharedUsers} appareil{p.sharedUsers > 1 ? 's' : ''}
               </Text>
               {p.rateLimit ? (
                 <Text style={{ color: theme.textMuted, fontSize: 11 }}>

@@ -3,6 +3,7 @@ import { PlanCodeFormat, PlanExpiration, PlanStatus } from '@prisma/client';
 
 const kbps = z.number().int().positive().max(1_000_000);
 const minutes = z.number().int().positive().max(525_600); // ≤ 1 an
+// Appareils simultanés (RouterOS shared-users) : entier >= 1, jamais d'« illimité » à ce stade.
 const sharedUsers = z.number().int().min(1).max(1000);
 const codePrefix = z
   .string()
@@ -24,7 +25,8 @@ export const createPlanSchema = z.object({
   downloadKbps: kbps.nullable().optional(),
   uploadKbps: kbps.nullable().optional(),
   dataLimitMb: z.number().int().positive().max(1_000_000).nullable().optional(),
-  sharedUsers: sharedUsers.optional(),
+  // OBLIGATOIRE à la création : aucune valeur par défaut silencieuse.
+  sharedUsers,
   expirationMode: z.nativeEnum(PlanExpiration).optional(),
   displayOrder: z.number().int().min(0).max(1000).optional(),
   codePrefix: codePrefix.nullable().optional(),
