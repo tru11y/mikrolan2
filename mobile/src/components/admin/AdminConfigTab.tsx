@@ -18,12 +18,14 @@ export function AdminConfigTab() {
   const [waveNumber, setWaveNumber] = useState('');
   const [omNumber, setOmNumber] = useState('');
   const [instructions, setInstructions] = useState('');
+  const [supportWhatsapp, setSupportWhatsapp] = useState('');
   const [loaded, setLoaded] = useState(false);
 
   if (configQuery.data && !loaded) {
     setWaveNumber(configQuery.data['wave_number'] ?? '');
     setOmNumber(configQuery.data['om_number'] ?? '');
     setInstructions(configQuery.data['payment_instructions'] ?? '');
+    setSupportWhatsapp(configQuery.data['support_whatsapp'] ?? '');
     setLoaded(true);
   }
 
@@ -33,6 +35,7 @@ export function AdminConfigTab() {
         wave_number: waveNumber,
         om_number: omNumber,
         payment_instructions: instructions,
+        support_whatsapp: supportWhatsapp,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-config'] });
@@ -50,6 +53,7 @@ export function AdminConfigTab() {
       <Field label={t('admin.waveNumber')} value={waveNumber} onChangeText={setWaveNumber} placeholder={t('admin.wavePlaceholder')} />
       <Field label={t('admin.omNumber')} value={omNumber} onChangeText={setOmNumber} placeholder={t('admin.omPlaceholder')} />
       <Field label={t('admin.paymentInstructions')} value={instructions} onChangeText={setInstructions} placeholder={t('admin.paymentInstructionsPlaceholder')} multiline />
+      <Field label={t('admin.supportWhatsapp')} value={supportWhatsapp} onChangeText={setSupportWhatsapp} placeholder={t('admin.supportWhatsappPlaceholder')} keyboardType="phone-pad" />
       <Button title={t('admin.saveConfig')} variant="primary" onPress={() => saveMutation.mutate()} loading={saveMutation.isPending} />
     </View>
   );

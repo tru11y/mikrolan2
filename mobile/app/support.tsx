@@ -2,6 +2,7 @@ export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErr
 import { useState } from 'react';
 import {
   FlatList,
+  Linking,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -370,6 +371,12 @@ export default function SupportScreen() {
     queryKey: ['support-tickets'],
     queryFn: () => api.support.listTickets(),
   });
+  const contactQuery = useQuery({
+    queryKey: ['support-contact'],
+    queryFn: () => api.support.contact(),
+    staleTime: 60 * 60_000,
+  });
+  const whatsapp = contactQuery.data?.whatsapp ?? null;
 
   if (typeof view === 'object') {
     return (
@@ -428,6 +435,15 @@ export default function SupportScreen() {
                 onPress={() => setView('create')}
               />
             </Row>
+            {whatsapp ? (
+              <View style={{ marginBottom: space.md }}>
+                <Button
+                  title={t('support.whatsapp')}
+                  variant="ghost"
+                  onPress={() => Linking.openURL(whatsapp)}
+                />
+              </View>
+            ) : null}
           </FadeIn>
         }
         ListEmptyComponent={

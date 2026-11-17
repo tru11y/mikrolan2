@@ -4,6 +4,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/error-codes';
 import { EventLogService } from '../events/event-log.service';
+import { SUPPORT_WHATSAPP_KEY, whatsappLink } from '../../common/whatsapp';
 import { SupportSlaCron } from './support-sla.cron';
 import type { CreateTicketDto, ListMyTicketsDto } from './dto/support.schemas';
 
@@ -19,6 +20,11 @@ export class SupportService {
     private readonly prisma: PrismaService,
     private readonly eventLog: EventLogService,
   ) {}
+
+  async contact(): Promise<{ whatsapp: string | null }> {
+    const row = await this.prisma.platformConfig.findUnique({ where: { key: SUPPORT_WHATSAPP_KEY } });
+    return { whatsapp: whatsappLink(row?.value) };
+  }
 
   create(tenantId: string, userId: string, dto: CreateTicketDto) {
     return this.eventLog.track(

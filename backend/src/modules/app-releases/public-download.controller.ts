@@ -3,9 +3,12 @@ import { Throttle } from '@nestjs/throttler';
 import type { FastifyReply } from 'fastify';
 import { NoEnvelope } from '../../common/decorators/no-envelope.decorator';
 import { Public } from '../../common/decorators/public.decorator';
+import { SUPPORT_WHATSAPP_KEY, whatsappLink } from '../../common/whatsapp';
+import { PrismaService } from '../../prisma/prisma.service';
 import { PRIVACY_HTML, REMOTE_ACCESS_HTML, TERMS_HTML } from '../legal/legal.content';
+import { TiersService } from '../subscriptions/tiers.service';
 import { AppReleasesService } from './app-releases.service';
-import { landingPage, unavailablePage } from './public-download.page';
+import { landingPage, unavailablePage, type LandingExtras } from './public-download.page';
 
 const CSP = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
@@ -24,7 +27,11 @@ const CSP = "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; for
 export class PublicDownloadController {
   private readonly logger = new Logger(PublicDownloadController.name);
 
-  constructor(private readonly releases: AppReleasesService) {}
+  constructor(
+    private readonly releases: AppReleasesService,
+    private readonly tiers: TiersService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   @Get()
   async landing(@Res() reply: FastifyReply): Promise<void> {
@@ -36,7 +43,7 @@ export class PublicDownloadController {
       reply.status(HttpStatus.SERVICE_UNAVAILABLE).send(unavailablePage());
       return;
     }
-    reply.status(HttpStatus.OK).send(landingPage(release));
+    reply.status(HttpStatus.OK).send(landingPage(release, await this.extras()));
   }
 
   @Get('apk')
@@ -78,6 +85,20 @@ export class PublicDownloadController {
         .replace(/href="\/api\/legal\/remote-access"/g, 'href="acces-distant"')
         .replace(/href="\/api\/legal\/terms"/g, 'href="conditions"'),
     );
+  }
+
+  /** Tarifs et contact : accessoires. Une panne ici ne doit jamais empêcher le téléchargement. */
+  private async extras(): Promise<LandingExtras> {
+    try {
+      const [tiers, contact] = await Promise.all([
+        this.tiers.listActive(),
+        this.prisma.platformConfig.findUnique({ where: { key: SUPPORT_WHATSAPP_KEY } }),
+      ]);
+      return { tiers, whatsapp: whatsappLink(contact?.value) };
+    } catch (err) {
+      this.logger.warn(`Tarifs / contact indisponibles : ${err instanceof Error ? err.message : String(err)}`);
+      return { tiers: [], whatsapp: null };
+    }
   }
 
   /** Release active, ou null si aucune ou si le fichier / le stockage est indisponible. */
