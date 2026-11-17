@@ -128,7 +128,9 @@ export interface OverviewResult {
   routersSummary: RouterSummaryItem[];
   topPlans: PlanPerformanceItem[];
   timeSeries: { date: string; revenueXof: number; salesCount: number }[];
-  peakHours: { hour: number; sessions: number; sales: number }[];
+  peakHours: { hour: number; sessions: number; sales: number; revenueXof: number }[];
+  /** `to_date` : période en cours, comparée à la même durée écoulée de la période précédente. */
+  comparison: 'to_date' | 'full';
   lastCalculatedAt: string;
 }
 
@@ -234,8 +236,17 @@ export class AnalyticsService {
       }),
     ]);
 
+    // Une période en cours (aujourd'hui à 15 h) ne se compare pas à une période
+    // entière : on ne retient de la précédente que la même durée écoulée.
+    const elapsedMs = Date.now() - bounds.from.getTime();
+    const inProgress = elapsedMs < bounds.to.getTime() - bounds.from.getTime();
+    const previousCutoff = bounds.previousFrom.getTime() + elapsedMs;
+    const comparableLines = inProgress
+      ? previousLines.filter((l) => l.usedAt.getTime() < previousCutoff)
+      : previousLines;
+
     const current = this.summarize(currentLines);
-    const previous = this.summarize(previousLines);
+    const previous = this.summarize(comparableLines);
 
     const routerNameById = new Map(routers.map((r) => [r.id, r.alias || r.identity]));
     const byRouter = new Map<string, ActivationLine[]>();
@@ -245,7 +256,7 @@ export class AnalyticsService {
       byRouter.set(line.routerId, arr);
     }
     const byRouterPrev = new Map<string, ActivationLine[]>();
-    for (const line of previousLines) {
+    for (const line of comparableLines) {
       const arr = byRouterPrev.get(line.routerId) ?? [];
       arr.push(line);
       byRouterPrev.set(line.routerId, arr);
@@ -299,23 +310,25 @@ export class AnalyticsService {
       .map(([date, v]) => ({ date, revenueXof: v.revenueXof, salesCount: v.salesCount }))
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    const hourlyPeak = new Map<number, { sessions: number; sales: number }>();
+    const hourlyPeak = new Map<number, { sessions: number; sales: number; revenueXof: number }>();
     for (const s of sessions) {
       const { hour } = localDayOfWeekAndHour(s.startedAt, timezone);
-      const e = hourlyPeak.get(hour) ?? { sessions: 0, sales: 0 };
+      const e = hourlyPeak.get(hour) ?? { sessions: 0, sales: 0, revenueXof: 0 };
       e.sessions++;
       hourlyPeak.set(hour, e);
     }
     for (const line of currentLines) {
       const { hour } = localDayOfWeekAndHour(line.usedAt, timezone);
-      const e = hourlyPeak.get(hour) ?? { sessions: 0, sales: 0 };
+      const e = hourlyPeak.get(hour) ?? { sessions: 0, sales: 0, revenueXof: 0 };
       e.sales++;
+      e.revenueXof += line.xof ?? 0;
       hourlyPeak.set(hour, e);
     }
     const peakHours = Array.from({ length: 24 }, (_, h) => ({
       hour: h,
       sessions: hourlyPeak.get(h)?.sessions ?? 0,
       sales: hourlyPeak.get(h)?.sales ?? 0,
+      revenueXof: hourlyPeak.get(h)?.revenueXof ?? 0,
     }));
 
     return {
@@ -336,6 +349,7 @@ export class AnalyticsService {
       topPlans,
       timeSeries,
       peakHours,
+      comparison: inProgress ? 'to_date' : 'full',
       lastCalculatedAt: new Date().toISOString(),
     };
   }
