@@ -471,7 +471,9 @@ export type AnalyticsOverview = {
   routersSummary: AnalyticsRouterSummary[];
   topPlans: AnalyticsPlanPerformance[];
   timeSeries: { date: string; revenueXof: number; salesCount: number }[];
-  peakHours: { hour: number; sessions: number; sales: number }[];
+  /** `revenueXof` et `comparison` absents des serveurs antérieurs à la 1.2.4. */
+  peakHours: { hour: number; sessions: number; sales: number; revenueXof?: number }[];
+  comparison?: 'to_date' | 'full';
   lastCalculatedAt: string;
 };
 

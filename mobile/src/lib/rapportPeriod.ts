@@ -78,3 +78,33 @@ export function barHeights(values: number[], maxPx: number): number[] {
   if (max === 0) return values.map(() => 0);
   return values.map((v) => (v <= 0 ? 0 : Math.max(2, Math.round((v / max) * maxPx))));
 }
+
+/** Au-delà, la période précédente est trop faible pour qu'un pourcentage ait un sens. */
+export const MAX_MEANINGFUL_GROWTH = 300;
+
+/** Variation affichable, ou `null` si elle n'apprend rien (base absente ou dérisoire). */
+export function meaningfulGrowth(pct: number | null | undefined): number | null {
+  if (pct == null || !Number.isFinite(pct) || Math.abs(pct) > MAX_MEANINGFUL_GROWTH) return null;
+  return pct;
+}
+
+/** Index de la plus forte valeur, ou -1 si tout est à zéro. */
+export function peakIndex(values: number[]): number {
+  let best = -1;
+  let max = 0;
+  values.forEach((v, i) => {
+    if (v > max) {
+      max = v;
+      best = i;
+    }
+  });
+  return best;
+}
+
+/** Repères d'axe : toutes les 6 h sur une journée, sinon premier, milieu et dernier point. */
+export function axisTickIndexes(count: number, hourly: boolean): number[] {
+  if (count <= 0) return [];
+  if (hourly) return [0, 6, 12, 18].filter((i) => i < count);
+  if (count <= 3) return Array.from({ length: count }, (_, i) => i);
+  return [0, Math.floor((count - 1) / 2), count - 1];
+}
