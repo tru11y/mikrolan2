@@ -1,6 +1,14 @@
 export { ScreenErrorBoundary as ErrorBoundary } from '@/src/components/ScreenErrorBoundary';
 import axios from 'axios';
-import { useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { randomUUID } from 'expo-crypto';
+import {
+  createVoucherIdempotencyRepo,
+  isBlockingServerError,
+  parseRetryAfterSeconds,
+  type KeyValueStorage,
+} from '@/src/lib/voucherIdempotency';
 import { ScrollView, Share, Text, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -248,6 +256,29 @@ export default function GenerateVouchersScreen() {
   const [lastFailureMessage, setLastFailureMessage] = useState<string | null>(null);
   // Délai dépassé côté client : le lot a peut-être été créé côté serveur, issue inconnue.
   const [lastUncertain, setLastUncertain] = useState(false);
+  // État "reprise impossible" : le backend a signalé un lot bloqué
+  // (VOUCHER_GENERATION_STALE) ou un snapshot invalide
+  // (VOUCHER_REPLAY_SNAPSHOT_MISSING). Aucune nouvelle clé ne doit être
+  // générée tant que l'utilisateur n'a pas explicitement acquitté l'état.
+  const [replayBlocked, setReplayBlocked] = useState(false);
+
+  // Dépôt d'intention idempotence : construit une seule fois par montage de
+  // l'écran. AsyncStorage pour persister l'intention entre fermetures d'app ;
+  // le contenu stocké ne contient JAMAIS de code de ticket ou de secret, cf.
+  // `voucherIdempotency.ts` et ses tests.
+  const idempotencyRepo = useMemo(
+    () =>
+      createVoucherIdempotencyRepo(
+        AsyncStorage as unknown as KeyValueStorage,
+        () => randomUUID(),
+      ),
+    [],
+  );
+  // Verrou synchrone : empêche deux appels concurrents au handler `generate()`
+  // de poser deux clés distinctes. `busy` est utilisé pour l'affichage mais
+  // n'est mis à jour qu'après un rendu React — insuffisant pour bloquer deux
+  // taps rapprochés sans attendre un nouveau rendu.
+  const generateLock = useRef(false);
 
   const selectedPlan = plansQuery.data?.find((p) => p.id === planId) ?? null;
   const totalValueXof = (selectedPlan?.priceXof ?? 0) * quantity;
@@ -295,6 +326,18 @@ export default function GenerateVouchersScreen() {
   }
 
   async function generate() {
+    // Verrou synchrone avant tout await : deux appels séquentiels dans la même
+    // tick JS ne produisent qu'une seule exécution complète.
+    if (generateLock.current) return;
+    generateLock.current = true;
+    try {
+      await generateInner();
+    } finally {
+      generateLock.current = false;
+    }
+  }
+
+  async function generateInner() {
     if (!planId) {
       toast.error(t('tickets.choosePlanFirst'));
       return;
@@ -323,16 +366,86 @@ export default function GenerateVouchersScreen() {
     setLastFailureMessage(null);
     setLastUncertain(false);
     setShowTickets(false);
-    let res: GenerateResult | null = null;
+    setReplayBlocked(false);
+    // Clé d'idempotence stable : même intention (routerId+planId+quantity) →
+    // même clé. Persistée AVANT l'appel réseau pour survivre à une fermeture
+    // brutale et permettre au backend de dédoublonner après timeout/202/retry.
+    // La log du keyHash reste interne au backend ; on ne logue JAMAIS la clé
+    // brute ici (sentryScrub/report filtres standards suffisent — pas de
+    // console.log spécifique ajouté).
+    let idempotencyKey: string;
     try {
-      res = await api.routers.generateVouchers(routerId, {
-        planId,
-        quantity,
-      });
+      const ensured = await idempotencyRepo.ensureKeyFor({ routerId, planId, quantity });
+      if (ensured.kind === 'EXPIRED') {
+        // Intention locale expirée : on NE rotate PAS. L'utilisateur doit
+        // vérifier le lot précédent dans Fichiers ou acquitter.
+        setReplayBlocked(true);
+        setLastOutcome('FAILED');
+        setLastTotal(0);
+        setLastPushed(0);
+        setLastFailureMessage(t('tickets.replayBlocked'));
+        setBusy(false);
+        return;
+      }
+      if (ensured.kind === 'CORRUPTED' || ensured.kind === 'UNSUPPORTED_VERSION') {
+        setReplayBlocked(true);
+        setLastOutcome('FAILED');
+        setLastTotal(0);
+        setLastPushed(0);
+        setLastFailureMessage(t('tickets.idempotencyIncoherent'));
+        setBusy(false);
+        return;
+      }
+      if (ensured.kind === 'LIMIT_REACHED') {
+        setReplayBlocked(true);
+        setLastOutcome('FAILED');
+        setLastTotal(0);
+        setLastPushed(0);
+        setLastFailureMessage(t('tickets.idempotencyLimitReached'));
+        setBusy(false);
+        return;
+      }
+      idempotencyKey = ensured.intention.key;
+    } catch (e) {
+      // Panne storage locale : on refuse de continuer plutôt que de perdre la
+      // protection anti-doublons. On ne logue PAS le contenu brut.
+      reportSilent('generate-vouchers.idempotency.storage', e, { routerId, planId, quantity });
+      setLastOutcome('FAILED');
+      setLastTotal(0);
+      setLastPushed(0);
+      setLastFailureMessage(t('tickets.idempotencyUnavailable'));
+      setBusy(false);
+      return;
+    }
+    let res: GenerateResult | null = null;
+    let httpStatus = 200;
+    let retryAfterHeader: string | null = null;
+    try {
+      const envelope = await api.routers.generateVouchers(
+        routerId,
+        { planId, quantity },
+        { idempotencyKey },
+      );
+      res = envelope.data;
+      httpStatus = envelope.status;
+      retryAfterHeader = envelope.retryAfter;
     } catch (e) {
       reportSilent('generate-vouchers.generate', e, { routerId, planId, quantity });
       const described = describeError(e);
       const timedOut = described.errorCode === 'TIMEOUT';
+      // Erreurs backend "reprise impossible" : on garde la clé persistée (pour
+      // ne pas remplacer l'intention) mais on n'autorise plus de retry auto
+      // tant que l'utilisateur n'a pas changé d'intention OU acquitté.
+      if (isBlockingServerError(described.errorCode)) {
+        setReplayBlocked(true);
+        setLastOutcome('FAILED');
+        setLastUncertain(false);
+        setLastTotal(0);
+        setLastPushed(0);
+        setLastFailureMessage(t('tickets.replayBlocked'));
+        setBusy(false);
+        return;
+      }
       setLastOutcome('FAILED');
       setLastUncertain(timedOut);
       setLastTotal(0);
@@ -342,6 +455,23 @@ export default function GenerateVouchersScreen() {
       setBusy(false);
       return;
     }
+    // Replay 202 : le serveur signale un batch GENERATING récent. On NE
+    // supprime PAS la clé, l'utilisateur peut relancer pour réessayer.
+    // Retry-After parsé et borné ; aucun polling automatique côté mobile.
+    if (httpStatus === 202 || (res.batchStatus === 'GENERATING' && !res.vouchers)) {
+      const retryAfterSec = parseRetryAfterSeconds(retryAfterHeader);
+      setLastOutcome('FAILED'); // affichage neutre "en cours", géré par uncertain
+      setLastUncertain(true);
+      setLastTotal(0);
+      setLastPushed(0);
+      setLastFailureMessage(t('tickets.generateInProgress', { seconds: retryAfterSec }));
+      setJustGenerated(null);
+      setBusy(false);
+      return;
+    }
+    // On attache le batchId à l'intention persistée (utile pour un futur
+    // confirmPush en reprise, cf. règle LAN).
+    await idempotencyRepo.attachBatchId(idempotencyKey, res.batchId).catch(() => undefined);
 
     setLastBatchSeq(res.batchSeq);
 
@@ -423,6 +553,22 @@ export default function GenerateVouchersScreen() {
     if (outputFormat === 'pdf' && selectedPlan && usable.length) {
       await printBatch(usable, selectedPlan);
     }
+    // Clear de la clé :
+    //  - REMOTE (serveur a poussé) : toute issue terminale est définitive →
+    //    `clearIfTerminal` supprime l'entrée.
+    //  - LAN : on persiste la progression (expectedCount/confirmedCount) puis
+    //    `clearIfTerminal` ne supprime QUE si confirmedCount === expectedCount.
+    //    Un succès partiel conserve la clé, le batchId et les compteurs pour
+    //    permettre une reprise ou une résolution humaine via "Vérifier dans
+    //    Fichiers". Aucun code de ticket n'est persisté.
+    if (res.pushedByServer) {
+      await idempotencyRepo.clearIfTerminal(idempotencyKey).catch(() => undefined);
+    } else {
+      await idempotencyRepo
+        .updateLanProgress(idempotencyKey, { expectedCount: res.totalCount, confirmedCount: usable.length })
+        .catch(() => undefined);
+      await idempotencyRepo.clearIfTerminal(idempotencyKey).catch(() => undefined);
+    }
     setBusy(false);
   }
 
@@ -432,6 +578,7 @@ export default function GenerateVouchersScreen() {
     setLastFailureMessage(null);
     setLastUncertain(false);
     setShowTickets(false);
+    setReplayBlocked(false);
   }
 
   async function shareCodes(codes: VoucherItem[]) {
