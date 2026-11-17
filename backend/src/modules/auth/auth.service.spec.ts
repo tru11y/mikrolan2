@@ -67,6 +67,12 @@ const mockMail = {
   sendInvoice: jest.fn().mockResolvedValue(undefined),
 };
 
+const mockLoginThrottle = {
+  isLocked: jest.fn().mockResolvedValue(false),
+  recordFailure: jest.fn().mockResolvedValue(undefined),
+  reset: jest.fn().mockResolvedValue(undefined),
+};
+
 function buildService() {
   return new AuthService(
     mockPrisma as any,
@@ -74,6 +80,7 @@ function buildService() {
     mockSubscriptions as any,
     mockConfig as any,
     mockMail as any,
+    mockLoginThrottle as any,
   );
 }
 
@@ -245,6 +252,44 @@ describe('AuthService', () => {
       await expect(
         service.login({ email: 'a@b.com', password: PASSWORD }),
       ).rejects.toMatchObject({ status: 401 });
+    });
+
+    it('records a failure on wrong password', async () => {
+      const service = buildService();
+      mockPrisma.user.findUnique.mockResolvedValue(activeUser);
+
+      await expect(
+        service.login({ email: 'A@b.com', password: 'wrong' }),
+      ).rejects.toMatchObject({ status: 401 });
+      expect(mockLoginThrottle.recordFailure).toHaveBeenCalledWith('a@b.com');
+    });
+
+    it('records a failure on unknown user (uniform, no enumeration)', async () => {
+      const service = buildService();
+      mockPrisma.user.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.login({ email: 'NOPE@x.com', password: PASSWORD }),
+      ).rejects.toMatchObject({ status: 401 });
+      expect(mockLoginThrottle.recordFailure).toHaveBeenCalledWith('nope@x.com');
+    });
+
+    it('resets the counter on success', async () => {
+      const service = buildService();
+      mockPrisma.user.findUnique.mockResolvedValue(activeUser);
+
+      await service.login({ email: 'a@b.com', password: PASSWORD });
+      expect(mockLoginThrottle.reset).toHaveBeenCalledWith('a@b.com');
+    });
+
+    it('locked account is rejected before any DB lookup or hash', async () => {
+      const service = buildService();
+      mockLoginThrottle.isLocked.mockResolvedValueOnce(true);
+
+      await expect(
+        service.login({ email: 'a@b.com', password: PASSWORD }),
+      ).rejects.toMatchObject({ status: 401 });
+      expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
     });
   });
 

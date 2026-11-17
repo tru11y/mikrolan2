@@ -23,6 +23,7 @@ import { OAuth2Client } from 'google-auth-library';
 import appleSignin from 'apple-signin-auth';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TokenService, TokenPair } from './token.service';
+import { LoginThrottleService } from './login-throttle.service';
 import {
   SubscriptionsService,
   TRIAL_DAYS,
@@ -109,6 +110,7 @@ export class AuthService {
     private readonly subscriptions: SubscriptionsService,
     private readonly config: ConfigService,
     private readonly mail: MailService,
+    private readonly loginThrottle: LoginThrottleService,
   ) {
     const clientId = this.config.get<string>('GOOGLE_CLIENT_ID');
     if (clientId) {
@@ -187,22 +189,36 @@ export class AuthService {
   }
 
   async login(dto: LoginDto): Promise<TokenPair> {
-    const user = await this.prisma.user.findUnique({
-      where: { email: dto.email.toLowerCase() },
-    });
+    const email = dto.email.toLowerCase();
 
     // Uniform failure to avoid user-enumeration.
     const invalid = new UnauthorizedException('Invalid credentials');
+
+    // Reject locked accounts BEFORE the argon2 verify: blunts distributed
+    // brute-force the per-IP limit can't catch, and removes the CPU-exhaustion
+    // vector of hammering one account. A locked account looks like a bad password.
+    if (await this.loginThrottle.isLocked(email)) throw invalid;
+
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
     if (!user || user.status !== UserStatus.ACTIVE) {
       // Still spend time hashing to reduce timing signal.
       await argon2
         .hash(dto.password, ARGON)
         .catch(logAndContinue(this.logger, 'Dummy hash (anti-timing)'));
+      await this.loginThrottle.recordFailure(email);
       throw invalid;
     }
 
     const ok = await argon2.verify(user.passwordHash, dto.password);
-    if (!ok) throw invalid;
+    if (!ok) {
+      await this.loginThrottle.recordFailure(email);
+      throw invalid;
+    }
+
+    await this.loginThrottle.reset(email);
 
     // Le back-office affiche la dernière connexion pour distinguer un compte
     // abandonné d'un compte actif. Sans await bloquant sur l'échec : ne pas
