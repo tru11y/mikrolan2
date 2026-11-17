@@ -165,7 +165,7 @@
     "trialActive": "PÉRIODE D'ESSAI ACTIVE",
     "trialDaysLeft": "Encore {{count}} jour",
     "trialDaysLeft_plural": "Encore {{count}} jours",
-    "trialExpiredMessage": ". Ensuite, l'accès à vos routeurs sera suspendu jusqu'à l'activation d'un forfait.",
+    "trialExpiredMessage": " d'accès à distance offert. Ensuite, la gestion locale reste gratuite.",
     "activate": "Activer",
     "proUnlimited": "PASS PRO UNLIMITED",
     "proDescription": "Multi-routeurs, cloud backup & impression thermique.",

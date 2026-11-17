@@ -51,6 +51,22 @@ describe('PaymentCron.expireOverdueSubscriptions', () => {
     );
   });
 
+  it('downgrades an expired trial with its own wording', async () => {
+    mockPrisma.subscription.findMany.mockResolvedValue([
+      { tenantId: 'tenant-2', status: 'TRIALING', tenant: { name: 'Beta' } },
+    ]);
+
+    await buildCron().expireOverdueSubscriptions();
+
+    expect(mockSubscriptions.deactivate).toHaveBeenCalledWith('tenant-2', 'SYSTEM');
+    expect(mockNotifications.createAndPush).toHaveBeenCalledWith(
+      'tenant-2',
+      'SUBSCRIPTION_ACTIVATED',
+      'Essai terminé',
+      expect.stringContaining('gestion locale reste gratuite'),
+    );
+  });
+
   it('does nothing when no expired subscriptions exist', async () => {
     mockPrisma.subscription.findMany.mockResolvedValue([]);
 

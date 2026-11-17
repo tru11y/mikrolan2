@@ -87,23 +87,26 @@ export class PaymentCron {
     const now = new Date();
     const expired = await this.prisma.subscription.findMany({
       where: {
-        plan: 'PRO',
-        status: 'ACTIVE',
+        // Un essai échu suit le même chemin qu'un PRO échu : pairs révoqués, routeurs repassés en LOCAL.
+        OR: [{ plan: 'PRO', status: 'ACTIVE' }, { status: 'TRIALING' }],
         currentPeriodEnd: { lt: now },
       },
-      select: { tenantId: true, tenant: { select: { name: true } } },
+      select: { tenantId: true, status: true, tenant: { select: { name: true } } },
     });
 
     for (const sub of expired) {
       try {
+        const trial = sub.status === 'TRIALING';
         await this.subscriptions.deactivate(sub.tenantId, SYSTEM_ACTOR);
         await this.notifications.createAndPush(
           sub.tenantId,
           'SUBSCRIPTION_ACTIVATED',
-          'Abonnement expiré',
-          'Votre abonnement PRO a expiré. Renouvelez pour conserver l\'accès distant.',
+          trial ? 'Essai terminé' : 'Abonnement expiré',
+          trial
+            ? 'Votre essai est terminé. Activez un forfait pour retrouver l\'accès distant ; la gestion locale reste gratuite.'
+            : 'Votre abonnement PRO a expiré. Renouvelez pour conserver l\'accès distant.',
         );
-        this.logger.log(`Downgraded expired PRO → FREE (via deactivate): ${sub.tenant.name}`);
+        this.logger.log(`Downgraded expired ${trial ? 'trial' : 'PRO'} → FREE (via deactivate): ${sub.tenant.name}`);
       } catch (e) {
         // deactivate() already traced the failure (FAILED) in the event log.
         this.logger.error(`Failed to deactivate ${sub.tenant.name}: ${e}`);

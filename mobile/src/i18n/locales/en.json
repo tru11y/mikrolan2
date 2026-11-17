@@ -165,7 +165,7 @@
     "trialActive": "TRIAL PERIOD ACTIVE",
     "trialDaysLeft": "{{count}} day left",
     "trialDaysLeft_plural": "{{count}} days left",
-    "trialExpiredMessage": ". After that, router access will be suspended until a plan is activated.",
+    "trialExpiredMessage": " of free remote access. After that, local management stays free.",
     "activate": "Activate",
     "proUnlimited": "PRO UNLIMITED PASS",
     "proDescription": "Multi-router, cloud backup & thermal printing.",
