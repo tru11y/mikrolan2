@@ -119,6 +119,7 @@ log "bascule vers $target, redémarrage de $SERVICE"
 # 8. Contrôle de santé ; sinon retour arrière automatique vers la version précédente.
 if wait_health; then
   record_deploy "OK $sha (précédente : $previous)"
+  post_restart_rss_check || true
 else
   log "la nouvelle version ne répond pas : retour arrière vers $previous"
   switch_to "$previous"
