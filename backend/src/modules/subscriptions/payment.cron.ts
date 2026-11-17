@@ -5,8 +5,11 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { EventLogService } from '../events/event-log.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { SubscriptionsService } from './subscriptions.service';
+import { periodAmount } from './tiers.service';
 
 const SYSTEM_ACTOR = 'SYSTEM';
+/** Jours avant l'échéance où le client est invité à confirmer son renouvellement. */
+const RENEWAL_REMINDER_DAYS = [7, 3, 1];
 
 @Injectable()
 export class PaymentCron {
@@ -60,6 +63,8 @@ export class PaymentCron {
       select: {
         tenantId: true,
         currentPeriodEnd: true,
+        billingPeriod: true,
+        tier: true,
         tenant: { select: { name: true } },
       },
     });
@@ -70,15 +75,28 @@ export class PaymentCron {
         (sub.currentPeriodEnd.getTime() - now.getTime()) / (24 * 60 * 60 * 1000),
       );
 
-      if (daysLeft === 7 || daysLeft === 1) {
-        await this.notifications.createAndPush(
-          sub.tenantId,
-          'SUBSCRIPTION_ACTIVATED',
-          `Renouvellement dans ${daysLeft} jour${daysLeft > 1 ? 's' : ''}`,
-          `Votre abonnement PRO expire le ${sub.currentPeriodEnd.toLocaleDateString('fr-FR')}. Pensez à renouveler.`,
-        );
-        this.logger.log(`Reminder J-${daysLeft} sent to ${sub.tenant.name}`);
-      }
+      if (!RENEWAL_REMINDER_DAYS.includes(daysLeft)) continue;
+
+      // Le paiement mobile money ne peut pas être prélevé sans le client : on prépare
+      // le renouvellement (même formule, même période) et il le confirme d'un appui.
+      const expiry = sub.currentPeriodEnd.toLocaleDateString('fr-FR');
+      const period = sub.billingPeriod ?? 'MONTHLY';
+      const renewal = sub.tier
+        ? { type: 'SUBSCRIPTION_RENEWAL', tierKey: sub.tier.key, billingPeriod: period }
+        : undefined;
+      const body = sub.tier
+        ? `Votre formule ${sub.tier.name} expire le ${expiry}. Appuyez pour confirmer le paiement de ${periodAmount(sub.tier, period).toLocaleString('fr-FR')} F.`
+        : `Votre abonnement PRO expire le ${expiry}. Pensez à renouveler.`;
+      await this.notifications.createAndPush(
+        sub.tenantId,
+        'SUBSCRIPTION_ACTIVATED',
+        `Renouvellement dans ${daysLeft} jour${daysLeft > 1 ? 's' : ''}`,
+        body,
+        null,
+        null,
+        renewal,
+      );
+      this.logger.log(`Reminder J-${daysLeft} sent to ${sub.tenant.name}`);
     }
   }
 

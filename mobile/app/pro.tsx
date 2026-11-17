@@ -463,9 +463,8 @@ export default function ProScreen() {
           </FadeIn>
         ) : tier ? (
           <Button
-            title={isDowngrade ? t('pro.downgradeViaSupport') : t('pro.requestActivation', { name: tier.name, price: formatXof(periodPrice(tier, annual)) })}
+            title={isDowngrade ? t('pro.downgradeViaSupport') : t(tier.key === currentKey ? 'pro.renew' : 'pro.requestActivation', { name: tier.name, price: formatXof(periodPrice(tier, annual)) })}
             variant={isDowngrade ? 'ghost' : 'gold'}
-            disabled={tier.key === currentKey}
             onPress={isDowngrade ? () => navRouter.push('/support') : requestActivation}
             loading={busy}
           />
