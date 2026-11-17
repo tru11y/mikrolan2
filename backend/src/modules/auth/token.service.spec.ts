@@ -20,12 +20,23 @@ function record(over: Record<string, unknown> = {}) {
   };
 }
 
-function setup(found: unknown, opts: { claimCount?: number; successorCreatedAt?: Date | null } = {}) {
+function setup(
+  found: unknown,
+  opts: {
+    claimCount?: number;
+    successorCreatedAt?: Date | null;
+    successorRevoked?: boolean;
+  } = {},
+) {
   const rows: Array<{ id: string; revoked: boolean }> = [];
+  const successor =
+    opts.successorCreatedAt === undefined || opts.successorCreatedAt === null
+      ? null
+      : { id: 'rt-succ', createdAt: opts.successorCreatedAt, revoked: opts.successorRevoked ?? false };
   const prisma = {
     refreshToken: {
       findUnique: jest.fn().mockResolvedValue(found),
-      findFirst: jest.fn().mockResolvedValue(opts.successorCreatedAt === undefined ? null : opts.successorCreatedAt && { createdAt: opts.successorCreatedAt }),
+      findFirst: jest.fn().mockResolvedValue(successor),
       updateMany: jest.fn().mockImplementation(({ where }: { where: { id?: string; family?: string } }) =>
         Promise.resolve({ count: where.id ? (opts.claimCount ?? 1) : 2 }),
       ),
@@ -53,22 +64,36 @@ describe('TokenService.rotate — événements', () => {
     expect(events.record.mock.calls[0][1].extra.tokenAgeMs).toBeGreaterThan(14 * 60_000);
   });
 
-  // Cas 1 (réponse perdue) : l'ancien jeton est rejoué quelques secondes après la rotation.
-  it('rejeu d’un jeton déjà tourné quelques secondes plus tard : famille entièrement révoquée (comportement ACTUEL, mesuré avec replayDelayMs)', async () => {
+  // Cas 1 (réponse perdue) : l'ancien jeton est rejoué quelques secondes après la rotation,
+  // le successeur n'a pas servi → RÉCUPÉRATION dans la fenêtre de grâce, sans révocation.
+  it('rejeu quelques secondes plus tard, successeur inutilisé : récupération (rotation_recovered), famille non révoquée', async () => {
     const { service, events, prisma } = setup(record({ revoked: true }), { successorCreatedAt: new Date(NOW - 4_000) });
-    await expect(service.rotate('RAW-A')).rejects.toMatchObject({ response: expect.anything() });
-    expect(names(events)).toEqual(['REFRESH_REUSE_DETECTED', 'REFRESH_FAMILY_REVOKED']);
-    const reuse = events.record.mock.calls[0][1];
-    expect(reuse.cause).toBe('replay_of_revoked_token');
-    expect(reuse.extra.replayDelayMs).toBeGreaterThanOrEqual(4_000);
-    expect(reuse.extra.replayDelayMs).toBeLessThan(10_000);
-    expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({ where: { family: FAMILY, revoked: false }, data: { revoked: true } });
-    expect(events.record.mock.calls[1][1].extra.revokedCount).toBe(2);
+    const pair = await service.rotate('RAW-A');
+    expect(pair.accessToken).toBe('signed-access');
+    expect(names(events)).toEqual(['REFRESH_ROTATED', 'REFRESH_SUCCESS']);
+    expect(events.record.mock.calls[0][1].cause).toBe('rotation_recovered');
+    // le successeur est réclamé atomiquement, jamais la famille
+    expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({ where: { id: 'rt-succ', revoked: false }, data: { revoked: true } });
+    expect(prisma.refreshToken.updateMany).not.toHaveBeenCalledWith({ where: { family: FAMILY, revoked: false }, data: { revoked: true } });
   });
 
-  it('rejeu bien plus tard (vol probable) : même traitement, replayDelayMs de plusieurs jours', async () => {
+  it('rejeu dans la grâce mais successeur déjà consommé (vrai vol) : famille révoquée', async () => {
+    const { service, events } = setup(record({ revoked: true }), { successorCreatedAt: new Date(NOW - 4_000), successorRevoked: true });
+    await expect(service.rotate('RAW-A')).rejects.toBeDefined();
+    expect(names(events)).toEqual(['REFRESH_REUSE_DETECTED', 'REFRESH_FAMILY_REVOKED']);
+    expect(events.record.mock.calls[0][1].cause).toBe('replay_of_revoked_token');
+  });
+
+  it('rejeu dans la grâce mais claim perdu (rejeu concurrent) : famille révoquée', async () => {
+    const { service, events } = setup(record({ revoked: true }), { successorCreatedAt: new Date(NOW - 4_000), claimCount: 0 });
+    await expect(service.rotate('RAW-A')).rejects.toBeDefined();
+    expect(names(events)).toEqual(['REFRESH_REUSE_DETECTED', 'REFRESH_FAMILY_REVOKED']);
+  });
+
+  it('rejeu bien plus tard (vol probable) : hors fenêtre de grâce → famille révoquée, replayDelayMs de plusieurs jours', async () => {
     const { service, events } = setup(record({ revoked: true }), { successorCreatedAt: new Date(NOW - 3 * 86_400_000) });
     await expect(service.rotate('RAW-A')).rejects.toBeDefined();
+    expect(names(events)).toEqual(['REFRESH_REUSE_DETECTED', 'REFRESH_FAMILY_REVOKED']);
     expect(events.record.mock.calls[0][1].extra.replayDelayMs).toBeGreaterThan(2 * 86_400_000);
   });
 
@@ -101,7 +126,7 @@ describe('TokenService.rotate — événements', () => {
   });
 
   it('aucun événement ne contient le jeton brut ni son empreinte', async () => {
-    const { service, events } = setup(record({ revoked: true }), { successorCreatedAt: new Date(NOW - 1000) });
+    const { service, events } = setup(record({ revoked: true }), { successorCreatedAt: new Date(NOW - 1000), successorRevoked: true });
     await expect(service.rotate('RAW-A')).rejects.toBeDefined();
     const dump = JSON.stringify(events.record.mock.calls);
     expect(dump).not.toContain('RAW-A');

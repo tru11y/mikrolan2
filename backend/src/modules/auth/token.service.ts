@@ -37,6 +37,12 @@ export class TokenService {
     private readonly events: AuthEventsService,
   ) {}
 
+  // A refresh whose rotation response is lost (flaky mobile network, app killed
+  // mid-flight) leaves the client replaying the just-revoked predecessor. Within
+  // this window, and while the successor is still unused, that replay is treated
+  // as the lost retry and recovered instead of triggering a family revocation.
+  private static readonly ROTATION_GRACE_MS = 60_000;
+
   async issueTokens(user: Principal, family?: string): Promise<TokenPair> {
     const accessTtl = this.config.get('JWT_ACCESS_TTL', { infer: true });
     const refreshTtl = this.config.get('JWT_REFRESH_TTL', { infer: true });
@@ -75,21 +81,49 @@ export class TokenService {
     const ctx = { userId: record.userId, tenantId: record.user.tenantId, familyId: record.family };
     const tokenAgeMs = Date.now() - record.createdAt.getTime();
 
-    // Reuse of an already-rotated token → compromise: revoke the whole family.
+    // Replaying a rotated token is usually theft → revoke the family. But a
+    // rotation whose response never reached the client leaves it replaying the
+    // just-revoked predecessor; recover that within the grace window as long as
+    // the successor is still unused and the account is still active.
     if (record.revoked) {
       const successor = await this.prisma.refreshToken.findFirst({
         where: { family: record.family, createdAt: { gt: record.createdAt } },
         orderBy: { createdAt: 'asc' },
-        select: { createdAt: true },
+        select: { id: true, createdAt: true, revoked: true },
       });
+      // Délai entre la rotation (émission du successeur) et ce rejeu : distingue une réponse perdue (secondes) d'un vol (jours).
+      const replayDelayMs = successor ? Date.now() - successor.createdAt.getTime() : -1;
+
+      const recoverable =
+        successor != null &&
+        !successor.revoked &&
+        replayDelayMs >= 0 &&
+        replayDelayMs < TokenService.ROTATION_GRACE_MS &&
+        record.user.status === UserStatus.ACTIVE &&
+        record.user.tenant.status !== TenantStatus.DELETED;
+
+      if (recoverable) {
+        // Claim the unused successor atomically so two concurrent replays can't
+        // both recover; losing the race falls through to reuse handling below.
+        const claimedSuccessor = await this.prisma.refreshToken.updateMany({
+          where: { id: successor.id, revoked: false },
+          data: { revoked: true },
+        });
+        if (claimedSuccessor.count === 1) {
+          this.events.record('REFRESH_ROTATED', { ...ctx, cause: 'rotation_recovered', extra: { tokenAgeMs, replayDelayMs } });
+          const recovered = await this.issueTokens(
+            { id: record.user.id, tenantId: record.user.tenantId, role: record.user.role },
+            record.family,
+          );
+          this.events.record('REFRESH_SUCCESS', { ...ctx, cause: 'rotation_recovered', extra: { tokenAgeMs, replayDelayMs } });
+          return recovered;
+        }
+      }
+
       this.events.record('REFRESH_REUSE_DETECTED', {
         ...ctx,
         cause: 'replay_of_revoked_token',
-        extra: {
-          tokenAgeMs,
-          // Délai entre la rotation (émission du successeur) et ce rejeu : distingue une réponse perdue (secondes) d'un vol (jours).
-          replayDelayMs: successor ? Date.now() - successor.createdAt.getTime() : -1,
-        },
+        extra: { tokenAgeMs, replayDelayMs },
       });
       await this.revokeFamily(record.family, ctx, 'reuse');
       throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_TOKEN_REUSE, 'Refresh token reuse detected');
