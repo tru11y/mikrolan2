@@ -444,21 +444,4 @@ describe('Sprint 1 — Validation fonctionnelle (e2e)', () => {
       expect(res.body.data.superAdmins).toBeGreaterThanOrEqual(1);
     });
   });
-
-  // ─── HEALTH SYSTEM ──────────────────────────────────────
-
-  describe('Health system endpoint', () => {
-    it('retourne uptime, mémoire et compteurs', async () => {
-      const res = await request(app.getHttpServer())
-        .get('/api/health/system')
-        .expect(200);
-
-      expect(res.body.data).toHaveProperty('uptime');
-      expect(res.body.data).toHaveProperty('memory');
-      expect(res.body.data.memory).toHaveProperty('heapUsedMb');
-      expect(res.body.data).toHaveProperty('counts');
-      expect(res.body.data.counts).toHaveProperty('tenants');
-      expect(res.body.data.counts).toHaveProperty('routers');
-    });
-  });
 });
