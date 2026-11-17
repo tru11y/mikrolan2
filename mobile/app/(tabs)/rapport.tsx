@@ -291,14 +291,14 @@ export default function RapportScreen() {
             </FadeIn>
 
             <FadeIn delay={100}>
-              <Row style={{ gap: 8 }}>
+              <Row style={{ gap: 8, alignItems: 'stretch' }}>
                 <RapportStat
                   label={t('rapport.tickets')}
                   value={String(overview.data?.salesCount ?? 0)}
                   growthPercent={overview.data?.salesGrowthPercent}
                 />
                 <RapportStat label={t('rapport.avgBasket')} value={fmtXof(overview.data?.averageSaleXof ?? 0)} />
-                <RapportStat label={t('rapport.online')} value={String(sessionStats.data?.activeSessions ?? 0)} />
+                <RapportStat label={t('rapport.online')} value={String(metrics.data?.activeSessions ?? 0)} />
               </Row>
             </FadeIn>
 
