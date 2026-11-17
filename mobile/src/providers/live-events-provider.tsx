@@ -308,8 +308,8 @@ export function LiveEventsProvider({ children }: PropsWithChildren) {
       Vibration.vibrate([0, 60, 80, 60]);
       toast.success('Paiement validé — votre abonnement PRO est actif.');
       setLastEventAt(new Date());
-    } else if (now === 'LOCKED') {
-      toast.show('Votre période d\'essai est terminée.', 'danger');
+    } else if (before === 'TRIAL') {
+      toast.show('Essai terminé : la gestion à distance est suspendue, la gestion locale reste gratuite.', 'danger');
     }
   }, [me?.entitlement?.tier, toast]);
 

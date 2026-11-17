@@ -174,7 +174,36 @@ describe('SubscriptionsService', () => {
       expect([e.cloudBackup, e.a4Printing, e.prioritySupport]).toEqual([false, false, false]);
     });
 
-    it.each([SubscriptionStatus.PAST_DUE, SubscriptionStatus.CANCELED, SubscriptionStatus.TRIALING])(
+    it('essai en cours → TRIAL avec accès distant', async () => {
+      const service = buildService();
+      mockPrisma.subscription.findUnique.mockResolvedValue({
+        plan: SubscriptionPlan.FREE,
+        status: SubscriptionStatus.TRIALING,
+        currentPeriodEnd: new Date(Date.now() + 5 * 86_400_000),
+        tier: null,
+      });
+
+      const e = await service.getEntitlement('t1');
+      expect(e.tier).toBe('TRIAL');
+      expect(e.remoteAllowed).toBe(true);
+      expect(e.daysLeft).toBe(5);
+    });
+
+    it('essai échu → FREE sans accès distant', async () => {
+      const service = buildService();
+      mockPrisma.subscription.findUnique.mockResolvedValue({
+        plan: SubscriptionPlan.FREE,
+        status: SubscriptionStatus.TRIALING,
+        currentPeriodEnd: new Date(Date.now() - 86_400_000),
+        tier: null,
+      });
+
+      const e = await service.getEntitlement('t1');
+      expect(e.tier).toBe('FREE');
+      expect(e.remoteAllowed).toBe(false);
+    });
+
+    it.each([SubscriptionStatus.PAST_DUE, SubscriptionStatus.CANCELED])(
       'PRO avec statut %s → pas de remote',
       async (status) => {
         const service = buildService();

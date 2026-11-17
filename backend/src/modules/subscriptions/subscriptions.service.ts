@@ -34,10 +34,10 @@ import { EventLogService } from '../events/event-log.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PERIOD_DAYS, TiersService, periodAmount } from './tiers.service';
 
-/** Initial discover period for new accounts. FREE remains usable after it expires. */
+/** Essai à l'inscription : accès PRO complet (distant compris). À l'expiration, retour au gratuit (local). */
 export const TRIAL_DAYS = 15;
 
-export type EntitlementTier = 'FREE' | 'PRO' | 'LOCKED';
+export type EntitlementTier = 'FREE' | 'TRIAL' | 'PRO' | 'LOCKED';
 
 export interface Entitlement {
   tier: EntitlementTier;
@@ -98,6 +98,7 @@ export class SubscriptionsService {
    * What a tenant is allowed to do right now.
    *
    * FREE = permanent local version (LAN management, tickets, plans).
+   * TRIAL = essai en cours : mêmes droits que PRO, sans formule ni limite.
    * PRO  = paid plan with remote access (WireGuard, diagnostics, support).
    * LOCKED = PRO expired, must renew — local still works via FREE fallback.
    *
@@ -144,7 +145,23 @@ export class SubscriptionsService {
       };
     }
 
-    // FREE plan (or expired PRO fallback) → permanent local access, no remote.
+    if (sub?.status === SubscriptionStatus.TRIALING && !expired) {
+      return {
+        tier: 'TRIAL',
+        localAllowed: true,
+        remoteAllowed: true,
+        endsAt: sub.currentPeriodEnd,
+        daysLeft: daysUntil(sub.currentPeriodEnd),
+        tierKey: null,
+        routerLimit: sub.routerLimitOverride ?? null,
+        userLimit: sub.userLimitOverride ?? null,
+        cloudBackup: true,
+        a4Printing: true,
+        prioritySupport: false,
+      };
+    }
+
+    // FREE plan (or expired PRO / trial fallback) → permanent local access, no remote.
     return {
       tier: 'FREE',
       localAllowed: true,

@@ -54,6 +54,8 @@ type AuthContextValue = {
   isBusy: boolean;
   me: Me | null;
   isPro: boolean;
+  /** Gestion à distance autorisée (forfait actif ou essai en cours). */
+  hasRemote: boolean;
   /** Décidé par le serveur ; l'app ne fait que le refléter. */
   entitlement: Entitlement;
   /** L'essai est terminé et aucun forfait n'est actif. */
@@ -305,7 +307,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
   // Tant que /auth/me n'a pas répondu on ne verrouille rien : un faux cadenas
   // au démarrage serait pire qu'un écran vide.
   const entitlement: Entitlement = me?.entitlement ?? {
-    tier: 'TRIAL',
+    tier: 'FREE',
     localAllowed: true,
     remoteAllowed: false,
     endsAt: null,
@@ -331,6 +333,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       isBusy,
       me,
       isPro: entitlement.tier === 'PRO',
+      hasRemote: entitlement.remoteAllowed,
       entitlement,
       isLocked: entitlement.tier === 'LOCKED',
       needsLegalConsent,

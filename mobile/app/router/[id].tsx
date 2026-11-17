@@ -189,7 +189,7 @@ export default function RouterDetailScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const qc = useQueryClient();
-  const { isPro, me } = useAuth();
+  const { hasRemote, me } = useAuth();
   const { selectRouter } = useActiveRouter();
   const sseLive = useSseLive();
   const navHeight = useBottomNavHeight();
@@ -225,7 +225,7 @@ export default function RouterDetailScreen() {
   const remoteQuery = useQuery({
     queryKey: ['router-remote', id],
     queryFn: () => api.routers.remoteStatus(id),
-    enabled: Boolean(id) && isPro,
+    enabled: Boolean(id) && hasRemote,
     refetchInterval: sseLive ? 30_000 : POLL_MS,
     placeholderData: keepPreviousData,
   });
@@ -412,14 +412,14 @@ export default function RouterDetailScreen() {
 
   const remoteActive = remoteQuery.data?.status === 'ACTIVE';
   // Statut du tunnel pas encore chargé : jamais présenté comme « Non activé ».
-  const tunnelUnknown = isPro && remoteQuery.data == null && !remoteQuery.isError;
+  const tunnelUnknown = hasRemote && remoteQuery.data == null && !remoteQuery.isError;
 
   // Source unique REMOTE (CPU/RAM/uptime/sessions), mutualisée côté serveur —
   // remplace l'ancien appel direct `remoteSystemResource` + le polling propre
   // à `router-active-sessions`. Le LAN (ci-dessous) reste inchangé et prioritaire.
   // Le snapshot VPS ne dépend que du routerId : on le demande dès le montage (en parallèle de remoteStatus),
   // sans attendre la confirmation du tunnel. Désactivé seulement si le statut distant est connu et non ACTIVE.
-  const live = useRouterLive(id, Boolean(id) && isPro && (remoteQuery.data ? remoteActive : true));
+  const live = useRouterLive(id, Boolean(id) && hasRemote && (remoteQuery.data ? remoteActive : true));
 
   // Identifiants RouterOS : le serveur (credEncrypted) est la source durable pour
   // un tenant payant. Backfill sûr : push local → serveur UNIQUEMENT si le serveur
@@ -452,10 +452,10 @@ export default function RouterDetailScreen() {
 
   const serverHasCreds = query.data?.hasCredentials;
   useEffect(() => {
-    if (!id || !isPro || serverHasCreds !== false || backfillTried.current) return;
+    if (!id || !hasRemote || serverHasCreds !== false || backfillTried.current) return;
     backfillTried.current = true;
     void pushCredsToServer();
-  }, [id, isPro, serverHasCreds, pushCredsToServer]);
+  }, [id, hasRemote, serverHasCreds, pushCredsToServer]);
 
   const offline = offlineSince(live.data?.lastSuccessAt, Date.now());
   const sessionsOfflineText =
@@ -747,7 +747,7 @@ export default function RouterDetailScreen() {
             </View>
           </Banner>
         ) : null}
-        {isPro ? (
+        {hasRemote ? (
           <Card>
             <StatusLine
               label={t('routerDetail.statusCredentials')}
@@ -785,7 +785,7 @@ export default function RouterDetailScreen() {
                       : t('routerDetail.tunnelInactive')
               }
             />
-            {isPro && !(remoteQuery.data && !remoteActive) ? (
+            {hasRemote && !(remoteQuery.data && !remoteActive) ? (
               <>
                 <StatusLine
                   label={t('routerDetail.statusSessions')}
@@ -859,7 +859,7 @@ export default function RouterDetailScreen() {
               >
                 {r.identity}
               </Mono>
-              {!isPro ? (
+              {!hasRemote ? (
                 <Row style={{ justifyContent: 'flex-start', marginTop: space.xs + 2 }}>
                   <Badge
                     label={r.mode === 'REMOTE' ? t('routerDetail.remote') : t('routerDetail.local')}
@@ -920,7 +920,7 @@ export default function RouterDetailScreen() {
         ) : null}
 
         {/* Accès à distance — masqué pour PRO (automatique) */}
-        {!isPro ? (
+        {!hasRemote ? (
           <Card>
             <Row>
               <Row style={{ gap: space.xs + 2, justifyContent: 'flex-start' }}>
@@ -962,7 +962,7 @@ export default function RouterDetailScreen() {
         ) : null}
 
         {/* Identifiants routeur (PRO avec tunnel actif) */}
-        {isPro && remoteQuery.data?.status === 'ACTIVE' ? (
+        {hasRemote && remoteQuery.data?.status === 'ACTIVE' ? (
           <>
             {remoteMsg ? (
               <Banner tone={remoteMsg.tone}>{remoteMsg.text}</Banner>
