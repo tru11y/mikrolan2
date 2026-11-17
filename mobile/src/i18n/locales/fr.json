@@ -506,6 +506,7 @@
     "perMonth": "/ mois",
     "perYear": "soit {{price}} / an",
     "requestSent": "Demande enregistrée. Votre abonnement sera activé automatiquement après confirmation du paiement SasPay, et vous serez notifié dans l'application.",
+    "renew": "Renouveler {{name}} — {{price}}",
     "requestActivation": "Demander l'activation {{name}} — {{price}}",
     "downgradeViaSupport": "Contacter le support pour changer de formule",
     "manualPayment": "Paiement sécurisé par SasPay (Mobile Money). Votre abonnement est activé automatiquement après confirmation du paiement. Sans engagement de durée.",
