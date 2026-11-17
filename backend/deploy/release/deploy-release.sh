@@ -83,7 +83,7 @@ log "contrôle des modules natifs"
 if [ -n "$NODE_SMOKE_CMD" ]; then
   (cd "$target" && $NODE_SMOKE_CMD) || die "modules natifs inutilisables sur ce serveur : version non activée, service inchangé"
 else
-  runuser -u "$SERVICE_USER" -- bash -c "cd '$target' && node -e \"require('argon2')\" && node node_modules/prisma/build/index.js -v >/dev/null && node -e \"const { PrismaClient } = require('@prisma/client'); new PrismaClient().platformConfig.count().then(() => process.exit(0)).catch((e) => { console.error(e.message); process.exit(1); })\""     || die "modules natifs inutilisables sur ce serveur (argon2/Prisma) : version non activée, service inchangé"
+  runuser -u "$SERVICE_USER" -- bash -c "cd '$target' && node -e \"require('argon2')\" && node node_modules/prisma/build/index.js -v >/dev/null && export DATABASE_URL=\"\$(grep -m1 '^DATABASE_URL=' '$DATA_ROOT/.env' | cut -d= -f2- | tr -d '\\\"')\" && node -e \"const { PrismaClient } = require('@prisma/client'); new PrismaClient().platformConfig.count().then(() => process.exit(0)).catch((e) => { console.error(e.message); process.exit(1); })\""     || die "modules natifs inutilisables sur ce serveur (argon2/Prisma) : version non activée, service inchangé"
 fi
 
 # 6. Migrations : sauvegarde obligatoire d'abord ; sans sauvegarde réussie, rien n'est migré ni basculé.
@@ -103,7 +103,7 @@ if [ -n "$new_migrations" ]; then
   if [ -n "$MIGRATE_CMD" ]; then
     (cd "$target" && $MIGRATE_CMD) || die "la migration a échoué : version non activée, service inchangé"
   else
-    runuser -u "$SERVICE_USER" -- bash -c "cd '$target' && node node_modules/prisma/build/index.js migrate deploy" \
+    runuser -u "$SERVICE_USER" -- bash -c "cd '$target' && export DATABASE_URL=\"\$(grep -m1 '^DATABASE_URL=' '$DATA_ROOT/.env' | cut -d= -f2- | tr -d '\\\"')\" && node node_modules/prisma/build/index.js migrate deploy" \
       || die "la migration a échoué : version non activée, service inchangé"
   fi
 else
