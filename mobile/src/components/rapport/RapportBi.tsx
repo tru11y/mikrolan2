@@ -94,15 +94,15 @@ export function RapportRevenueCard({
       )}
 
       <View style={{ gap: space.sm }}>
-        <Row>
+        <View style={{ gap: 2 }}>
           <Text style={{ color: theme.text, fontSize: type.body, fontWeight: weight.bold }}>{chartTitle}</Text>
           {loading || shown < 0 ? null : (
-            <Text numberOfLines={1} style={[NUM, { flexShrink: 1, color: theme.textMuted, fontSize: type.caption, fontWeight: weight.semibold }]}>
+            <Text numberOfLines={1} style={[NUM, { color: theme.textMuted, fontSize: type.caption, fontWeight: weight.semibold }]}>
               {picked === null ? `${peakPrefix} ` : ''}
               {describePoint(points[shown])}
             </Text>
           )}
-        </Row>
+        </View>
 
         {loading ? (
           <Skeleton height={CHART_HEIGHT} />
