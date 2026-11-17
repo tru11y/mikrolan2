@@ -62,6 +62,7 @@ export class NotificationsService {
     body: string,
     routerId?: string | null,
     voucherId?: string | null,
+    extraData?: Record<string, unknown>,
   ): Promise<void> {
     const notification = await this.prisma.notification.create({
       data: { tenantId, type, title, body, routerId, voucherId },
@@ -73,6 +74,8 @@ export class NotificationsService {
       this.logger.warn(`No push token for tenantRef ${entityRef(tenantId)} (notification ${notification.id}, type ${type})`);
       return;
     }
+    const merged = { ...(routerId ? { routerId } : {}), ...extraData };
+    const data = Object.keys(merged).length ? merged : undefined;
 
     try {
       await this.pushQueue.add('push', {
@@ -80,11 +83,11 @@ export class NotificationsService {
         tokens,
         title,
         body,
-        data: routerId ? { routerId } : undefined,
+        data,
       });
     } catch (e) {
       this.logger.warn(`BullMQ enqueue failed, sending directly: ${e instanceof Error ? e.message : e}`);
-      await this.sendPushDirect(tenantId, recipients, title, body, routerId ? { routerId } : undefined);
+      await this.sendPushDirect(tenantId, recipients, title, body, data);
     }
   }
 

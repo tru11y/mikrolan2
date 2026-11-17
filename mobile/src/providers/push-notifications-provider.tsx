@@ -90,6 +90,12 @@ function routeForNotification(data: Record<string, unknown> | undefined): string
   if (type === 'VOUCHER_ACTIVATED' && typeof data.routerId === 'string') {
     return `/router/${data.routerId}`;
   }
+  // Renouvellement préparé par le serveur : seules une clé de formule bien formée et une
+  // période connue sont acceptées, la route elle-même n'est jamais lue dans le payload.
+  if (type === 'SUBSCRIPTION_RENEWAL' && typeof data.tierKey === 'string' && /^[a-z0-9_-]{1,40}$/.test(data.tierKey)) {
+    const period = data.billingPeriod === 'ANNUAL' ? 'ANNUAL' : 'MONTHLY';
+    return `/payment-saspay?tierKey=${data.tierKey}&billingPeriod=${period}`;
+  }
   if (type === 'PAYMENT_REJECTED' || type === 'SUBSCRIPTION_ACTIVATED') {
     return '/pro';
   }

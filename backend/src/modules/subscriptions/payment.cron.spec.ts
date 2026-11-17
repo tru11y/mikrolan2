@@ -104,3 +104,36 @@ describe('PaymentCron.expirePendingInvoices', () => {
     expect(mockEventLog.warning).not.toHaveBeenCalled();
   });
 });
+
+describe('PaymentCron.sendPaymentReminders', () => {
+  const tier = { key: 'essentiel', name: 'Essentiel', monthlyXof: 5000, annualDiscount: 20 };
+  const inDays = (n: number) => new Date(Date.now() + n * 86_400_000 - 60_000);
+
+  it('prepares the renewal the client confirms: same tier, same period, amount in the text', async () => {
+    mockPrisma.subscription.findMany.mockResolvedValue([
+      { tenantId: 'tenant-1', currentPeriodEnd: inDays(3), billingPeriod: 'MONTHLY', tier, tenant: { name: 'Acme' } },
+    ]);
+
+    await buildCron().sendPaymentReminders();
+
+    expect(mockNotifications.createAndPush).toHaveBeenCalledWith(
+      'tenant-1',
+      'SUBSCRIPTION_ACTIVATED',
+      'Renouvellement dans 3 jours',
+      expect.stringMatching(/Essentiel.*5\s000 F/),
+      null,
+      null,
+      { type: 'SUBSCRIPTION_RENEWAL', tierKey: 'essentiel', billingPeriod: 'MONTHLY' },
+    );
+  });
+
+  it('stays silent outside the reminder days', async () => {
+    mockPrisma.subscription.findMany.mockResolvedValue([
+      { tenantId: 'tenant-1', currentPeriodEnd: inDays(5), billingPeriod: 'MONTHLY', tier, tenant: { name: 'Acme' } },
+    ]);
+
+    await buildCron().sendPaymentReminders();
+
+    expect(mockNotifications.createAndPush).not.toHaveBeenCalled();
+  });
+});
