@@ -57,7 +57,7 @@ export const RapportHourlyHeatmap = memo(function RapportHourlyHeatmap({
           </View>
         ))}
         {/* Legend */}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4, marginLeft: labelW, width: 24 * (cellSize + 2) }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 4, marginLeft: labelW }}>
           <Text style={{ color: theme.textMuted, fontSize: 9 }}>Peu actif</Text>
           <View style={{ flexDirection: 'row', gap: 3, alignItems: 'center' }}>
             {[0.08, 0.25, 0.5, 0.75, 1].map((a, i) => (

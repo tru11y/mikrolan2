@@ -5,7 +5,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSseLive } from '@/src/providers/live-events-provider';
 import {
   api,
   type AnalyticsPeriod,
@@ -18,13 +17,11 @@ import {
   Empty,
   ErrorState,
   FadeIn,
-  Mono,
   Press,
   Row,
   Skeleton,
   space,
   useToast,
-  withAlpha,
 } from '@/src/components/ui';
 import { describeError } from '@/src/lib/errors';
 import { useTheme } from '@/src/providers/theme-provider';
@@ -35,15 +32,18 @@ import { useBackToDashboard } from '@/src/hooks/use-back-to-dashboard';
 import { RapportSectionHeader } from '@/src/components/rapport/RapportSectionHeader';
 import { RapportHourlyHeatmap } from '@/src/components/rapport/RapportHourlyHeatmap';
 import { RapportDateRangeModal } from '@/src/components/rapport/RapportDateRangeModal';
+import { RapportPeriodBar, RapportRouterBars } from '@/src/components/rapport/RapportV3';
+import { RapportPlanTable, RapportRevenueCard, type ChartPoint } from '@/src/components/rapport/RapportBi';
+import { fmtDay, fmtXof } from '@/src/components/rapport/shared';
 import {
-  RapportHero,
-  RapportPeriodBar,
-  RapportPlanBar,
-  RapportRouterBars,
-  RapportStat,
-} from '@/src/components/rapport/RapportV3';
-import { fmtBytes, fmtDay, fmtXof } from '@/src/components/rapport/shared';
-import { addDays, fmtDate, fmtRange, rangeDays, startOfDay, toApiBounds, type DayRange } from '@/src/lib/rapportPeriod';
+  addDays,
+  fmtRange,
+  meaningfulGrowth,
+  rangeDays,
+  startOfDay,
+  toApiBounds,
+  type DayRange,
+} from '@/src/lib/rapportPeriod';
 
 type PeriodKey = 'today' | 'yesterday' | 'last7days' | 'last30days' | 'custom';
 
@@ -59,7 +59,6 @@ const METRICS_BY_ANALYTICS: Record<AnalyticsPeriod, MetricsPeriod> = {
 
 export default function RapportScreen() {
   useBackToDashboard();
-  const sseLive = useSseLive();
   const toast = useToast();
   const theme = useTheme();
   const { t } = useTranslation();
@@ -120,12 +119,6 @@ export default function RapportScreen() {
     queryFn: () => api.metrics.summary(period, routerId),
     placeholderData: keepPreviousData,
   });
-  const clients = useQuery({
-    queryKey: ['clients', routerId],
-    queryFn: () => api.metrics.recentClients(15, routerId),
-    refetchInterval: sseLive ? false : 30_000,
-    placeholderData: keepPreviousData,
-  });
   const overview = useQuery({
     queryKey: ['analytics', 'overview', effectivePeriod, customFrom, customTo, routerId],
     queryFn: () =>
@@ -174,41 +167,79 @@ export default function RapportScreen() {
     setRefreshing(true);
     await Promise.all([
       qc.invalidateQueries({ queryKey: ['metrics'] }),
-      qc.invalidateQueries({ queryKey: ['clients'] }),
       qc.invalidateQueries({ queryKey: ['analytics'] }),
     ]);
     setRefreshing(false);
   }, [qc]);
 
   const data = metrics.data;
-  const timeSeries = overview.data?.timeSeries ?? [];
+  const days = rangeDays(shownRange);
 
-  const hourly = useMemo(() => {
-    const byHour = new Map((overview.data?.peakHours ?? []).map((h) => [h.hour, h.sales]));
-    return Array.from({ length: 24 }, (_, h) => byHour.get(h) ?? 0);
-  }, [overview.data?.peakHours]);
-  const bars = singleDay ? hourly : timeSeries.map((d) => d.revenueXof);
-  const firstDay = timeSeries[0];
-  const lastDay = timeSeries[timeSeries.length - 1];
-  const axis: [string, string] = singleDay
-    ? ['0 h', '23 h']
-    : [firstDay ? fmtDay(firstDay.date) : fmtDate(shownRange.from), lastDay ? fmtDay(lastDay.date) : fmtDate(shownRange.to)];
+  // Une seule mesure d'un bout à l'autre : des francs, par heure sur un jour, par jour sinon.
+  const points: ChartPoint[] = useMemo(() => {
+    if (singleDay) {
+      const byHour = new Map((overview.data?.peakHours ?? []).map((h) => [h.hour, h]));
+      return Array.from({ length: 24 }, (_, h) => ({
+        label: `${h} h`,
+        revenueXof: byHour.get(h)?.revenueXof ?? 0,
+        sales: byHour.get(h)?.sales ?? 0,
+      }));
+    }
+    return (overview.data?.timeSeries ?? []).map((d) => ({
+      label: fmtDay(d.date),
+      revenueXof: d.revenueXof,
+      sales: d.salesCount,
+    }));
+  }, [singleDay, overview.data?.peakHours, overview.data?.timeSeries]);
+
+  const salesCount = overview.data?.salesCount ?? 0;
+  const summary = salesCount
+    ? `${t('rapport.ticketsCount', { count: salesCount })} · ${t('rapport.avgBasketInline', { amount: fmtXof(overview.data?.averageSaleXof ?? 0) })}`
+    : t('rapport.ticketsCount', { count: 0 });
+  const toDate = overview.data?.comparison === 'to_date';
+  const comparisonText = singleDay
+    ? t(toDate ? 'rapport.vsYesterdaySameTime' : 'rapport.vsDayBefore')
+    : t(toDate ? 'rapport.vsPreviousDaysToDate' : 'rapport.vsPreviousDays', { count: days });
 
   const planRows = (overview.data?.topPlans ?? []).map((p) => ({
     id: p.planId,
     name: p.name,
+    tickets: p.salesCount,
     revenueXof: p.revenueXof,
     percent: p.revenueContributionPercent,
   }));
-  const routerRows = (analyticsRouters.data ?? []).slice(0, 5).map((r) => ({
-    id: r.routerId,
-    name: r.routerName,
-    revenueXof: r.revenueXof,
-    percent: r.contributionPercent,
-    growthPercent: r.growthPercent,
-  }));
+  const routerRows = (analyticsRouters.data ?? [])
+    .filter((r) => r.revenueXof > 0)
+    .slice(0, 5)
+    .map((r) => ({
+      id: r.routerId,
+      name: r.routerName,
+      revenueXof: r.revenueXof,
+      percent: r.contributionPercent,
+      growthPercent: meaningfulGrowth(r.growthPercent),
+    }));
 
   const error = metrics.error;
+  const exportButton = (icon: 'document-text-outline' | 'download-outline', label: string, run: () => Promise<void>) => (
+    <Press
+      onPress={() => {
+        if (!data) return;
+        run().catch((e) => toast.error(describeError(e).message));
+      }}
+      accessibilityLabel={label}
+      style={{ flex: 1 }}
+    >
+      <View
+        style={{
+          height: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+          backgroundColor: theme.surface, borderRadius: 12, borderWidth: 1, borderColor: theme.border,
+        }}
+      >
+        <Ionicons name={icon} size={16} color={theme.text} />
+        <Text style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>{label}</Text>
+      </View>
+    </Press>
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.bg }}>
@@ -218,47 +249,6 @@ export default function RapportScreen() {
         contentContainerStyle={{ padding: space.lg, gap: 14, paddingBottom: navHeight }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.text} />}
       >
-        {/* Header + export */}
-        <FadeIn>
-          <Row>
-            <View style={{ flex: 1 }} />
-            <Row style={{ gap: 8 }}>
-              <Press
-                onPress={() => {
-                  if (!data) return;
-                  exportMetricsCsv(data, exportPeriodLabel, sessionStats.data).catch((e) =>
-                    toast.error(describeError(e).message),
-                  );
-                }}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 4,
-                  backgroundColor: theme.surface,
-                  borderRadius: 10, paddingHorizontal: 10, paddingVertical: 6,
-                }}
-              >
-                <Ionicons name="document-text-outline" size={13} color={theme.primaryMuted} />
-                <Text style={{ color: theme.primaryMuted, fontSize: 10, fontWeight: '700' }}>CSV</Text>
-              </Press>
-              <Press
-                onPress={() => {
-                  if (!data) return;
-                  exportMetricsPdf(data, exportPeriodLabel, sessionStats.data, overview.data).catch((e) =>
-                    toast.error(describeError(e).message),
-                  );
-                }}
-                style={{
-                  flexDirection: 'row', alignItems: 'center', gap: 4,
-                  backgroundColor: theme.primary, borderRadius: 10,
-                  paddingHorizontal: 10, paddingVertical: 6,
-                }}
-              >
-                <Ionicons name="download-outline" size={13} color={theme.primaryText} />
-                <Text style={{ color: theme.primaryText, fontSize: 10, fontWeight: '700' }}>PDF</Text>
-              </Press>
-            </Row>
-          </Row>
-        </FadeIn>
-
         {error ? (
           <ErrorState message={t('rapport.loadError')} onRetry={onRefresh} />
         ) : (
@@ -278,62 +268,60 @@ export default function RapportScreen() {
             </FadeIn>
 
             <FadeIn delay={50}>
-              <RapportHero
-                label={t('rapport.revenue')}
+              <RapportRevenueCard
+                title={t('rapport.revenue')}
                 revenueXof={overview.data?.revenueXof ?? 0}
-                growthPercent={overview.data?.revenueGrowthPercent}
+                summary={summary}
+                growthPercent={meaningfulGrowth(overview.data?.revenueGrowthPercent)}
+                comparisonText={comparisonText}
                 loading={overview.isLoading}
-                chartLabel={singleDay ? t('rapport.salesPerHour') : t('rapport.revenuePerDay')}
-                bars={bars}
-                axis={axis}
+                chartTitle={t(singleDay ? 'rapport.revenuePerHour' : 'rapport.revenuePerDay')}
+                points={points}
+                hourly={singleDay}
+                peakPrefix={t(singleDay ? 'rapport.peakHour' : 'rapport.peakDay')}
+                describePoint={(p) => `${p.label} · ${fmtXof(p.revenueXof)} · ${t('rapport.ticketsCount', { count: p.sales })}`}
                 emptyText={t('rapport.noChartData')}
               />
             </FadeIn>
 
             <FadeIn delay={100}>
-              <Row style={{ gap: 8 }}>
-                <RapportStat
-                  label={t('rapport.tickets')}
-                  value={String(overview.data?.salesCount ?? 0)}
-                  growthPercent={overview.data?.salesGrowthPercent}
-                />
-                <RapportStat label={t('rapport.avgBasket')} value={fmtXof(overview.data?.averageSaleXof ?? 0)} />
-                <RapportStat label={t('rapport.online')} value={String(sessionStats.data?.activeSessions ?? 0)} />
-              </Row>
-            </FadeIn>
-
-            <FadeIn delay={150}>
               <Card style={{ gap: 12 }}>
-                <RapportSectionHeader icon="pricetags-outline" label={t('rapport.plansSection')} color={theme.warning} />
+                <RapportSectionHeader icon="pricetags-outline" label={t('rapport.plansSold')} color={theme.warning} />
                 {overview.isLoading ? (
                   <Skeleton height={100} />
                 ) : planRows.length ? (
-                  <RapportPlanBar rows={planRows} />
+                  <RapportPlanTable
+                    rows={planRows}
+                    days={days}
+                    labels={{
+                      plan: t('rapport.planCol'),
+                      tickets: t('rapport.tickets'),
+                      revenue: t('rapport.revenueCol'),
+                      perDay: (n) => t('rapport.perDay', { n }),
+                    }}
+                  />
                 ) : (
                   <Empty icon="pricetags-outline" text={t('rapport.noPlanSales')} />
                 )}
               </Card>
             </FadeIn>
 
-            <FadeIn delay={200}>
-              <Card style={{ gap: 12 }}>
-                <RapportSectionHeader icon="hardware-chip-outline" label={t('rapport.routersSection')} color={theme.primary} />
-                {analyticsRouters.isLoading ? (
-                  <Skeleton height={80} />
-                ) : routerRows.length ? (
+            {/* Un seul routeur qui vend répéterait le total : la répartition n'apparaît qu'à partir de deux. */}
+            {routerRows.length > 1 ? (
+              <FadeIn delay={150}>
+                <Card style={{ gap: 12 }}>
+                  <RapportSectionHeader icon="hardware-chip-outline" label={t('rapport.routersSection')} color={theme.primary} />
                   <RapportRouterBars
                     rows={routerRows}
                     onPress={(id) => router.push(`/analytics-router/${id}?period=${effectivePeriod}`)}
                   />
-                ) : (
-                  <Empty icon="hardware-chip-outline" text={t('rapport.noRouterSales')} />
-                )}
-              </Card>
-            </FadeIn>
+                </Card>
+              </FadeIn>
+            ) : null}
 
-            {/* Heatmap horaire */}
-            {traffic.data?.salesHeatmap?.length ? (
-              <FadeIn delay={175}>
+            {/* Jour × heure n'a de sens que sur plusieurs jours ; sur un seul, le graphique du haut le dit déjà. */}
+            {days >= 7 && traffic.data?.salesHeatmap?.length ? (
+              <FadeIn delay={200}>
                 <Card style={{ gap: 10 }}>
                   <RapportSectionHeader icon="flame-outline" label={t('rapport.hourlyHeatmap')} color={theme.warning} />
                   <RapportHourlyHeatmap cells={traffic.data.salesHeatmap} />
@@ -341,71 +329,15 @@ export default function RapportScreen() {
               </FadeIn>
             ) : null}
 
-            {/* Sessions summary */}
-            {sessionStats.data && sessionStats.data.totalSessions > 0 ? (
-              <FadeIn delay={190}>
-                <Card style={{ gap: 8 }}>
-                  <RapportSectionHeader icon="wifi-outline" label={t('rapport.sessionsSection')} color={theme.primary} />
-                  <Row style={{ gap: 12 }}>
-                    <View style={{ flex: 1, alignItems: 'center', gap: 2 }}>
-                      <Mono style={{ color: theme.text, fontSize: 16, fontWeight: '800' }}>{sessionStats.data.totalSessions}</Mono>
-                      <Text style={{ color: theme.textMuted, fontSize: 10 }}>{t('rapport.totalSessions')}</Text>
-                    </View>
-                    <View style={{ width: 1, height: 30, backgroundColor: theme.border }} />
-                    <View style={{ flex: 1, alignItems: 'center', gap: 2 }}>
-                      <Mono style={{ color: theme.success, fontSize: 16, fontWeight: '800' }}>{sessionStats.data.activeSessions}</Mono>
-                      <Text style={{ color: theme.textMuted, fontSize: 10 }}>{t('rapport.activeSessions')}</Text>
-                    </View>
-                    <View style={{ width: 1, height: 30, backgroundColor: theme.border }} />
-                    <View style={{ flex: 1, alignItems: 'center', gap: 2 }}>
-                      <Row style={{ gap: 3 }}>
-                        <Ionicons name="arrow-down" size={12} color={theme.success} />
-                        <Mono style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>{fmtBytes(sessionStats.data.totalBytesIn)}</Mono>
-                      </Row>
-                      <Row style={{ gap: 3 }}>
-                        <Ionicons name="arrow-up" size={12} color={theme.primary} />
-                        <Mono style={{ color: theme.text, fontSize: 12, fontWeight: '700' }}>{fmtBytes(sessionStats.data.totalBytesOut)}</Mono>
-                      </Row>
-                    </View>
-                  </Row>
-                </Card>
-              </FadeIn>
-            ) : null}
-
-            {/* Recent clients */}
-            <FadeIn delay={280}>
-              <View style={{ gap: 10 }}>
-                <RapportSectionHeader icon="people-outline" label={t('rapport.recentClients')} color={theme.success} />
-                {!clients.data?.length ? (
-                  <Empty icon="people-outline" text={t('rapport.noTicketUsed')} />
-                ) : (
-                  <View style={{ gap: 6 }}>
-                    {clients.data.slice(0, 10).map((c) => (
-                      <View key={c.voucherId} style={{
-                        backgroundColor: theme.surface,
-                        borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10,
-                        flexDirection: 'row', alignItems: 'center', gap: 10,
-                        borderLeftWidth: 3,
-                        borderLeftColor: c.online ? theme.success : withAlpha(theme.textMuted, 0.2),
-                      }}>
-                        <View style={{
-                          width: 8, height: 8, borderRadius: 4,
-                          backgroundColor: c.online ? theme.success : withAlpha(theme.textMuted, 0.3),
-                        }} />
-                        <View style={{ flex: 1 }}>
-                          <Row>
-                            <Mono style={{ color: theme.text, fontSize: 13, fontWeight: '700' }}>{c.code}</Mono>
-                            <Mono style={{ color: theme.success, fontSize: 12, fontWeight: '700' }}>{fmtXof(c.priceXof)}</Mono>
-                          </Row>
-                          <Text style={{ color: theme.textMuted, fontSize: 10 }}>
-                            {c.planName} · {c.routerName}
-                          </Text>
-                        </View>
-                      </View>
-                    ))}
-                  </View>
+            <FadeIn delay={250}>
+              <Row style={{ gap: 8 }}>
+                {exportButton('document-text-outline', t('rapport.exportCsv'), () =>
+                  exportMetricsCsv(data!, exportPeriodLabel, sessionStats.data),
                 )}
-              </View>
+                {exportButton('download-outline', t('rapport.exportPdf'), () =>
+                  exportMetricsPdf(data!, exportPeriodLabel, sessionStats.data, overview.data),
+                )}
+              </Row>
             </FadeIn>
           </>
         )}

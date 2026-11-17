@@ -119,6 +119,55 @@ describe('AnalyticsService', () => {
       expect(result.salesGrowthPercent).toBeNull();
     });
 
+    it('période en cours : comparée à la même durée écoulée de la veille, pas à la journée entière', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-11-17T12:00:00Z'));
+      try {
+        jest
+          .spyOn(revenue, 'listActivations')
+          .mockResolvedValueOnce([
+            { usedAt: new Date('2026-11-17T10:00:00Z'), routerId: 'r1', planId: 'p1', xof: 500, source: 'EXACT' },
+          ])
+          .mockResolvedValueOnce([
+            { usedAt: new Date('2026-11-16T09:00:00Z'), routerId: 'r1', planId: 'p1', xof: 1000, source: 'EXACT' },
+            { usedAt: new Date('2026-11-16T18:00:00Z'), routerId: 'r1', planId: 'p1', xof: 3000, source: 'EXACT' },
+          ]);
+        jest.spyOn(revenue, 'revenueByPlan').mockResolvedValue([]);
+        mockPrisma.router.findMany.mockResolvedValue([]);
+
+        const result = await service.overview({ period: 'today' });
+
+        expect(result.comparison).toBe('to_date');
+        expect(result.revenueGrowthPercent).toBe(-50);
+        expect(result.peakHours[10]).toEqual({ hour: 10, sessions: 0, sales: 1, revenueXof: 500 });
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('période terminée : comparée à la période précédente entière', async () => {
+      jest.useFakeTimers().setSystemTime(new Date('2026-11-17T12:00:00Z'));
+      try {
+        jest
+          .spyOn(revenue, 'listActivations')
+          .mockResolvedValueOnce([
+            { usedAt: new Date('2026-11-16T10:00:00Z'), routerId: 'r1', planId: 'p1', xof: 2000, source: 'EXACT' },
+          ])
+          .mockResolvedValueOnce([
+            { usedAt: new Date('2026-11-15T09:00:00Z'), routerId: 'r1', planId: 'p1', xof: 1000, source: 'EXACT' },
+            { usedAt: new Date('2026-11-15T18:00:00Z'), routerId: 'r1', planId: 'p1', xof: 3000, source: 'EXACT' },
+          ]);
+        jest.spyOn(revenue, 'revenueByPlan').mockResolvedValue([]);
+        mockPrisma.router.findMany.mockResolvedValue([]);
+
+        const result = await service.overview({ period: 'yesterday' });
+
+        expect(result.comparison).toBe('full');
+        expect(result.revenueGrowthPercent).toBe(-50);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('14. filtre routerId : router vérifié appartenir au tenant avant tout calcul', async () => {
       mockPrisma.router.findFirst.mockResolvedValue(null); // routeur d'un autre tenant
       jest.spyOn(revenue, 'listActivations').mockResolvedValue([]);
