@@ -11,3 +11,5 @@ android/sentry.properties
 .env.sentry-build-plugin
 .env.sentry*
 !.env.sentry*.example
+
+.env.local
