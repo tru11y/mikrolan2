@@ -239,7 +239,17 @@ describe('Compliance (e2e)', () => {
       await provision().expect(200);
 
       const peer = await prisma.remotePeer.findUniqueOrThrow({ where: { routerId } });
-      expect(peer.status).toBe(RemotePeerStatus.ACTIVE);
+      expect(peer.status).toBe(RemotePeerStatus.PENDING);
+
+      // Le provisionnement laisse le pair en PENDING ; l'activation (handshake WireGuard +
+      // probe API RouterOS) est couverte par les specs unitaires de RemoteAccessService.
+      // On simule ici son effet en base pour que les étapes suivantes (révocation, purge
+      // des identifiants) voient un pair ACTIVE.
+      await prisma.remotePeer.update({
+        where: { routerId },
+        data: { status: RemotePeerStatus.ACTIVE },
+      });
+      await prisma.router.update({ where: { id: routerId }, data: { mode: ManagementMode.REMOTE } });
     });
 
     it('révocation : pairs coupés, routeur repassé en LOCAL, autorisation effacée, nouveau provisionnement refusé', async () => {
