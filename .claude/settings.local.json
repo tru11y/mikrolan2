@@ -27,7 +27,6 @@
       "Bash(powershell -Command \"Get-Process java -ErrorAction SilentlyContinue | Stop-Process -Force\")",
       "Bash(./gradlew assembleRelease --console=plain)",
       "Bash(powershell -Command \"Get-Process java -ErrorAction SilentlyContinue | Select-Object Id,CPU\")",
-      "Bash(curl -s -w \"\\\\nstatus:%{http_code}\\\\n\" --max-time 10 https://api.mikrolan.net/api/v1/auth/login -X POST -H \"Content-Type: application/json\" -d '{\"email\":\"b2.bamba2@gmail.com\",\"password\":\"cMYbpBLkq9xxnCuNIAOBD8LJ\"}')",
       "Bash(curl *)",
       "Bash(npx jest *)",
       "Bash(/c/Users/PC/AppData/Local/Android/Sdk/platform-tools/adb.exe kill-server *)",
