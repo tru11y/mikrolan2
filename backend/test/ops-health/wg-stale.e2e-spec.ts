@@ -50,7 +50,7 @@ describe('Alerte WireGuard stale (e2e)', () => {
           tenantId: user.tenantId,
           wgPublicKey: `pk-${key}-${stamp}`,
           wgIp: `10.99.${n}.${n}`,
-          allocatedPort: 30000 + n + (stamp % 1000),
+          allocatedPort: 32000 + n + (stamp % 1000),
           serverPublicKey: 'srv',
           endpoint: 'vps:51820',
           status: RemotePeerStatus.ACTIVE,
