@@ -23,6 +23,8 @@ import {
 } from './dto/webhook.dto';
 
 const SASPAY_SYSTEM_ACTOR = 'saspay-webhook';
+/** Temps minimal restant pour resservir une session : le client doit pouvoir finir de payer. */
+const REUSABLE_SESSION_MARGIN_MS = 5 * 60_000;
 
 @Injectable()
 export class SaspayService {
@@ -122,12 +124,15 @@ export class SaspayService {
 
     // Debounce : un intent SasPay PENDING existe déjà sur cette facture →
     // on renvoie son checkoutUrl sans recréer une session côté SasPay.
+    // Une session expirée (ou sur le point de l'être) affiche « Paiement
+    // indisponible » : on en recrée une plutôt que de la resservir.
     const existingIntent = await this.prisma.paymentIntent.findFirst({
       where: {
         invoiceId: invoice.id,
         status: PaymentIntentStatus.PENDING,
         provider: PaymentProvider.SASPAY,
         checkoutUrl: { not: null },
+        expiresAt: { gt: new Date(Date.now() + REUSABLE_SESSION_MARGIN_MS) },
       },
       orderBy: { createdAt: 'desc' },
     });
