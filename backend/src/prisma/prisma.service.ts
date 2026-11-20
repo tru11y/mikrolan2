@@ -45,7 +45,8 @@ export function applyTenantScope(
     case 'create':
       params.args.data = { ...params.args.data, tenantId };
       break;
-    case 'createMany': {
+    case 'createMany':
+    case 'createManyAndReturn': {
       const data = params.args.data;
       params.args.data = Array.isArray(data)
         ? data.map((d: Record<string, unknown>) => ({ ...d, tenantId }))

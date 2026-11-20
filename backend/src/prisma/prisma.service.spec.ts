@@ -52,6 +52,19 @@ describe('applyTenantScope (real tenant middleware logic, FIND-003)', () => {
     expect(out.args.where).toEqual({ id: 'ticket-1', tenantId: 'tenant-A' });
   });
 
+  it('injects tenantId on createManyAndReturn (every row, array form)', () => {
+    const params: any = {
+      model: 'Voucher',
+      action: 'createManyAndReturn',
+      args: { data: [{ code: 'a' }, { code: 'b', tenantId: 'attacker' }] },
+    };
+    const out = applyTenantScope(params, ctxA);
+    expect(out.args.data).toEqual([
+      { code: 'a', tenantId: 'tenant-A' },
+      { code: 'b', tenantId: 'tenant-A' },
+    ]);
+  });
+
   it('injects tenantId on count', () => {
     const params: any = { model: 'SupportTicket', action: 'count', args: { where: {} } };
     const out = applyTenantScope(params, ctxA);
