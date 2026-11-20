@@ -2,7 +2,7 @@
 // Isolation: row-level tenant_id + global TenantGuard + Prisma tenant middleware.
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   // Le VPS (Ubuntu 22.04) exige le moteur OpenSSL 3 ; le runner CI ne génère que 1.1 par défaut.
   binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
@@ -71,6 +71,20 @@ enum RemotePeerStatus {
   ACTIVE
   REVOKED
   ERROR
+}
+
+// Liaison de routeurs partageant un quota (FreeRADIUS). Un lien regroupe
+// plusieurs NAS derrière une authentification commune.
+enum RouterLinkStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+// Mode d'authentification d'un lien : DIRECT = chaque routeur gère localement
+// ses users hotspot (comportement historique) ; RADIUS = délégation à FreeRADIUS.
+enum RouterLinkAuthMode {
+  RADIUS
+  DIRECT
 }
 
 enum PaymentProvider {
@@ -182,35 +196,37 @@ enum GenerationType {
 
 // ─── TENANT (racine d'isolation) ─────────────────────────
 model Tenant {
-  id                       String            @id @default(uuid())
-  name                     String
-  slug                     String            @unique
-  status                   TenantStatus      @default(ACTIVE)
-  country                  String?
-  countryUpdatedAt         DateTime?
-  lastCountryReminderAt    DateTime?
+  id                        String                     @id @default(uuid())
+  name                      String
+  slug                      String                     @unique
+  status                    TenantStatus               @default(ACTIVE)
+  country                   String?
+  countryUpdatedAt          DateTime?
+  lastCountryReminderAt     DateTime?
   // Autorisation d'accès distant aux routeurs (annexe CGV) : donnée par le client, révocable.
-  remoteAccessAcceptedAt   DateTime?
-  remoteAccessVersion      String?
-  remoteAccessAcceptedById String?
-  timezone                 String?           @default("Africa/Abidjan")
-  users                    User[]
-  routers                  Router[]
-  subscription             Subscription?
-  invoices                 Invoice[]
-  releaseDownloads         ReleaseDownload[]
-  auditLogs                AuditLog[]
-  plans                    Plan[]
-  voucherBatches           VoucherBatch[]
-  vouchers                 Voucher[]
-  sessions                 Session[]
-  notifications            Notification[]
-  supportTickets           SupportTicket[]
-  ticketVaults             TicketVault[]
+  remoteAccessAcceptedAt    DateTime?
+  remoteAccessVersion       String?
+  remoteAccessAcceptedById  String?
+  timezone                  String?                    @default("Africa/Abidjan")
+  users                     User[]
+  routers                   Router[]
+  subscription              Subscription?
+  invoices                  Invoice[]
+  releaseDownloads          ReleaseDownload[]
+  auditLogs                 AuditLog[]
+  plans                     Plan[]
+  voucherBatches            VoucherBatch[]
+  vouchers                  Voucher[]
+  sessions                  Session[]
+  notifications             Notification[]
+  supportTickets            SupportTicket[]
+  ticketVaults              TicketVault[]
   ticketVerifierAssignments TicketVerifierAssignment[]
-  createdAt                DateTime          @default(now())
-  updatedAt                DateTime          @updatedAt
-  deletedAt                DateTime?
+  routerLinks               RouterLink[]
+  routerLinkMembers         RouterLinkMember[]
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+  deletedAt                 DateTime?
 
   // Le back-office trie les comptes du plus récent au plus ancien et pagine
   // par curseur : sans cet index, chaque page est un seq scan de la table.
@@ -220,22 +236,22 @@ model Tenant {
 
 // ─── USER (email global unique → résout le tenant au login) ─
 model User {
-  id                   String            @id @default(uuid())
+  id                   String                     @id @default(uuid())
   tenantId             String
-  tenant               Tenant            @relation(fields: [tenantId], references: [id])
-  email                String            @unique
+  tenant               Tenant                     @relation(fields: [tenantId], references: [id])
+  email                String                     @unique
   name                 String?
   country              String?
   passwordHash         String
-  hasPassword          Boolean           @default(true)
+  hasPassword          Boolean                    @default(true)
   /// Secret TOTP chiffré (AES-GCM) ; MFA effective seulement si totpEnabledAt est posé.
   totpSecretEnc        String?
   totpEnabledAt        DateTime?
-  googleId             String?           @unique
-  appleId              String?           @unique
-  role                 UserRole          @default(MEMBER)
-  status               UserStatus        @default(ACTIVE)
-  notificationsEnabled Boolean           @default(true)
+  googleId             String?                    @unique
+  appleId              String?                    @unique
+  role                 UserRole                   @default(MEMBER)
+  status               UserStatus                 @default(ACTIVE)
+  notificationsEnabled Boolean                    @default(true)
   pushToken            String? // Expo push token pour les notifications OS
   lastLoginAt          DateTime? // dernière authentification réussie (vue admin)
   // Preuve d'acceptation des textes légaux (version = date de publication du texte).
@@ -254,8 +270,8 @@ model User {
   releaseDownloads     ReleaseDownload[]
   verifierAssignment   TicketVerifierAssignment?  @relation("TicketVerifierAssignment")
   assignedVerifiers    TicketVerifierAssignment[] @relation("TicketVerifierAssignmentCreator")
-  createdAt            DateTime          @default(now())
-  updatedAt            DateTime          @updatedAt
+  createdAt            DateTime                   @default(now())
+  updatedAt            DateTime                   @updatedAt
 
   @@index([tenantId])
   @@index([tenantId, createdAt])
@@ -265,21 +281,21 @@ model User {
 
 // ─── REFRESH TOKEN (family rotation) ─────────────────────
 model RefreshToken {
-  id           String   @id @default(uuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id])
-  tokenHash    String   @unique
-  family       String
-  revoked      Boolean  @default(false)
-  replacedById String?
+  id             String    @id @default(uuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id])
+  tokenHash      String    @unique
+  family         String
+  revoked        Boolean   @default(false)
+  replacedById   String?
   // Rotation grace: set when this token is rotated. A revoked token replayed
   // before graceExpiresAt (and whose successor is itself still unused) is a
   // benign retry (lost response / concurrent refresh), not theft — tolerated
   // without revoking the family. Null on legacy tokens → treated as out of grace.
   rotatedAt      DateTime?
   graceExpiresAt DateTime?
-  expiresAt    DateTime
-  createdAt    DateTime @default(now())
+  expiresAt      DateTime
+  createdAt      DateTime  @default(now())
 
   @@index([userId])
   @@index([family])
@@ -299,36 +315,74 @@ model PasswordResetCode {
 
 // ─── ROUTER (unique par tenant) ──────────────────────────
 model Router {
-  id                String            @id @default(uuid())
-  tenantId          String
-  tenant            Tenant            @relation(fields: [tenantId], references: [id])
-  identity          String
-  alias             String?
-  model             String?
-  localAddress      String? // IP:port LAN (mode local)
-  credEncrypted     String? // creds RouterOS AES-256-GCM (remote seulement)
-  mode              ManagementMode    @default(LOCAL)
-  health            RouterHealth      @default(UNKNOWN)
-  lastHeartbeat     DateTime?
-  lastSyncAt        DateTime?
-  lastSyncError     String?
-  syncFailCount     Int               @default(0)
-  ticketTemplate    Json? // options d'affichage du reçu ticket (voir ticket-template.schemas.ts)
-  pushNotifications Boolean           @default(true) // notifs push OS pour ce routeur
-  remotePeer        RemotePeer?
-  telemetry         RouterTelemetry[]
-  plans             Plan[]
-  voucherBatches    VoucherBatch[]
-  vouchers          Voucher[]
-  sessions          Session[]
+  id                        String                     @id @default(uuid())
+  tenantId                  String
+  tenant                    Tenant                     @relation(fields: [tenantId], references: [id])
+  identity                  String
+  alias                     String?
+  model                     String?
+  localAddress              String? // IP:port LAN (mode local)
+  credEncrypted             String? // creds RouterOS AES-256-GCM (remote seulement)
+  radiusSecretEncrypted     String? // secret RADIUS du NAS, AES-256-GCM (comme credEncrypted)
+  mode                      ManagementMode             @default(LOCAL)
+  health                    RouterHealth               @default(UNKNOWN)
+  lastHeartbeat             DateTime?
+  lastSyncAt                DateTime?
+  lastSyncError             String?
+  syncFailCount             Int                        @default(0)
+  ticketTemplate            Json? // options d'affichage du reçu ticket (voir ticket-template.schemas.ts)
+  pushNotifications         Boolean                    @default(true) // notifs push OS pour ce routeur
+  remotePeer                RemotePeer?
+  telemetry                 RouterTelemetry[]
+  plans                     Plan[]
+  voucherBatches            VoucherBatch[]
+  vouchers                  Voucher[]
+  sessions                  Session[]
   ticketVerifierAssignments TicketVerifierAssignment[]
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  deletedAt         DateTime?
+  linkMemberships           RouterLinkMember[]
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+  deletedAt                 DateTime?
 
   @@unique([tenantId, identity])
   @@index([tenantId])
   @@index([tenantId, health])
+}
+
+// ─── ROUTER LINK (liaison de routeurs à quota partagé via FreeRADIUS) ─
+// Regroupe plusieurs routeurs (NAS) derrière une authentification commune.
+// Les vouchers sont rattachés au lien ; une session est créée par (voucher, routeur).
+model RouterLink {
+  id        String             @id @default(uuid())
+  tenantId  String
+  tenant    Tenant             @relation(fields: [tenantId], references: [id])
+  name      String
+  slug      String
+  status    RouterLinkStatus   @default(ACTIVE)
+  authMode  RouterLinkAuthMode @default(DIRECT)
+  routers   RouterLinkMember[]
+  vouchers  Voucher[]
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+}
+
+// Jointure M-N explicite entre un RouterLink et ses Router (NAS).
+model RouterLinkMember {
+  id        String     @id @default(uuid())
+  linkId    String
+  link      RouterLink @relation(fields: [linkId], references: [id])
+  routerId  String
+  router    Router     @relation(fields: [routerId], references: [id])
+  tenantId  String
+  tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  createdAt DateTime   @default(now())
+
+  @@unique([linkId, routerId])
+  @@index([tenantId])
+  @@index([routerId])
 }
 
 // ─── TICKET VERIFIER ASSIGNMENT ──────────────────────────
@@ -453,33 +507,33 @@ enum WgAlertAttemptStatus {
 }
 
 model WgAlertEpisode {
-  id               String               @id @default(uuid())
-  remotePeerId     String
-  remotePeer       RemotePeer           @relation(fields: [remotePeerId], references: [id], onDelete: Cascade)
-  tenantId         String
-  alertType        WgAlertType
-  detectedAt       DateTime
-  resolvedAt       DateTime?
-  status           WgAlertEpisodeStatus @default(OPEN)
-  lastAttemptAt    DateTime?
-  nextAttemptAt    DateTime?
-  attemptCount     Int                  @default(0)
+  id                 String                   @id @default(uuid())
+  remotePeerId       String
+  remotePeer         RemotePeer               @relation(fields: [remotePeerId], references: [id], onDelete: Cascade)
+  tenantId           String
+  alertType          WgAlertType
+  detectedAt         DateTime
+  resolvedAt         DateTime?
+  status             WgAlertEpisodeStatus     @default(OPEN)
+  lastAttemptAt      DateTime?
+  nextAttemptAt      DateTime?
+  attemptCount       Int                      @default(0)
   /// Statut e-mail / push de la dernière tentative INITIALE ou RETRY (pas des rappels), jamais d'adresse ni de token.
-  emailStatus      WgAlertEmailStatus?
-  pushStatus       WgAlertPushStatus?
+  emailStatus        WgAlertEmailStatus?
+  pushStatus         WgAlertPushStatus?
   providerAcceptedAt DateTime?
   /// Rappels quotidiens d'un incident toujours non résolu après acceptation (max 7). Un rappel = un passage logique.
-  nextReminderAt   DateTime?
-  reminderCount    Int                  @default(0)
-  lastReminderAt   DateTime?
+  nextReminderAt     DateTime?
+  reminderCount      Int                      @default(0)
+  lastReminderAt     DateTime?
   /// Claim atomique de la tentative en cours : un claim expiré peut être repris (crash du processus).
-  claimExpiresAt   DateTime?
+  claimExpiresAt     DateTime?
   /// Épisode reconstitué depuis un ancien `staleAlertedAt` : l'acceptation passée est INCONNUE (jamais présumée).
-  legacy           Boolean              @default(false)
-  failureCode      String?
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
-  attempts         WgAlertDeliveryAttempt[]
+  legacy             Boolean                  @default(false)
+  failureCode        String?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  attempts           WgAlertDeliveryAttempt[]
 
   @@index([remotePeerId, status])
   @@index([nextAttemptAt, status])
@@ -714,23 +768,23 @@ model Plan {
 
 // ─── VOUCHER BATCH (lot de codes généré en une fois) ─────
 model VoucherBatch {
-  id           String             @id @default(uuid())
-  seq          Int                @default(autoincrement())
-  tenantId     String
-  tenant       Tenant             @relation(fields: [tenantId], references: [id])
-  planId       String
-  plan         Plan               @relation(fields: [planId], references: [id])
-  routerId     String
-  router       Router             @relation(fields: [routerId], references: [id])
-  quantity     Int
-  generated    Int                @default(0)
-  status       VoucherBatchStatus @default(PENDING)
-  createdById  String?
-  pdfUrl       String?
-  vouchers     Voucher[]
-  ticketVaults TicketVault[]
-  createdAt    DateTime           @default(now())
-  completedAt  DateTime?
+  id                 String             @id @default(uuid())
+  seq                Int                @default(autoincrement())
+  tenantId           String
+  tenant             Tenant             @relation(fields: [tenantId], references: [id])
+  planId             String
+  plan               Plan               @relation(fields: [planId], references: [id])
+  routerId           String
+  router             Router             @relation(fields: [routerId], references: [id])
+  quantity           Int
+  generated          Int                @default(0)
+  status             VoucherBatchStatus @default(PENDING)
+  createdById        String?
+  pdfUrl             String?
+  vouchers           Voucher[]
+  ticketVaults       TicketVault[]
+  createdAt          DateTime           @default(now())
+  completedAt        DateTime?
   // Idempotence B-01 : UUID v4 fourni par le client via header Idempotency-Key
   // sur POST /routers/:id/vouchers/generate. NULL autorisé (ancien APK). En
   // PostgreSQL, NULL != NULL dans un index unique standard → plusieurs lignes
@@ -765,6 +819,8 @@ model Voucher {
   plan                 Plan           @relation(fields: [planId], references: [id])
   routerId             String
   router               Router         @relation(fields: [routerId], references: [id])
+  linkId               String?
+  link                 RouterLink?    @relation(fields: [linkId], references: [id])
   batchId              String?
   batch                VoucherBatch?  @relation(fields: [batchId], references: [id])
   code                 String // identifiant hotspot (username)
@@ -780,7 +836,7 @@ model Voucher {
   priceSnapshotSource  String? // 'EXACT' | 'ESTIMATED_FROM_CURRENT_PLAN_PRICE' | 'UNKNOWN'
   revokedAt            DateTime?
   createdById          String?
-  session              Session?
+  sessions             Session[]
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
 
@@ -797,28 +853,32 @@ model Voucher {
 
 // ─── SESSION (connexion active reflétée depuis le routeur) ─
 model Session {
-  id           String        @id @default(uuid())
-  tenantId     String
-  tenant       Tenant        @relation(fields: [tenantId], references: [id])
-  voucherId    String        @unique
-  voucher      Voucher       @relation(fields: [voucherId], references: [id])
-  routerId     String
-  router       Router        @relation(fields: [routerId], references: [id])
-  mikrotikId   String? // .id du /ip/hotspot/active
-  macAddress   String?
-  ipAddress    String?
-  status       SessionStatus @default(ACTIVE)
-  bytesIn      BigInt        @default(0)
-  bytesOut     BigInt        @default(0)
-  startedAt    DateTime      @default(now())
-  lastSeenAt   DateTime?
-  terminatedAt DateTime?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id            String        @id @default(uuid())
+  tenantId      String
+  tenant        Tenant        @relation(fields: [tenantId], references: [id])
+  voucherId     String
+  voucher       Voucher       @relation(fields: [voucherId], references: [id])
+  routerId      String
+  router        Router        @relation(fields: [routerId], references: [id])
+  mikrotikId    String? // .id du /ip/hotspot/active
+  nasIdentifier String? // NAS-Identifier RADIUS du routeur ayant ouvert la session
+  acctSessionId String? // Acct-Session-Id RADIUS (corrélation accounting)
+  macAddress    String?
+  ipAddress     String?
+  status        SessionStatus @default(ACTIVE)
+  bytesIn       BigInt        @default(0)
+  bytesOut      BigInt        @default(0)
+  startedAt     DateTime      @default(now())
+  lastSeenAt    DateTime?
+  terminatedAt  DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
+  @@unique([voucherId, routerId])
   @@index([tenantId])
   @@index([tenantId, status])
   @@index([routerId])
+  @@index([voucherId])
 }
 
 enum NotificationType {
