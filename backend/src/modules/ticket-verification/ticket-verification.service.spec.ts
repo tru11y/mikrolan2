@@ -1,4 +1,4 @@
-import { AuditAction, EventOutcome, VoucherStatus } from '@prisma/client';
+import { AuditAction, EventOutcome, RouterLinkAuthMode, VoucherStatus } from '@prisma/client';
 import {
   NOT_FOUND_RESPONSE,
   TicketVerificationService,
@@ -19,9 +19,11 @@ type VoucherRow = {
   code: string;
   status: VoucherStatus;
   mikrotikId: string | null;
+  radiusDistributable: boolean;
   expiresAt: Date | null;
   usedAt: Date | null;
   plan: { name: string; durationMinutes: number };
+  link: { authMode: RouterLinkAuthMode } | null;
 };
 
 function makeDb(rows: VoucherRow[]) {
@@ -42,9 +44,11 @@ function makeDb(rows: VoucherRow[]) {
               id: found.id,
               status: found.status,
               mikrotikId: found.mikrotikId,
+              radiusDistributable: found.radiusDistributable,
               expiresAt: found.expiresAt,
               usedAt: found.usedAt,
               plan: found.plan,
+              link: found.link,
             }
           : null;
       }),
@@ -67,9 +71,11 @@ function voucher(partial: Partial<VoucherRow>): VoucherRow {
     code: 'ABC123',
     status: VoucherStatus.GENERATED,
     mikrotikId: 'mk-1',
+    radiusDistributable: false,
     expiresAt: null,
     usedAt: null,
     plan: { name: '1H', durationMinutes: 60 },
+    link: null,
     ...partial,
   };
 }
@@ -193,6 +199,47 @@ describe('TicketVerificationService', () => {
     const svc = new TicketVerificationService(db as never, makeEvents() as never);
     const res = await svc.verify(SCOPE, 'ABC123');
     expect(res).toEqual(UNAVAILABLE_RESPONSE);
+  });
+
+  describe('RADIUS mode provisioning', () => {
+    const RADIUS = { authMode: RouterLinkAuthMode.RADIUS };
+
+    it('RADIUS distribuable (radiusDistributable=true, mikrotikId null) → VALID, pas UNAVAILABLE', async () => {
+      const db = makeDb([
+        voucher({ mikrotikId: null, radiusDistributable: true, link: RADIUS }),
+      ]);
+      const svc = new TicketVerificationService(db as never, makeEvents() as never);
+      const res = await svc.verify(SCOPE, 'ABC123');
+      expect(res.status).toBe('VALID');
+      expect(res.recommendedAction).toBe('ALLOW_CUSTOMER');
+    });
+
+    it('RADIUS lien non prêt (radiusDistributable=false) → TEMPORARILY_UNAVAILABLE', async () => {
+      const db = makeDb([
+        voucher({ mikrotikId: null, radiusDistributable: false, link: RADIUS }),
+      ]);
+      const svc = new TicketVerificationService(db as never, makeEvents() as never);
+      const res = await svc.verify(SCOPE, 'ABC123');
+      expect(res).toEqual(UNAVAILABLE_RESPONSE);
+    });
+
+    it('RADIUS : mikrotikId présent mais non distribuable → UNAVAILABLE (mikrotikId ignoré en RADIUS)', async () => {
+      const db = makeDb([
+        voucher({ mikrotikId: 'mk-x', radiusDistributable: false, link: RADIUS }),
+      ]);
+      const svc = new TicketVerificationService(db as never, makeEvents() as never);
+      const res = await svc.verify(SCOPE, 'ABC123');
+      expect(res).toEqual(UNAVAILABLE_RESPONSE);
+    });
+
+    it('DIRECT inchangé : provisionné via mikrotikId → VALID (régression)', async () => {
+      const db = makeDb([
+        voucher({ mikrotikId: 'mk-1', radiusDistributable: false, link: { authMode: RouterLinkAuthMode.DIRECT } }),
+      ]);
+      const svc = new TicketVerificationService(db as never, makeEvents() as never);
+      const res = await svc.verify(SCOPE, 'ABC123');
+      expect(res.status).toBe('VALID');
+    });
   });
 
   describe('NOT_FOUND — identical response, no global fallback', () => {
