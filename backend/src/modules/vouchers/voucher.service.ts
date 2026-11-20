@@ -758,7 +758,7 @@ export class VoucherService {
           select: { id: true, name: true, priceXof: true, durationMinutes: true },
         },
         router: { select: { id: true, identity: true, alias: true } },
-        session: {
+        sessions: {
           select: {
             status: true,
             startedAt: true,
@@ -769,6 +769,7 @@ export class VoucherService {
             macAddress: true,
             ipAddress: true,
           },
+          orderBy: { startedAt: 'desc' },
         },
       },
     });
@@ -788,16 +789,21 @@ export class VoucherService {
       (voucher.status === VoucherStatus.GENERATED ||
         voucher.status === VoucherStatus.ACTIVE);
 
-    const session = voucher.session
+    // Une session active prime sur l'historique ; sinon la plus récente.
+    const sessionRow =
+      voucher.sessions.find((s) => s.status === SessionStatus.ACTIVE) ??
+      voucher.sessions[0] ??
+      null;
+    const session = sessionRow
       ? {
-          status: voucher.session.status,
-          startedAt: voucher.session.startedAt.toISOString(),
-          lastSeenAt: voucher.session.lastSeenAt?.toISOString() ?? null,
-          terminatedAt: voucher.session.terminatedAt?.toISOString() ?? null,
-          bytesIn: voucher.session.bytesIn.toString(),
-          bytesOut: voucher.session.bytesOut.toString(),
-          macAddress: voucher.session.macAddress,
-          ipAddress: voucher.session.ipAddress,
+          status: sessionRow.status,
+          startedAt: sessionRow.startedAt.toISOString(),
+          lastSeenAt: sessionRow.lastSeenAt?.toISOString() ?? null,
+          terminatedAt: sessionRow.terminatedAt?.toISOString() ?? null,
+          bytesIn: sessionRow.bytesIn.toString(),
+          bytesOut: sessionRow.bytesOut.toString(),
+          macAddress: sessionRow.macAddress,
+          ipAddress: sessionRow.ipAddress,
         }
       : null;
 
@@ -883,7 +889,7 @@ export class VoucherService {
         mikrotikId: true,
         status: true,
         router: { select: { mode: true } },
-        session: { select: { mikrotikId: true } },
+        sessions: { select: { mikrotikId: true, routerId: true, status: true } },
       },
     });
     if (!voucher) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.VOUCHER_NOT_FOUND, 'Ticket introuvable.');
@@ -943,13 +949,16 @@ export class VoucherService {
     routerId: string;
     mikrotikId: string | null;
     router: { mode: ManagementMode };
-    session: { mikrotikId: string | null } | null;
+    sessions: { mikrotikId: string | null; routerId: string; status: SessionStatus }[];
   }) {
     const now = new Date();
     let routerWarning: Prisma.InputJsonObject | null = null;
     if (voucher.mikrotikId && voucher.router.mode === ManagementMode.REMOTE) {
       const { mikrotikId } = voucher;
-      const activeId = voucher.session?.mikrotikId ?? null;
+      const activeId =
+        voucher.sessions.find(
+          (s) => s.routerId === voucher.routerId && s.status === SessionStatus.ACTIVE,
+        )?.mikrotikId ?? null;
       try {
         await this.remote.run(voucher.routerId, async (client) => {
           if (activeId) await removeActive(client, activeId).catch(() => undefined);
@@ -1071,7 +1080,7 @@ export class VoucherService {
     // ouverte a déjà été utilisé (revenu déjà compté) mais n'est plus
     // connecté — deux raisons différentes de ne jamais le supprimer.
     const connectedNow = await this.prisma.voucher.count({
-      where: { ...where, status: VoucherStatus.ACTIVE, session: { status: SessionStatus.ACTIVE } },
+      where: { ...where, status: VoucherStatus.ACTIVE, sessions: { some: { status: SessionStatus.ACTIVE } } },
     });
     return {
       batchId: where.batchId ?? null,
@@ -1127,7 +1136,7 @@ export class VoucherService {
         mikrotikId: true,
         routerId: true,
         router: { select: { mode: true } },
-        session: { select: { status: true } },
+        sessions: { select: { status: true } },
       },
     });
     const analyzed = candidates.length;
@@ -1191,7 +1200,7 @@ export class VoucherService {
     let connectedNow = 0;
     for (const v of candidates) {
       if (deleted.has(v.id)) continue;
-      if (v.session?.status === SessionStatus.ACTIVE) connectedNow += 1;
+      if (v.sessions.some((s) => s.status === SessionStatus.ACTIVE)) connectedNow += 1;
     }
     const protectedActive = analyzed - deleted.size;
 

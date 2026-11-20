@@ -134,7 +134,7 @@ export class SessionsService {
         id: true,
         code: true,
         status: true,
-        session: { select: { id: true } },
+        sessions: { where: { routerId }, select: { id: true } },
         plan: { select: { priceXof: true } },
       },
     });
@@ -152,11 +152,13 @@ export class SessionsService {
         lastSeenAt: now,
       };
 
-      // Session already opened: refresh its counters, and reopen it if the
-      // same code came back after having been closed.
-      if (voucher.session) {
+      // Session already opened for this router: refresh its counters, and
+      // reopen it if the same code came back after having been closed. La clé
+      // (voucherId, routerId) garantit au plus une session par routeur.
+      const existing = voucher.sessions[0];
+      if (existing) {
         await this.prisma.session.update({
-          where: { id: voucher.session.id },
+          where: { id: existing.id },
           data: { ...seen, status: SessionStatus.ACTIVE, terminatedAt: null },
         });
         continue;

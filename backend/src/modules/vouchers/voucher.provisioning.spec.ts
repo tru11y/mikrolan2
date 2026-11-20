@@ -181,7 +181,7 @@ describe('verifyVoucherForOperator — counter', () => {
     mikrotikId,
     plan: { id: 'plan-1', name: '1h', priceXof: 500, durationMinutes: 60 },
     router: { id: 'router-1', identity: 'MT', alias: 'R' },
-    session: null,
+    sessions: [],
   });
 
   it('(F) non-provisioned voucher -> canLogin=false and an explicit message', async () => {
@@ -323,7 +323,7 @@ describe('verifyVoucherForOperator — réponse enrichie', () => {
     ...rows('x', 1, 1)[0],
     plan: { id: 'plan-1', name: '3 jours', priceXof: 2000, durationMinutes: 4320 },
     router: { id: 'router-1', identity: 'MT-01', alias: 'FREEDOM HOME' },
-    session: null,
+    sessions: [],
     ...over,
   });
 
@@ -341,7 +341,7 @@ describe('verifyVoucherForOperator — réponse enrichie', () => {
     const used = new Date(Date.now() - 2 * 3_600_000); // il y a 2 h
     const { service, prisma } = makeService();
     prisma.voucher.findFirst.mockResolvedValue(
-      row({ status: VoucherStatus.ACTIVE, usedAt: used, plan: { id: 'plan-1', name: '24 h', priceXof: 500, durationMinutes: 1440 }, session: { status: SessionStatus.ACTIVE, startedAt: used, lastSeenAt: used, terminatedAt: null, bytesIn: BigInt(1), bytesOut: BigInt(2), macAddress: null, ipAddress: null } }),
+      row({ status: VoucherStatus.ACTIVE, usedAt: used, plan: { id: 'plan-1', name: '24 h', priceXof: 500, durationMinutes: 1440 }, sessions: [{ status: SessionStatus.ACTIVE, startedAt: used, lastSeenAt: used, terminatedAt: null, bytesIn: BigInt(1), bytesOut: BigInt(2), macAddress: null, ipAddress: null }] }),
     );
     const res = await service.verifyVoucherForOperator({ ticket: 'CODEx0' });
     expect(res).toMatchObject({ state: 'IN_USE', canLogin: true, usedAt: used.toISOString(), expiresAt: new Date(used.getTime() + 24 * 3_600_000).toISOString() });
