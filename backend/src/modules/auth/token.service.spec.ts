@@ -13,6 +13,8 @@ function record(over: Record<string, unknown> = {}) {
     family: FAMILY,
     tokenHash: sha('RAW-A'),
     revoked: false,
+    rotatedAt: null,
+    graceExpiresAt: null,
     createdAt: new Date(NOW - 15 * 60_000),
     expiresAt: new Date(NOW + 29 * 86_400_000),
     user: { id: 'u1', tenantId: 't1', role: 'OWNER', status: 'ACTIVE', tenant: { status: 'ACTIVE' } },
@@ -20,24 +22,35 @@ function record(over: Record<string, unknown> = {}) {
   };
 }
 
-function setup(found: unknown, opts: { claimCount?: number; successorCreatedAt?: Date | null } = {}) {
-  const rows: Array<{ id: string; revoked: boolean }> = [];
+interface Opts {
+  claimCount?: number;
+  successor?: { createdAt: Date; revoked?: boolean } | null;
+  fresh?: unknown;
+  grace?: number;
+}
+
+function setup(found: unknown, opts: Opts = {}) {
+  const findUnique = jest.fn();
+  findUnique.mockResolvedValue(found);
+  if (opts.fresh !== undefined) findUnique.mockResolvedValueOnce(found).mockResolvedValueOnce(opts.fresh);
   const prisma = {
     refreshToken: {
-      findUnique: jest.fn().mockResolvedValue(found),
-      findFirst: jest.fn().mockResolvedValue(opts.successorCreatedAt === undefined ? null : opts.successorCreatedAt && { createdAt: opts.successorCreatedAt }),
+      findUnique,
+      findFirst: jest.fn().mockResolvedValue(opts.successor ?? null),
       updateMany: jest.fn().mockImplementation(({ where }: { where: { id?: string; family?: string } }) =>
         Promise.resolve({ count: where.id ? (opts.claimCount ?? 1) : 2 }),
       ),
-      create: jest.fn().mockImplementation(({ data }: { data: { id?: string } }) => {
-        rows.push({ id: data.id ?? 'new', revoked: false });
-        return Promise.resolve({});
-      }),
+      create: jest.fn().mockResolvedValue({}),
     },
     user: { findUnique: jest.fn().mockResolvedValue({ tenantId: 't1' }) },
   };
   const jwt = { signAsync: jest.fn().mockResolvedValue('signed-access') };
-  const config = { get: jest.fn().mockImplementation((k: string) => (k === 'JWT_ACCESS_TTL' ? 900 : k === 'JWT_REFRESH_TTL' ? 2592000 : 'secret')) };
+  const grace = opts.grace ?? 120;
+  const config = {
+    get: jest.fn().mockImplementation((k: string) =>
+      k === 'JWT_ACCESS_TTL' ? 900 : k === 'JWT_REFRESH_TTL' ? 2592000 : k === 'AUTH_REFRESH_GRACE_SECONDS' ? grace : 'secret',
+    ),
+  };
   const events = { record: jest.fn() };
   const service = new TokenService(prisma as never, jwt as never, config as never, events as unknown as AuthEventsService);
   return { service, prisma, events };
@@ -47,37 +60,76 @@ const names = (events: { record: jest.Mock }) => events.record.mock.calls.map((c
 
 describe('TokenService.rotate — événements', () => {
   it('rotation normale : REFRESH_ROTATED puis REFRESH_SUCCESS, sans révocation de famille', async () => {
-    const { service, events } = setup(record());
+    const { service, events, prisma } = setup(record());
     await service.rotate('RAW-A');
     expect(names(events)).toEqual(['REFRESH_ROTATED', 'REFRESH_SUCCESS']);
     expect(events.record.mock.calls[0][1].extra.tokenAgeMs).toBeGreaterThan(14 * 60_000);
+    // La consommation ouvre la fenêtre de grâce (rotatedAt + graceExpiresAt).
+    const claim = prisma.refreshToken.updateMany.mock.calls[0][0];
+    expect(claim.data.revoked).toBe(true);
+    expect(claim.data.graceExpiresAt.getTime()).toBeGreaterThan(Date.now());
   });
 
-  // Cas 1 (réponse perdue) : l'ancien jeton est rejoué quelques secondes après la rotation.
-  it('rejeu d’un jeton déjà tourné quelques secondes plus tard : famille entièrement révoquée (comportement ACTUEL, mesuré avec replayDelayMs)', async () => {
-    const { service, events, prisma } = setup(record({ revoked: true }), { successorCreatedAt: new Date(NOW - 4_000) });
-    await expect(service.rotate('RAW-A')).rejects.toMatchObject({ response: expect.anything() });
-    expect(names(events)).toEqual(['REFRESH_REUSE_DETECTED', 'REFRESH_FAMILY_REVOKED']);
-    const reuse = events.record.mock.calls[0][1];
-    expect(reuse.cause).toBe('replay_of_revoked_token');
-    expect(reuse.extra.replayDelayMs).toBeGreaterThanOrEqual(4_000);
-    expect(reuse.extra.replayDelayMs).toBeLessThan(10_000);
-    expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({ where: { family: FAMILY, revoked: false }, data: { revoked: true } });
-    expect(events.record.mock.calls[1][1].extra.revokedCount).toBe(2);
+  // Cas 1 (réponse perdue) : l'ancien jeton rejoué dans la grâce, successeur non consommé → toléré.
+  it('rejeu dans la fenêtre de grâce, successeur non utilisé : REFRESH_GRACE_REPLAY, famille préservée, nouveaux jetons', async () => {
+    const { service, events, prisma } = setup(
+      record({ revoked: true, graceExpiresAt: new Date(NOW + 90_000) }),
+      { successor: { createdAt: new Date(NOW - 4_000), revoked: false } },
+    );
+    const next = await service.rotate('RAW-A');
+    expect(next.accessToken).toBe('signed-access');
+    expect(names(events)).toEqual(['REFRESH_GRACE_REPLAY', 'REFRESH_SUCCESS']);
+    expect(events.record.mock.calls[0][1].extra.replayDelayMs).toBeGreaterThanOrEqual(4_000);
+    // Aucune révocation de famille.
+    expect(prisma.refreshToken.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ where: { family: FAMILY, revoked: false } }),
+    );
   });
 
-  it('rejeu bien plus tard (vol probable) : même traitement, replayDelayMs de plusieurs jours', async () => {
-    const { service, events } = setup(record({ revoked: true }), { successorCreatedAt: new Date(NOW - 3 * 86_400_000) });
+  it('rejeu dans la grâce mais successeur déjà utilisé (révoqué) : vol → famille révoquée', async () => {
+    const { service, events } = setup(
+      record({ revoked: true, graceExpiresAt: new Date(NOW + 90_000) }),
+      { successor: { createdAt: new Date(NOW - 4_000), revoked: true } },
+    );
     await expect(service.rotate('RAW-A')).rejects.toBeDefined();
+    expect(names(events)).toEqual(['REFRESH_REUSE_DETECTED', 'REFRESH_FAMILY_REVOKED']);
+    expect(events.record.mock.calls[0][1].cause).toBe('replay_of_revoked_token');
+  });
+
+  it('rejeu hors fenêtre de grâce (vol probable) : famille révoquée, replayDelayMs de plusieurs jours', async () => {
+    const { service, events } = setup(
+      record({ revoked: true, graceExpiresAt: new Date(NOW - 86_400_000) }),
+      { successor: { createdAt: new Date(NOW - 3 * 86_400_000), revoked: false } },
+    );
+    await expect(service.rotate('RAW-A')).rejects.toBeDefined();
+    expect(names(events)).toEqual(['REFRESH_REUSE_DETECTED', 'REFRESH_FAMILY_REVOKED']);
     expect(events.record.mock.calls[0][1].extra.replayDelayMs).toBeGreaterThan(2 * 86_400_000);
   });
 
-  // Cas 4 (deux refresh simultanés) : le perdant de la consommation atomique révoque la famille du gagnant.
-  it('deux rafraîchissements simultanés : le perdant déclenche REFRESH_REUSE_DETECTED (concurrent_refresh) et révoque la famille', async () => {
-    const { service, events } = setup(record(), { claimCount: 0 });
+  it('grâce désactivée (AUTH_REFRESH_GRACE_SECONDS=0) : tout rejeu révoque la famille (comportement strict)', async () => {
+    const { service, events } = setup(
+      record({ revoked: true, graceExpiresAt: new Date(NOW + 90_000) }),
+      { successor: { createdAt: new Date(NOW - 4_000), revoked: false }, grace: 0 },
+    );
     await expect(service.rotate('RAW-A')).rejects.toBeDefined();
     expect(names(events)).toEqual(['REFRESH_REUSE_DETECTED', 'REFRESH_FAMILY_REVOKED']);
+  });
+
+  // Cas 4 (deux refresh simultanés dans la grâce) : le perdant obtient de nouveaux jetons, pas une révocation.
+  it('deux rafraîchissements simultanés dans la grâce : le perdant déclenche REFRESH_GRACE_REPLAY, famille préservée', async () => {
+    const fresh = record({ revoked: true, graceExpiresAt: new Date(NOW + 90_000) });
+    const { service, events, prisma } = setup(record(), {
+      claimCount: 0,
+      fresh,
+      successor: { createdAt: new Date(NOW - 500), revoked: false },
+    });
+    const next = await service.rotate('RAW-A');
+    expect(next.accessToken).toBe('signed-access');
+    expect(names(events)).toEqual(['REFRESH_GRACE_REPLAY', 'REFRESH_SUCCESS']);
     expect(events.record.mock.calls[0][1].cause).toBe('concurrent_refresh');
+    expect(prisma.refreshToken.updateMany).not.toHaveBeenCalledWith(
+      expect.objectContaining({ where: { family: FAMILY, revoked: false } }),
+    );
   });
 
   it('refresh expiré : REFRESH_EXPIRED, famille non révoquée', async () => {
@@ -101,7 +153,9 @@ describe('TokenService.rotate — événements', () => {
   });
 
   it('aucun événement ne contient le jeton brut ni son empreinte', async () => {
-    const { service, events } = setup(record({ revoked: true }), { successorCreatedAt: new Date(NOW - 1000) });
+    const { service, events } = setup(record({ revoked: true, graceExpiresAt: new Date(NOW - 1000) }), {
+      successor: { createdAt: new Date(NOW - 1000), revoked: false },
+    });
     await expect(service.rotate('RAW-A')).rejects.toBeDefined();
     const dump = JSON.stringify(events.record.mock.calls);
     expect(dump).not.toContain('RAW-A');

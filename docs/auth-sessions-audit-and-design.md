@@ -1,6 +1,6 @@
 # Sessions MikroLan — audit, mesures et conception cible
 
-Statut : **audit et observabilité uniquement**. Aucun changement de comportement de sécurité dans cette PR. Le correctif ne sera codé qu'après les mesures réelles (§7).
+Statut : **correctif implémenté** (Phase 2, branche `fix/auth-refresh-grace`). L'observabilité (Phase 1) reste en place ; voir §8 pour ce qui a été codé.
 
 ## 1. Cycle de vie actuel
 
@@ -93,3 +93,24 @@ Après déploiement de cette PR, lire sur 7 jours : `refreshReuseDetected24h`, `
 1. Cette PR (observabilité) → déploiement CI → mesures sur 7 jours.
 2. Conception validée sur les mesures.
 3. Implémentation (serveur puis client), tests, validation sur copie de base, déploiement CI.
+
+## 8. Correctif implémenté (Phase 2)
+
+Fenêtre de grâce sur la rotation, pilotée par `AUTH_REFRESH_GRACE_SECONDS` (défaut 120 ; `0` = retour au comportement strict d'origine).
+
+**Serveur** (`token.service.ts`)
+- Migration additive `20261120120000_refresh_token_grace` : colonnes nullables `rotatedAt`, `graceExpiresAt` sur `RefreshToken`. Les jetons existants (`graceExpiresAt` NULL) sont hors grâce → comportement actuel conservé. Rollback : `AUTH_REFRESH_GRACE_SECONDS=0`, colonnes laissées en place.
+- La consommation atomique pose `rotatedAt`/`graceExpiresAt` sur le jeton tourné.
+- Rejeu d'un jeton déjà tourné (`handleRevokedReplay`) : **dans la grâce** (`now < graceExpiresAt`) **et** successeur non encore consommé (`successor.revoked = false`) → `REFRESH_GRACE_REPLAY`, réémission d'un jeton dans la famille, **aucune révocation** (couvre A réponse perdue, B crash au boot). **Hors grâce** ou successeur déjà utilisé → `REFRESH_REUSE_DETECTED` + révocation de la famille (vol).
+- Rotation concurrente (perdant du claim atomique, chemin C) : relit l'état gagné et passe par la même grâce → le perdant obtient de nouveaux jetons au lieu de révoquer la famille du gagnant.
+- Nouveau compteur `authSessions.refreshGraceReplay24h` (`GET /admin/system-health`).
+
+**Sécurité** : un jeton volé mais pas encore utilisé par le détenteur légitime a une fenêtre de rejeu bornée à G=120 s ; détecté après G ou après usage du successeur, le vol reste fatal pour la famille. Déconnexion forcée conservée pour F/G (mot de passe, suppression, expiration 30 j).
+
+**Client** (`mobile/src/lib/api.ts`, `authTokens.ts`)
+- Écriture **atomique** de la paire en une seule valeur `SecureStore` (`mikrolan_auth_tokens`, JSON versionné `v:1`). Plus aucun état « access écrit, refresh pas encore » (chemin B).
+- Lecture tolérante : migration transparente de l'ancien format à deux clés (purge après réécriture) ; valeur corrompue/incomplète → session absente (jamais à moitié restaurée).
+
+**Tests** : `token.service.spec.ts` (grâce : rejeu toléré, successeur consommé → révoque, hors grâce → révoque, `grace=0` strict, concurrence tolérée) ; `authTokens.test.ts` (aller-retour, corrompu/incomplet → null). Backend 176 unit verts, mobile `test:unit` vert.
+
+**Déploiement** : serveur d'abord (migration + API), puis client. `AUTH_REFRESH_GRACE_SECONDS` optionnel (défaut 120).

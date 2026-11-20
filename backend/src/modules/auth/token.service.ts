@@ -6,7 +6,7 @@ import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/error-codes';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { TenantStatus, UserRole, UserStatus } from '@prisma/client';
+import { Prisma, TenantStatus, UserRole, UserStatus } from '@prisma/client';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AppConfig } from '../../config/configuration';
@@ -75,24 +75,10 @@ export class TokenService {
     const ctx = { userId: record.userId, tenantId: record.user.tenantId, familyId: record.family };
     const tokenAgeMs = Date.now() - record.createdAt.getTime();
 
-    // Reuse of an already-rotated token → compromise: revoke the whole family.
+    // Rejeu d'un jeton déjà tourné : grâce bornée (réponse perdue / rotation
+    // concurrente) sinon compromission → révocation de la famille.
     if (record.revoked) {
-      const successor = await this.prisma.refreshToken.findFirst({
-        where: { family: record.family, createdAt: { gt: record.createdAt } },
-        orderBy: { createdAt: 'asc' },
-        select: { createdAt: true },
-      });
-      this.events.record('REFRESH_REUSE_DETECTED', {
-        ...ctx,
-        cause: 'replay_of_revoked_token',
-        extra: {
-          tokenAgeMs,
-          // Délai entre la rotation (émission du successeur) et ce rejeu : distingue une réponse perdue (secondes) d'un vol (jours).
-          replayDelayMs: successor ? Date.now() - successor.createdAt.getTime() : -1,
-        },
-      });
-      await this.revokeFamily(record.family, ctx, 'reuse');
-      throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_TOKEN_REUSE, 'Refresh token reuse detected');
+      return this.handleRevokedReplay(record, ctx, tokenAgeMs);
     }
 
     if (record.expiresAt.getTime() < Date.now()) {
@@ -110,11 +96,24 @@ export class TokenService {
 
     // Consommation atomique : un seul appel concurrent peut gagner la rotation.
     // Le hash d'origine est conservé (revoked=true) pour détecter un rejeu ultérieur.
+    // rotatedAt/graceExpiresAt ouvrent la fenêtre de grâce pour les rejeux bénins.
+    const grace = this.config.get('AUTH_REFRESH_GRACE_SECONDS', { infer: true });
+    const now = Date.now();
     const claimed = await this.prisma.refreshToken.updateMany({
       where: { id: record.id, revoked: false },
-      data: { revoked: true },
+      data: {
+        revoked: true,
+        rotatedAt: new Date(now),
+        graceExpiresAt: new Date(now + grace * 1000),
+      },
     });
     if (claimed.count === 0) {
+      // Perdant d'une rotation concurrente : relire l'état gagné et appliquer la grâce.
+      const fresh = await this.prisma.refreshToken.findUnique({
+        where: { id: record.id },
+        include: { user: { include: { tenant: { select: { status: true } } } } },
+      });
+      if (fresh) return this.handleRevokedReplay(fresh, ctx, tokenAgeMs, 'concurrent_refresh');
       this.events.record('REFRESH_REUSE_DETECTED', { ...ctx, cause: 'concurrent_refresh', extra: { tokenAgeMs } });
       await this.revokeFamily(record.family, ctx, 'concurrent_refresh');
       throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_TOKEN_REUSE, 'Refresh token reuse detected');
@@ -132,6 +131,46 @@ export class TokenService {
     this.events.record('REFRESH_SUCCESS', { ...ctx, cause: 'rotation', extra: { tokenAgeMs } });
 
     return next;
+  }
+
+  /**
+   * Jeton déjà tourné présenté à nouveau. Dans la fenêtre de grâce et tant que le
+   * successeur n'a pas lui-même été utilisé (révoqué), c'est un rejeu bénin (réponse
+   * perdue, rotation concurrente) : on réémet un jeton dans la famille sans la révoquer.
+   * Hors grâce, ou successeur déjà consommé → compromission : révocation de la famille.
+   */
+  private async handleRevokedReplay(
+    record: Prisma.RefreshTokenGetPayload<{
+      include: { user: { include: { tenant: { select: { status: true } } } } };
+    }>,
+    ctx: { userId: string; tenantId: string; familyId: string },
+    tokenAgeMs: number,
+    cause: 'replay_of_revoked_token' | 'concurrent_refresh' = 'replay_of_revoked_token',
+  ): Promise<TokenPair> {
+    const grace = this.config.get('AUTH_REFRESH_GRACE_SECONDS', { infer: true });
+    const successor = await this.prisma.refreshToken.findFirst({
+      where: { family: record.family, createdAt: { gt: record.createdAt } },
+      orderBy: { createdAt: 'asc' },
+      select: { createdAt: true, revoked: true },
+    });
+    const replayDelayMs = successor ? Date.now() - successor.createdAt.getTime() : -1;
+    const inGrace =
+      grace > 0 && record.graceExpiresAt != null && record.graceExpiresAt.getTime() > Date.now();
+    const successorUnused = successor !== null && !successor.revoked;
+
+    if (inGrace && successorUnused) {
+      this.events.record('REFRESH_GRACE_REPLAY', { ...ctx, cause, extra: { tokenAgeMs, replayDelayMs } });
+      const next = await this.issueTokens(
+        { id: record.user.id, tenantId: record.user.tenantId, role: record.user.role },
+        record.family,
+      );
+      this.events.record('REFRESH_SUCCESS', { ...ctx, cause: 'grace_replay', extra: { tokenAgeMs } });
+      return next;
+    }
+
+    this.events.record('REFRESH_REUSE_DETECTED', { ...ctx, cause, extra: { tokenAgeMs, replayDelayMs } });
+    await this.revokeFamily(record.family, ctx, cause === 'concurrent_refresh' ? 'concurrent_refresh' : 'reuse');
+    throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_TOKEN_REUSE, 'Refresh token reuse detected');
   }
 
   private async revokeFamily(
