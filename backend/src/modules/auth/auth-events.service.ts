@@ -11,6 +11,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 export const AUTH_EVENTS = [
   'REFRESH_SUCCESS',
   'REFRESH_ROTATED',
+  'REFRESH_GRACE_REPLAY',
   'REFRESH_REUSE_DETECTED',
   'REFRESH_FAMILY_REVOKED',
   'REFRESH_EXPIRED',
@@ -59,6 +60,8 @@ export interface AuthSessionMetrics {
   counterSince: string;
   refreshSuccess24h: number;
   refreshRotated24h: number;
+  /** Rejeux bénins tolérés par la fenêtre de grâce (réponse perdue / rotation concurrente). */
+  refreshGraceReplay24h: number;
   refreshInvalid24h: number;
   logoutUser24h: number;
   /** Compteurs persistants (journal d'audit). */
@@ -132,6 +135,7 @@ export class AuthEventsService {
       counterSince: this.startedAt.toISOString(),
       refreshSuccess24h: this.count('REFRESH_SUCCESS', now.getTime()),
       refreshRotated24h: this.count('REFRESH_ROTATED', now.getTime()),
+      refreshGraceReplay24h: this.count('REFRESH_GRACE_REPLAY', now.getTime()),
       refreshInvalid24h: this.count('REFRESH_INVALID', now.getTime()),
       logoutUser24h: this.count('LOGOUT_USER', now.getTime()),
       refreshReuseDetected24h: reuse,

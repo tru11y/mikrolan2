@@ -5,6 +5,7 @@ import axios, {
   type AxiosRequestConfig,
 } from 'axios';
 import { isTransientError } from './authRestore';
+import { parseStoredTokens, serializeTokens } from './authTokens';
 import {
   deleteStoredValue,
   getStoredValue,
@@ -14,8 +15,13 @@ import { errorMessage } from '@/src/lib/errors';
 import { swallow } from '@/src/lib/report';
 import type { WgPeerState } from '@/src/lib/wgDisplay';
 
+// Legacy : deux clés distinctes écrites séparément (non atomique). Conservées en
+// lecture seule pour migrer les installations existantes, puis supprimées.
 const ACCESS_TOKEN_KEY = 'mikrolan_access_token';
 const REFRESH_TOKEN_KEY = 'mikrolan_refresh_token';
+// Paire de jetons stockée en une seule valeur JSON : écriture atomique (anti
+// déconnexion après un crash Android entre deux écritures SecureStore).
+const AUTH_TOKENS_KEY = 'mikrolan_auth_tokens';
 const API_BASE_URL_KEY = 'mikrolan_api_base_url';
 
 // Backend envelope: { success, data, message, error }
@@ -884,17 +890,23 @@ export function normalizeApiBaseUrl(input: string): string {
 
 async function persistTokens(tokens: AuthTokens | null): Promise<void> {
   if (!tokens) {
+    await deleteStoredValue(AUTH_TOKENS_KEY);
     await deleteStoredValue(ACCESS_TOKEN_KEY);
     await deleteStoredValue(REFRESH_TOKEN_KEY);
     return;
   }
-  await setStoredValue(ACCESS_TOKEN_KEY, tokens.accessToken);
-  await setStoredValue(REFRESH_TOKEN_KEY, tokens.refreshToken);
+  // Écriture atomique : une seule valeur. Un crash ne peut plus laisser un ancien
+  // refresh orphelin qui serait rejoué au démarrage (→ révocation de famille).
+  await setStoredValue(AUTH_TOKENS_KEY, serializeTokens(tokens));
+  // Purge des clés héritées : plus aucune lecture ne doit retomber sur un ancien jeton.
+  await deleteStoredValue(ACCESS_TOKEN_KEY);
+  await deleteStoredValue(REFRESH_TOKEN_KEY);
 }
 
 export async function bootstrapApiState(): Promise<void> {
-  const [storedBaseUrl, storedAccess, storedRefresh] = await Promise.all([
+  const [storedBaseUrl, storedTokens, legacyAccess, legacyRefresh] = await Promise.all([
     getStoredValue(API_BASE_URL_KEY),
+    getStoredValue(AUTH_TOKENS_KEY),
     getStoredValue(ACCESS_TOKEN_KEY),
     getStoredValue(REFRESH_TOKEN_KEY),
   ]);
@@ -912,8 +924,19 @@ export async function bootstrapApiState(): Promise<void> {
     apiBaseUrl = stale ? normalizeApiBaseUrl(DEFAULT_API_BASE_URL) : normalized;
     if (stale) await deleteStoredValue(API_BASE_URL_KEY);
   }
-  accessToken = storedAccess;
-  refreshToken = storedRefresh;
+  const current = parseStoredTokens(storedTokens);
+  if (current) {
+    accessToken = current.accessToken;
+    refreshToken = current.refreshToken;
+  } else if (legacyAccess && legacyRefresh) {
+    // Migration depuis l'ancien format à deux clés : réécriture atomique.
+    accessToken = legacyAccess;
+    refreshToken = legacyRefresh;
+    await persistTokens({ accessToken: legacyAccess, refreshToken: legacyRefresh, expiresIn: 0 });
+  } else {
+    accessToken = null;
+    refreshToken = null;
+  }
 }
 
 export function setApiEventHandlers(handlers: ApiEvents): void {
