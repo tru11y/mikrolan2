@@ -1,0 +1,91 @@
+# -*- text -*-
+#
+# MikroLan — module rlm_rest : FreeRADIUS délègue TOUTE la décision à l'API
+# NestJS (http://127.0.0.1:3002, loopback uniquement). FreeRADIUS reste un pur
+# moteur protocole ; aucune base SQL/users locale.
+#
+# Les sections `authorize` et `accounting` POSTent un JSON PLAT dont les clés
+# correspondent EXACTEMENT à `backend/src/modules/radius/dto/radius.schemas.ts`
+# (helper `singleString` : accepte "val" ou ["val"]). On passe donc par `data`
+# (gabarit explicite) et NON par l'encodage par défaut de rlm_rest, qui produit
+# un JSON imbriqué {"User-Name":{"type":..,"value":[..]}} incompatible avec le
+# schéma.
+#
+# Le chemin inclut le préfixe global `/api` (main.ts : setGlobalPrefix('api')).
+#
+rest {
+	#
+	#  Secret partagé avec l'API (X-Radius-Token = RADIUS_INTERNAL_TOKEN).
+	#  Défini dans un fichier 0640 root:freeradius, jamais committé en clair.
+	#
+	$INCLUDE ${confdir}/mikrolan-secrets.conf
+
+	connect_uri = "http://127.0.0.1:3002"
+
+	#  Délai de connexion court : si l'API est injoignable, on échoue vite
+	#  (rlm_rest -> rcode `fail`) et le virtual server rejette (fail-closed).
+	connect_timeout = 1.0
+
+	tls {
+	}
+
+	#
+	#  authorize -> POST /api/internal/radius/authorize
+	#  La réponse JSON porte control:Auth-Type (Accept|Reject) + attributs reply:
+	#  (Session-Timeout, Mikrotik-Rate-Limit, Mikrotik-Total-Limit,
+	#  Acct-Interim-Interval), appliqués automatiquement par rlm_rest.
+	#
+	authorize {
+		uri = "${..connect_uri}/api/internal/radius/authorize"
+		method = 'post'
+		body = 'json'
+		#  En-tête d'authentification interne. Le token vient du $INCLUDE.
+		header = "X-Radius-Token: ${..radius_internal_token}"
+		#  Gabarit PLAT. NAS-IP-Address retombe sur l'IP source du paquet si
+		#  l'attribut n'est pas transmis (toujours non vide => jamais de "").
+		data = '{"User-Name":"%{User-Name}","NAS-IP-Address":"%{%{NAS-IP-Address}:-%{Packet-Src-IP-Address}}","Calling-Station-Id":"%{Calling-Station-Id}"}'
+		tls = ${..tls}
+	}
+
+	#
+	#  authenticate : filet de sécurité si control:Auth-Type reste à REST
+	#  (l'API n'a pas renvoyé Accept/Reject). Même endpoint.
+	#
+	authenticate {
+		uri = "${..connect_uri}/api/internal/radius/authorize"
+		method = 'post'
+		body = 'json'
+		header = "X-Radius-Token: ${..radius_internal_token}"
+		data = '{"User-Name":"%{User-Name}","NAS-IP-Address":"%{%{NAS-IP-Address}:-%{Packet-Src-IP-Address}}","Calling-Station-Id":"%{Calling-Station-Id}"}'
+		tls = ${..tls}
+	}
+
+	#
+	#  accounting -> POST /api/internal/radius/accounting
+	#  L'API répond toujours 200 (idempotence via Acct-Unique-Session-Id).
+	#
+	accounting {
+		uri = "${..connect_uri}/api/internal/radius/accounting"
+		method = 'post'
+		body = 'json'
+		header = "X-Radius-Token: ${..radius_internal_token}"
+		data = '{"User-Name":"%{User-Name}","Acct-Status-Type":"%{Acct-Status-Type}","Acct-Session-Id":"%{Acct-Session-Id}","Acct-Unique-Session-Id":"%{Acct-Unique-Session-Id}","Acct-Input-Octets":"%{Acct-Input-Octets}","Acct-Output-Octets":"%{Acct-Output-Octets}","Acct-Input-Gigawords":"%{Acct-Input-Gigawords}","Acct-Output-Gigawords":"%{Acct-Output-Gigawords}","Acct-Session-Time":"%{Acct-Session-Time}","NAS-IP-Address":"%{%{NAS-IP-Address}:-%{Packet-Src-IP-Address}}"}'
+		tls = ${..tls}
+	}
+
+	#
+	#  Pool de connexions HTTP persistantes. Timeouts courts : le trafic RADIUS
+	#  est sensible à la latence ; mieux vaut échouer (=> reject) que pendre.
+	#
+	pool {
+		start = ${thread[pool].start_servers}
+		min = ${thread[pool].min_spare_servers}
+		max = ${thread[pool].max_servers}
+		spare = ${thread[pool].max_spare_servers}
+		uses = 0
+		retry_delay = 30
+		lifetime = 0
+		idle_timeout = 60
+		connect_timeout = 1.0
+	}
+}
