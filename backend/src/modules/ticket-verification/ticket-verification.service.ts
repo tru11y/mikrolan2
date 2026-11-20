@@ -122,9 +122,13 @@ export class TicketVerificationService {
         id: true,
         status: true,
         mikrotikId: true,
+        radiusDistributable: true,
         expiresAt: true,
         usedAt: true,
         plan: { select: { name: true, durationMinutes: true } },
+        // authMode du lien : un voucher RADIUS est provisionné via
+        // radiusDistributable, pas via mikrotikId (cf. isProvisioned).
+        link: { select: { authMode: true } },
       },
     });
   }
@@ -132,7 +136,11 @@ export class TicketVerificationService {
   private mapToPublic(
     v: NonNullable<Awaited<ReturnType<typeof this.loadVoucher>>>,
   ): VerificationResponse {
-    const provisioned = isProvisioned(v);
+    const provisioned = isProvisioned({
+      mikrotikId: v.mikrotikId,
+      radiusDistributable: v.radiusDistributable,
+      authMode: v.link?.authMode ?? null,
+    });
     const now = new Date();
     const expiresAt = computeExpiresAt(
       v.usedAt,
