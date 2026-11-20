@@ -21,6 +21,10 @@ export class RadiusSessionCron {
 
   @Interval(60_000)
   async closeStaleSessions(): Promise<void> {
+    // Module câblé dans AppModule mais comportement prod gaté : tant que
+    // RADIUS_ENABLED=false, aucune session RADIUS n'existe → cron inerte.
+    if (!this.config.get<boolean>('RADIUS_ENABLED')) return;
+
     const ttl = this.config.get<number>('RADIUS_SESSION_TTL_SECONDS') ?? 150;
     const threshold = new Date(Date.now() - ttl * 1000);
 

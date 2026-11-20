@@ -45,6 +45,7 @@ import { ResponseInterceptor } from './common/interceptors/response.interceptor'
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { TenantContextMiddleware } from './common/context/tenant-context.middleware';
 import { RouterGatewayModule } from './modules/router-gateway/router-gateway.module';
+import { RadiusModule } from './modules/radius/radius.module';
 
 @Module({
   imports: [
@@ -89,6 +90,7 @@ import { RouterGatewayModule } from './modules/router-gateway/router-gateway.mod
     HealthModule,
     LegalModule,
     SaspayModule,
+    RadiusModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
