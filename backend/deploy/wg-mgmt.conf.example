@@ -20,6 +20,11 @@ PostUp = iptables -w 5 -C INPUT -i lo -j ACCEPT 2>/dev/null || iptables -w 5 -I 
 # services du VPS (SSH, nginx v1, API…).
 PostUp = iptables -w 5 -C INPUT -i wg-mgmt -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || iptables -w 5 -I INPUT -i wg-mgmt -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 PostDown = iptables -w 5 -D INPUT -i wg-mgmt -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT 2>/dev/null || true
+# FreeRADIUS (auth 1812 / acct 1813) : joignable UNIQUEMENT via wg-mgmt, sur
+# l'IP du serveur dans le tunnel (10.20.0.1). `-I` insère AVANT le DROP ci-dessous
+# (qui est `-A`, en fin de chaîne). JAMAIS d'ouverture 1812/1813 sur eth0 public.
+PostUp = iptables -w 5 -C INPUT -i wg-mgmt -p udp -d 10.20.0.1 -m multiport --dports 1812,1813 -j ACCEPT 2>/dev/null || iptables -w 5 -I INPUT -i wg-mgmt -p udp -d 10.20.0.1 -m multiport --dports 1812,1813 -j ACCEPT
+PostDown = iptables -w 5 -D INPUT -i wg-mgmt -p udp -d 10.20.0.1 -m multiport --dports 1812,1813 -j ACCEPT 2>/dev/null || true
 PostUp = iptables -w 5 -A INPUT -i wg-mgmt -j DROP
 PostDown = iptables -w 5 -D INPUT -i wg-mgmt -j DROP 2>/dev/null || true
 # Isolation inter-tenants : aucun routeur ne peut joindre un autre routeur via le VPS.

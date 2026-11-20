@@ -20,6 +20,7 @@ export const ENTITY_CATEGORY: Record<string, EventCategory> = {
   TicketVault: 'VAULT',
   Router: 'ROUTERS',
   RemotePeer: 'ROUTERS',
+  RouterLink: 'ROUTERS',
   Diagnostic: 'DIAGNOSTICS',
   Invoice: 'PAYMENTS',
   PaymentProof: 'PAYMENTS',

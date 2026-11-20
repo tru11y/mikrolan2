@@ -52,6 +52,7 @@ function build(prisma: ReturnType<typeof makePrisma>, remote?: unknown) {
     prisma as any,
     (remote ?? { run: jest.fn() }) as any,
     eventLog as any,
+    { get: () => false } as any,
   );
   return { service, eventLog };
 }

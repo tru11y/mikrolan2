@@ -32,3 +32,7 @@ routers.db
 
 # VPS backup (secrets, certs, data — ne pas committer)
 vps-backup/
+
+# FreeRADIUS : secret partagé et clients réels (seuls les .example sont versionnés)
+backend/deploy/radius/freeradius/mikrolan-secrets.conf
+backend/deploy/radius/freeradius/clients.d/

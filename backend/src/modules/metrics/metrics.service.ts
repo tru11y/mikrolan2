@@ -176,7 +176,7 @@ export class MetricsService {
         usedAt: true,
         plan: { select: { name: true, priceXof: true } },
         router: { select: { identity: true, alias: true } },
-        session: {
+        sessions: {
           select: {
             macAddress: true,
             ipAddress: true,
@@ -184,13 +184,17 @@ export class MetricsService {
             lastSeenAt: true,
             startedAt: true,
           },
+          orderBy: { startedAt: 'desc' },
         },
       },
     });
 
     const now = Date.now();
     return vouchers.map((v) => {
-      const seenAt = v.session?.lastSeenAt ?? v.session?.startedAt ?? null;
+      // Une session active prime sur l'historique ; sinon la plus récente.
+      const session =
+        v.sessions.find((s) => s.status === SessionStatus.ACTIVE) ?? v.sessions[0] ?? null;
+      const seenAt = session?.lastSeenAt ?? session?.startedAt ?? null;
       const fresh = !!seenAt && now - seenAt.getTime() <= ONLINE_FRESHNESS_MS;
       return {
         voucherId: v.id,
@@ -200,9 +204,9 @@ export class MetricsService {
         priceXof: v.plan.priceXof,
         routerName: v.router.alias || v.router.identity,
         redeemedAt: v.usedAt ? v.usedAt.toISOString() : null,
-        macAddress: v.session?.macAddress ?? null,
-        ipAddress: v.session?.ipAddress ?? null,
-        online: v.session?.status === SessionStatus.ACTIVE && fresh,
+        macAddress: session?.macAddress ?? null,
+        ipAddress: session?.ipAddress ?? null,
+        online: session?.status === SessionStatus.ACTIVE && fresh,
       };
     });
   }

@@ -94,7 +94,7 @@ function makePrisma(overrides: Record<string, any> = {}) {
 }
 
 function makeService(prisma: any, remote: any = { run: jest.fn() }) {
-  return new VoucherService(prisma, remote, makeEventLogStub() as any);
+  return new VoucherService(prisma, remote, makeEventLogStub() as any, { get: () => false } as any);
 }
 
 describe('canonicalFingerprint — JSON canonicalisation stable', () => {
