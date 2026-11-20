@@ -87,6 +87,47 @@ export function applyTenantScope(
   return params;
 }
 
+/**
+ * Décision pure d'isolation pour une opération donnée. Reproduit exactement le
+ * gating de l'ancien `tenantMiddleware` (modèle hors périmètre → passthrough ;
+ * pas de contexte tenant → passthrough ; SUPER_ADMIN en bypass → passthrough)
+ * puis délègue l'injection de `tenantId` à `applyTenantScope`.
+ *
+ * On ne conserve QUE les `args` scopés (where/data), PAS la réécriture d'action
+ * d'`applyTenantScope` : un Client Extension ne peut pas changer l'opération
+ * réellement exécutée sans la redispatcher hors du pipeline (ce qui casserait
+ * l'atomicité des `$transaction`). Inutile depuis Prisma 5 : `extendedWhereUnique`
+ * (stable) autorise un filtre scalaire additionnel dans le `where` d'un
+ * findUnique/update/delete. Ainsi findUnique conserve `tenantId` dans son where
+ * → `null` cross-tenant (comme findFirst), findUniqueOrThrow/update/delete →
+ * P2025 cross-tenant : aucune ligne d'un autre tenant n'est lue ni mutée.
+ *
+ * @returns `null` pour passthrough, sinon les `args` scopés à exécuter tels quels.
+ */
+export function resolveTenantScope(
+  model: string,
+  operation: Prisma.PrismaAction,
+  args: unknown,
+  ctx: TenantContext | undefined,
+  bypass: boolean,
+): Prisma.MiddlewareParams['args'] | null {
+  if (!TENANT_MODELS.has(model as Prisma.ModelName)) return null;
+  if (!ctx) return null;
+  if (ctx.role === UserRole.SUPER_ADMIN && bypass) return null;
+
+  const params = applyTenantScope(
+    {
+      model: model as Prisma.ModelName,
+      action: operation,
+      args: args as Prisma.MiddlewareParams['args'],
+      dataPath: [],
+      runInTransaction: false,
+    },
+    ctx,
+  );
+  return params.args;
+}
+
 @Injectable()
 export class PrismaService
   extends PrismaClient
@@ -100,7 +141,55 @@ export class PrismaService
     super();
     // Enregistré en premier = middleware le plus externe : la durée mesurée inclut l'attente d'une connexion du pool.
     this.$use(this.statsMiddleware.bind(this));
-    this.$use(this.tenantMiddleware.bind(this));
+
+    // Isolation tenant via Client Extension (remplace le middleware $use déprécié
+    // en Prisma 5). `applyTenantScope` (logique pure, inchangée) injecte `tenantId`
+    // dans where/data ; on exécute l'opération d'origine avec ces args scopés via
+    // `query` — donc toujours DANS le pipeline/transaction courant. Aucune
+    // redispatch hors pipeline : l'atomicité des `$transaction` est préservée.
+    const scoped = this.$extends({
+      query: {
+        $allModels: {
+          async $allOperations({ model, operation, args, query }) {
+            const scopedArgs = resolveTenantScope(
+              model,
+              operation as Prisma.PrismaAction,
+              args,
+              getTenantContext(),
+              isAdminBypass(),
+            );
+            return query(scopedArgs ?? args);
+          },
+        },
+      },
+    });
+
+    // `$extends` retourne un NOUVEAU client ; il faut donc router l'accès de
+    // l'instance injectée vers lui. Tout passe par l'étendu (delegates de modèles
+    // scopés, `$transaction`, `$connect`, `$queryRaw`, transactions interactives
+    // comprises) SAUF les membres propres au service, qui restent sur la base.
+    const baseOnly = new Set<string>(['poolStats', 'onModuleInit', 'onModuleDestroy', 'logger']);
+    // Clés PROPRES présentes dès la construction : les delegates de modèles
+    // (`user`, `router`, …) sont des own-properties de l'instance PrismaClient —
+    // ils DOIVENT être routés vers le client étendu (scopé), pas vers la base.
+    // Seules les clés ajoutées APRÈS (ex. un `jest.spyOn` qui pose
+    // `prisma.$transaction`) priment sur le routage.
+    const nativeOwnKeys = new Set<string | symbol>(Reflect.ownKeys(this));
+    return new Proxy(this, {
+      get(target, prop, receiver) {
+        // Override posé après construction (spy de test) → priorité.
+        if (!nativeOwnKeys.has(prop) && Object.prototype.hasOwnProperty.call(target, prop)) {
+          return Reflect.get(target, prop, receiver);
+        }
+        if (typeof prop === 'string' && !baseOnly.has(prop)) {
+          const value = (scoped as Record<string, unknown>)[prop];
+          if (value !== undefined) {
+            return typeof value === 'function' ? value.bind(scoped) : value;
+          }
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    }) as PrismaService;
   }
 
   private async statsMiddleware(
@@ -125,25 +214,5 @@ export class PrismaService
 
   async onModuleDestroy(): Promise<void> {
     await this.$disconnect();
-  }
-
-  /**
-   * Injects `tenantId` on every tenant-scoped query. Defense in depth: even a
-   * service that forgets to filter cannot read or mutate another tenant's rows.
-   * Skipped when there is no tenant context (unauthenticated/system paths such
-   * as signup and login) or when the actor is a platform SUPER_ADMIN.
-   */
-  private async tenantMiddleware(
-    params: Prisma.MiddlewareParams,
-    next: (p: Prisma.MiddlewareParams) => Promise<unknown>,
-  ): Promise<unknown> {
-    const model = params.model;
-    if (!model || !TENANT_MODELS.has(model)) return next(params);
-
-    const ctx = getTenantContext();
-    if (!ctx) return next(params);
-    if (ctx.role === UserRole.SUPER_ADMIN && isAdminBypass()) return next(params);
-
-    return next(applyTenantScope(params, ctx));
   }
 }
