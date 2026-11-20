@@ -68,39 +68,33 @@ export class RadiusService {
   // ─── Résolution NAS (AVANT tout contexte tenant) ────────────────────────
   /**
    * Le tenant n'est pas encore connu : cette requête tourne HORS filtre tenant
-   * (aucun contexte ouvert → le middleware Prisma ne scope pas). On ne fait
-   * jamais confiance à un tenantId venant du payload RADIUS.
+   * (aucun contexte ouvert → le middleware Prisma ne scope pas).
+   *
+   * SÉCURITÉ : `NAS-IP-Address` ici n'est PAS l'attribut RADIUS fourni par le
+   * NAS (falsifiable) mais l'IP SOURCE du paquet UDP (`%{Packet-Src-IP-Address}`,
+   * cf. deploy/radius/.../mods-available/rest), authentifiée par FreeRADIUS
+   * contre le secret par-client. C'est la seule entrée de confiance pour choisir
+   * le tenant. On ne sélectionne JAMAIS le tenant via un attribut client
+   * (NAS-Identifier) : il permettrait un bypass d'isolation cross-tenant.
    */
   async resolveNas(dto: AuthorizeDto | AccountingDto): Promise<ResolvedNas | null> {
     const nasIp = dto['NAS-IP-Address'];
-    const nasIdentifier = dto['NAS-Identifier'];
+    if (!nasIp) return null; // source inconnue → fail-closed
 
-    if (nasIp) {
-      const peer = await this.prisma.remotePeer.findFirst({
-        where: { wgIp: nasIp },
-        select: { routerId: true, tenantId: true },
-      });
-      if (peer) return { routerId: peer.routerId, tenantId: peer.tenantId };
+    const peer = await this.prisma.remotePeer.findFirst({
+      where: { wgIp: nasIp },
+      select: { routerId: true, tenantId: true },
+    });
+    if (peer) return { routerId: peer.routerId, tenantId: peer.tenantId };
 
-      const byLocal = await this.prisma.router.findMany({
-        where: { deletedAt: null, localAddress: { startsWith: nasIp } },
-        select: { id: true, tenantId: true, localAddress: true },
-      });
-      const exact = byLocal.filter((r) => (r.localAddress ?? '').split(':')[0] === nasIp);
-      if (exact.length === 1) return { routerId: exact[0].id, tenantId: exact[0].tenantId };
-      if (exact.length > 1) return null; // ambigu → fail-closed
-    }
+    const byLocal = await this.prisma.router.findMany({
+      where: { deletedAt: null, localAddress: { startsWith: nasIp } },
+      select: { id: true, tenantId: true, localAddress: true },
+    });
+    const exact = byLocal.filter((r) => (r.localAddress ?? '').split(':')[0] === nasIp);
+    if (exact.length === 1) return { routerId: exact[0].id, tenantId: exact[0].tenantId };
 
-    if (nasIdentifier) {
-      const byIdentity = await this.prisma.router.findMany({
-        where: { deletedAt: null, identity: nasIdentifier },
-        select: { id: true, tenantId: true },
-      });
-      if (byIdentity.length === 1) {
-        return { routerId: byIdentity[0].id, tenantId: byIdentity[0].tenantId };
-      }
-    }
-    return null;
+    return null; // aucun match (ou ambigu) → fail-closed
   }
 
   /** Ouvre un contexte tenant système (OWNER) autour d'un traitement scopé. */
