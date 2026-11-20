@@ -36,6 +36,7 @@ const baseVoucher = (overrides: Record<string, any> = {}) => ({
   linkId: null,
   status: VoucherStatus.GENERATED,
   mikrotikId: 'mt-1',
+  radiusDistributable: true,
   usedAt: null,
   plan: {
     priceXof: 500,

@@ -53,11 +53,24 @@ function rows(batchId: string, n: number, provisioned: number): Row[] {
  * la forme de la requête.
  */
 function fakeDb(all: Row[]) {
-  const matches = (r: Row, where: Record<string, any> = {}): boolean => {
+  // Évalue une condition « provisionné » (NOT mikrotikId vide OU radiusDistributable).
+  const provisionedCond = (r: Row & { radiusDistributable?: boolean }, cond: Record<string, any>): boolean => {
+    if (Array.isArray(cond.NOT)) {
+      return cond.NOT.every((c: Record<string, any>) =>
+        'mikrotikId' in c ? r.mikrotikId !== c.mikrotikId : true,
+      );
+    }
+    if ('radiusDistributable' in cond) return r.radiusDistributable === cond.radiusDistributable;
+    return true;
+  };
+  const matches = (r: Row & { radiusDistributable?: boolean }, where: Record<string, any> = {}): boolean => {
     if (where.routerId && r.routerId !== where.routerId) return false;
     if (where.batchId && typeof where.batchId === 'string' && r.batchId !== where.batchId) return false;
     if (where.batchId?.in && !where.batchId.in.includes(r.batchId)) return false;
     if (where.status && r.status !== where.status) return false;
+    if (Array.isArray(where.OR) && !where.OR.some((c: Record<string, any>) => provisionedCond(r, c))) {
+      return false;
+    }
     if (Array.isArray(where.NOT)) {
       for (const cond of where.NOT) {
         if ('mikrotikId' in cond && r.mikrotikId === cond.mikrotikId) return false;
@@ -85,6 +98,7 @@ function makeService(prismaOverrides: Record<string, unknown> = {}) {
     prisma,
     { run: jest.fn() } as any,
     makeEventLogStub() as any,
+    { get: () => false } as any,
   );
   return { service, prisma };
 }
@@ -147,7 +161,10 @@ describe('GET vouchers — default list only exposes provisioned tickets', () =>
     } as any);
     expect(scoped.args.where.tenantId).toBe('tenant-1');
     expect(scoped.args.where.routerId).toBe('router-1');
-    expect(scoped.args.where.NOT).toEqual([{ mikrotikId: null }, { mikrotikId: '' }]);
+    expect(scoped.args.where.OR).toEqual([
+      { NOT: [{ mikrotikId: null }, { mikrotikId: '' }] },
+      { radiusDistributable: true },
+    ]);
   });
 });
 
@@ -233,6 +250,7 @@ describe('generate — what the operator receives as distributable tickets', () 
       prisma as any,
       remote as any,
       makeEventLogStub() as any,
+      { get: () => false } as any,
     );
   }
 
