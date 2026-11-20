@@ -5,11 +5,15 @@ const base = {
   DATABASE_URL: 'postgresql://u:p@127.0.0.1:5432/db',
   JWT_ACCESS_SECRET: 'x'.repeat(40),
   ROUTER_CRED_KEY: 'ab'.repeat(32),
+  RADIUS_INTERNAL_TOKEN: 'prod-radius-shared-secret',
 };
 
 describe('validateEnv (production)', () => {
   it('accepte une config valide', () => {
     expect(validateEnv(base).NODE_ENV).toBe('production');
+  });
+  it('refuse un RADIUS_INTERNAL_TOKEN vide en production', () => {
+    expect(() => validateEnv({ ...base, RADIUS_INTERNAL_TOKEN: '' })).toThrow(/RADIUS_INTERNAL_TOKEN/);
   });
   it('refuse le secret JWT d\'exemple', () => {
     expect(() =>

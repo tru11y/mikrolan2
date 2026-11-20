@@ -107,6 +107,26 @@ const envSchema = z.object({
         .map((s) => s.trim())
         .filter(Boolean),
     ),
+
+  // ─── RADIUS (module « dark » — NAS FreeRADIUS via rlm_rest) ──
+  // Secret partagé exigé sur chaque requête interne (/internal/radius/*) via
+  // l'en-tête X-Radius-Token, comparé en timingSafeEqual. Vide hors prod =
+  // garde fail-closed (aucun token accepté). En prod : obligatoire, non vide.
+  RADIUS_INTERNAL_TOKEN: z.string().default(''),
+  // Change of Authorization (RFC 5176) : déconnexion active d'un voucher sur
+  // tous ses NAS. OFF par défaut (no-op loggé) tant que l'infra radclient /
+  // le secret CoA ne sont pas déployés.
+  RADIUS_COA_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+  RADIUS_COA_SECRET: z.string().default(''),
+  // Acct-Interim-Interval renvoyé au NAS (secondes) : cadence des comptes
+  // intermédiaires qui alimentent le quota partagé.
+  RADIUS_INTERIM_INTERVAL: z.coerce.number().int().positive().default(30),
+  // Au-delà de ce délai sans Interim/Stop, le cron ferme une session ACTIVE
+  // (NAS injoignable, Stop perdu). Aligné sur le seuil handshake WireGuard.
+  RADIUS_SESSION_TTL_SECONDS: z.coerce.number().int().positive().default(150),
 });
 
 export type AppConfig = z.infer<typeof envSchema>;
@@ -128,6 +148,9 @@ export function validateEnv(raw: Record<string, unknown>): AppConfig {
     }
     if (/^0+$/.test(parsed.data.ROUTER_CRED_KEY)) {
       problems.push("ROUTER_CRED_KEY est la clé d'exemple (zéros)");
+    }
+    if (parsed.data.RADIUS_INTERNAL_TOKEN.length === 0) {
+      problems.push('RADIUS_INTERNAL_TOKEN est vide (secret partagé requis en production)');
     }
     if (problems.length) {
       throw new Error(`Invalid production configuration: ${problems.join('; ')}`);
