@@ -36,3 +36,6 @@ vps-backup/
 # FreeRADIUS : secret partagé et clients réels (seuls les .example sont versionnés)
 backend/deploy/radius/freeradius/mikrolan-secrets.conf
 backend/deploy/radius/freeradius/clients.d/
+
+# pgBackRest : secrets S3 + passphrase de chiffrement (PITR), hors repo
+backend/deploy/secrets/pgbackrest.env
