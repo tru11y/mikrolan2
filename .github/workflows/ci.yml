@@ -78,7 +78,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: shellcheck
-        run: shellcheck -x -S warning backend/deploy/release/*.sh backend/deploy/release/test/run-tests.sh
+        run: shellcheck -x -S warning backend/deploy/release/*.sh backend/deploy/release/test/run-tests.sh backend/deploy/radius/*.sh backend/deploy/radius/mikrolan-radius-sync
       - name: Tests
         run: bash backend/deploy/release/test/run-tests.sh
 
