@@ -272,6 +272,12 @@ model RefreshToken {
   family       String
   revoked      Boolean  @default(false)
   replacedById String?
+  // Rotation grace: set when this token is rotated. A revoked token replayed
+  // before graceExpiresAt (and whose successor is itself still unused) is a
+  // benign retry (lost response / concurrent refresh), not theft — tolerated
+  // without revoking the family. Null on legacy tokens → treated as out of grace.
+  rotatedAt      DateTime?
+  graceExpiresAt DateTime?
   expiresAt    DateTime
   createdAt    DateTime @default(now())
 

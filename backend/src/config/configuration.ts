@@ -16,6 +16,10 @@ const envSchema = z.object({
   JWT_ACCESS_SECRET: z.string().min(32),
   JWT_ACCESS_TTL: z.coerce.number().int().positive().default(900),
   JWT_REFRESH_TTL: z.coerce.number().int().positive().default(2592000),
+  // Fenêtre de grâce (s) pour tolérer le rejeu d'un refresh déjà tourné (réponse
+  // perdue, rotations concurrentes). 0 = désactive la grâce (comportement strict
+  // d'origine : tout rejeu révoque la famille). Voir docs/auth-sessions-audit-and-design.md §4.
+  AUTH_REFRESH_GRACE_SECONDS: z.coerce.number().int().nonnegative().default(120),
 
   // 32-byte AES-256-GCM key, hex-encoded (64 hex chars)
   ROUTER_CRED_KEY: z.string().regex(/^[0-9a-fA-F]{64}$/, {
