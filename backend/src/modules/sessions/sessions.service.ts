@@ -24,6 +24,7 @@ import { withDeadline } from '../../common/utils/with-deadline';
 import { RouterGatewayService } from '../router-gateway/router-gateway.service';
 import { RouterSyncScheduler, type SchedulerRouter } from './router-sync-scheduler';
 import { tenantStore, setTenantContext } from '../../common/context/tenant-context';
+import { firstSightActivation } from './first-sight';
 
 export interface LiveSession {
   id: string; // RouterOS .id
@@ -164,61 +165,29 @@ export class SessionsService {
         continue;
       }
 
+      // Revenue snapshot + notification VOUCHER_ACTIVATED : point d'écriture
+      // partagé avec le chemin FreeRADIUS (voir first-sight.ts). Le prix vient
+      // uniquement de Plan.priceXof lu côté serveur, jamais du client.
       const firstSight = voucher.status === VoucherStatus.GENERATED;
       if (firstSight) {
-        // Revenue snapshot, figé une seule fois ici — jamais recalculé si le
-        // forfait change de prix ensuite (audit/51, audit/52). Le prix vient
-        // uniquement de Plan.priceXof lu côté serveur, jamais du client.
-        const price = voucher.plan.priceXof;
-        const priceValid = Number.isInteger(price) && price > 0;
-        if (!priceValid) {
-          this.logger.warn(
-            'Activation avec prix de forfait non exploitable — snapshot non écrit (priceSnapshotSource=UNKNOWN).',
-          );
-        }
-        const promoted = await this.prisma.voucher.updateMany({
-          where: { id: voucher.id, status: VoucherStatus.GENERATED },
-          data: {
-            status: VoucherStatus.ACTIVE,
-            usedAt: now,
-            priceXofAtActivation: priceValid ? price : null,
-            priceSnapshotSource: priceValid ? 'EXACT' : 'UNKNOWN',
+        const won = await firstSightActivation(
+          { prisma: this.prisma, events: this.events, notifications: this.notifications },
+          {
+            voucherId: voucher.id,
+            code: voucher.code,
+            planPriceXof: voucher.plan.priceXof,
+            routerId,
+            tenantId,
+            now,
+            logger: this.logger,
           },
-        });
-        if (promoted.count === 0) continue; // another tick got there first
+        );
+        if (!won) continue; // another tick got there first
       }
 
       await this.prisma.session.create({
         data: { tenantId, voucherId: voucher.id, routerId, ...seen },
       });
-
-      if (firstSight) {
-        const title = 'Ticket activé';
-        const body = `Le ticket ${voucher.code} vient de se connecter au hotspot.`;
-        const notification = await this.prisma.notification.create({
-          data: {
-            tenantId,
-            type: NotificationType.VOUCHER_ACTIVATED,
-            title,
-            body,
-            voucherId: voucher.id,
-            routerId,
-          },
-        });
-        // La notification est l'historique ; l'évènement est l'immédiat. Les
-        // deux, parce que l'opérateur peut être hors ligne au moment précis
-        // où le client se connecte.
-        this.events.publish(tenantId, {
-          type: NotificationType.VOUCHER_ACTIVATED,
-          title,
-          body,
-          data: { notificationId: notification.id, voucherId: voucher.id, routerId, code: voucher.code },
-        });
-        this.notifications.sendPushToTenant(tenantId, title, body, routerId, {
-          notificationId: notification.id,
-          type: NotificationType.VOUCHER_ACTIVATED,
-        });
-      }
     }
   }
 
