@@ -116,6 +116,11 @@ export const ErrorCode = {
   RADIUS_VOUCHER_REJECTED: 'RADIUS_VOUCHER_REJECTED',
   RADIUS_CROSS_TENANT: 'RADIUS_CROSS_TENANT',
   RADIUS_QUOTA_EXHAUSTED: 'RADIUS_QUOTA_EXHAUSTED',
+  // Provisioning RADIUS (PR4) : échec per-routeur à l'activation d'un lien.
+  RADIUS_PROVISION_FAILED: 'RADIUS_PROVISION_FAILED',
+  // Composition de lien : un routeur LOCAL ne peut pas déléguer au RADIUS du VPS
+  // (VPS injoignable depuis un LAN privé). V1 = REMOTE/WG uniquement.
+  ROUTER_LINK_LOCAL_NOT_ALLOWED_IN_RADIUS: 'ROUTER_LINK_LOCAL_NOT_ALLOWED_IN_RADIUS',
 
   // ── Payments ──
   PAYMENT_PROOF_MISSING: 'PAYMENT_PROOF_MISSING',

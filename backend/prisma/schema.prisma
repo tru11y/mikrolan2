@@ -378,6 +378,9 @@ model RouterLinkMember {
   router    Router     @relation(fields: [routerId], references: [id])
   tenantId  String
   tenant    Tenant     @relation(fields: [tenantId], references: [id])
+  // Horodatage de confirmation que ce NAS délègue bien au RADIUS
+  // (use-radius=yes vérifié sur le profil hotspot). Null = pas encore prêt.
+  radiusReadyAt DateTime?
   createdAt DateTime   @default(now())
 
   @@unique([linkId, routerId])
@@ -825,6 +828,11 @@ model Voucher {
   batch                VoucherBatch?  @relation(fields: [batchId], references: [id])
   code                 String // identifiant hotspot (username)
   password             String // credential hotspot imprimé sur le ticket
+  // Distribuabilité dénormalisée en mode RADIUS : true quand le lien du voucher
+  // est entièrement provisionné (tous ses NAS use-radius=yes). Piloté par
+  // RouterLinkService.activate/deactivate. En mode DIRECT, la distribuabilité
+  // reste décidée par mikrotikId (ce flag est ignoré).
+  radiusDistributable  Boolean        @default(false)
   status               VoucherStatus  @default(GENERATED)
   generationType       GenerationType @default(MANUAL)
   mikrotikId           String? // .id du /ip/hotspot/user sur le routeur
