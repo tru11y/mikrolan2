@@ -12,8 +12,13 @@ describe('validateEnv (production)', () => {
   it('accepte une config valide', () => {
     expect(validateEnv(base).NODE_ENV).toBe('production');
   });
-  it('refuse un RADIUS_INTERNAL_TOKEN vide en production', () => {
-    expect(() => validateEnv({ ...base, RADIUS_INTERNAL_TOKEN: '' })).toThrow(/RADIUS_INTERNAL_TOKEN/);
+  it('refuse un RADIUS_INTERNAL_TOKEN vide quand RADIUS_ENABLED en production', () => {
+    expect(() =>
+      validateEnv({ ...base, RADIUS_ENABLED: 'true', RADIUS_INTERNAL_TOKEN: '' }),
+    ).toThrow(/RADIUS_INTERNAL_TOKEN/);
+  });
+  it('tolère un RADIUS_INTERNAL_TOKEN vide quand le module est dark (RADIUS_ENABLED absent)', () => {
+    expect(() => validateEnv({ ...base, RADIUS_INTERNAL_TOKEN: '' })).not.toThrow();
   });
   it('refuse le secret JWT d\'exemple', () => {
     expect(() =>

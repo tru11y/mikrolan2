@@ -109,9 +109,15 @@ const envSchema = z.object({
     ),
 
   // ─── RADIUS (module « dark » — NAS FreeRADIUS via rlm_rest) ──
+  // Interrupteur global du module. Tant qu'il est à false (défaut), le module
+  // reste dark et AUCUNE exigence de config prod n'est imposée (voir validateEnv).
+  RADIUS_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
   // Secret partagé exigé sur chaque requête interne (/internal/radius/*) via
   // l'en-tête X-Radius-Token, comparé en timingSafeEqual. Vide hors prod =
-  // garde fail-closed (aucun token accepté). En prod : obligatoire, non vide.
+  // garde fail-closed (aucun token accepté). En prod avec RADIUS_ENABLED : obligatoire.
   RADIUS_INTERNAL_TOKEN: z.string().default(''),
   // Change of Authorization (RFC 5176) : déconnexion active d'un voucher sur
   // tous ses NAS. OFF par défaut (no-op loggé) tant que l'infra radclient /
@@ -149,8 +155,11 @@ export function validateEnv(raw: Record<string, unknown>): AppConfig {
     if (/^0+$/.test(parsed.data.ROUTER_CRED_KEY)) {
       problems.push("ROUTER_CRED_KEY est la clé d'exemple (zéros)");
     }
-    if (parsed.data.RADIUS_INTERNAL_TOKEN.length === 0) {
-      problems.push('RADIUS_INTERNAL_TOKEN est vide (secret partagé requis en production)');
+    if (
+      parsed.data.RADIUS_ENABLED &&
+      parsed.data.RADIUS_INTERNAL_TOKEN.length === 0
+    ) {
+      problems.push('RADIUS_INTERNAL_TOKEN est vide (secret partagé requis quand RADIUS_ENABLED)');
     }
     if (problems.length) {
       throw new Error(`Invalid production configuration: ${problems.join('; ')}`);
