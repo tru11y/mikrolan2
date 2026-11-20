@@ -1,0 +1,14 @@
+[Unit]
+Description=MikroLan — base de base pgBackRest (full) de la stanza mikrolan
+Documentation=file:/opt/mikrolan2/backend/deploy/backup/pitr/README.md
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+# pgBackRest tourne dans le conteneur Postgres (accès au répertoire de données + WAL).
+# root pour piloter docker ; le binaire s'exécute en `postgres` dans le conteneur.
+User=root
+ExecStart=/usr/bin/docker exec -u postgres mikrolan2-pg pgbackrest --stanza=mikrolan --type=full backup
+Nice=10
+IOSchedulingClass=idle

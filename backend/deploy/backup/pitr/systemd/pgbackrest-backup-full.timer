@@ -1,0 +1,11 @@
+[Unit]
+Description=MikroLan — planifie la base de base pgBackRest hebdomadaire (full)
+
+[Timer]
+# Tous les dimanches 02:00 UTC (avant le dump pg_dump nightly 03:00), avec jitter anti-pic.
+OnCalendar=Sun *-*-* 02:00:00 UTC
+RandomizedDelaySec=900
+Persistent=true
+
+[Install]
+WantedBy=timers.target
