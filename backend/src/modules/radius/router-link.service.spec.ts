@@ -4,11 +4,22 @@ import { ErrorCode } from '../../common/error-codes';
 
 function makePrisma() {
   return {
-    router: { findFirst: jest.fn(), update: jest.fn().mockResolvedValue({}) },
-    routerLink: { findFirst: jest.fn() },
+    router: {
+      findFirst: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
+      update: jest.fn().mockResolvedValue({}),
+    },
+    routerLink: {
+      findFirst: jest.fn(),
+      findMany: jest.fn().mockResolvedValue([]),
+      create: jest.fn().mockResolvedValue({ id: 'link-new' }),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
     routerLinkMember: {
       findMany: jest.fn().mockResolvedValue([]),
       update: jest.fn().mockResolvedValue({}),
+      createMany: jest.fn().mockResolvedValue({ count: 1 }),
+      deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       count: jest.fn().mockResolvedValue(0),
     },
     voucher: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
@@ -20,17 +31,28 @@ const crypto = {
   decrypt: jest.fn((s: string) => s.replace(/^enc\(|\)$/g, '')),
 };
 const eventLog = { warning: jest.fn(), success: jest.fn() };
-const config = {
-  get: jest.fn((key: string) => (key === 'WG_SUBNET_BASE' ? '10.20.0.0/24' : 30)),
-};
+function makeConfig(radiusEnabled = true) {
+  return {
+    get: jest.fn((key: string) => {
+      if (key === 'WG_SUBNET_BASE') return '10.20.0.0/24';
+      if (key === 'RADIUS_ENABLED') return radiusEnabled;
+      return 30;
+    }),
+  };
+}
+const config = makeConfig();
 
-function build(prisma: any, remote: any = { run: jest.fn() }) {
+function build(
+  prisma: any,
+  remote: any = { run: jest.fn() },
+  cfg: any = config,
+) {
   return new RouterLinkService(
     prisma,
     remote as any,
     crypto as any,
     eventLog as any,
-    config as any,
+    cfg as any,
   );
 }
 
@@ -169,6 +191,177 @@ describe('activateLink', () => {
 
     expect(remote.run).not.toHaveBeenCalled();
     expect(prisma.routerLinkMember.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('createLink', () => {
+  it('crée un lien DIRECT avec ses membres (tenantId explicite, audit émis)', async () => {
+    const prisma = makePrisma();
+    prisma.router.findMany.mockResolvedValue([{ id: 'r1' }, { id: 'r2' }]);
+    prisma.routerLink.findMany.mockResolvedValue([]); // slug libre
+    prisma.routerLink.create.mockResolvedValue({ id: 'link-1', authMode: RouterLinkAuthMode.DIRECT });
+
+    await build(prisma).createLink('t1', 'u1', {
+      name: 'Hotspot Centre',
+      authMode: RouterLinkAuthMode.DIRECT,
+      routerIds: ['r1', 'r2'],
+    });
+
+    const arg = prisma.routerLink.create.mock.calls[0][0];
+    expect(arg.data.tenantId).toBe('t1');
+    expect(arg.data.slug).toBe('hotspot-centre');
+    expect(arg.data.routers.create).toEqual([
+      { tenantId: 't1', routerId: 'r1' },
+      { tenantId: 't1', routerId: 'r2' },
+    ]);
+    expect(eventLog.success).toHaveBeenCalledWith(
+      expect.anything(),
+      'RouterLink',
+      'link-1',
+      expect.objectContaining({ authMode: RouterLinkAuthMode.DIRECT }),
+      { tenantId: 't1', userId: 'u1' },
+    );
+  });
+
+  it('crée un lien RADIUS en validant chaque routeur (REMOTE ok)', async () => {
+    const prisma = makePrisma();
+    prisma.router.findMany.mockResolvedValue([{ id: 'r1' }]);
+    prisma.router.findFirst.mockResolvedValue({ mode: ManagementMode.REMOTE });
+    prisma.routerLink.create.mockResolvedValue({ id: 'link-1' });
+
+    await build(prisma).createLink('t1', 'u1', {
+      name: 'L',
+      authMode: RouterLinkAuthMode.RADIUS,
+      routerIds: ['r1'],
+    });
+    expect(prisma.router.findFirst).toHaveBeenCalled();
+    expect(prisma.routerLink.create).toHaveBeenCalled();
+  });
+
+  it('garde-fou : refuse un routeur LOCAL à la création RADIUS', async () => {
+    const prisma = makePrisma();
+    prisma.router.findMany.mockResolvedValue([{ id: 'r1' }]);
+    prisma.router.findFirst.mockResolvedValue({ mode: ManagementMode.LOCAL });
+
+    await expect(
+      build(prisma).createLink('t1', 'u1', {
+        name: 'L',
+        authMode: RouterLinkAuthMode.RADIUS,
+        routerIds: ['r1'],
+      }),
+    ).rejects.toMatchObject({ errorCode: ErrorCode.ROUTER_LINK_LOCAL_NOT_ALLOWED_IN_RADIUS });
+    expect(prisma.routerLink.create).not.toHaveBeenCalled();
+  });
+
+  it('rejette un routeur hors tenant / inexistant (ROUTER_NOT_FOUND)', async () => {
+    const prisma = makePrisma();
+    prisma.router.findMany.mockResolvedValue([{ id: 'r1' }]); // r2 absent
+
+    await expect(
+      build(prisma).createLink('t1', 'u1', {
+        name: 'L',
+        authMode: RouterLinkAuthMode.DIRECT,
+        routerIds: ['r1', 'r2'],
+      }),
+    ).rejects.toMatchObject({ errorCode: ErrorCode.ROUTER_NOT_FOUND });
+  });
+});
+
+describe('addMembers', () => {
+  it('garde-fou LOCAL sur un lien RADIUS', async () => {
+    const prisma = makePrisma();
+    prisma.routerLink.findFirst.mockResolvedValue({ id: 'link-1', authMode: RouterLinkAuthMode.RADIUS });
+    prisma.router.findMany.mockResolvedValue([{ id: 'r9' }]);
+    prisma.router.findFirst.mockResolvedValue({ mode: ManagementMode.LOCAL });
+
+    await expect(
+      build(prisma).addMembers('t1', 'u1', 'link-1', ['r9']),
+    ).rejects.toMatchObject({ errorCode: ErrorCode.ROUTER_LINK_LOCAL_NOT_ALLOWED_IN_RADIUS });
+    expect(prisma.routerLinkMember.createMany).not.toHaveBeenCalled();
+  });
+
+  it('ajoute les membres avec tenantId (skipDuplicates)', async () => {
+    const prisma = makePrisma();
+    prisma.routerLink.findFirst
+      .mockResolvedValueOnce({ id: 'link-1', authMode: RouterLinkAuthMode.DIRECT }) // assertOwnLink
+      .mockResolvedValueOnce({ id: 'link-1', authMode: RouterLinkAuthMode.DIRECT, routers: [] }); // getLink
+    prisma.router.findMany.mockResolvedValue([{ id: 'r1' }]);
+
+    await build(prisma).addMembers('t1', 'u1', 'link-1', ['r1']);
+    expect(prisma.routerLinkMember.createMany).toHaveBeenCalledWith({
+      data: [{ linkId: 'link-1', tenantId: 't1', routerId: 'r1' }],
+      skipDuplicates: true,
+    });
+  });
+});
+
+describe('isolation tenant', () => {
+  it('getLink d\'un lien absent pour ce tenant → NOT_FOUND', async () => {
+    const prisma = makePrisma();
+    prisma.routerLink.findFirst.mockResolvedValue(null);
+    await expect(build(prisma).getLink('t1', 'link-x')).rejects.toMatchObject({
+      errorCode: ErrorCode.REMOTE_ACCESS_NOT_FOUND,
+    });
+    expect(prisma.routerLink.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'link-x', tenantId: 't1' } }),
+    );
+  });
+
+  it('activate d\'un lien d\'un autre tenant → NOT_FOUND', async () => {
+    const prisma = makePrisma();
+    prisma.routerLink.findFirst.mockResolvedValue(null);
+    await expect(build(prisma).activate('t1', 'u1', 'link-x')).rejects.toMatchObject({
+      errorCode: ErrorCode.REMOTE_ACCESS_NOT_FOUND,
+    });
+  });
+});
+
+describe('activate (gate RADIUS_ENABLED + délégation)', () => {
+  it('RADIUS_ENABLED=false → RADIUS_DISABLED (409), aucune délégation', async () => {
+    const prisma = makePrisma();
+    await expect(
+      build(prisma, { run: jest.fn() }, makeConfig(false)).activate('t1', 'u1', 'link-1'),
+    ).rejects.toMatchObject({ errorCode: ErrorCode.RADIUS_DISABLED });
+    expect(prisma.routerLink.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('RADIUS_ENABLED=true → délègue à activateLink et audite', async () => {
+    const prisma = makePrisma();
+    prisma.routerLink.findFirst
+      .mockResolvedValueOnce({ id: 'link-1', authMode: RouterLinkAuthMode.RADIUS }) // assertOwnLink
+      .mockResolvedValueOnce({ id: 'link-1', authMode: RouterLinkAuthMode.RADIUS }); // activateLink
+    prisma.routerLinkMember.findMany.mockResolvedValue([]);
+    prisma.routerLinkMember.count.mockResolvedValue(0);
+
+    const res = await build(prisma).activate('t1', 'u1', 'link-1');
+    expect(res).toEqual({ total: 0, ready: 0 });
+    expect(eventLog.success).toHaveBeenCalledWith(
+      expect.anything(),
+      'RouterLink',
+      'link-1',
+      expect.objectContaining({ op: 'activate' }),
+      { tenantId: 't1', userId: 'u1' },
+    );
+  });
+});
+
+describe('deactivate (tenant-aware)', () => {
+  it('asserte le tenant puis délègue à deactivateLink', async () => {
+    const prisma = makePrisma();
+    prisma.routerLink.findFirst.mockResolvedValue({ id: 'link-1', authMode: RouterLinkAuthMode.RADIUS });
+    prisma.routerLinkMember.findMany.mockResolvedValue([]);
+    await build(prisma).deactivate('t1', 'u1', 'link-1');
+    expect(prisma.voucher.updateMany).toHaveBeenCalledWith({
+      where: { linkId: 'link-1' },
+      data: { radiusDistributable: false },
+    });
+    expect(eventLog.success).toHaveBeenCalledWith(
+      expect.anything(),
+      'RouterLink',
+      'link-1',
+      expect.objectContaining({ op: 'deactivate' }),
+      { tenantId: 't1', userId: 'u1' },
+    );
   });
 });
 
