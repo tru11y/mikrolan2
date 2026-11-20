@@ -27,7 +27,20 @@ services:
     container_name: mikrolan2-redis
     restart: unless-stopped
     network_mode: host
-    command: ['redis-server', '--port', '6390', '--bind', '127.0.0.1']
+    # AOF persistence: the login brute-force counters (login:fail:*) survive a
+    # Redis restart, so an attacker sitting just under the lockout threshold is
+    # not handed a fresh window by a reboot. Data is written to the mounted
+    # volume below.
+    command:
+      [
+        'redis-server',
+        '--port',
+        '6390',
+        '--bind',
+        '127.0.0.1',
+        '--appendonly',
+        'yes',
+      ]
     volumes:
       - mikrolan2_redis:/data
 

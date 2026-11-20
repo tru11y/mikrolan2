@@ -787,6 +787,10 @@ model Voucher {
   @@unique([tenantId, code])
   @@index([tenantId])
   @@index([tenantId, status])
+  // Reporting « clients récents » : filtre (tenantId, status) + tri updatedAt desc.
+  // Sans ce composite, un gros tenant scanne ~2/3 des vouchers puis top-N heapsort
+  // (mesuré : 66k lignes / 31 ms sur 100k). Avec, c'est un index scan borné.
+  @@index([tenantId, status, updatedAt(sort: Desc)])
   @@index([routerId])
   @@index([batchId])
 }
