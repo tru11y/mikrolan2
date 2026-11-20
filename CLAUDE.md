@@ -48,7 +48,7 @@ Rien qui sort de l'APK d'un concurrent ne franchit la porte de ce repo.
 
 - Client app + admin back-office (`app/admin.tsx`) in one Expo app, gated by role.
 - Payment screen `app/payment.tsx` reads `GET /subscriptions/payment-info` (Wave/Orange Money numbers configured by SUPER_ADMIN via `PlatformConfig`).
-- Sentry + `ErrorBoundary` per screen; Android keystore committed at `mobile/android/mikrolan-release.keystore`.
+- Sentry + `ErrorBoundary` per screen; Android release keystore at `mobile/android/app/mikrolan-release.keystore` — **gitignored, NOT committed** (passwords in `mobile/android/keystore.properties`, also gitignored). Losing it breaks over-install updates.
 - **Protected native files** (LAN access to MikroTik routers — never touch without explicit consent, see `mobile/CLAUDE.md` for the full list and why): `LanBinderModule.kt`, `MainApplication.kt`, `MainActivity.kt`, `AndroidManifest.xml`, `network_security_config.xml`.
 
 ## Development Notes

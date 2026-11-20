@@ -24,7 +24,7 @@ function setup(rows: unknown[], runImpl?: () => Promise<void>) {
 
 const row = (over: Record<string, unknown>) => ({
   id: 'v1', tenantId: 't1', routerId: 'r1', mikrotikId: '*1', usedAt: ago(100),
-  plan: { durationMinutes: 60 }, router: { mode: ManagementMode.REMOTE }, session: { mikrotikId: '*A' },
+  plan: { durationMinutes: 60 }, router: { mode: ManagementMode.REMOTE }, sessions: [{ mikrotikId: '*A', routerId: 'r1', status: 'ACTIVE' }],
   ...over,
 });
 
@@ -99,7 +99,7 @@ describe('VoucherExpiryCron', () => {
   });
 
   describe('starvation : les expirés ne restent pas derrière des tickets non expirés', () => {
-    interface Row { id: string; tenantId: string; routerId: string; mikrotikId: string; usedAt: Date; expiresAt: Date | null; plan: { durationMinutes: number }; router: { mode: ManagementMode }; session: null }
+    interface Row { id: string; tenantId: string; routerId: string; mikrotikId: string; usedAt: Date; expiresAt: Date | null; plan: { durationMinutes: number }; router: { mode: ManagementMode }; sessions: unknown[] }
     type Clause = { plan: { durationMinutes: number }; usedAt: { lte: Date } };
 
     // Base simulée qui applique réellement where / orderBy / take, comme PostgreSQL.
@@ -131,7 +131,7 @@ describe('VoucherExpiryCron', () => {
 
     const mk = (id: string, usedAgoMin: number, durationMinutes: number, routerId = 'r1'): Row => ({
       id, tenantId: 't1', routerId, mikrotikId: `*${id}`, usedAt: ago(usedAgoMin), expiresAt: null,
-      plan: { durationMinutes }, router: { mode: ManagementMode.REMOTE }, session: null,
+      plan: { durationMinutes }, router: { mode: ManagementMode.REMOTE }, sessions: [],
     });
 
     // 500 tickets de 3 jours utilisés il y a 2 à 3 jours (non expirés, plus anciens), puis

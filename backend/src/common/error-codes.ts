@@ -111,6 +111,20 @@ export const ErrorCode = {
   // ── Sessions ──
   SESSION_DISCONNECT_FAILED: 'SESSION_DISCONNECT_FAILED',
 
+  // ── RADIUS (module dark) ──
+  RADIUS_NAS_UNKNOWN: 'RADIUS_NAS_UNKNOWN',
+  RADIUS_VOUCHER_REJECTED: 'RADIUS_VOUCHER_REJECTED',
+  RADIUS_CROSS_TENANT: 'RADIUS_CROSS_TENANT',
+  RADIUS_QUOTA_EXHAUSTED: 'RADIUS_QUOTA_EXHAUSTED',
+  // Provisioning RADIUS (PR4) : échec per-routeur à l'activation d'un lien.
+  RADIUS_PROVISION_FAILED: 'RADIUS_PROVISION_FAILED',
+  // Feature RADIUS désactivée au niveau plateforme (RADIUS_ENABLED=false) :
+  // l'activation d'un lien RADIUS est refusée tant que l'interrupteur est off.
+  RADIUS_DISABLED: 'RADIUS_DISABLED',
+  // Composition de lien : un routeur LOCAL ne peut pas déléguer au RADIUS du VPS
+  // (VPS injoignable depuis un LAN privé). V1 = REMOTE/WG uniquement.
+  ROUTER_LINK_LOCAL_NOT_ALLOWED_IN_RADIUS: 'ROUTER_LINK_LOCAL_NOT_ALLOWED_IN_RADIUS',
+
   // ── Payments ──
   PAYMENT_PROOF_MISSING: 'PAYMENT_PROOF_MISSING',
   PAYMENT_VALIDATION_FAILED: 'PAYMENT_VALIDATION_FAILED',

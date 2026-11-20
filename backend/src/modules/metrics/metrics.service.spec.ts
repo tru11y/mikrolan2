@@ -143,13 +143,15 @@ describe('MetricsService.recentClients', () => {
         usedAt: now,
         plan: { name: '1h', priceXof: 200 },
         router: { identity: 'R1', alias: null },
-        session: {
-          macAddress: 'AA:BB:CC',
-          ipAddress: '10.0.0.1',
-          status: SessionStatus.ACTIVE,
-          lastSeenAt: now,
-          startedAt: now,
-        },
+        sessions: [
+          {
+            macAddress: 'AA:BB:CC',
+            ipAddress: '10.0.0.1',
+            status: SessionStatus.ACTIVE,
+            lastSeenAt: now,
+            startedAt: now,
+          },
+        ],
       },
     ]);
 
@@ -169,13 +171,15 @@ describe('MetricsService.recentClients', () => {
         usedAt: old,
         plan: { name: '1h', priceXof: 200 },
         router: { identity: 'R1', alias: 'MyRouter' },
-        session: {
-          macAddress: null,
-          ipAddress: null,
-          status: SessionStatus.ACTIVE,
-          lastSeenAt: old,
-          startedAt: old,
-        },
+        sessions: [
+          {
+            macAddress: null,
+            ipAddress: null,
+            status: SessionStatus.ACTIVE,
+            lastSeenAt: old,
+            startedAt: old,
+          },
+        ],
       },
     ]);
 

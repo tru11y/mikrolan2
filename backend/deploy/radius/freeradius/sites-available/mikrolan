@@ -1,0 +1,78 @@
+# -*- text -*-
+#
+# MikroLan — virtual server (remplace `default`). RADIUS accessible UNIQUEMENT
+# par le tunnel WireGuard wg-mgmt : les sockets sont bindées sur 10.20.0.1
+# (jamais `*`), et le firewall n'ouvre 1812/1813 que sur wg-mgmt (cf.
+# backend/deploy/wg-mgmt.conf.example). Aucune ouverture sur l'IP publique.
+#
+# Toute la logique est déléguée à l'API NestJS via le module `rest`.
+# Désactiver les sites par défaut après installation :
+#   rm -f /etc/freeradius/3.0/sites-enabled/default
+#   rm -f /etc/freeradius/3.0/sites-enabled/inner-tunnel
+# (fait par install-radius.sh).
+#
+server mikrolan {
+
+	listen {
+		type = auth
+		ipaddr = 10.20.0.1
+		port = 1812
+	}
+
+	listen {
+		type = acct
+		ipaddr = 10.20.0.1
+		port = 1813
+	}
+
+	#
+	#  AUTHORIZE : on force Auth-Type := REST par défaut, puis `rest` interroge
+	#  l'API. La réponse fixe control:Auth-Type (Accept|Reject). Si l'appel
+	#  échoue (API down/timeout) ou renvoie notfound => reject (fail-closed :
+	#  jamais d'ouverture quand le backend est indisponible).
+	#
+	authorize {
+		update control {
+			Auth-Type := REST
+		}
+
+		rest
+
+		if (fail || notfound) {
+			reject
+		}
+	}
+
+	#
+	#  AUTHENTICATE : filet si Auth-Type est resté REST.
+	#
+	authenticate {
+		Auth-Type REST {
+			rest
+		}
+	}
+
+	#
+	#  POST-AUTH : on garantit l'intervalle d'interim-update envoyé au NAS.
+	#  Valeur 30 s (RADIUS_INTERIM_INTERVAL de l'API), PAS 300. `:=` écrase
+	#  toute valeur héritée.
+	#
+	post-auth {
+		update reply {
+			Acct-Interim-Interval := 30
+		}
+
+		Post-Auth-Type REJECT {
+		}
+	}
+
+	#
+	#  ACCOUNTING : relayé à l'API (Start / Interim-Update / Stop, idempotent).
+	#
+	preacct {
+	}
+
+	accounting {
+		rest
+	}
+}

@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+# Wrapper root — synchronise la liste des clients RADIUS (NAS) depuis l'API.
+#
+# Installé sur le VPS : /usr/local/sbin/mikrolan-radius-sync (root:root, 0750),
+# appelé par l'utilisateur `mikrolan` via une règle sudoers fixe, SANS argument :
+#   sudo -n /usr/local/sbin/mikrolan-radius-sync
+#
+# L'API génère le contenu de clients.d/mikrolan-clients.conf et le PIPE sur
+# STDIN (jamais en argv : les secrets RADIUS n'apparaissent dans aucune ligne de
+# commande ni journal). Le wrapper valide, écrit atomiquement, puis recharge
+# freeradius (HUP, pas de restart).
+#
+# Tout est fixé ici : aucun argument, aucune variable d'environnement de
+# l'appelant, aucun fichier contrôlé par `mikrolan` n'est lu.
+set -euo pipefail
+umask 077
+export PATH=/usr/bin:/bin
+
+if [ "$#" -ne 0 ]; then
+  printf '%s\n' "mikrolan-radius-sync: no arguments are accepted" >&2
+  exit 1
+fi
+
+readonly FR_DIR="/etc/freeradius/3.0"
+readonly TARGET="${FR_DIR}/clients.d/mikrolan-clients.conf"
+readonly LOCK_FILE="/var/lock/mikrolan-radius-sync.lock"
+readonly MAX_BYTES=1048576   # garde-fou : 1 Mio max de clients.conf
+
+# ── Sérialisation (flock) ────────────────────────────────────────────────────
+exec 9>"${LOCK_FILE}"
+if ! flock -w 10 9; then
+  printf '%s\n' "mikrolan-radius-sync: verrou occupé, abandon" >&2
+  exit 1
+fi
+
+# ── Lecture STDIN (jamais argv) ──────────────────────────────────────────────
+payload="$(cat)"
+
+if [ "${#payload}" -gt "${MAX_BYTES}" ]; then
+  printf '%s\n' "mikrolan-radius-sync: contenu trop volumineux, refusé" >&2
+  exit 1
+fi
+
+# ── Validation du format minimal ─────────────────────────────────────────────
+# On n'accepte que des blocs `client ... { ... }`. Un contenu vide est valide
+# (aucun routeur enrôlé). Toute ligne non vide hors d'un bloc attendu => refus.
+# Équilibrage naïf des accolades + présence d'au moins un `ipaddr`/`secret` par
+# `client` : garde-fou, pas un parseur FreeRADIUS complet.
+clients=0
+opens=0
+closes=0
+while IFS= read -r line; do
+  trimmed="${line#"${line%%[![:space:]]*}"}"   # strip leading blanks
+  case "${trimmed}" in
+    ''|'#'*) : ;;                               # vide / commentaire
+    client*' {'|client*'{') clients=$((clients + 1)); opens=$((opens + 1)) ;;
+    '}') closes=$((closes + 1)) ;;
+    ipaddr*|secret*|nas_type*|shortname*|require_message_authenticator*|proto*) : ;;
+    *)
+      printf '%s\n' "mikrolan-radius-sync: ligne inattendue dans clients.conf, refusé" >&2
+      exit 1
+      ;;
+  esac
+done <<EOF
+${payload}
+EOF
+
+if [ "${opens}" -ne "${closes}" ]; then
+  printf '%s\n' "mikrolan-radius-sync: accolades déséquilibrées, refusé" >&2
+  exit 1
+fi
+
+# ── Écriture atomique (tmp + rename sur le même FS) ──────────────────────────
+install -d -o freeradius -g freeradius -m 0750 "${FR_DIR}/clients.d"
+tmp="$(mktemp "${TARGET}.XXXXXX")"
+trap 'rm -f "${tmp}"' EXIT
+printf '%s\n' "${payload}" > "${tmp}"
+chown freeradius:freeradius "${tmp}"
+chmod 0600 "${tmp}"
+mv -f "${tmp}" "${TARGET}"
+trap - EXIT
+
+# ── Rechargement (HUP) ───────────────────────────────────────────────────────
+systemctl reload freeradius
+
+# ── Journal : nb de clients + hash court, JAMAIS de secret ───────────────────
+short_hash="$(printf '%s' "${payload}" | sha256sum | cut -c1-12)"
+printf '%s mikrolan-radius-sync: ok clients=%s sha256=%s\n' \
+  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${clients}" "${short_hash}"

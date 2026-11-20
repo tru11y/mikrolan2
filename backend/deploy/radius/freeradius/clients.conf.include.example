@@ -1,0 +1,28 @@
+# MikroLan — déclaration des NAS (routeurs MikroTik) autorisés à parler RADIUS.
+#
+# clients.conf gère les secrets RADIUS par routeur. Le fichier principal
+# /etc/freeradius/3.0/clients.conf doit se TERMINER par l'inclusion du dossier
+# géré dynamiquement par l'API (via le wrapper mikrolan-radius-sync) :
+#
+#     $INCLUDE clients.d/
+#
+# install-radius.sh ajoute cette ligne de façon idempotente. Le dossier
+# clients.d/ ne contient qu'un fichier : mikrolan-clients.conf (0600
+# freeradius:freeradius), réécrit atomiquement par le wrapper. Ne jamais
+# éditer ce fichier à la main : il est régénéré par l'API.
+#
+# Chaque routeur = un bloc `client`. L'IP est l'adresse wg-mgmt du routeur
+# (10.20.0.x), JAMAIS son IP publique : RADIUS ne transite que par le tunnel.
+# `secret` = Router.radiusSecretEncrypted déchiffré par l'API (AES-256-GCM,
+# CryptoService). `shortname` sert uniquement aux logs.
+#
+# Bloc type généré par l'API :
+#
+#     client router_42 {
+#         ipaddr    = 10.20.0.5
+#         secret    = "le-secret-radius-en-clair-du-routeur"
+#         nas_type  = other
+#         shortname = router_42
+#     }
+#
+# Plusieurs routeurs => plusieurs blocs, concaténés dans mikrolan-clients.conf.

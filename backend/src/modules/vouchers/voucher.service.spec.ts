@@ -61,7 +61,7 @@ function makeService(prisma?: unknown, remote?: unknown) {
   const r = remote ?? makeRemote();
   const eventLog = makeEventLogStub();
   return {
-    service: new VoucherService(p as any, r as any, eventLog as any),
+    service: new VoucherService(p as any, r as any, eventLog as any, { get: () => false } as any),
     prisma: p as any,
     remote: r as any,
     eventLog,
@@ -71,7 +71,7 @@ function makeService(prisma?: unknown, remote?: unknown) {
 function voucherRow(
   id: string,
   status: VoucherStatus,
-  opts: { batchId?: string; mikrotikId?: string | null; session?: { status: SessionStatus } | null } = {},
+  opts: { batchId?: string; mikrotikId?: string | null; sessions?: { status: SessionStatus }[] } = {},
 ) {
   return {
     id,
@@ -80,7 +80,7 @@ function voucherRow(
     mikrotikId: opts.mikrotikId ?? null,
     routerId: 'router-1',
     router: { mode: ManagementMode.LOCAL },
-    session: opts.session ?? null,
+    sessions: opts.sessions ?? [],
   };
 }
 
@@ -98,7 +98,7 @@ const VOUCHER_ROW = {
   createdAt: now,
   plan: { id: 'plan-1', name: '1h WiFi', priceXof: 500, durationMinutes: 60 },
   router: { id: 'router-1', identity: 'MikroTik-01', alias: 'Routeur Test' },
-  session: null,
+  sessions: [],
 };
 
 describe('VoucherService', () => {
@@ -125,16 +125,18 @@ describe('VoucherService', () => {
       const withSession = {
         ...VOUCHER_ROW,
         status: VoucherStatus.ACTIVE,
-        session: {
-          status: SessionStatus.ACTIVE,
-          startedAt: sessionStart,
-          lastSeenAt: sessionStart,
-          terminatedAt: null,
-          bytesIn: BigInt(1024),
-          bytesOut: BigInt(2048),
-          macAddress: 'AA:BB:CC:DD:EE:FF',
-          ipAddress: '192.168.1.100',
-        },
+        sessions: [
+          {
+            status: SessionStatus.ACTIVE,
+            startedAt: sessionStart,
+            lastSeenAt: sessionStart,
+            terminatedAt: null,
+            bytesIn: BigInt(1024),
+            bytesOut: BigInt(2048),
+            macAddress: 'AA:BB:CC:DD:EE:FF',
+            ipAddress: '192.168.1.100',
+          },
+        ],
       };
       const { service, prisma } = makeService();
       prisma.voucher.findFirst.mockResolvedValue(withSession);
@@ -283,7 +285,7 @@ describe('VoucherService', () => {
         mikrotikId: 'ros-1',
         status: VoucherStatus.ACTIVE,
         router: { mode },
-        session: { mikrotikId: '*A' },
+        sessions: [{ mikrotikId: '*A', routerId: 'router-1', status: SessionStatus.ACTIVE }],
       });
 
       it('without force: 409', async () => {
@@ -415,7 +417,7 @@ describe('VoucherService', () => {
           where: expect.objectContaining({
             batchId: 'batch-1',
             status: VoucherStatus.ACTIVE,
-            session: { status: SessionStatus.ACTIVE },
+            sessions: { some: { status: SessionStatus.ACTIVE } },
           }),
         }),
       );
@@ -465,8 +467,8 @@ describe('VoucherService', () => {
       prisma.voucherBatch.findFirst.mockResolvedValue({ id: 'batch-1' });
       const rows = [
         voucherRow('v-1', VoucherStatus.GENERATED),
-        voucherRow('v-connected', VoucherStatus.ACTIVE, { session: { status: SessionStatus.ACTIVE } }),
-        voucherRow('v-history', VoucherStatus.ACTIVE, { session: { status: SessionStatus.TERMINATED } }),
+        voucherRow('v-connected', VoucherStatus.ACTIVE, { sessions: [{ status: SessionStatus.ACTIVE }] }),
+        voucherRow('v-history', VoucherStatus.ACTIVE, { sessions: [{ status: SessionStatus.TERMINATED }] }),
       ];
       prisma.voucher.findMany.mockResolvedValue(rows);
       prisma._tx.voucher.findMany.mockResolvedValue([{ id: 'v-1' }]);
@@ -546,7 +548,7 @@ describe('VoucherService', () => {
         ...Array.from({ length: 6 }, (_, i) =>
           voucherRow(`connected-${i}`, VoucherStatus.ACTIVE, {
             mikrotikId: `ros-connected-${i}`,
-            session: { status: SessionStatus.ACTIVE },
+            sessions: [{ status: SessionStatus.ACTIVE }],
           }),
         ),
       ];

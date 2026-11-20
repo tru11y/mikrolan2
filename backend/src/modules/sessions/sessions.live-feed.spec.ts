@@ -21,7 +21,7 @@ const mockNotifications = { sendPushToTenant: jest.fn() };
 const rows = (n: number) =>
   Array.from({ length: n }, (_, i) => ({ '.id': `*${i}`, user: `T${i}`, address: '10.0.0.' + i, 'mac-address': 'AA', 'bytes-in': '1', 'bytes-out': '2', uptime: '1m' }));
 const vouchers = (n: number) =>
-  Array.from({ length: n }, (_, i) => ({ id: `v${i}`, code: `T${i}`, status: 'GENERATED', session: null, plan: { priceXof: 500 } }));
+  Array.from({ length: n }, (_, i) => ({ id: `v${i}`, code: `T${i}`, status: 'GENERATED', sessions: [], plan: { priceXof: 500 } }));
 
 function build() {
   const liveEvents = new RouterLiveEventsService();

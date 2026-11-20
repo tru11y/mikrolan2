@@ -27,7 +27,7 @@ const GENERATED_VOUCHER = {
   id: 'voucher-1',
   code: 'ABC123',
   status: VoucherStatus.GENERATED,
-  session: null,
+  sessions: [],
   plan: { priceXof: 500 },
 };
 
@@ -101,7 +101,7 @@ describe('SessionsService — snapshot du prix à l\'activation (audit/51, audit
       ...GENERATED_VOUCHER,
       status: VoucherStatus.ACTIVE,
       plan: { priceXof: 999 }, // prix modifié depuis l'activation initiale
-      session: { id: 'sess-1' },
+      sessions: [{ id: 'sess-1' }],
     };
     mockPrisma.voucher.findMany.mockResolvedValue([alreadyActive]);
 
