@@ -74,3 +74,42 @@ sudo systemctl start mikrolan-api
 
 Un dump `pg_dump` standard recrée les objets : restaurer dans une base **vide** (ou
 recréée), pas par-dessus des données existantes.
+
+## Vérification automatique de restaurabilité (hebdomadaire)
+
+Une sauvegarde non testée n'est pas une sauvegarde. `mikrolan-restore-verify.sh`
+rejoue chaque semaine le dump le plus récent dans un PostgreSQL **jetable** (via
+`restore-test.sh`) et journalise `RESTORE-VERIFY OK|FAIL` dans
+`/var/log/mikrolan-restore.log`.
+
+Installation sur le VPS (une fois) :
+
+```bash
+sudo install -D -m 755 restore-test.sh /usr/local/lib/mikrolan-backup/restore-test.sh
+sudo install -D -m 755 mikrolan-restore-verify.sh /usr/local/lib/mikrolan-backup/mikrolan-restore-verify.sh
+sudo install -D -m 644 systemd/mikrolan-restore-verify.service /etc/systemd/system/mikrolan-restore-verify.service
+sudo install -D -m 644 systemd/mikrolan-restore-verify.timer   /etc/systemd/system/mikrolan-restore-verify.timer
+sudo systemctl daemon-reload
+sudo systemctl enable --now mikrolan-restore-verify.timer
+# Vérifier : échéance planifiée + premier run manuel
+systemctl list-timers mikrolan-restore-verify.timer
+sudo systemctl start mikrolan-restore-verify.service && tail -n3 /var/log/mikrolan-restore.log
+```
+
+Alerting : faire remonter tout `RESTORE-VERIFY FAIL` du log (ou un `OnFailure=`
+systemd) vers le canal d'astreinte.
+
+## RPO : passer de 24 h à quelques minutes (PITR) — à appliquer en prod
+
+La sauvegarde actuelle est **quotidienne** → RPO ≈ 24 h (jusqu'à une journée de
+transactions perdue sur sinistre). Pour un système de paiement, viser un PITR
+(Point-In-Time Recovery) par archivage WAL continu :
+
+1. Postgres : `wal_level=replica`, `archive_mode=on`,
+   `archive_command='... cp %p s3://mikrolan-backups/wal/%f'` (ou `wal-g`/`pgbackrest`).
+2. Base de base hebdomadaire + flux WAL continu → restauration à l'instant T.
+3. Mesurer et documenter RPO (minutes) et RTO cibles.
+
+> Changement de **configuration production** : non appliqué par l'audit. Planifier
+> une fenêtre de maintenance ; `pgbackrest` est recommandé (base + WAL + rétention
+> + vérif intégrée) plutôt qu'un archivage WAL artisanal.

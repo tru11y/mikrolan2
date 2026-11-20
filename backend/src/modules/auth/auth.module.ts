@@ -4,12 +4,13 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { TokenService } from './token.service';
 import { MfaService } from './mfa.service';
+import { LoginThrottleService } from './login-throttle.service';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { AuthEventsModule } from './auth-events.module';
 
 @Module({
   imports: [JwtModule.register({}), SubscriptionsModule, AuthEventsModule],
   controllers: [AuthController],
-  providers: [AuthService, TokenService, MfaService],
+  providers: [AuthService, TokenService, MfaService, LoginThrottleService],
 })
 export class AuthModule {}

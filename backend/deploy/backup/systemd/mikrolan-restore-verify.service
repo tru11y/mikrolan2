@@ -1,0 +1,13 @@
+[Unit]
+Description=MikroLan — vérification hebdomadaire de restaurabilité des sauvegardes PostgreSQL
+Documentation=file:/opt/mikrolan2/backend/deploy/backup/README.md
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+# restore-test.sh crée un conteneur Postgres jetable ; root pour l'accès docker + lecture des dumps 640.
+User=root
+ExecStart=/usr/local/lib/mikrolan-backup/mikrolan-restore-verify.sh
+Nice=10
+IOSchedulingClass=idle
