@@ -1,0 +1,11 @@
+[Unit]
+Description=MikroLan — planifie la sauvegarde différentielle pgBackRest quotidienne (diff)
+
+[Timer]
+# Tous les jours 02:00 UTC SAUF dimanche (la full couvre le dimanche), avec jitter anti-pic.
+OnCalendar=Mon,Tue,Wed,Thu,Fri,Sat *-*-* 02:00:00 UTC
+RandomizedDelaySec=900
+Persistent=true
+
+[Install]
+WantedBy=timers.target
