@@ -96,7 +96,7 @@ export class VoucherExpiryCron {
         usedAt: true,
         plan: { select: { durationMinutes: true } },
         router: { select: { mode: true } },
-        session: { select: { mikrotikId: true } },
+        sessions: { select: { mikrotikId: true, routerId: true, status: true } },
       },
     });
 
@@ -108,7 +108,9 @@ export class VoucherExpiryCron {
       if (!expiresAt || expiresAt.getTime() > now.getTime()) continue;
       if (v.router.mode === ManagementMode.REMOTE && v.mikrotikId) {
         try {
-          await this.removeFromRouter(v.tenantId, v.routerId, v.mikrotikId, v.session?.mikrotikId ?? null);
+          const activeSessionId =
+            v.sessions.find((s) => s.routerId === v.routerId && s.status === SessionStatus.ACTIVE)?.mikrotikId ?? null;
+          await this.removeFromRouter(v.tenantId, v.routerId, v.mikrotikId, activeSessionId);
         } catch (err) {
           failedRouters.add(v.routerId);
           this.cooldowns.set(v.routerId, now.getTime() + ROUTER_COOLDOWN_MS);
