@@ -1,6 +1,5 @@
 import { UserRole } from '@prisma/client';
-import { applyTenantScope, PrismaService } from './prisma.service';
-import * as tenantContext from '../common/context/tenant-context';
+import { applyTenantScope, resolveTenantScope } from './prisma.service';
 import type { TenantContext } from '../common/context/tenant-context';
 
 const ctxA: TenantContext = { tenantId: 'tenant-A', userId: 'user-1', role: UserRole.ADMIN };
@@ -53,6 +52,19 @@ describe('applyTenantScope (real tenant middleware logic, FIND-003)', () => {
     expect(out.args.where).toEqual({ id: 'ticket-1', tenantId: 'tenant-A' });
   });
 
+  it('injects tenantId on createManyAndReturn (every row, array form)', () => {
+    const params: any = {
+      model: 'Voucher',
+      action: 'createManyAndReturn',
+      args: { data: [{ code: 'a' }, { code: 'b', tenantId: 'attacker' }] },
+    };
+    const out = applyTenantScope(params, ctxA);
+    expect(out.args.data).toEqual([
+      { code: 'a', tenantId: 'tenant-A' },
+      { code: 'b', tenantId: 'tenant-A' },
+    ]);
+  });
+
   it('injects tenantId on count', () => {
     const params: any = { model: 'SupportTicket', action: 'count', args: { where: {} } };
     const out = applyTenantScope(params, ctxA);
@@ -67,77 +79,46 @@ describe('applyTenantScope (real tenant middleware logic, FIND-003)', () => {
   });
 });
 
-describe('PrismaService tenantMiddleware gating (real private method, FIND-003)', () => {
-  let service: PrismaService;
-
-  beforeEach(() => {
-    // Real instance — real constructor, real $use registration. No $connect() is called,
-    // so no database connection is required to exercise the middleware gating logic.
-    service = new PrismaService();
-    jest.restoreAllMocks();
+describe('resolveTenantScope (gating de l’extension client, remplace tenantMiddleware)', () => {
+  it('scope une opération findMany SupportTicket quand un contexte tenant est actif', () => {
+    const args = resolveTenantScope('SupportTicket', 'findMany', { where: {} }, ctxA, false);
+    expect(args).not.toBeNull();
+    expect(args!.where).toEqual({ tenantId: 'tenant-A' });
   });
 
-  afterAll(async () => {
-    await service.$disconnect();
+  it('findUnique : tenantId injecté dans le where (extendedWhereUnique → null cross-tenant, opération inchangée)', () => {
+    const args = resolveTenantScope('SupportTicket', 'findUnique', { where: { id: 't-B' } }, ctxA, false);
+    expect(args!.where).toEqual({ id: 't-B', tenantId: 'tenant-A' });
   });
 
-  function callMiddleware(params: any) {
-    const next = jest.fn(async (p) => p);
-    return (service as any)
-      .tenantMiddleware(params, next)
-      .then((result: unknown) => ({ result, forwardedParams: next.mock.calls[0]?.[0] }));
-  }
-
-  it('scopes a SupportTicket findMany when a tenant context is active (fix verified end-to-end through the real private method)', async () => {
-    jest.spyOn(tenantContext, 'getTenantContext').mockReturnValue(ctxA);
-    jest.spyOn(tenantContext, 'isAdminBypass').mockReturnValue(false);
-
-    const { forwardedParams } = await callMiddleware({
-      model: 'SupportTicket',
-      action: 'findMany',
-      args: { where: {} },
-    });
-
-    expect(forwardedParams.args.where).toEqual({ tenantId: 'tenant-A' });
+  it('update et delete : tenantId injecté dans le where (P2025 cross-tenant, aucune mutation croisée)', () => {
+    const upd = resolveTenantScope('SupportTicket', 'update', { where: { id: 't1' }, data: { status: 'CLOSED' } }, ctxA, false);
+    expect(upd!.where).toEqual({ id: 't1', tenantId: 'tenant-A' });
+    const del = resolveTenantScope('SupportTicket', 'delete', { where: { id: 't1' } }, ctxA, false);
+    expect(del!.where).toEqual({ id: 't1', tenantId: 'tenant-A' });
   });
 
-  it('does NOT scope TicketMessage (not in TENANT_MODELS — no tenantId column exists on that model)', async () => {
-    jest.spyOn(tenantContext, 'getTenantContext').mockReturnValue(ctxA);
-    jest.spyOn(tenantContext, 'isAdminBypass').mockReturnValue(false);
-
-    const { forwardedParams } = await callMiddleware({
-      model: 'TicketMessage',
-      action: 'findMany',
-      args: { where: {} },
-    });
-
-    expect(forwardedParams.args.where).toEqual({});
+  it('create : tenantId forcé dans data (anti-spoof)', () => {
+    const args = resolveTenantScope('SupportTicket', 'create', { data: { subject: 'x', tenantId: 'attacker' } }, ctxA, false);
+    expect(args!.data.tenantId).toBe('tenant-A');
   });
 
-  it('SUPER_ADMIN with active bypass sees all tenants (admin support workflow preserved)', async () => {
+  it('ne scope PAS TicketMessage (hors TENANT_MODELS — pas de colonne tenantId)', () => {
+    expect(resolveTenantScope('TicketMessage', 'findMany', { where: {} }, ctxA, false)).toBeNull();
+  });
+
+  it('SUPER_ADMIN avec bypass actif voit tous les tenants (passthrough)', () => {
     const adminCtx: TenantContext = { tenantId: 'irrelevant', userId: 'admin-1', role: UserRole.SUPER_ADMIN };
-    jest.spyOn(tenantContext, 'getTenantContext').mockReturnValue(adminCtx);
-    jest.spyOn(tenantContext, 'isAdminBypass').mockReturnValue(true);
-
-    const { forwardedParams } = await callMiddleware({
-      model: 'SupportTicket',
-      action: 'findUnique',
-      args: { where: { id: 'any-tenant-ticket' } },
-    });
-
-    expect(forwardedParams.action).toBe('findUnique');
-    expect(forwardedParams.args.where).toEqual({ id: 'any-tenant-ticket' });
+    expect(resolveTenantScope('SupportTicket', 'findUnique', { where: { id: 'x' } }, adminCtx, true)).toBeNull();
   });
 
-  it('a request with no tenant context passes through unscoped (documented existing behavior, not a FIND-003 regression)', async () => {
-    jest.spyOn(tenantContext, 'getTenantContext').mockReturnValue(undefined);
+  it('SUPER_ADMIN SANS bypass reste scopé (le bypass doit être explicitement armé)', () => {
+    const adminCtx: TenantContext = { tenantId: 'tenant-A', userId: 'admin-1', role: UserRole.SUPER_ADMIN };
+    const args = resolveTenantScope('SupportTicket', 'findMany', { where: {} }, adminCtx, false);
+    expect(args!.where).toEqual({ tenantId: 'tenant-A' });
+  });
 
-    const { forwardedParams } = await callMiddleware({
-      model: 'SupportTicket',
-      action: 'findMany',
-      args: { where: {} },
-    });
-
-    expect(forwardedParams.args.where).toEqual({});
+  it('une requête sans contexte tenant passe inchangée (signup/login, chemins système)', () => {
+    expect(resolveTenantScope('SupportTicket', 'findMany', { where: {} }, undefined, false)).toBeNull();
   });
 });
