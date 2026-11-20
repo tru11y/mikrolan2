@@ -61,7 +61,7 @@ function makeService(prisma?: unknown, remote?: unknown) {
   const r = remote ?? makeRemote();
   const eventLog = makeEventLogStub();
   return {
-    service: new VoucherService(p as any, r as any, eventLog as any),
+    service: new VoucherService(p as any, r as any, eventLog as any, { get: () => false } as any),
     prisma: p as any,
     remote: r as any,
     eventLog,

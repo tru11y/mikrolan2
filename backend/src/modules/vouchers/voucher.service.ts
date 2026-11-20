@@ -3,6 +3,7 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/error-codes';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -11,11 +12,13 @@ import {
   ManagementMode,
   Prisma,
   RemotePeerStatus,
+  RouterLinkAuthMode,
   EventOutcome,
   SessionStatus,
   VoucherBatchStatus,
   VoucherStatus,
 } from '@prisma/client';
+import type { AppConfig } from '../../config/configuration';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RemoteRouterService } from '../remote-access/remote-router.service';
 import { EventLogService, describeFailure } from '../events/event-log.service';
@@ -85,6 +88,9 @@ const VOUCHER_PUBLIC = {
   password: true,
   // Lu uniquement pour décider `provisioned` côté serveur : jamais renvoyé tel quel.
   mikrotikId: true,
+  // Idem : décident `provisioned` en mode RADIUS, jamais exposés tels quels.
+  radiusDistributable: true,
+  link: { select: { authMode: true } },
   status: true,
   planId: true,
   routerId: true,
@@ -96,17 +102,30 @@ const VOUCHER_PUBLIC = {
 
 /**
  * Règle métier : un voucher n'est distribuable que si MikroLan a la preuve qu'il
- * existe côté RouterOS, c.-à-d. `mikrotikId` renseigné (REMOTE : retour de
- * /ip/hotspot/user/add ; LOCAL : confirmPush du mobile). Une ligne en base ou
- * le statut GENERATED ne prouvent rien.
+ * est prêt côté réseau.
+ *   • DIRECT (ou authMode absent) : `mikrotikId` renseigné (REMOTE : retour de
+ *     /ip/hotspot/user/add ; LOCAL : confirmPush du mobile).
+ *   • RADIUS : `radiusDistributable === true` (le lien est entièrement
+ *     provisionné ; le voucher n'existe pas côté RouterOS, donc mikrotikId est
+ *     ignoré). Une ligne en base ou le statut GENERATED ne prouvent rien.
  */
-export function isProvisioned(v: { mikrotikId?: string | null }): boolean {
+export function isProvisioned(v: {
+  mikrotikId?: string | null;
+  authMode?: RouterLinkAuthMode | null;
+  radiusDistributable?: boolean | null;
+}): boolean {
+  if (v.authMode === RouterLinkAuthMode.RADIUS) {
+    return v.radiusDistributable === true;
+  }
   return typeof v.mikrotikId === 'string' && v.mikrotikId.length > 0;
 }
 
-/** Filtre SQL équivalent à `isProvisioned` (la chaîne vide est un id invalide). */
+/**
+ * Filtre SQL équivalent à `isProvisioned` : DIRECT via mikrotikId non vide, OU
+ * RADIUS via le flag dénormalisé `radiusDistributable`.
+ */
 export const PROVISIONED_WHERE = {
-  NOT: [{ mikrotikId: null }, { mikrotikId: '' }],
+  OR: [{ NOT: [{ mikrotikId: null }, { mikrotikId: '' }] }, { radiusDistributable: true }],
 } satisfies Prisma.VoucherWhereInput;
 
 /**
@@ -153,12 +172,24 @@ export function ticketState(v: {
   return 'AVAILABLE';
 }
 
-/** Projection publique : `provisioned` est décidé ici, le mikrotikId n'est jamais exposé. */
-function toPublicVoucher<T extends { mikrotikId: string | null }>(
-  v: T,
-): Omit<T, 'mikrotikId'> & { provisioned: boolean } {
-  const { mikrotikId, ...rest } = v;
-  return { ...rest, provisioned: isProvisioned({ mikrotikId }) };
+/** Projection publique : `provisioned` est décidé ici, les champs internes
+ * (mikrotikId, radiusDistributable, link.authMode) ne sont jamais exposés. */
+function toPublicVoucher<
+  T extends {
+    mikrotikId: string | null;
+    radiusDistributable?: boolean | null;
+    link?: { authMode: RouterLinkAuthMode } | null;
+  },
+>(v: T): Omit<T, 'mikrotikId' | 'radiusDistributable' | 'link'> & { provisioned: boolean } {
+  const { mikrotikId, radiusDistributable, link, ...rest } = v;
+  return {
+    ...rest,
+    provisioned: isProvisioned({
+      mikrotikId,
+      radiusDistributable,
+      authMode: link?.authMode ?? null,
+    }),
+  };
 }
 
 // RouterOS push parameters — returned to the client for LOCAL (free) routers so
@@ -180,6 +211,7 @@ export class VoucherService {
     private readonly prisma: PrismaService,
     private readonly remote: RemoteRouterService,
     private readonly eventLog: EventLogService,
+    private readonly config: ConfigService<AppConfig, true>,
   ) {}
 
   async generate(routerId: string, dto: GenerateVouchersDto, idempotencyKey?: string) {
@@ -241,17 +273,46 @@ export class VoucherService {
       }
     }
 
+    // Résolution de l'authMode AVANT le bloc push : si le routeur est membre
+    // d'un lien RADIUS (et le flag global activé), le provisioning est délégué
+    // à FreeRADIUS — aucun push hotspot (ni serveur ni LAN). On relit l'état de
+    // distribuabilité du lien à la génération (déjà true si le lien est prêt),
+    // sans jamais recalculer depuis l'état courant du routeur au replay.
+    const radiusEnabled = this.config.get('RADIUS_ENABLED', { infer: true });
+    let radiusLinkId: string | null = null;
+    let radiusReady = false;
+    if (radiusEnabled) {
+      const membership = await this.prisma.routerLinkMember.findFirst({
+        where: { routerId },
+        select: { linkId: true, link: { select: { authMode: true } } },
+      });
+      if (membership && membership.link.authMode === RouterLinkAuthMode.RADIUS) {
+        radiusLinkId = membership.linkId;
+        const [total, ready] = await Promise.all([
+          this.prisma.routerLinkMember.count({ where: { linkId: radiusLinkId } }),
+          this.prisma.routerLinkMember.count({
+            where: { linkId: radiusLinkId, radiusReadyAt: { not: null } },
+          }),
+        ]);
+        radiusReady = total > 0 && total === ready;
+      }
+    }
+    const isRadius = radiusLinkId !== null;
+
     // Le mode de push effectif est figé AVANT la création du batch pour être
     // persisté avec lui : au replay, on relira cette valeur plutôt que de
     // recalculer depuis l'état courant du routeur (qui peut avoir changé de mode).
     const peer =
-      router.mode === ManagementMode.REMOTE
+      !isRadius && router.mode === ManagementMode.REMOTE
         ? await this.prisma.remotePeer.findFirst({
             where: { routerId, status: RemotePeerStatus.ACTIVE },
             select: { id: true },
           })
         : null;
-    const pushedByServerSnapshot = Boolean(peer);
+    // RADIUS : pas de push params à rejouer (ni serveur ni LAN) → on persiste
+    // pushedByServer=true pour que buildIdempotentReplay ne réclame pas de
+    // snapshot LAN et renvoie seulement les vouchers distribuables.
+    const pushedByServerSnapshot = isRadius || Boolean(peer);
 
     // On fige l'id du batch côté client pour pouvoir composer `push.comment =
     // "mikrolan:${id}"` AVANT la création : le snapshot JSONB immuable est ainsi
@@ -273,7 +334,7 @@ export class VoucherService {
       limitBytesTotal: plan.dataLimitMb ? plan.dataLimitMb * 1024 * 1024 : undefined,
       comment: `mikrolan:${plannedBatchId}`,
     };
-    const lanSnapshot: LanPushParamsSnapshot | null = peer
+    const lanSnapshot: LanPushParamsSnapshot | null = peer || isRadius
       ? null
       : {
           userProfile: push.userProfile,
@@ -346,14 +407,29 @@ export class VoucherService {
         code,
         password: code,
         createdById: ctx.userId,
+        // RADIUS : rattachement au lien + distribuabilité dénormalisée (déjà true
+        // si le lien est entièrement provisionné). mikrotikId reste null : le
+        // voucher n'existe pas côté RouterOS, FreeRADIUS l'autorise à la volée.
+        ...(isRadius ? { linkId: radiusLinkId, radiusDistributable: radiusReady } : {}),
       })),
     });
 
+    // RADIUS → aucune écriture hotspot (ni serveur ni LAN) : le batch est
+    // complété en base, la distribuabilité est portée par radiusDistributable.
     // REMOTE router with an active tunnel → the server pushes over WireGuard.
     // LOCAL (free) router → hand the codes + push params to the client, which
     // writes them to the router over the LAN and confirms back.
     // `peer` est déjà résolu avant batch.create (snapshot pushedByServer).
-    if (peer) {
+    if (isRadius) {
+      await this.completeBatch(batch.id, codes.length);
+      await this.eventLog.success(AuditAction.CREATE, 'VoucherBatch', batch.id, {
+        routerId,
+        linkId: radiusLinkId,
+        totalCount: codes.length,
+        via: 'radius',
+        radiusDistributable: radiusReady,
+      });
+    } else if (peer) {
       let pushedCount = 0;
       try {
         await this.remote.run(
@@ -455,14 +531,15 @@ export class VoucherService {
       batchId: batch.id,
       batchSeq: batch.seq,
       batchStatus: updatedBatch?.status ?? VoucherBatchStatus.GENERATING,
-      pushedByServer: Boolean(peer),
+      pushedByServer: isRadius || Boolean(peer),
       pushedCount: updatedBatch?.generated ?? 0,
       totalCount: codes.length,
-      push: peer ? undefined : push,
-      // Push serveur : seuls les vouchers confirmés RouterOS sont distribuables (les autres
-      // restent en base pour diagnostic). Chemin LAN : le mobile a besoin de TOUS les codes
-      // pour les pousser lui-même puis confirmer (confirmPush => mikrotikId).
-      vouchers: peer ? publicVouchers.filter((v) => v.provisioned) : publicVouchers,
+      // RADIUS et push serveur : aucun push params à renvoyer au mobile.
+      push: isRadius || peer ? undefined : push,
+      // Push serveur / RADIUS : seuls les vouchers distribuables sont renvoyés (les
+      // autres restent en base pour diagnostic). Chemin LAN : le mobile a besoin de
+      // TOUS les codes pour les pousser lui-même puis confirmer (confirmPush => mikrotikId).
+      vouchers: isRadius || peer ? publicVouchers.filter((v) => v.provisioned) : publicVouchers,
     };
   }
 
@@ -778,7 +855,12 @@ export class VoucherService {
       throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.VOUCHER_NOT_FOUND, 'Code inconnu ou non attribué à ce routeur.');
     }
 
-    const provisioned = isProvisioned(voucher);
+    const authMode = voucher.link?.authMode ?? null;
+    const provisioned = isProvisioned({
+      mikrotikId: voucher.mikrotikId,
+      radiusDistributable: voucher.radiusDistributable,
+      authMode,
+    });
     const now = new Date();
     const expiresAt = computeExpiresAt(voucher.usedAt, voucher.plan.durationMinutes, voucher.expiresAt);
     const state = ticketState({ status: voucher.status, provisioned, expiresAt, now });
@@ -826,7 +908,9 @@ export class VoucherService {
       expiresAt: expiresAt?.toISOString() ?? null,
       session,
       message: !provisioned
-        ? 'Ce ticket n\'a pas encore été enregistré sur le routeur.'
+        ? authMode === RouterLinkAuthMode.RADIUS
+          ? 'Ce ticket n\'est pas encore distribuable — la liaison RADIUS n\'est pas entièrement activée.'
+          : 'Ce ticket n\'a pas encore été enregistré sur le routeur.'
         : state === 'EXPIRED'
           ? 'Ticket expiré — connexion refusée.'
           : canLogin

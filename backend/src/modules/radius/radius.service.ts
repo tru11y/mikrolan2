@@ -37,6 +37,7 @@ type LoadedVoucher = {
   linkId: string | null;
   status: VoucherStatus;
   mikrotikId: string | null;
+  radiusDistributable: boolean;
   usedAt: Date | null;
   plan: {
     priceXof: number;
@@ -121,6 +122,7 @@ export class RadiusService {
         linkId: true,
         status: true,
         mikrotikId: true,
+        radiusDistributable: true,
         usedAt: true,
         plan: {
           select: {
@@ -201,7 +203,13 @@ export class RadiusService {
       await this.auditReject(nas, voucher.code, ErrorCode.RADIUS_CROSS_TENANT, 'CROSS_TENANT');
       return reject('Code refusé');
     }
-    if (!isProvisioned(voucher)) {
+    if (
+      !isProvisioned({
+        mikrotikId: voucher.mikrotikId,
+        radiusDistributable: voucher.radiusDistributable,
+        authMode: voucher.link?.authMode ?? null,
+      })
+    ) {
       await this.auditReject(nas, voucher.code, ErrorCode.RADIUS_VOUCHER_REJECTED, 'NOT_PROVISIONED');
       return reject('Code non provisionné');
     }
