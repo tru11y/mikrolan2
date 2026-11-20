@@ -41,6 +41,11 @@ function setup(overrides: Record<string, unknown> = {}) {
     issueTokens: jest.fn().mockResolvedValue({ accessToken: 'a', refreshToken: 'r', expiresIn: 900 }),
   };
   const mfa = new MfaService(prisma as never, crypto as never);
+  const loginThrottle = {
+    isLocked: jest.fn().mockResolvedValue(false),
+    recordFailure: jest.fn().mockResolvedValue(undefined),
+    reset: jest.fn().mockResolvedValue(undefined),
+  };
   const auth = new AuthService(
     prisma as never,
     tokens as never,
@@ -48,8 +53,9 @@ function setup(overrides: Record<string, unknown> = {}) {
     { get: jest.fn() } as never,
     {} as never,
     mfa,
+    loginThrottle as never,
   );
-  return { auth, mfa, prisma, tokens };
+  return { auth, mfa, prisma, tokens, loginThrottle };
 }
 
 beforeAll(async () => {
