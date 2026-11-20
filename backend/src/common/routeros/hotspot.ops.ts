@@ -191,7 +191,7 @@ function parseTimeoutMinutes(value?: string): number | null {
 }
 
 /** Resolves the `/ip/hotspot/profile` name backing a given server. */
-async function profileNameForServer(
+export async function profileNameForServer(
   c: RouterOsApiClient,
   serverName: string,
 ): Promise<string> {
@@ -517,6 +517,94 @@ export async function removeHotspotUser(
   mikrotikId: string,
 ): Promise<void> {
   await c.command(['/ip/hotspot/user/remove', `=.id=${mikrotikId}`]);
+}
+
+// ─── RADIUS delegation (PR4) ───────────────────────────────────────────────
+// Bascule du provisioning hotspot direct vers la délégation à FreeRADIUS : un
+// client RADIUS pointant vers le VPS (serveur WG) + le profil hotspot passé en
+// use-radius. Tous les prints respectent .proplist (cf. ensureUserProfile).
+
+/**
+ * Idempotently ensures a `/radius` client for the hotspot pointing at `server`
+ * (the VPS WireGuard gateway) with the shared `secret`. Check-then-create : si
+ * un client (address==server, service inclut 'hotspot') existe déjà, on réaligne
+ * seulement son secret ; sinon on l'ajoute.
+ */
+export async function ensureRadiusClient(
+  c: RouterOsApiClient,
+  o: { server: string; secret: string },
+): Promise<void> {
+  const rows = await c.command(['/radius/print', '=.proplist=.id,address,service']);
+  const existing = rows.find(
+    (r) =>
+      r.address === o.server &&
+      (r.service ?? '').split(',').some((s) => s.trim() === 'hotspot'),
+  );
+  const id = idOf(existing);
+  if (id) {
+    await c.command(['/radius/set', `=.id=${id}`, ...attrs({ secret: o.secret })]);
+    return;
+  }
+  await c.command([
+    '/radius/add',
+    ...attrs({ service: 'hotspot', address: o.server, secret: o.secret }),
+  ]);
+}
+
+/**
+ * Passe le profil hotspot `profileName` en délégation RADIUS (use-radius=yes,
+ * radius-accounting=yes, interim-update). Throw si le profil est absent.
+ */
+export async function ensureHotspotUsesRadius(
+  c: RouterOsApiClient,
+  profileName: string,
+  o: { interimUpdate?: string } = {},
+): Promise<void> {
+  const rows = await c.command([
+    '/ip/hotspot/profile/print',
+    '=.proplist=.id,name,use-radius',
+  ]);
+  const id = idOf(rows.find((r) => r.name === profileName));
+  if (!id) throw new Error(`Hotspot profile "${profileName}" not found`);
+  await c.command([
+    '/ip/hotspot/profile/set',
+    `=.id=${id}`,
+    ...attrs({
+      'use-radius': 'yes',
+      'radius-accounting': 'yes',
+      'interim-update': o.interimUpdate ?? '30s',
+    }),
+  ]);
+}
+
+/** Rollback de ensureHotspotUsesRadius : repasse le profil en gestion locale. */
+export async function disableHotspotRadius(
+  c: RouterOsApiClient,
+  profileName: string,
+): Promise<void> {
+  const rows = await c.command([
+    '/ip/hotspot/profile/print',
+    '=.proplist=.id,name,use-radius',
+  ]);
+  const id = idOf(rows.find((r) => r.name === profileName));
+  if (!id) throw new Error(`Hotspot profile "${profileName}" not found`);
+  await c.command([
+    '/ip/hotspot/profile/set',
+    `=.id=${id}`,
+    ...attrs({ 'use-radius': 'no', 'radius-accounting': 'no' }),
+  ]);
+}
+
+/** Confirme l'état de délégation RADIUS d'un profil hotspot (use-radius=yes). */
+export async function hotspotProfileUsesRadius(
+  c: RouterOsApiClient,
+  profileName: string,
+): Promise<boolean> {
+  const rows = await c.command([
+    '/ip/hotspot/profile/print',
+    '=.proplist=.id,name,use-radius',
+  ]);
+  return rows.find((r) => r.name === profileName)?.['use-radius'] === 'yes';
 }
 
 export function listActive(c: RouterOsApiClient): Promise<ApiRow[]> {
