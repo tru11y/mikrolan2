@@ -41,9 +41,12 @@ rest {
 		body = 'json'
 		#  En-tête d'authentification interne. Le token vient du $INCLUDE.
 		header = "X-Radius-Token: ${..radius_internal_token}"
-		#  Gabarit PLAT. NAS-IP-Address retombe sur l'IP source du paquet si
-		#  l'attribut n'est pas transmis (toujours non vide => jamais de "").
-		data = '{"User-Name":"%{User-Name}","NAS-IP-Address":"%{%{NAS-IP-Address}:-%{Packet-Src-IP-Address}}","Calling-Station-Id":"%{Calling-Station-Id}"}'
+		#  Gabarit PLAT. NAS-IP-Address = IP SOURCE du paquet UDP
+		#  (%{Packet-Src-IP-Address}), authentifiée par FreeRADIUS contre le
+		#  secret du client. On n'utilise JAMAIS l'attribut NAS-IP-Address fourni
+		#  par le NAS : il est falsifiable et sert à sélectionner le tenant côté
+		#  API (sinon : bypass d'isolation cross-tenant).
+		data = '{"User-Name":"%{User-Name}","NAS-IP-Address":"%{Packet-Src-IP-Address}","Calling-Station-Id":"%{Calling-Station-Id}"}'
 		tls = ${..tls}
 	}
 
@@ -56,7 +59,7 @@ rest {
 		method = 'post'
 		body = 'json'
 		header = "X-Radius-Token: ${..radius_internal_token}"
-		data = '{"User-Name":"%{User-Name}","NAS-IP-Address":"%{%{NAS-IP-Address}:-%{Packet-Src-IP-Address}}","Calling-Station-Id":"%{Calling-Station-Id}"}'
+		data = '{"User-Name":"%{User-Name}","NAS-IP-Address":"%{Packet-Src-IP-Address}","Calling-Station-Id":"%{Calling-Station-Id}"}'
 		tls = ${..tls}
 	}
 
@@ -69,7 +72,7 @@ rest {
 		method = 'post'
 		body = 'json'
 		header = "X-Radius-Token: ${..radius_internal_token}"
-		data = '{"User-Name":"%{User-Name}","Acct-Status-Type":"%{Acct-Status-Type}","Acct-Session-Id":"%{Acct-Session-Id}","Acct-Unique-Session-Id":"%{Acct-Unique-Session-Id}","Acct-Input-Octets":"%{Acct-Input-Octets}","Acct-Output-Octets":"%{Acct-Output-Octets}","Acct-Input-Gigawords":"%{Acct-Input-Gigawords}","Acct-Output-Gigawords":"%{Acct-Output-Gigawords}","Acct-Session-Time":"%{Acct-Session-Time}","NAS-IP-Address":"%{%{NAS-IP-Address}:-%{Packet-Src-IP-Address}}"}'
+		data = '{"User-Name":"%{User-Name}","Acct-Status-Type":"%{Acct-Status-Type}","Acct-Session-Id":"%{Acct-Session-Id}","Acct-Unique-Session-Id":"%{Acct-Unique-Session-Id}","Acct-Input-Octets":"%{Acct-Input-Octets}","Acct-Output-Octets":"%{Acct-Output-Octets}","Acct-Input-Gigawords":"%{Acct-Input-Gigawords}","Acct-Output-Gigawords":"%{Acct-Output-Gigawords}","Acct-Session-Time":"%{Acct-Session-Time}","NAS-IP-Address":"%{Packet-Src-IP-Address}"}'
 		tls = ${..tls}
 	}
 
