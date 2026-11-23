@@ -32,6 +32,7 @@ export interface TierView {
   a4Printing: boolean;
   cloudBackup: boolean;
   prioritySupport: boolean;
+  routerLinking: boolean;
   badge: string | null;
   tagline: string | null;
   features: TierFeatureDto[];
@@ -104,6 +105,7 @@ export function toTierView(tier: SubscriptionTier): TierView {
     a4Printing: tier.a4Printing,
     cloudBackup: tier.cloudBackup,
     prioritySupport: tier.prioritySupport,
+    routerLinking: tier.routerLinking,
     badge: tier.badge,
     tagline: text.tagline,
     features: text.features,

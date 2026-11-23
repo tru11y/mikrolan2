@@ -117,6 +117,7 @@ async function seedTiers(): Promise<void> {
       a4Printing: true,
       cloudBackup: true,
       prioritySupport: true,
+      routerLinking: true,
       badge: null,
       displayOrder: 2,
       features: [
@@ -124,6 +125,7 @@ async function seedTiers(): Promise<void> {
         { label: 'Tickets & baux DHCP illimités', included: true },
         { label: 'Support technique dédié 24/7', included: true },
         { label: 'Accès distant multi-sites', included: true },
+        { label: 'Liaison de routeurs (hotspot mutualisé, quota partagé)', included: true },
       ],
     },
   ];
