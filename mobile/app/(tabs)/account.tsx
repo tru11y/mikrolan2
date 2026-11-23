@@ -511,6 +511,14 @@ export default function AccountScreen() {
                 onPress={() => router.push('/vendeurs')}
               />
               <SectionSep />
+              <SettingRow
+                icon="git-network-outline"
+                iconColor={theme.primary}
+                title="Liens de routeurs"
+                subtitle="Mutualiser plusieurs routeurs sur un hotspot (quota partagé)"
+                onPress={() => router.push('/router-links')}
+              />
+              <SectionSep />
             </>
           ) : null}
           <SettingRow

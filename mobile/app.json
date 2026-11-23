@@ -3,7 +3,7 @@
     "name": "MikroLan",
     "slug": "mikrolan",
     "scheme": "mikrolan",
-    "version": "1.2.4",
+    "version": "1.2.6",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
@@ -17,7 +17,7 @@
     "android": {
       "package": "com.mikrolan.app",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 49,
+      "versionCode": 51,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/logo.png",
         "backgroundColor": "#0B0B12"
