@@ -37,10 +37,13 @@ incompatible) : on passe par l'option `data` avec un gabarit explicite.
   `Acct-Input-Gigawords`, `Acct-Output-Gigawords`, `Acct-Session-Time`,
   `NAS-IP-Address`.
 
-`NAS-IP-Address` retombe sur `%{Packet-Src-IP-Address}` quand l'attribut n'est
-pas transmis, pour ne jamais envoyer de chaîne vide (le schéma refuse `""` sur
-un IP). La réponse `authorize` renvoie `control:Auth-Type` (`Accept`|`Reject`)
-et les attributs `reply:` (dont `reply:Acct-Interim-Interval = 30`).
+**Sécurité :** `NAS-IP-Address` vaut TOUJOURS `%{Packet-Src-IP-Address}` (IP
+source UDP authentifiée par FreeRADIUS contre le secret par-client), JAMAIS
+l'attribut `NAS-IP-Address` fourni par le NAS (falsifiable). L'API sélectionne
+le tenant uniquement sur cette IP source (`resolveNas`) : un attribut client ne
+peut pas désigner le tenant d'un autre (sinon bypass d'isolation cross-tenant).
+La réponse `authorize` renvoie `control:Auth-Type` (`Accept`|`Reject`) et les
+attributs `reply:` (dont `reply:Acct-Interim-Interval = 30`).
 
 ## Préfixe d'URL `/api`
 
@@ -60,7 +63,8 @@ dépôt.
 sudo backend/deploy/radius/install-radius.sh
 
 # 2. Pose le secret partagé (MÊME valeur que RADIUS_INTERNAL_TOKEN de backend/.env)
-sudo install -o root -g freeradius -m 0640 \
+#    Groupe = utilisateur du démon : `freerad` (Debian/Ubuntu), `radiusd` (RHEL).
+sudo install -o root -g freerad -m 0640 \
   backend/deploy/radius/freeradius/mikrolan-secrets.conf.example \
   /etc/freeradius/3.0/mikrolan-secrets.conf
 sudo nano /etc/freeradius/3.0/mikrolan-secrets.conf   # remplacer le token
@@ -79,9 +83,11 @@ sudo freeradius -XC          # doit afficher « Configuration appears to be OK �
 sudo systemctl start freeradius
 ```
 
-`install-radius.sh` supprime les symlinks `sites-enabled/default` et
-`sites-enabled/inner-tunnel`, active `mods-enabled/rest` et
-`sites-enabled/mikrolan`, et ajoute `$INCLUDE clients.d/` à `clients.conf`.
+`install-radius.sh` supprime les symlinks `sites-enabled/default`,
+`sites-enabled/inner-tunnel` et `mods-enabled/eap` (ce dernier exige une section
+`Auth-Type EAP` qui ne vivait que dans `default` : laissé actif, il casse
+`freeradius -XC`), active `mods-enabled/rest` et `sites-enabled/mikrolan`, et
+ajoute `$INCLUDE clients.d/` à `clients.conf`.
 
 ## Flux de génération des clients (NAS)
 
@@ -96,7 +102,7 @@ printf '%s' "$CLIENTS_CONF" | sudo -n /usr/local/sbin/mikrolan-radius-sync
 
 Le wrapper lit STDIN (jamais argv → aucun secret en ligne de commande/journal),
 valide le format, écrit atomiquement `/etc/freeradius/3.0/clients.d/mikrolan-clients.conf`
-(0600 `freeradius:freeradius`), sérialise via `flock`, puis `systemctl reload
+(0600 `freerad:freerad` — l'utilisateur du démon), sérialise via `flock`, puis `systemctl reload
 freeradius` (HUP, pas restart). Il journalise uniquement le nombre de clients et
 un hash court — jamais un secret.
 
@@ -148,12 +154,10 @@ Les deux valeurs doivent toujours coïncider, sinon toute auth est rejetée
 
 ## TODO / points dépendant de la machine (à vérifier sur le VPS)
 
-- **Directive `header` de `rlm_rest`** : la version de `freeradius-rest`
-  d'Ubuntu 22.04 (≈ 3.0.26) doit supporter `header = "X-Radius-Token: ..."`
-  dans la section `rest`. **À confirmer avec `freeradius -XC`** : si la directive
-  est rejetée, passer le token autrement (p. ex. basic auth `username`/`password`
-  de `rlm_rest` + adaptation du guard) — à trancher sur la machine, pas à
-  deviner ici.
+- **Directive `header` de `rlm_rest`** : CONFIRMÉ OK sur le VPS (Ubuntu,
+  `freeradius-rest` ≈ 3.0.26) — `header = "X-Radius-Token: ..."` dans la section
+  `rest` est accepté par `freeradius -XC` (« Configuration appears to be OK »).
+  Aucun repli (basic auth) nécessaire.
 - **Dictionnaire MikroTik** : `Mikrotik-Rate-Limit` / `Mikrotik-Total-Limit`
   supposent `dictionary.mikrotik` chargé (fourni par le paquet freeradius).
   Vérifier dans `freeradius -XC` qu'aucun attribut inconnu n'est signalé.
