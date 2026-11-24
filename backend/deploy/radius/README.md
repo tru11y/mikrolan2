@@ -37,10 +37,13 @@ incompatible) : on passe par l'option `data` avec un gabarit explicite.
   `Acct-Input-Gigawords`, `Acct-Output-Gigawords`, `Acct-Session-Time`,
   `NAS-IP-Address`.
 
-`NAS-IP-Address` retombe sur `%{Packet-Src-IP-Address}` quand l'attribut n'est
-pas transmis, pour ne jamais envoyer de chaîne vide (le schéma refuse `""` sur
-un IP). La réponse `authorize` renvoie `control:Auth-Type` (`Accept`|`Reject`)
-et les attributs `reply:` (dont `reply:Acct-Interim-Interval = 30`).
+**Sécurité :** `NAS-IP-Address` vaut TOUJOURS `%{Packet-Src-IP-Address}` (IP
+source UDP authentifiée par FreeRADIUS contre le secret par-client), JAMAIS
+l'attribut `NAS-IP-Address` fourni par le NAS (falsifiable). L'API sélectionne
+le tenant uniquement sur cette IP source (`resolveNas`) : un attribut client ne
+peut pas désigner le tenant d'un autre (sinon bypass d'isolation cross-tenant).
+La réponse `authorize` renvoie `control:Auth-Type` (`Accept`|`Reject`) et les
+attributs `reply:` (dont `reply:Acct-Interim-Interval = 30`).
 
 ## Préfixe d'URL `/api`
 
