@@ -124,6 +124,8 @@ export const ErrorCode = {
   // Composition de lien : un routeur LOCAL ne peut pas déléguer au RADIUS du VPS
   // (VPS injoignable depuis un LAN privé). V1 = REMOTE/WG uniquement.
   ROUTER_LINK_LOCAL_NOT_ALLOWED_IN_RADIUS: 'ROUTER_LINK_LOCAL_NOT_ALLOWED_IN_RADIUS',
+  // Option payante : la liaison de routeurs exige une formule qui l'inclut (Entreprise).
+  ROUTER_LINKING_NOT_ENTITLED: 'ROUTER_LINKING_NOT_ENTITLED',
 
   // ── Payments ──
   PAYMENT_PROOF_MISSING: 'PAYMENT_PROOF_MISSING',

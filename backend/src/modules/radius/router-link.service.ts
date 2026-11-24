@@ -10,6 +10,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { CryptoService } from '../../common/crypto/crypto.service';
 import { RemoteRouterService } from '../remote-access/remote-router.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { EventLogService } from '../events/event-log.service';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/error-codes';
@@ -81,6 +82,7 @@ export class RouterLinkService {
     private readonly crypto: CryptoService,
     private readonly eventLog: EventLogService,
     private readonly config: ConfigService<AppConfig, true>,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
   private wgServerIp(): string {
@@ -97,6 +99,7 @@ export class RouterLinkService {
     actorId: string,
     dto: { name: string; authMode: RouterLinkAuthMode; routerIds: string[] },
   ): Promise<RouterLinkView> {
+    await this.subscriptions.assertRouterLinking(tenantId);
     const uniqueRouterIds = [...new Set(dto.routerIds)];
     await this.assertRoutersOwned(uniqueRouterIds);
     if (dto.authMode === RouterLinkAuthMode.RADIUS) {
@@ -249,6 +252,7 @@ export class RouterLinkService {
         "La fonctionnalité RADIUS est désactivée sur la plateforme (RADIUS_ENABLED=false).",
       );
     }
+    await this.subscriptions.assertRouterLinking(tenantId);
     await this.assertOwnLink(tenantId, id);
     const result = await this.activateLink(id);
     await this.eventLog.success(

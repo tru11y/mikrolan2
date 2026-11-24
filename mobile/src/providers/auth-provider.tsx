@@ -318,6 +318,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     cloudBackup: false,
     a4Printing: false,
     prioritySupport: false,
+    routerLinking: false,
   };
 
   const needsLegalConsent = Boolean(
