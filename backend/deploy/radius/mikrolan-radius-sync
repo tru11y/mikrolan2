@@ -23,6 +23,18 @@ fi
 
 readonly FR_DIR="/etc/freeradius/3.0"
 readonly TARGET="${FR_DIR}/clients.d/mikrolan-clients.conf"
+
+# Compte système du démon : `freerad` (Debian/Ubuntu), `radiusd` (RHEL). Ne
+# JAMAIS supposer `freeradius` (inexistant → chown échoue, synchro cassée).
+FR_USER=""
+for u in freerad radiusd freeradius; do
+  if id "$u" >/dev/null 2>&1; then FR_USER="$u"; break; fi
+done
+readonly FR_USER
+if [ -z "${FR_USER}" ]; then
+  printf '%s\n' "mikrolan-radius-sync: utilisateur freeradius introuvable" >&2
+  exit 1
+fi
 readonly LOCK_FILE="/var/lock/mikrolan-radius-sync.lock"
 readonly MAX_BYTES=1048576   # garde-fou : 1 Mio max de clients.conf
 
@@ -71,11 +83,11 @@ if [ "${opens}" -ne "${closes}" ]; then
 fi
 
 # ── Écriture atomique (tmp + rename sur le même FS) ──────────────────────────
-install -d -o freeradius -g freeradius -m 0750 "${FR_DIR}/clients.d"
+install -d -o "${FR_USER}" -g "${FR_USER}" -m 0750 "${FR_DIR}/clients.d"
 tmp="$(mktemp "${TARGET}.XXXXXX")"
 trap 'rm -f "${tmp}"' EXIT
 printf '%s\n' "${payload}" > "${tmp}"
-chown freeradius:freeradius "${tmp}"
+chown "${FR_USER}:${FR_USER}" "${tmp}"
 chmod 0600 "${tmp}"
 mv -f "${tmp}" "${TARGET}"
 trap - EXIT
