@@ -113,6 +113,8 @@ export type Entitlement = {
   cloudBackup: boolean;
   a4Printing: boolean;
   prioritySupport: boolean;
+  /** Option payante : mutualiser 2+ routeurs sur un seul hotspot (quota partagé). */
+  routerLinking: boolean;
 };
 
 export type TicketTemplate = {
@@ -1046,6 +1048,29 @@ apiClient.interceptors.response.use(
   },
 );
 
+export type RouterLinkAuthMode = 'DIRECT' | 'RADIUS';
+export type RouterLinkStatus = 'ACTIVE' | 'ARCHIVED';
+
+/** Membre d'un lien : un routeur rattaché, avec son état de provisioning RADIUS. */
+export type RouterLinkMemberView = {
+  routerId: string;
+  /** Date de confirmation RADIUS (null tant que le routeur n'est pas provisionné). */
+  radiusReadyAt: string | null;
+  router: { identity: string; alias: string | null; mode: 'LOCAL' | 'REMOTE' };
+};
+
+/** Lien de routeurs (hotspot mutualisé, quota partagé). Aucun secret exposé. */
+export type RouterLinkView = {
+  id: string;
+  name: string;
+  slug: string;
+  status: RouterLinkStatus;
+  authMode: RouterLinkAuthMode;
+  createdAt: string;
+  updatedAt: string;
+  routers: RouterLinkMemberView[];
+};
+
 export const api = {
   legal: {
     async versions(): Promise<LegalVersions> {
@@ -1181,6 +1206,57 @@ export const api = {
         code,
         newPassword,
       });
+    },
+  },
+
+  routerLinks: {
+    async list(): Promise<RouterLinkView[]> {
+      const res = await apiClient.get<ApiEnvelope<RouterLinkView[]>>('/router-links');
+      return unwrap(res);
+    },
+    async get(id: string): Promise<RouterLinkView> {
+      const res = await apiClient.get<ApiEnvelope<RouterLinkView>>(`/router-links/${id}`);
+      return unwrap(res);
+    },
+    async create(payload: {
+      name: string;
+      authMode: RouterLinkAuthMode;
+      routerIds: string[];
+    }): Promise<RouterLinkView> {
+      const res = await apiClient.post<ApiEnvelope<RouterLinkView>>(
+        '/router-links',
+        payload,
+      );
+      return unwrap(res);
+    },
+    async addMembers(id: string, routerIds: string[]): Promise<RouterLinkView> {
+      const res = await apiClient.post<ApiEnvelope<RouterLinkView>>(
+        `/router-links/${id}/members`,
+        { routerIds },
+      );
+      return unwrap(res);
+    },
+    async removeMember(id: string, routerId: string): Promise<RouterLinkView> {
+      const res = await apiClient.delete<ApiEnvelope<RouterLinkView>>(
+        `/router-links/${id}/members/${routerId}`,
+      );
+      return unwrap(res);
+    },
+    async activate(id: string): Promise<{ total: number; ready: number }> {
+      const res = await apiClient.post<ApiEnvelope<{ total: number; ready: number }>>(
+        `/router-links/${id}/activate`,
+      );
+      return unwrap(res);
+    },
+    async deactivate(id: string): Promise<void> {
+      await apiClient.post(`/router-links/${id}/deactivate`);
+    },
+    async setAuthMode(id: string, authMode: RouterLinkAuthMode): Promise<RouterLinkView> {
+      const res = await apiClient.patch<ApiEnvelope<RouterLinkView>>(
+        `/router-links/${id}/auth-mode`,
+        { authMode },
+      );
+      return unwrap(res);
     },
   },
 
@@ -2337,6 +2413,7 @@ export type Tier = {
   a4Printing: boolean;
   cloudBackup: boolean;
   prioritySupport: boolean;
+  routerLinking: boolean;
   badge: string | null;
   tagline: string | null;
   features: TierFeature[];

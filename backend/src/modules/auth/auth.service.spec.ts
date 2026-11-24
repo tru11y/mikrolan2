@@ -360,6 +360,7 @@ describe('AuthService', () => {
         cloudBackup: true,
         a4Printing: true,
         prioritySupport: true,
+        routerLinking: true,
       });
     });
 

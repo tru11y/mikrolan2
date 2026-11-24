@@ -30,6 +30,7 @@ export const createTierSchema = z.object({
   a4Printing: z.boolean().optional(),
   cloudBackup: z.boolean().optional(),
   prioritySupport: z.boolean().optional(),
+  routerLinking: z.boolean().optional(),
   badge: z.string().trim().max(30).nullable().optional(),
   tagline: z.string().trim().max(80).nullable().optional(),
   features: z.array(tierFeatureSchema).max(20),

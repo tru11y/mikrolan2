@@ -585,6 +585,8 @@ model SubscriptionTier {
   a4Printing          Boolean        @default(false)
   cloudBackup         Boolean        @default(false)
   prioritySupport     Boolean        @default(false)
+  // Option payante : mutualiser 2+ routeurs sur un seul hotspot (quota partagé RADIUS).
+  routerLinking       Boolean        @default(false)
   badge               String?
   tagline             String?
   features            Json // [{ label: string, included: boolean }]

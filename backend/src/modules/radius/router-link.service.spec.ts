@@ -1,6 +1,8 @@
 import { ManagementMode, RouterLinkAuthMode } from '@prisma/client';
 import { RouterLinkService, deriveWgServerIp } from './router-link.service';
+import { HttpStatus } from '@nestjs/common';
 import { ErrorCode } from '../../common/error-codes';
+import { BusinessException } from '../../common/exceptions/business.exception';
 
 function makePrisma() {
   return {
@@ -42,10 +44,13 @@ function makeConfig(radiusEnabled = true) {
 }
 const config = makeConfig();
 
+const subscriptions = { assertRouterLinking: jest.fn().mockResolvedValue(undefined) };
+
 function build(
   prisma: any,
   remote: any = { run: jest.fn() },
   cfg: any = config,
+  subs: any = subscriptions,
 ) {
   return new RouterLinkService(
     prisma,
@@ -53,6 +58,7 @@ function build(
     crypto as any,
     eventLog as any,
     cfg as any,
+    subs as any,
   );
 }
 
@@ -221,6 +227,23 @@ describe('createLink', () => {
       expect.objectContaining({ authMode: RouterLinkAuthMode.DIRECT }),
       { tenantId: 't1', userId: 'u1' },
     );
+  });
+
+  it('option payante : refuse la création si le tenant n\'a pas le droit routerLinking', async () => {
+    const prisma = makePrisma();
+    const denied = {
+      assertRouterLinking: jest.fn().mockRejectedValue(
+        new BusinessException(HttpStatus.FORBIDDEN, ErrorCode.ROUTER_LINKING_NOT_ENTITLED, 'x'),
+      ),
+    };
+    await expect(
+      build(prisma, undefined, config, denied).createLink('t1', 'u1', {
+        name: 'Hotspot Centre',
+        authMode: RouterLinkAuthMode.DIRECT,
+        routerIds: ['r1'],
+      }),
+    ).rejects.toMatchObject({ errorCode: ErrorCode.ROUTER_LINKING_NOT_ENTITLED });
+    expect(prisma.routerLink.create).not.toHaveBeenCalled();
   });
 
   it('crée un lien RADIUS en validant chaque routeur (REMOTE ok)', async () => {

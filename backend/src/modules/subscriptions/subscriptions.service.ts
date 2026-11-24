@@ -60,6 +60,8 @@ export interface Entitlement {
   /** Impression PDF A4/A3 (appliquée côté app : le PDF est généré sur l'appareil). */
   a4Printing: boolean;
   prioritySupport: boolean;
+  /** Option payante : mutualiser 2+ routeurs sur un seul hotspot (quota partagé). */
+  routerLinking: boolean;
 }
 
 function daysUntil(end: Date | null): number {
@@ -113,7 +115,7 @@ export class SubscriptionsService {
         currentPeriodEnd: true,
         routerLimitOverride: true,
         userLimitOverride: true,
-        tier: { select: { key: true, routerLimit: true, userLimit: true, remoteAccess: true, cloudBackup: true, a4Printing: true, prioritySupport: true } },
+        tier: { select: { key: true, routerLimit: true, userLimit: true, remoteAccess: true, cloudBackup: true, a4Printing: true, prioritySupport: true, routerLinking: true } },
       },
     });
 
@@ -142,6 +144,7 @@ export class SubscriptionsService {
         cloudBackup: sub.tier?.cloudBackup ?? false,
         a4Printing: sub.tier?.a4Printing ?? false,
         prioritySupport: sub.tier?.prioritySupport ?? false,
+        routerLinking: sub.tier?.routerLinking ?? false,
       };
     }
 
@@ -158,6 +161,8 @@ export class SubscriptionsService {
         cloudBackup: true,
         a4Printing: true,
         prioritySupport: false,
+        // Option payante : non incluse en essai, souscrite via la formule Entreprise.
+        routerLinking: false,
       };
     }
 
@@ -174,12 +179,28 @@ export class SubscriptionsService {
       cloudBackup: false,
       a4Printing: false,
       prioritySupport: false,
+      routerLinking: false,
     };
   }
 
   /** True when the tenant may use remote (cloud + WireGuard) management. */
   async isRemoteAllowed(tenantId: string): Promise<boolean> {
     return (await this.getEntitlement(tenantId)).remoteAllowed;
+  }
+
+  /**
+   * Garde l'option payante « liaison de routeurs ». À appeler avant de créer ou
+   * d'activer un RouterLink : seul un tenant dont la formule inclut
+   * `routerLinking` (Entreprise) y a droit.
+   */
+  async assertRouterLinking(tenantId: string): Promise<void> {
+    if (!(await this.getEntitlement(tenantId)).routerLinking) {
+      throw new BusinessException(
+        HttpStatus.FORBIDDEN,
+        ErrorCode.ROUTER_LINKING_NOT_ENTITLED,
+        'La liaison de routeurs est une option de la formule Entreprise. Mettez à niveau votre abonnement pour mutualiser plusieurs routeurs sur un même hotspot.',
+      );
+    }
   }
 
   async assertUserLimit(tenantId: string): Promise<void> {
