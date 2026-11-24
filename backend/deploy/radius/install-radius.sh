@@ -11,7 +11,7 @@
 #   - installe freeradius + freeradius-rest + freeradius-utils (si absents) ;
 #   - désactive le service tout de suite (on repart d'une conf maîtrisée) ;
 #   - pose nos fichiers de conf (rest, virtual server, drop-in systemd) ;
-#   - désactive les sites par défaut (default, inner-tunnel) ;
+#   - désactive les sites par défaut (default, inner-tunnel) et le module eap ;
 #   - active le module rest et le site mikrolan ;
 #   - prépare clients.d/ et l'inclusion dans clients.conf ;
 #   - daemon-reload + enable.
@@ -64,18 +64,40 @@ if [ ! -d "${FR_DIR}" ]; then
   exit 1
 fi
 
-# ── 3. Pose des fichiers de conf (propriété freeradius) ──────────────────────
+# Compte système du démon (créé par le paquet) : `freerad` sur Debian/Ubuntu,
+# `radiusd` sur RHEL. Ne JAMAIS supposer `freeradius` : cet utilisateur n'existe
+# pas → `install -o freeradius` échoue « invalid user » et laisse l'install à
+# moitié faite.
+FR_USER=""
+for u in freerad radiusd freeradius; do
+  if id "$u" >/dev/null 2>&1; then FR_USER="$u"; break; fi
+done
+readonly FR_USER
+if [ -z "${FR_USER}" ]; then
+  echo "Utilisateur système freeradius introuvable (ni freerad ni radiusd)." >&2
+  exit 1
+fi
+log "utilisateur du démon : ${FR_USER}"
+
+# ── 3. Pose des fichiers de conf (propriété du démon) ────────────────────────
 log "pose du module rest"
-install -o freeradius -g freeradius -m 0640 \
+install -o "${FR_USER}" -g "${FR_USER}" -m 0640 \
   "${SRC}/mods-available/rest" "${FR_DIR}/mods-available/rest"
 
 log "pose du virtual server mikrolan"
-install -o freeradius -g freeradius -m 0640 \
+install -o "${FR_USER}" -g "${FR_USER}" -m 0640 \
   "${SRC}/sites-available/mikrolan" "${FR_DIR}/sites-available/mikrolan"
 
-# ── 4. Désactivation des sites par défaut (idempotent) ───────────────────────
+# ── 4. Désactivation des sites et modules par défaut (idempotent) ────────────
 log "désactivation des sites par défaut"
 rm -f "${FR_DIR}/sites-enabled/default" "${FR_DIR}/sites-enabled/inner-tunnel"
+
+# Le module eap par défaut exige une section `Auth-Type EAP` qui ne vivait que
+# dans le site `default` (désactivé ci-dessus) : laissé actif, il casse
+# l'instanciation (`freeradius -XC` → « Failed to find 'Auth-Type EAP' »). Le
+# hotspot MikroTik n'utilise pas EAP (PAP/CHAP délégué à l'API) → on le coupe.
+log "désactivation du module eap (non utilisé, casse -XC)"
+rm -f "${FR_DIR}/mods-enabled/eap"
 
 # ── 5. Activation module + site (symlinks idempotents) ───────────────────────
 log "activation du module rest et du site mikrolan"
@@ -84,7 +106,7 @@ ln -sfn "../sites-available/mikrolan" "${FR_DIR}/sites-enabled/mikrolan"
 
 # ── 6. clients.d/ + inclusion dans clients.conf (idempotent) ─────────────────
 log "préparation de clients.d/"
-install -d -o freeradius -g freeradius -m 0750 "${FR_DIR}/clients.d"
+install -d -o "${FR_USER}" -g "${FR_USER}" -m 0750 "${FR_DIR}/clients.d"
 
 if ! grep -qE '^\s*\$INCLUDE\s+clients\.d/\s*$' "${FR_DIR}/clients.conf"; then
   log "ajout de \$INCLUDE clients.d/ dans clients.conf"
@@ -104,7 +126,7 @@ systemctl daemon-reload
 # ── 8. Vérifications ─────────────────────────────────────────────────────────
 if [ ! -f "${FR_DIR}/mikrolan-secrets.conf" ]; then
   log "ATTENTION : ${FR_DIR}/mikrolan-secrets.conf absent."
-  log "  Posez-le à la main (0640 root:freeradius) avant de démarrer :"
+  log "  Posez-le à la main (0640 root:${FR_USER}) avant de démarrer :"
   log "  cp mikrolan-secrets.conf.example ${FR_DIR}/mikrolan-secrets.conf && editez le token."
 fi
 

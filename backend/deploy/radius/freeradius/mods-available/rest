@@ -16,7 +16,7 @@
 rest {
 	#
 	#  Secret partagé avec l'API (X-Radius-Token = RADIUS_INTERNAL_TOKEN).
-	#  Défini dans un fichier 0640 root:freeradius, jamais committé en clair.
+	#  Défini dans un fichier 0640 root:freerad, jamais committé en clair.
 	#
 	$INCLUDE ${confdir}/mikrolan-secrets.conf
 
