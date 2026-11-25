@@ -44,3 +44,6 @@ backend/deploy/radius/freeradius/clients.d/
 
 # pgBackRest : secrets S3 + passphrase de chiffrement (PITR), hors repo
 backend/deploy/secrets/pgbackrest.env
+
+# Lockfile de la console web : suivi pour des builds reproductibles (npm ci en CI).
+!web/package-lock.json
