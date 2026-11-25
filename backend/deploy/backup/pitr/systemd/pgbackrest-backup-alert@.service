@@ -1,0 +1,13 @@
+[Unit]
+# Template d'alerting déclenché par OnFailure= des unités pgbackrest-backup-*.
+# %i vaut le nom de l'unité en échec (passé via OnFailure=...@%n.service).
+# Minimal : journalise l'échec dans le journal système (visible via journalctl
+# et remonté par toute supervision du syslog). NE configure PAS d'email/SMTP ici
+# (pas de secrets dans le repo) — brancher l'astreinte réelle : voir README,
+# section « Alerting sur échec ».
+Description=MikroLan — alerte échec backup pgBackRest (%i)
+Documentation=file:/opt/mikrolan2/backend/deploy/backup/pitr/README.md
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/logger -t pgbackrest-backup -p daemon.err "ECHEC backup pgbackrest: %i"

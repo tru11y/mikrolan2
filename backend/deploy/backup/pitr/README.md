@@ -1,12 +1,13 @@
 # PITR PostgreSQL via pgBackRest — runbook
 
-> **Changement de configuration PRODUCTION — NON APPLIQUÉ.**
-> Ce dossier ne contient que des **templates** (config + unités systemd + scripts). Rien
-> n'est déployé ni exécuté sur la prod par cet audit. L'activation modifie la config
-> Postgres (`wal_level`, `archive_mode`, `archive_command`) et **exige un redémarrage du
-> conteneur `mikrolan2-pg`** : à réaliser par un humain en **fenêtre de maintenance**.
-> Les secrets de `pgbackrest.conf` sont des placeholders `<...>` ; ne jamais committer de
-> vraie clé.
+> **PITR ACTIF EN PRODUCTION depuis le 2026-11-25.** Ce dossier est la **source de vérité**
+> de la config PITR qui tourne : `docker-compose.prod.yml` porte l'archivage WAL
+> (`wal_level`, `archive_mode`, `archive_command`, `archive_timeout`), `pgbackrest.conf` la
+> config pgBackRest, `systemd/` les timers full/diff + l'alerting. Toute modification ici
+> doit rester alignée avec le conteneur `mikrolan2-pg` en prod (un changement de
+> `wal_level`/`archive_mode` **exige un redémarrage du conteneur** en fenêtre de maintenance).
+> Les secrets de `pgbackrest.conf` restent des placeholders `<...>` : ne jamais committer de
+> vraie clé (les vraies valeurs vivent hors repo sur le VPS).
 
 ## Pourquoi
 
@@ -27,10 +28,18 @@ logique simple à inspecter / restaurer partiellement.
 ## Architecture
 
 - Postgres tourne dans le conteneur Docker `mikrolan2-pg` (base `mikrolan`, port 5544).
-- pgBackRest s'exécute **dans le conteneur** (`docker exec -u postgres mikrolan2-pg pgbackrest ...`)
-  pour accéder au répertoire de données et au flux WAL.
-- Dépôt distant : `s3://mikrolan-backups/pgbackrest` (préfixe dédié, isolé des dumps
-  `mikrolan-*.sql.gz` à la racine du bucket). Chiffré client (aes-256-cbc) avant envoi.
+- pgBackRest s'exécute **dans le conteneur**, **toujours** en `postgres`
+  (`docker exec -u postgres mikrolan2-pg pgbackrest ...`) pour accéder au répertoire de
+  données et au flux WAL. **PIÈGE lock-dir : ne jamais lancer pgbackrest en root dans le
+  conteneur.** Une seule invocation root crée `/tmp/pgbackrest` appartenant à root ;
+  l'`archive-push` suivant (exécuté par Postgres, donc en `postgres`) ne peut plus écrire
+  son verrou et l'archivage WAL se bloque. Toutes les commandes manuelles passent par
+  `-u postgres` ; en cas de blocage, supprimer `/tmp/pgbackrest` root dans le conteneur.
+- Connexion Postgres : rôle `pg1-user=mikrolan` sur `pg1-database=mikrolan` — c'est le seul
+  superuser de l'instance (`POSTGRES_USER`), il n'existe pas de rôle `postgres`.
+- Dépôt distant : `s3://mikrolan-backups/pgbackrest` en région **us-east-1** (préfixe dédié,
+  isolé des dumps `mikrolan-*.sql.gz` à la racine du bucket). Chiffré client (aes-256-cbc)
+  avant envoi.
 - Planification : **full hebdo** (dimanche) + **diff quotidienne** + **WAL continu**.
 
 ### Prérequis conteneur
@@ -112,13 +121,26 @@ sudo install -D -m 644 pgbackrest-backup-full.service /etc/systemd/system/pgback
 sudo install -D -m 644 pgbackrest-backup-full.timer   /etc/systemd/system/pgbackrest-backup-full.timer
 sudo install -D -m 644 pgbackrest-backup-diff.service /etc/systemd/system/pgbackrest-backup-diff.service
 sudo install -D -m 644 pgbackrest-backup-diff.timer   /etc/systemd/system/pgbackrest-backup-diff.timer
+# Unité d'alerting déclenchée par OnFailure= des deux services ci-dessus (template @).
+sudo install -D -m 644 'pgbackrest-backup-alert@.service' '/etc/systemd/system/pgbackrest-backup-alert@.service'
 sudo systemctl daemon-reload
 sudo systemctl enable --now pgbackrest-backup-full.timer pgbackrest-backup-diff.timer
 systemctl list-timers 'pgbackrest-*'
 ```
 
-Faire remonter tout échec vers l'astreinte (`OnFailure=` systemd ou supervision du log
-`/var/log/pgbackrest`).
+### Alerting sur échec
+
+Les deux services `pgbackrest-backup-{full,diff}.service` déclarent
+`OnFailure=pgbackrest-backup-alert@%n.service`. Le template fourni
+(`pgbackrest-backup-alert@.service`) est **minimal** : il journalise l'échec en
+`daemon.err` via `logger` (visible dans `journalctl`, remonté par toute supervision
+du syslog). Il ne configure **aucun** email/SMTP/webhook — pas de secret dans le repo.
+
+Pour une vraie astreinte, remplacer l'`ExecStart=` du template par l'appel adapté à
+l'infra (mail via `sendmail`/Brevo, webhook Slack via `curl`, etc.), en gardant les
+secrets hors repo (`EnvironmentFile=` pointant un fichier gitignoré sur l'hôte).
+Vérifier le déclenchement : `systemctl start pgbackrest-backup-full.service` sur une
+stanza volontairement cassée, puis `journalctl -u 'pgbackrest-backup-alert@*'`.
 
 ## Restauration PITR à l'instant T (incident, humain, root)
 

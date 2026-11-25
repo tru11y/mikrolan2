@@ -13,7 +13,21 @@ services:
     container_name: mikrolan2-pg
     restart: unless-stopped
     network_mode: host
-    command: ['postgres', '-c', 'listen_addresses=127.0.0.1', '-p', '5544']
+    # Archivage WAL activé en prod (PITR pgBackRest) : repo source de vérité.
+    command:
+      - postgres
+      - -c
+      - listen_addresses=127.0.0.1
+      - -p
+      - '5544'
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=pgbackrest --stanza=mikrolan archive-push %p
+      - -c
+      - archive_timeout=60
     environment:
       POSTGRES_USER: mikrolan
       POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
