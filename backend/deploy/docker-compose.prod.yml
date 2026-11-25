@@ -5,17 +5,48 @@
 # 127.0.0.1 in the same netns. Bound to 127.0.0.1 only → not publicly exposed.
 services:
   postgres:
-    image: postgres:16-alpine
+    # Image étendue : postgres:16-alpine + pgbackrest pour le PITR.
+    # Voir postgres/Dockerfile et backup/pitr/README.md. Inerte tant que
+    # archive_mode reste off ; le binaire n'est jamais invoqué sans stanza.
+    build:
+      context: ./postgres
     container_name: mikrolan2-pg
     restart: unless-stopped
     network_mode: host
-    command: ['postgres', '-c', 'listen_addresses=127.0.0.1', '-p', '5544']
+    # Archivage WAL activé en prod (PITR pgBackRest) : repo source de vérité.
+    command:
+      - postgres
+      - -c
+      - listen_addresses=127.0.0.1
+      - -p
+      - '5544'
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_command=pgbackrest --stanza=mikrolan archive-push %p
+      - -c
+      - archive_timeout=60
     environment:
       POSTGRES_USER: mikrolan
       POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
       POSTGRES_DB: mikrolan
+    # Secrets pgBackRest (clés S3 + passphrase de chiffrement) HORS REPO :
+    # PGBACKREST_REPO1_S3_KEY, PGBACKREST_REPO1_S3_KEY_SECRET,
+    # PGBACKREST_REPO1_CIPHER_PASS. Fichier créé à la main sur le VPS, gitignoré.
+    # required: false → le fichier n'existe qu'une fois le PITR provisionné ;
+    # son absence ne bloque pas les déploiements d'ici là (image reste inerte).
+    env_file:
+      - path: ./secrets/pgbackrest.env
+        required: false
     volumes:
       - mikrolan2_pg:/var/lib/postgresql/data
+      # Config pgBackRest déposée sur l'hôte en fenêtre de maintenance (cf. runbook).
+      - /etc/pgbackrest:/etc/pgbackrest:ro
+      # Logs + spool d'archivage WAL asynchrone, persistés entre redémarrages.
+      - mikrolan2_pgbackrest_log:/var/log/pgbackrest
+      - mikrolan2_pgbackrest_spool:/var/spool/pgbackrest
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U mikrolan -h 127.0.0.1 -p 5544']
       interval: 10s
@@ -47,3 +78,5 @@ services:
 volumes:
   mikrolan2_pg:
   mikrolan2_redis:
+  mikrolan2_pgbackrest_log:
+  mikrolan2_pgbackrest_spool:

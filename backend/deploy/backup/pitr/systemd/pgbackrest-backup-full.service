@@ -3,6 +3,9 @@ Description=MikroLan — base de base pgBackRest (full) de la stanza mikrolan
 Documentation=file:/opt/mikrolan2/backend/deploy/backup/pitr/README.md
 Requires=docker.service
 After=docker.service
+# Alerting sur échec : journalise l'incident (cf. pgbackrest-backup-alert@.service).
+# À brancher sur l'astreinte réelle (mail/webhook) — voir README section alerting.
+OnFailure=pgbackrest-backup-alert@%n.service
 
 [Service]
 Type=oneshot
