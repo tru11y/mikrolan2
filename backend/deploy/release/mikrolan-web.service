@@ -1,0 +1,48 @@
+[Unit]
+Description=MikroLan Console web (Next.js, build autonome)
+Documentation=https://github.com/Solqueflo/mikrolan2/blob/main/docs/runbooks/deploy-web.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mikrolan
+Group=mikrolan
+# L'artefact déployé contient la console sous web/ ; le lien « current » est basculé par deploy-release.sh.
+WorkingDirectory=/opt/mikrolan2-releases/current/web
+Environment=NODE_ENV=production
+Environment=PORT=3100
+Environment=HOSTNAME=127.0.0.1
+# Serveur autonome Next.js : node .next/standalone/server.js copié à la racine de web/.
+ExecStart=/usr/bin/node server.js
+
+Restart=always
+RestartSec=5s
+StartLimitBurst=5
+StartLimitIntervalSec=120
+
+# Console peu sollicitée : budget mémoire modeste. La RAM du VPS (913 Mo) est partagée avec
+# mikrolan-api (MemoryMax 720M) : surveiller free -m après activation (voir deploy-web.md).
+MemoryMax=300M
+MemoryHigh=250M
+CPUQuota=100%
+TasksMax=256
+LimitNOFILE=65536
+
+OOMScoreAdjust=-50
+OOMPolicy=stop
+
+# Durcissement : surface minimale, FS en lecture seule hors zones écrites explicitement.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+# Next peut écrire son cache sous .next/cache ; l'arbre des versions reste la seule zone inscriptible.
+ReadWritePaths=/opt/mikrolan2-releases
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mikrolan-web
+
+[Install]
+WantedBy=multi-user.target

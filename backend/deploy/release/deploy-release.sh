@@ -120,6 +120,8 @@ log "bascule vers $target, redémarrage de $SERVICE"
 if wait_health; then
   record_deploy "OK $sha (précédente : $previous)"
   post_restart_rss_check || true
+  # Console web : redémarrage au mieux après la bascule (no-op tant que mikrolan-web n'est pas activée).
+  restart_web "$target" || true
 else
   log "la nouvelle version ne répond pas : retour arrière vers $previous"
   switch_to "$previous"
