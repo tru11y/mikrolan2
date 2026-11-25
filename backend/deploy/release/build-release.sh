@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Construit l'artefact de déploiement EN CI (ou en local) : le VPS ne compile et n'installe plus rien.
 # Contenu : dist/, prisma/, public/, package*.json, node_modules de PRODUCTION uniquement (client Prisma
-# généré), scripts de déploiement et manifest.json. Sortie : <out>/mikrolan-api-<sha>.tar.gz + .sha256
+# généré), scripts de déploiement et manifest.json. Inclut aussi la console web Next.js (build autonome)
+# dans web/ pour mikrolan-web.service. Sortie : <out>/mikrolan-api-<sha>.tar.gz + .sha256
 #
 # Usage (depuis la racine du dépôt) : backend/deploy/release/build-release.sh <dossier-de-sortie> <sha-git>
 # Prérequis : Node de la MÊME version majeure que le serveur (le manifeste l'enregistre), même OS/architecture
@@ -36,6 +37,22 @@ cd "$stage"
 npm ci --omit=dev --legacy-peer-deps
 npx prisma generate
 node -e "require('argon2'); require('@prisma/client'); console.log('modules natifs chargés')"
+
+echo "== console web (Next.js, build autonome)"
+# NEXT_PUBLIC_API_BASE_URL est INLINÉE au build : elle fige l'URL de l'API dans le bundle client.
+# Surchargeable pour un build de test ; par défaut l'API de production.
+web_api_base="${NEXT_PUBLIC_API_BASE_URL:-https://api.mikrolan.net}"
+cd "$root/web"
+npm ci --legacy-peer-deps
+NEXT_PUBLIC_API_BASE_URL="$web_api_base" npm run build
+[ -f .next/standalone/server.js ] || { echo ".next/standalone/server.js absent : vérifier output:'standalone' dans web/next.config.mjs" >&2; exit 1; }
+# L'artefact n'embarque que le standalone (server.js + node_modules élagué) + les assets statiques.
+# Lancé par mikrolan-web.service : node server.js, cwd <sha>/web, PORT=3100.
+mkdir -p "$stage/web/.next"
+cp -r .next/standalone/. "$stage/web/"
+cp -r .next/static "$stage/web/.next/static"
+[ -d public ] && cp -r public "$stage/web/public"
+cd "$stage"
 
 echo "== manifeste"
 node_major="$(node -p "process.versions.node.split('.')[0]")"

@@ -1,0 +1,11 @@
+# Snippet à insérer À LA MAIN dans le Caddyfile de production (/opt/mikrolan-nest/Caddyfile),
+# à côté du bloc api.mikrolan.net. Même pattern que l'API : Caddy service systemd HOST, TLS via dns route53.
+# Prérequis DNS : enregistrement A console.mikrolan.net -> IP du VPS (route53).
+# Reverse proxy vers la console web Next.js servie en local par mikrolan-web.service (PORT=3100).
+# Après insertion : systemctl reload caddy (voir docs/runbooks/deploy-web.md).
+console.mikrolan.net {
+	tls {
+		dns route53
+	}
+	reverse_proxy 127.0.0.1:3100
+}

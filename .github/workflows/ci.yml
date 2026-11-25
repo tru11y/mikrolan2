@@ -128,7 +128,9 @@ jobs:
         with:
           node-version: 20
 
-      - name: Build artifact
+      # build-release.sh construit aussi la console web Next.js (web/, build autonome) et l'inclut dans
+      # l'archive sous web/ ; deploy-release.sh redémarre mikrolan-web après la bascule (voir deploy-web.md).
+      - name: Build artifact (backend + console web)
         run: bash backend/deploy/release/build-release.sh "$RUNNER_TEMP/release" "$GITHUB_SHA"
 
       - uses: actions/upload-artifact@v4

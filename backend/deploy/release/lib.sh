@@ -8,6 +8,9 @@ APP_ROOT="${APP_ROOT:-/opt/mikrolan2}"
 DATA_ROOT="${DATA_ROOT:-$APP_ROOT/backend}"
 RELEASES_DIR="${RELEASES_DIR:-/opt/mikrolan2-releases}"
 SERVICE="${SERVICE:-mikrolan-api}"
+# Console web (facultative) : redémarrée au mieux après la bascule, seulement si l'archive contient web/
+# et que l'unit est installée. Absente tant que mikrolan-web n'est pas activée (voir deploy-web.md).
+WEB_SERVICE="${WEB_SERVICE:-mikrolan-web}"
 SERVICE_USER="${SERVICE_USER:-mikrolan}"
 HEALTH_URL="${HEALTH_URL:-http://127.0.0.1:3002/api/health}"
 HEALTH_TIMEOUT_S="${HEALTH_TIMEOUT_S:-90}"
@@ -62,6 +65,21 @@ wait_health() {
     waited=$((waited + 2))
   done
   return 1
+}
+
+# Redémarre la console web APRÈS la bascule du lien « current » (le standalone sert l'arbre pointé par
+# current/web). Au mieux : ne fait rien si l'archive activée ne contient pas web/ ou si l'unit n'est pas
+# installée ; un échec de redémarrage est un avertissement, jamais un critère de retour arrière de l'API.
+restart_web() {
+  local target="$1"
+  [ -d "$target/web" ] || { log "pas de web/ dans la version activée : $WEB_SERVICE non redémarré"; return 0; }
+  if "$SYSTEMCTL" list-unit-files "$WEB_SERVICE.service" >/dev/null 2>&1; then
+    log "redémarrage de $WEB_SERVICE (console)"
+    "$SYSTEMCTL" restart "$WEB_SERVICE" || log "WARN échec redémarrage $WEB_SERVICE — console inchangée, API OK (voir deploy-web.md)"
+  else
+    log "unit $WEB_SERVICE non installée : redémarrage ignoré (activation : docs/runbooks/deploy-web.md)"
+  fi
+  return 0
 }
 
 require_root() {
