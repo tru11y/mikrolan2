@@ -41,7 +41,7 @@ node -e "require('argon2'); require('@prisma/client'); console.log('modules nati
 echo "== console web (Next.js, build autonome)"
 # NEXT_PUBLIC_API_BASE_URL est INLINÉE au build : elle fige l'URL de l'API dans le bundle client.
 # Surchargeable pour un build de test ; par défaut l'API de production.
-web_api_base="${NEXT_PUBLIC_API_BASE_URL:-https://api.mikrolan.net}"
+web_api_base="${NEXT_PUBLIC_API_BASE_URL:-https://api.mikrolan.net/api}"
 cd "$root/web"
 # npm install (pas `ci`) : le lockfile web peut dériver de package.json selon la
 # plateforme de génération (sharp, variants OS) ; `install` résout proprement sur
