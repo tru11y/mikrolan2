@@ -43,7 +43,10 @@ echo "== console web (Next.js, build autonome)"
 # Surchargeable pour un build de test ; par défaut l'API de production.
 web_api_base="${NEXT_PUBLIC_API_BASE_URL:-https://api.mikrolan.net}"
 cd "$root/web"
-npm ci --legacy-peer-deps
+# npm install (pas `ci`) : le lockfile web peut dériver de package.json selon la
+# plateforme de génération (sharp, variants OS) ; `install` résout proprement sur
+# le Linux de CI sans échec de validation stricte.
+npm install --legacy-peer-deps --no-audit --no-fund
 NEXT_PUBLIC_API_BASE_URL="$web_api_base" npm run build
 [ -f .next/standalone/server.js ] || { echo ".next/standalone/server.js absent : vérifier output:'standalone' dans web/next.config.mjs" >&2; exit 1; }
 # L'artefact n'embarque que le standalone (server.js + node_modules élagué) + les assets statiques.
