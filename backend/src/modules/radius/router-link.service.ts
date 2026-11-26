@@ -9,6 +9,7 @@ import {
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CryptoService } from '../../common/crypto/crypto.service';
+import { RadiusClientsSyncService } from './radius-clients-sync.service';
 import { RemoteRouterService } from '../remote-access/remote-router.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { EventLogService } from '../events/event-log.service';
@@ -83,6 +84,7 @@ export class RouterLinkService {
     private readonly eventLog: EventLogService,
     private readonly config: ConfigService<AppConfig, true>,
     private readonly subscriptions: SubscriptionsService,
+    private readonly clientsSync: RadiusClientsSyncService,
   ) {}
 
   private wgServerIp(): string {
@@ -433,6 +435,10 @@ export class RouterLinkService {
       }
     }
 
+    // Enrôle les NAS (radiusReadyAt) côté FreeRADIUS : écrit clients.conf + reload.
+    // Sans ça, FreeRADIUS rejette les Access-Request avant d'appeler l'API.
+    await this.syncRadiusClients(linkId, 'activate');
+
     return this.reconcileDistributable(linkId);
   }
 
@@ -471,6 +477,26 @@ export class RouterLinkService {
       where: { linkId },
       data: { radiusDistributable: false },
     });
+
+    // Retire les NAS de ce lien de clients.conf (radiusReadyAt remis à null ci-dessus).
+    await this.syncRadiusClients(linkId, 'deactivate');
+  }
+
+  /**
+   * Pousse clients.conf vers FreeRADIUS. Échec NON bloquant : la base reste la
+   * source de vérité, un resync peut être rejoué. On log l'erreur (jamais le secret).
+   */
+  private async syncRadiusClients(linkId: string, stage: 'activate' | 'deactivate'): Promise<void> {
+    try {
+      await this.clientsSync.sync();
+    } catch (err) {
+      this.logger.error({
+        errorCode: ErrorCode.RADIUS_PROVISION_FAILED,
+        linkId,
+        stage: `${stage}:clients-sync`,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   /**
@@ -496,9 +522,9 @@ export class RouterLinkService {
 
   /**
    * Garantit qu'un secret RADIUS chiffré existe pour ce routeur. S'il est absent,
-   * en génère un fort, le chiffre (CryptoService) et le persiste. Point d'ancrage
-   * infra : la génération de clients.conf côté VPS (PR3) doit être régénérée après
-   * création d'un nouveau secret — non codé ici.
+   * en génère un fort, le chiffre (CryptoService) et le persiste. La propagation
+   * vers FreeRADIUS (clients.conf) est faite par RadiusClientsSyncService, appelé
+   * en fin d'activateLink/deactivateLink.
    */
   private async ensureRouterSecret(routerId: string): Promise<string> {
     const router = await this.prisma.router.findFirst({
@@ -513,10 +539,9 @@ export class RouterLinkService {
       where: { id: routerId },
       data: { radiusSecretEncrypted: this.crypto.encrypt(secret) },
     });
-    this.logger.warn({
+    this.logger.log({
       event: 'radius.router_secret_generated',
       routerId,
-      note: 'clients.conf (infra PR3) doit être régénéré pour ce NAS',
     });
     return secret;
   }
