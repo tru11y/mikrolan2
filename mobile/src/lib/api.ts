@@ -221,6 +221,19 @@ export type RemoteAccessUrls = {
   winbox: { host: string; port: number; address: string };
 };
 
+/** Mode d'accès distant : ports hauts directs (desktop) vs tunnel WSS 443 (mobile WiFi filtrant). */
+export type AccessMode = 'DIRECT' | 'TUNNEL';
+
+export type TunnelService = { name: 'webfig' | 'ssh' | 'winbox'; id: 1 | 2 | 3 };
+
+/** Autorisation d'ouverture de tunnel renvoyée par open-access en mode TUNNEL. */
+export type RemoteTunnelGrant = {
+  url: string;
+  ticket: string;
+  ticketExpiresInSec: number;
+  services: TunnelService[];
+};
+
 export type RemoteStatus = {
   status: 'ACTIVE' | 'REVOKED' | 'PENDING' | 'ERROR' | 'NONE';
   wgIp?: string;
@@ -229,6 +242,15 @@ export type RemoteStatus = {
   provisionedAt?: string | null;
   revokedAt?: string | null;
   accessUrls?: RemoteAccessUrls | null;
+  accessMode?: AccessMode;
+  accessOpenUntil?: string | null;
+};
+
+export type OpenAccessResult = {
+  expiresAt: string;
+  accessMode: AccessMode;
+  accessUrls: RemoteAccessUrls | null;
+  tunnel?: RemoteTunnelGrant | null;
 };
 
 export type PlanStatus = 'ACTIVE' | 'ARCHIVED';
@@ -1339,6 +1361,22 @@ export const api = {
       const res = await apiClient.post<
         ApiEnvelope<{ expiresAt: string; accessUrls: RemoteAccessUrls | null }>
       >(`/routers/${id}/remote/open-access`);
+      return unwrap(res);
+    },
+    /**
+     * Ouvre une fenêtre d'accès distant en mode explicite.
+     * - DIRECT : ports hauts VPS (anciens APK, desktop) → `accessUrls`.
+     * - TUNNEL : accès uniquement par le 443 (WiFi filtrant) → `tunnel` (ticket).
+     */
+    async openAccess(
+      id: string,
+      durationMinutes: number,
+      mode: AccessMode,
+    ): Promise<OpenAccessResult> {
+      const res = await apiClient.post<ApiEnvelope<OpenAccessResult>>(
+        `/routers/${id}/remote/open-access`,
+        { durationMinutes, mode },
+      );
       return unwrap(res);
     },
     async revokeRemote(id: string): Promise<{ revoked: boolean }> {

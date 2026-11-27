@@ -1,0 +1,13 @@
+[
+  { "name": "hello", "type": 1, "streamId": 0, "fields": { "ticket": "abc" }, "hexBytes": "01000000000003616263" },
+  { "name": "ready", "type": 2, "streamId": 0, "fields": { "expiresAtEpochMs": 1700000000000 }, "hexBytes": "02000000000000018bcfe56800" },
+  { "name": "open_winbox", "type": 16, "streamId": 1, "fields": { "serviceId": 3 }, "hexBytes": "100000000103" },
+  { "name": "open_ok", "type": 17, "streamId": 1, "fields": {}, "hexBytes": "1100000001" },
+  { "name": "open_err_ipmismatch", "type": 18, "streamId": 1, "fields": { "code": 4403 }, "hexBytes": "12000000011133" },
+  { "name": "data", "type": 32, "streamId": 1, "fields": { "bytesHex": "deadbeef" }, "hexBytes": "2000000001deadbeef" },
+  { "name": "window", "type": 33, "streamId": 1, "fields": { "credit": 65536 }, "hexBytes": "210000000100010000" },
+  { "name": "close", "type": 48, "streamId": 1, "fields": {}, "hexBytes": "3000000001" },
+  { "name": "ping", "type": 64, "streamId": 0, "fields": {}, "hexBytes": "4000000000" },
+  { "name": "pong", "type": 65, "streamId": 0, "fields": {}, "hexBytes": "4100000000" },
+  { "name": "goaway_replaced", "type": 80, "streamId": 0, "fields": { "reason": 4409 }, "hexBytes": "50000000001139" }
+]
