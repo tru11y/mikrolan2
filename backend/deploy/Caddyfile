@@ -1,17 +1,29 @@
 # Remplacer par une adresse admin réelle (notifications d'expiration Let's Encrypt).
-# auto_https disable_redirects : sans ça Caddy tente aussi de binder le port 80
-# pour la redirection HTTP->HTTPS, qui est déjà pris par le nginx v1 (interdit).
 {
 	email admin@mikrolan.net
-	auto_https disable_redirects
 }
 
-# Port 9443, pas 443 : le nginx v1 (interdit d'y toucher) occupe déjà 80 et 443
-# sur ce VPS. DNS-01 évite le port 80 pour le défi ACME, mais Caddy a quand
-# même besoin d'un port libre pour SERVIR le trafic HTTPS — d'où 9443.
-api.mikrolan.net:9443 {
+# Caddy tient 80 + 443 sur ce VPS (nginx inactif, vérifié prod 2026-11-27 :
+# l'ancien commentaire « nginx v1 occupe 80/443 » est périmé). TLS auto via
+# le challenge DNS-01 Route53 (pas besoin du port 80 pour l'ACME).
+
+api.mikrolan.net {
 	tls {
 		dns route53
 	}
 	reverse_proxy 127.0.0.1:3002
+}
+
+# Tunnel d'accès distant WSS 443 (WiFi filtrant) : le téléphone ne voit que du
+# 443. Caddy termine le TLS et relaie l'Upgrade WebSocket nativement vers l'API
+# NestJS (gateway `ws` sur /remote-tunnel). Le backend pose l'en-tête
+# X-Forwarded-For (dernier saut = l'IP réelle du client, dérivée loopback-only).
+vpn.mikrolan.net {
+	tls {
+		dns route53
+	}
+	reverse_proxy 127.0.0.1:3002 {
+		# Pas de buffering : le tunnel est bidirectionnel et longue durée.
+		flush_interval -1
+	}
 }
