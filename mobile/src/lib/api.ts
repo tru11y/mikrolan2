@@ -1379,6 +1379,10 @@ export const api = {
       );
       return unwrap(res);
     },
+    /** Ferme la fenêtre d'accès distant (et la session tunnel côté backend). */
+    async closeAccess(id: string): Promise<void> {
+      await apiClient.post<ApiEnvelope<unknown>>(`/routers/${id}/remote/close-access`);
+    },
     async revokeRemote(id: string): Promise<{ revoked: boolean }> {
       const res = await apiClient.post<ApiEnvelope<{ revoked: boolean }>>(
         `/routers/${id}/remote/revoke`,
