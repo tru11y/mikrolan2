@@ -25,6 +25,9 @@
     "src/lib/ticketVerification.test.ts",
     "src/lib/ticketsPdf.test.ts",
     "src/lib/wgDisplay.test.ts",
-    "src/lib/versionPolicy.test.ts"
+    "src/lib/versionPolicy.test.ts",
+    "src/services/remote-tunnel/tunnelProtocol.test.ts",
+    "src/services/remote-tunnel/tunnelSession.test.ts",
+    "src/services/remote-tunnel/LocalForwarder.test.ts"
   ]
 }
