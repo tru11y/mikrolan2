@@ -75,7 +75,7 @@ function makeService() {
   const wg = makeWg() as any;
   const eventLog = makeEventLogStub();
   return {
-    service: new RoutersService(prisma, crypto, subs, wg, eventLog as any),
+    service: new RoutersService(prisma, crypto, subs, wg, eventLog as any, { closeByPeer: jest.fn() } as any),
     prisma,
     subs,
     crypto,

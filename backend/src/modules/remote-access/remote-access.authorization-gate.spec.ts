@@ -18,6 +18,8 @@ function build() {
     {} as never,
     {} as never,
     makeEventLogStub() as never,
+    { issueTicket: jest.fn(), revokeOpenSessions: jest.fn() } as never,
+    { closeByPeer: jest.fn() } as never,
   );
 }
 

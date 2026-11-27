@@ -41,8 +41,10 @@ type ProvisionDto = z.infer<typeof provisionSchema>;
 const openAccessSchema = z
   .object({
     durationMinutes: z.coerce.number().int().min(5).max(60).default(15),
+    // DIRECT (défaut) = DNAT ports hauts (anciens APK intacts). TUNNEL = WSS 443.
+    mode: z.enum(['DIRECT', 'TUNNEL']).default('DIRECT'),
   })
-  .default({ durationMinutes: 15 });
+  .default({ durationMinutes: 15, mode: 'DIRECT' });
 type OpenAccessDto = z.infer<typeof openAccessSchema>;
 
 /** `::ffff:1.2.3.4` → `1.2.3.4` ; null si l'adresse n'est pas de l'IPv4 valide. */
@@ -98,13 +100,13 @@ export class RemoteAccessController {
     @Req() req: FastifyRequest,
     @Optional()
     @Body(new ZodValidationPipe(openAccessSchema))
-    dto: OpenAccessDto = { durationMinutes: 15 },
+    dto: OpenAccessDto = { durationMinutes: 15, mode: 'DIRECT' },
   ) {
     const sourceIp = clientIpv4(req.ip);
     if (!sourceIp) {
-      throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.REMOTE_ACCESS_IPV4_REQUIRED, "L'accès direct nécessite une connexion IPv4.");
+      throw new BusinessException(HttpStatus.BAD_REQUEST, ErrorCode.REMOTE_ACCESS_IPV4_REQUIRED, "L'accès distant nécessite une connexion IPv4.");
     }
-    return this.remote.openAccess(id, user.userId, sourceIp, dto.durationMinutes);
+    return this.remote.openAccess(id, user.userId, sourceIp, dto.durationMinutes, dto.mode);
   }
 
   @Post('close-access')

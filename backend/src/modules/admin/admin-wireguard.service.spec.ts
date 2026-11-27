@@ -73,7 +73,7 @@ function build(opts: { peers: PeerFixture[]; live?: Record<string, unknown> | Er
     removeDnat: jest.fn().mockResolvedValue(undefined),
   };
   const eventLog = makeEventLogStub();
-  const service = new AdminWireGuardService(prisma, wg, eventLog as any);
+  const service = new AdminWireGuardService(prisma, wg, eventLog as any, { closeByPeer: jest.fn() } as any);
   return { service, prisma, wg, eventLog };
 }
 

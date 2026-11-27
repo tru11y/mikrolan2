@@ -35,6 +35,7 @@ describe('RemoteAccessService access window', () => {
   const peer = {
     id: 'p1', routerId: 'r1', status: 'ACTIVE', wgIp: '10.20.0.2', allocatedPort: 41_000,
     webfigPort: 80, sshPort: 22, winboxPort: 8291, accessOpenUntil: null as Date | null, accessSourceIp: null as string | null,
+    accessMode: 'DIRECT' as 'DIRECT' | 'TUNNEL',
   };
 
   function build(over: Partial<typeof peer> = {}, allowed = true) {
@@ -48,7 +49,7 @@ describe('RemoteAccessService access window', () => {
       vpsPublicIp: '198.51.100.1',
     };
     const subscriptions: any = { isRemoteAllowed: jest.fn().mockResolvedValue(allowed) };
-    const service = new RemoteAccessService(prisma, subscriptions, wg, {} as never, makeEventLogStub() as never);
+    const service = new RemoteAccessService(prisma, subscriptions, wg, {} as never, makeEventLogStub() as never, { issueTicket: jest.fn(), revokeOpenSessions: jest.fn() } as never, { closeByPeer: jest.fn() } as never);
     const run = <T>(fn: () => Promise<T>) =>
       tenantStore.run({ ctx: { tenantId: 't1', userId: 'u1', role: 'ADMIN' } as never }, fn);
     return { service, prisma, wg, run };
@@ -76,6 +77,38 @@ describe('RemoteAccessService access window', () => {
     expect(data.accessSourceIp).toBe('203.0.113.7');
     expect(data.accessOpenUntil.getTime()).toBeGreaterThan(Date.now() + 14 * 60_000);
     expect((res as any).accessUrls.ssh.port).toBe(42_000);
+  });
+
+  it('openAccess TUNNEL : AUCUN addDnat, ticket émis, accessUrls null', async () => {
+    const row = { ...peer, status: 'ACTIVE' };
+    const prisma: any = {
+      remotePeer: { findFirst: jest.fn().mockResolvedValue(row), update: jest.fn().mockResolvedValue(undefined) },
+    };
+    const wg: any = {
+      addDnat: jest.fn().mockResolvedValue(undefined),
+      removeDnat: jest.fn().mockResolvedValue(undefined),
+      vpsPublicIp: '198.51.100.1',
+    };
+    const subscriptions: any = { isRemoteAllowed: jest.fn().mockResolvedValue(true) };
+    const config: any = { get: jest.fn().mockReturnValue('wss://vpn.mikrolan.net/remote-tunnel') };
+    const tunnel: any = {
+      issueTicket: jest.fn().mockResolvedValue({ ticket: 'TKT', ticketExpiresInSec: 60, session: { id: 's1' } }),
+      revokeOpenSessions: jest.fn(),
+    };
+    const registry: any = { closeByPeer: jest.fn() };
+    const service = new RemoteAccessService(prisma, subscriptions, wg, config, makeEventLogStub() as never, tunnel, registry);
+    const res: any = await tenantStore.run(
+      { ctx: { tenantId: 't1', userId: 'u1', role: 'ADMIN' } as never },
+      () => service.openAccess('r1', 'u1', '203.0.113.7', 15, 'TUNNEL'),
+    );
+    expect(wg.addDnat).not.toHaveBeenCalled();
+    expect(tunnel.issueTicket).toHaveBeenCalled();
+    expect(registry.closeByPeer).toHaveBeenCalledWith('p1', 'REPLACED');
+    expect(res.accessMode).toBe('TUNNEL');
+    expect(res.accessUrls).toBeNull();
+    expect(res.tunnel.ticket).toBe('TKT');
+    expect(res.tunnel.services).toHaveLength(3);
+    expect(prisma.remotePeer.update.mock.calls[0][0].data.accessMode).toBe('TUNNEL');
   });
 
   it('openAccess : change d’IP → retire d’abord les règles de l’ancienne IP', async () => {

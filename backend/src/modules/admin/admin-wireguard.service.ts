@@ -1,10 +1,11 @@
 import { HttpStatus, Injectable, Logger } from '@nestjs/common';
-import { AuditAction, ManagementMode, Prisma, RemotePeerStatus } from '@prisma/client';
+import { AuditAction, ManagementMode, Prisma, RemotePeerStatus, RemoteTunnelCloseReason } from '@prisma/client';
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/error-codes';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WireGuardService, type LivePeer } from '../../common/wireguard/wireguard.service';
 import { describeFailure, EventLogService } from '../events/event-log.service';
+import { TunnelSessionRegistry } from '../remote-access/tunnel/tunnel-session.registry';
 import {
   classifyPeer,
   stateSeverity,
@@ -67,6 +68,7 @@ export class AdminWireGuardService {
     private readonly prisma: PrismaService,
     private readonly wg: WireGuardService,
     private readonly eventLog: EventLogService,
+    private readonly tunnelRegistry: TunnelSessionRegistry,
   ) {}
 
   async listPeers(query: ListWgPeersQueryDto): Promise<WgPeersResponse> {
@@ -270,6 +272,9 @@ export class AdminWireGuardService {
         'Cet accès est déjà révoqué.',
       );
     }
+
+    // Coupe les sessions tunnel vivantes avant la révocation.
+    this.tunnelRegistry.closeByPeer(peer.id, RemoteTunnelCloseReason.REVOKED);
 
     let wgRemovalError: string | null = null;
     try {

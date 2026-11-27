@@ -5,11 +5,13 @@ import {
   Prisma,
   RemotePeer,
   RemotePeerStatus,
+  RemoteTunnelCloseReason,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WireGuardService } from '../../common/wireguard/wireguard.service';
 import { ErrorCode } from '../../common/error-codes';
 import { EventLogService, describeFailure } from '../events/event-log.service';
+import { TunnelSessionRegistry } from '../remote-access/tunnel/tunnel-session.registry';
 
 export type PeerRevocationReason =
   | 'AUTHORIZATION_REVOKED'
@@ -29,6 +31,7 @@ export class PeerRevocationService {
     private readonly prisma: PrismaService,
     private readonly wg: WireGuardService,
     private readonly eventLog: EventLogService,
+    private readonly tunnelRegistry: TunnelSessionRegistry,
   ) {}
 
   async revokePeer(
@@ -36,6 +39,9 @@ export class PeerRevocationService {
     reason: PeerRevocationReason,
     actorId?: string,
   ): Promise<void> {
+    // Coupe les sessions tunnel vivantes de ce peer avant la révocation WG.
+    this.tunnelRegistry.closeByPeer(peer.id, RemoteTunnelCloseReason.REVOKED);
+
     let removalFailure: Prisma.InputJsonObject | null = null;
     try {
       await this.wg.removePeer(peer.wgPublicKey);
