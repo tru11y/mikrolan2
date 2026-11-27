@@ -14,13 +14,15 @@
 #   - désactive les sites par défaut (default, inner-tunnel) et le module eap ;
 #   - active le module rest et le site mikrolan ;
 #   - prépare clients.d/ et l'inclusion dans clients.conf ;
-#   - installe le wrapper root mikrolan-radius-sync + la règle sudoers de l'API ;
+#   - installe le wrapper root mikrolan-radius-sync + le couple d'units
+#     path/service qui appliquent le spool écrit par l'API ;
 #   - daemon-reload + enable.
 #
 # Il NE pose PAS le secret ni les clients : mikrolan-secrets.conf est posé à la
 # main (modèle .example) et clients.d/mikrolan-clients.conf est écrit par le
-# wrapper mikrolan-radius-sync (piloté par l'API, qui appelle
-# `sudo -n mikrolan-radius-sync`).
+# wrapper mikrolan-radius-sync, déclenché par l'unit path quand l'API dépose le
+# spool /opt/mikrolan2/backend/run/radius-clients.req. Aucun sudo (l'API tourne
+# avec NoNewPrivileges) : découplage spool + systemd path-unit.
 set -euo pipefail
 umask 022
 export DEBIAN_FRONTEND=noninteractive
@@ -116,33 +118,44 @@ if ! grep -qE '^\s*\$INCLUDE\s+clients\.d/\s*$' "${FR_DIR}/clients.conf"; then
     >> "${FR_DIR}/clients.conf"
 fi
 
-# ── 7. Wrapper root + sudoers (chaînon API → FreeRADIUS, STDIN only) ─────────
-# L'API (user `mikrolan`) génère clients.conf et le pipe sur STDIN du wrapper via
-# `sudo -n /usr/local/sbin/mikrolan-radius-sync`. Le wrapper (root, 0750) valide,
-# écrit clients.d/ atomiquement et recharge FreeRADIUS. Aucun argument, aucun
-# secret en argv. Override de l'utilisateur API via MIKROLAN_API_USER si besoin.
+# ── 7. Wrapper root + spool + units path/service (chaînon API → FreeRADIUS) ───
+# L'API (user `mikrolan`) tourne avec NoNewPrivileges=true : elle NE PEUT PAS
+# `sudo`. Découplage : l'API écrit atomiquement le contenu de clients.conf dans
+# le spool SPOOL_FILE (sous /opt/mikrolan2/backend, seul emplacement inscriptible
+# vu ProtectSystem=strict) ; l'unit `mikrolan-radius-sync.path` le surveille et
+# déclenche le service root oneshot `mikrolan-radius-sync.service`, qui pipe le
+# spool dans le wrapper (STDIN only : valide, écrit clients.d/, reload). Aucun
+# secret en argv/journal, aucune escalade dans l'API.
 readonly API_USER="${MIKROLAN_API_USER:-mikrolan}"
 readonly WRAPPER_DEST="/usr/local/sbin/mikrolan-radius-sync"
+readonly SPOOL_DIR="${MIKROLAN_SPOOL_DIR:-/opt/mikrolan2/backend/run}"
+# Le fichier spool lui-même (${SPOOL_DIR}/radius-clients.req) est écrit par l'API
+# et référencé par les units systemd ; le script ne pose que le répertoire.
 
 log "pose du wrapper ${WRAPPER_DEST}"
 install -o root -g root -m 0750 "${SCRIPT_DIR}/mikrolan-radius-sync" "${WRAPPER_DEST}"
 
+# Ancienne règle sudoers (approche sudo, incompatible NoNewPrivileges) : purge.
+if [ -f /etc/sudoers.d/mikrolan-radius ]; then
+  log "retrait de l'ancienne règle sudoers /etc/sudoers.d/mikrolan-radius (obsolète)"
+  rm -f /etc/sudoers.d/mikrolan-radius
+fi
+
 if id "${API_USER}" >/dev/null 2>&1; then
-  log "règle sudoers : ${API_USER} -> ${WRAPPER_DEST} (NOPASSWD, sans argument)"
-  tmp_sudo="$(mktemp)"
-  printf '%s ALL=(root) NOPASSWD: %s\n' "${API_USER}" "${WRAPPER_DEST}" > "${tmp_sudo}"
-  if visudo -cf "${tmp_sudo}" >/dev/null 2>&1; then
-    install -o root -g root -m 0440 "${tmp_sudo}" /etc/sudoers.d/mikrolan-radius
-  else
-    rm -f "${tmp_sudo}"
-    echo "Règle sudoers générée invalide (visudo -c) : abandon." >&2
-    exit 1
-  fi
-  rm -f "${tmp_sudo}"
+  log "préparation du spool ${SPOOL_DIR} (owner ${API_USER})"
+  install -d -o "${API_USER}" -g "${API_USER}" -m 0750 "${SPOOL_DIR}"
 else
-  log "ATTENTION : utilisateur API '${API_USER}' introuvable — sudoers NON posé."
+  log "ATTENTION : utilisateur API '${API_USER}' introuvable — spool NON préparé."
   log "  Relancez avec MIKROLAN_API_USER=<user> une fois l'API déployée."
 fi
+
+log "pose des units path/service"
+install -o root -g root -m 0644 \
+  "${SCRIPT_DIR}/systemd/mikrolan-radius-sync.path" \
+  /etc/systemd/system/mikrolan-radius-sync.path
+install -o root -g root -m 0644 \
+  "${SCRIPT_DIR}/systemd/mikrolan-radius-sync.service" \
+  /etc/systemd/system/mikrolan-radius-sync.service
 
 # ── 8. Drop-in systemd ───────────────────────────────────────────────────────
 log "pose du drop-in systemd"
@@ -152,6 +165,9 @@ install -o root -g root -m 0644 \
   /etc/systemd/system/freeradius.service.d/mikrolan.conf
 
 systemctl daemon-reload
+
+log "activation de l'unit path mikrolan-radius-sync.path"
+systemctl enable --now mikrolan-radius-sync.path >/dev/null 2>&1 || true
 
 # ── 9. Vérifications ─────────────────────────────────────────────────────────
 if [ ! -f "${FR_DIR}/mikrolan-secrets.conf" ]; then

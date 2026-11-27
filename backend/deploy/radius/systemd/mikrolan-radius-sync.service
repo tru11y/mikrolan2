@@ -1,0 +1,10 @@
+[Unit]
+Description=Applique le spool des clients RADIUS à FreeRADIUS (MikroLan)
+Documentation=file:///opt/mikrolan2/backend/deploy/radius/README.md
+
+[Service]
+Type=oneshot
+# Déclenché par mikrolan-radius-sync.path. Pipe le spool dans le wrapper root
+# (lecture STDIN inchangée : valide, écrit clients.d/ atomiquement, reload).
+# Le secret RADIUS ne transite ni par argv ni par le journal.
+ExecStart=/bin/sh -c 'exec /usr/local/sbin/mikrolan-radius-sync < /opt/mikrolan2/backend/run/radius-clients.req'

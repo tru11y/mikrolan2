@@ -1,0 +1,12 @@
+[Unit]
+Description=Surveille le spool des clients RADIUS écrit par l'API MikroLan
+Documentation=file:///opt/mikrolan2/backend/deploy/radius/README.md
+
+[Path]
+# L'API (user mikrolan, NoNewPrivileges) écrit ici de façon atomique. Le
+# rename-en-place déclenche mikrolan-radius-sync.service (root) qui applique.
+PathChanged=/opt/mikrolan2/backend/run/radius-clients.req
+Unit=mikrolan-radius-sync.service
+
+[Install]
+WantedBy=multi-user.target
