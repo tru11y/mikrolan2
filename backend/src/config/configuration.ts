@@ -62,6 +62,10 @@ const envSchema = z.object({
   // ─── Port forwarding (DNAT via iptables for WebFig/SSH/Winbox) ──
   VPS_PUBLIC_IP: z.string().default(''),
 
+  // ─── Tunnel WSS 443 (accès distant via WiFi filtrant) ──
+  // URL publique annoncée au client mobile pour la connexion WSS-mux.
+  REMOTE_TUNNEL_URL: z.string().default('wss://vpn.mikrolan.net/remote-tunnel'),
+
   // ─── Observability (optional — disabled if blank) ──
   SENTRY_DSN: z.string().default(''),
 

@@ -88,6 +88,16 @@ async function bootstrap(): Promise<void> {
     config.get('HOST', { infer: true }) ??
     (config.get('NODE_ENV', { infer: true }) === 'production' ? '127.0.0.1' : '0.0.0.0');
   await app.listen(port, host);
+
+  // Accroche la gateway du tunnel WSS 443 à l'évènement `upgrade` du serveur
+  // HTTP sous-jacent (Fastify), APRÈS listen pour que le serveur existe. Le
+  // filtrage de path (`/remote-tunnel`) et l'auth par ticket sont dans la gateway.
+  const { RemoteTunnelGateway } = await import(
+    './modules/remote-access/tunnel/remote-tunnel.gateway'
+  );
+  const tunnelGateway = app.get(RemoteTunnelGateway);
+  tunnelGateway.attach(fastify.server);
+
   new Logger('Bootstrap').log(`MikroLan API on :${port}`);
 }
 

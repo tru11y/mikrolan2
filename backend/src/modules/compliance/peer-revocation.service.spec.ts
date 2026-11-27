@@ -29,6 +29,7 @@ function build() {
     mockPrisma as never,
     mockWg as never,
     eventLog as never,
+    { closeByPeer: jest.fn() } as never,
   );
   return { service, eventLog };
 }

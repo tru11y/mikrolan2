@@ -8,10 +8,12 @@ import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/error-codes';
 import { ConfigService } from '@nestjs/config';
 import {
+  AccessMode,
   AuditAction,
   ManagementMode,
   Prisma,
   RemotePeerStatus,
+  RemoteTunnelCloseReason,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
@@ -21,6 +23,16 @@ import { getTenantContext } from '../../common/context/tenant-context';
 import type { AppConfig } from '../../config/configuration';
 import { EventLogService, describeFailure } from '../events/event-log.service';
 import { LEGAL_VERSIONS } from '../legal/legal.versions';
+import { RemoteTunnelService } from './tunnel/remote-tunnel.service';
+import { TunnelSessionRegistry } from './tunnel/tunnel-session.registry';
+
+export type AccessModeDto = 'DIRECT' | 'TUNNEL';
+
+const TUNNEL_SERVICES = [
+  { name: 'webfig', id: 1 },
+  { name: 'ssh', id: 2 },
+  { name: 'winbox', id: 3 },
+] as const;
 
 function ipToInt(ip: string): number {
   return ip
@@ -56,6 +68,8 @@ export class RemoteAccessService {
     private readonly wg: WireGuardService,
     private readonly config: ConfigService<AppConfig, true>,
     private readonly eventLog: EventLogService,
+    private readonly tunnel: RemoteTunnelService,
+    private readonly tunnelRegistry: TunnelSessionRegistry,
   ) {}
 
   provision(
@@ -185,6 +199,10 @@ export class RemoteAccessService {
     const tenantId = getTenantContext()?.tenantId;
     const peer = await this.prisma.remotePeer.findFirst({ where: { routerId } });
     if (!peer) throw new BusinessException(HttpStatus.NOT_FOUND, ErrorCode.REMOTE_ACCESS_NOT_FOUND, 'Aucun accès à distance actif pour ce routeur.');
+
+    // Coupe les sessions tunnel vivantes + base avant de retirer le peer WG.
+    this.tunnelRegistry.closeByPeer(peer.id, RemoteTunnelCloseReason.REVOKED);
+    await this.tunnel.revokeOpenSessions(peer.id, RemoteTunnelCloseReason.REVOKED);
 
     let wgRemovalFailure: Prisma.InputJsonObject | null = null;
     try {
@@ -351,6 +369,7 @@ export class RemoteAccessService {
         winboxPort: true,
         accessOpenUntil: true,
         accessSourceIp: true,
+        accessMode: true,
       },
     });
     if (!peer) return { status: 'NONE' as const };
@@ -360,8 +379,10 @@ export class RemoteAccessService {
       accessSourceIp !== null &&
       peer.accessOpenUntil !== null &&
       peer.accessOpenUntil.getTime() > Date.now();
+    // En TUNNEL, accessUrls reste null (l'accès passe par le tunnel WSS, pas
+    // par des ports publics) : jamais de ticket exposé ici.
     const accessUrls =
-      peer.status === 'ACTIVE' && windowOpen
+      peer.status === 'ACTIVE' && windowOpen && peer.accessMode === AccessMode.DIRECT
         ? this.buildAccessUrls(peer.allocatedPort)
         : null;
 
@@ -373,11 +394,23 @@ export class RemoteAccessService {
    * uniquement. Un nouvel appel remplace la fenêtre précédente (autre IP
    * incluse). L'expiration est appliquée par le reconciler.
    */
-  openAccess(routerId: string, actorId: string, sourceIp: string, durationMinutes: number) {
-    return this.eventLog.guard({ action: AuditAction.CONNECT, entityType: 'Router', entityId: routerId, actor: { userId: actorId } }, () => this.openAccessInner(routerId, actorId, sourceIp, durationMinutes));
+  openAccess(
+    routerId: string,
+    actorId: string,
+    sourceIp: string,
+    durationMinutes: number,
+    mode: AccessModeDto = 'DIRECT',
+  ) {
+    return this.eventLog.guard({ action: AuditAction.CONNECT, entityType: 'Router', entityId: routerId, actor: { userId: actorId } }, () => this.openAccessInner(routerId, actorId, sourceIp, durationMinutes, mode));
   }
 
-  private async openAccessInner(routerId: string, actorId: string, sourceIp: string, durationMinutes: number) {
+  private async openAccessInner(
+    routerId: string,
+    actorId: string,
+    sourceIp: string,
+    durationMinutes: number,
+    mode: AccessModeDto,
+  ) {
     const tenantId = getTenantContext()?.tenantId;
     if (!tenantId || !(await this.subscriptions.isRemoteAllowed(tenantId))) {
       throw new BusinessException(HttpStatus.FORBIDDEN, ErrorCode.SUBSCRIPTION_TIER_INSUFFICIENT, 'La gestion à distance nécessite un abonnement payant actif.');
@@ -389,6 +422,11 @@ export class RemoteAccessService {
 
     const ports = { webfigPort: peer.webfigPort, sshPort: peer.sshPort, winboxPort: peer.winboxPort };
     const expiresAt = new Date(Date.now() + durationMinutes * 60_000);
+
+    if (mode === 'TUNNEL') {
+      return this.openTunnelAccess(peer, tenantId, routerId, actorId, sourceIp, expiresAt, ports);
+    }
+
     try {
       await this.wg.removeDnat(peer.wgIp, peer.allocatedPort, ports, peer.accessSourceIp);
       await this.wg.addDnat(peer.wgIp, peer.allocatedPort, ports, sourceIp);
@@ -398,14 +436,74 @@ export class RemoteAccessService {
     }
     await this.prisma.remotePeer.update({
       where: { id: peer.id },
-      data: { accessOpenUntil: expiresAt, accessSourceIp: sourceIp },
+      data: { accessOpenUntil: expiresAt, accessSourceIp: sourceIp, accessMode: AccessMode.DIRECT },
     });
 
     await this.audit(tenantId, actorId, AuditAction.CONNECT, routerId, {
+      mode: 'DIRECT',
       sourceIp,
       expiresAt: expiresAt.toISOString(),
     });
-    return { expiresAt, accessUrls: this.buildAccessUrls(peer.allocatedPort) };
+    return { expiresAt, accessMode: 'DIRECT' as const, accessUrls: this.buildAccessUrls(peer.allocatedPort) };
+  }
+
+  /**
+   * Fenêtre d'accès TUNNEL : AUCUNE règle iptables posée (removeDnat d'une
+   * éventuelle fenêtre DIRECT uniquement). Le reconciler exclut accessMode=TUNNEL
+   * du DNAT. Un ticket usage unique (TTL 60 s) est émis ; les sessions tunnel
+   * précédentes du peer sont coupées (REPLACED, live + base).
+   */
+  private async openTunnelAccess(
+    peer: { id: string; wgIp: string; allocatedPort: number; accessSourceIp: string | null; webfigPort: number; sshPort: number; winboxPort: number },
+    tenantId: string,
+    routerId: string,
+    actorId: string,
+    sourceIp: string,
+    expiresAt: Date,
+    ports: { webfigPort: number; sshPort: number; winboxPort: number },
+  ) {
+    // Retire les règles d'une éventuelle ancienne fenêtre DIRECT ; on n'en pose
+    // aucune nouvelle (le trafic sort par l'IP WG via le relais applicatif).
+    try {
+      await this.wg.removeDnat(peer.wgIp, peer.allocatedPort, ports, peer.accessSourceIp);
+    } catch (err) {
+      this.logger.warn(`Open tunnel: stale DNAT removal failed (reconciler will prune): ${err instanceof Error ? err.message : err}`);
+    }
+
+    // Coupe les connexions vivantes précédentes du peer puis met à jour la fenêtre.
+    this.tunnelRegistry.closeByPeer(peer.id, RemoteTunnelCloseReason.REPLACED);
+    await this.prisma.remotePeer.update({
+      where: { id: peer.id },
+      data: { accessOpenUntil: expiresAt, accessSourceIp: sourceIp, accessMode: AccessMode.TUNNEL },
+    });
+
+    const issued = await this.tunnel.issueTicket({
+      tenantId,
+      routerId,
+      peerId: peer.id,
+      userId: actorId,
+      sourceIp,
+      expiresAt,
+    });
+
+    await this.audit(tenantId, actorId, AuditAction.CONNECT, routerId, {
+      mode: 'TUNNEL',
+      sourceIp,
+      expiresAt: expiresAt.toISOString(),
+      sessionId: issued.session.id,
+    });
+
+    return {
+      expiresAt,
+      accessMode: 'TUNNEL' as const,
+      tunnel: {
+        url: this.config.get('REMOTE_TUNNEL_URL', { infer: true }),
+        ticket: issued.ticket,
+        ticketExpiresInSec: issued.ticketExpiresInSec,
+        services: TUNNEL_SERVICES,
+      },
+      accessUrls: null,
+    };
   }
 
   closeAccess(routerId: string, actorId: string) {
@@ -427,6 +525,9 @@ export class RemoteAccessService {
       // La base prime : le reconciler purgera les règles résiduelles au prochain cycle.
       this.logger.warn(`Close access: iptables removal failed (reconciler will prune): ${err instanceof Error ? err.message : err}`);
     }
+    // Ferme aussi la session tunnel (GOAWAY + socket) et la marque en base.
+    this.tunnelRegistry.closeByPeer(peer.id, RemoteTunnelCloseReason.CLOSED_BY_USER);
+    await this.tunnel.revokeOpenSessions(peer.id, RemoteTunnelCloseReason.CLOSED_BY_USER);
     await this.prisma.remotePeer.update({
       where: { id: peer.id },
       data: { accessOpenUntil: null, accessSourceIp: null },

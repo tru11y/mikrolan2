@@ -74,6 +74,8 @@ function setup(overrides: { handshakes?: Record<string, number>; tcpReachable?: 
     wg as any,
     config as any,
     eventLog as any,
+    { issueTicket: jest.fn(), revokeOpenSessions: jest.fn() } as any,
+    { closeByPeer: jest.fn() } as any,
   );
 
   // Mock tcpProbe

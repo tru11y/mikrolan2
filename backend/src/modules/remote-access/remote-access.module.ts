@@ -5,16 +5,28 @@ import { RemoteRouterService } from './remote-router.service';
 import { WireGuardService } from '../../common/wireguard/wireguard.service';
 import { WireGuardReconciler } from './wireguard-reconciler.service';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
+import { RemoteTunnelService } from './tunnel/remote-tunnel.service';
+import { RemoteTunnelGateway } from './tunnel/remote-tunnel.gateway';
+import { TunnelRegistryModule } from './tunnel/tunnel-registry.module';
 
 @Module({
-  imports: [SubscriptionsModule],
+  // TunnelRegistryModule est @Global : une seule instance de registre partagée
+  // par tous les modules qui coupent des sessions tunnel vivantes.
+  imports: [SubscriptionsModule, TunnelRegistryModule],
   controllers: [RemoteAccessController],
   providers: [
     RemoteAccessService,
     RemoteRouterService,
     WireGuardService,
     WireGuardReconciler,
+    RemoteTunnelService,
+    RemoteTunnelGateway,
   ],
-  exports: [RemoteRouterService, WireGuardService],
+  exports: [
+    RemoteRouterService,
+    WireGuardService,
+    RemoteTunnelService,
+    RemoteTunnelGateway,
+  ],
 })
 export class RemoteAccessModule {}

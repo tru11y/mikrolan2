@@ -6,7 +6,8 @@ import {
 import { BusinessException } from '../../common/exceptions/business.exception';
 import { ErrorCode } from '../../common/error-codes';
 import { EventLogService, describeFailure } from '../events/event-log.service';
-import { AuditAction, ManagementMode, Prisma } from '@prisma/client';
+import { AuditAction, ManagementMode, Prisma, RemoteTunnelCloseReason } from '@prisma/client';
+import { TunnelSessionRegistry } from '../remote-access/tunnel/tunnel-session.registry';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CryptoService } from '../../common/crypto/crypto.service';
 import { getTenantContext } from '../../common/context/tenant-context';
@@ -51,6 +52,7 @@ export class RoutersService {
     private readonly subscriptions: SubscriptionsService,
     private readonly wg: WireGuardService,
     private readonly eventLog: EventLogService,
+    private readonly tunnelRegistry: TunnelSessionRegistry,
   ) {}
 
   // Remote (cloud + WireGuard) management requires a paid plan.
@@ -266,6 +268,7 @@ export class RoutersService {
       where: { routerId },
     });
     if (peer) {
+      this.tunnelRegistry.closeByPeer(peer.id, RemoteTunnelCloseReason.REVOKED);
       try {
         await this.wg.removePeer(peer.wgPublicKey);
         await this.wg.removeDnat(peer.wgIp, peer.allocatedPort, {
@@ -289,6 +292,8 @@ export class RoutersService {
       await tx.plan.deleteMany({ where: { routerId } });
       await tx.notification.deleteMany({ where: { routerId } });
       await tx.routerTelemetry.deleteMany({ where: { routerId } });
+      // FK RESTRICT : purger les sessions tunnel avant de supprimer le peer.
+      if (peer) await tx.remoteTunnelSession.deleteMany({ where: { peerId: peer.id } });
       if (peer) await tx.remotePeer.delete({ where: { id: peer.id } });
       await tx.router.delete({ where: { id: routerId } });
     });

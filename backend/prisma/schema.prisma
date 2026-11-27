@@ -73,6 +73,24 @@ enum RemotePeerStatus {
   ERROR
 }
 
+// Mode de transport de l'accès distant WebFig/SSH/Winbox :
+// - DIRECT : DNAT iptables sur ports hauts de l'IP publique VPS (repli/desktop).
+// - TUNNEL : relais applicatif WSS 443 (vpn.mikrolan.net), aucune règle iptables posée.
+enum AccessMode {
+  DIRECT
+  TUNNEL
+}
+
+// Raison de fermeture d'une session tunnel (append-only, valeurs fermées).
+enum RemoteTunnelCloseReason {
+  EXPIRED
+  CLOSED_BY_USER
+  REVOKED
+  REPLACED
+  IP_MISMATCH
+  ERROR
+}
+
 // Liaison de routeurs partageant un quota (FreeRADIUS). Un lien regroupe
 // plusieurs NAS derrière une authentification commune.
 enum RouterLinkStatus {
@@ -438,6 +456,13 @@ model RemotePeer {
   accessOpenUntil DateTime?
   accessSourceIp  String?
 
+  // Mode de transport de la fenêtre d'accès. En TUNNEL, aucune règle iptables
+  // n'est posée (le reconciler exclut ces peers du DNAT) : l'accès passe par
+  // le tunnel WSS 443. DIRECT = comportement historique (anciens APK intacts).
+  accessMode AccessMode @default(DIRECT)
+
+  tunnelSessions RemoteTunnelSession[]
+
   // RouterOS service ports on THIS router. Operators frequently move the
   // WebFig HTTP service off the default 80 (hardening), and SSH/Winbox can
   // also be relocated. Captured at provision time so the DNAT rules on the
@@ -450,6 +475,40 @@ model RemotePeer {
 
   @@index([tenantId])
   @@index([status, revokedAt])
+}
+
+// Session de tunnel WSS 443 (append-only). Une ligne par fenêtre d'accès TUNNEL
+// ouverte via open-access. Le ticket d'authentification (256 bits, usage unique,
+// TTL 60 s) n'est jamais stocké en clair : seul son SHA-256 (`ticketHash`) l'est.
+// Le registre en mémoire du process pilote les connexions WS vivantes ; cette
+// table fait foi pour l'audit et la révocation.
+model RemoteTunnelSession {
+  id         String   @id @default(uuid())
+  tenantId   String
+  routerId   String
+  peerId     String
+  peer       RemotePeer @relation(fields: [peerId], references: [id])
+  userId     String
+
+  // SHA-256 (hex) d'un ticket aléatoire de 32 octets. Unique : rejeu impossible.
+  ticketHash String   @unique
+
+  sourceIp   String
+  expiresAt  DateTime
+
+  connectedAt DateTime?
+  closedAt    DateTime?
+  closeReason RemoteTunnelCloseReason?
+
+  bytesUp       BigInt @default(0)
+  bytesDown     BigInt @default(0)
+  streamsOpened Int    @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([peerId, closedAt])
+  @@index([expiresAt])
 }
 
 // ─── ALERTES WIREGUARD DURABLES ───

@@ -5,13 +5,17 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import {
+  AccessMode,
   NotificationType,
   RemotePeerStatus,
+  RemoteTunnelCloseReason,
   RouterHealth,
 } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { WireGuardService } from '../../common/wireguard/wireguard.service';
+import { RemoteTunnelService } from './tunnel/remote-tunnel.service';
+import { TunnelSessionRegistry } from './tunnel/tunnel-session.registry';
 
 const RECONCILE_INTERVAL_MS = 20_000;
 const PENDING_EXPIRY_MS = 5 * 60 * 1000;
@@ -51,6 +55,8 @@ export class WireGuardReconciler implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly events: EventsService,
     private readonly wg: WireGuardService,
+    private readonly tunnel: RemoteTunnelService,
+    private readonly tunnelRegistry: TunnelSessionRegistry,
   ) {}
 
   onModuleInit(): void {
@@ -78,11 +84,18 @@ export class WireGuardReconciler implements OnModuleInit, OnModuleDestroy {
           winboxPort: true,
           accessOpenUntil: true,
           accessSourceIp: true,
+          accessMode: true,
+          id: true,
         },
       });
       await this.wg.syncPeers(peers);
-      await this.wg.syncDnat(openAccessWindows(peers, new Date()));
-      await this.closeExpiredWindows();
+      // Exclut les peers en mode TUNNEL : aucune règle DNAT (sinon le reconciler
+      // republierait les ports hauts bloqués en WiFi filtrant).
+      const directWindows = openAccessWindows(peers, new Date()).filter(
+        (p) => p.accessMode === AccessMode.DIRECT,
+      );
+      await this.wg.syncDnat(directWindows);
+      await this.closeExpiredWindows(peers);
       await this.updateHealth(peers);
     } catch (e) {
       this.logger.error(
@@ -91,7 +104,21 @@ export class WireGuardReconciler implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async closeExpiredWindows(): Promise<void> {
+  private async closeExpiredWindows(
+    peers: { id: string; accessMode: AccessMode; accessOpenUntil: Date | null }[],
+  ): Promise<void> {
+    const now = Date.now();
+    // Coupe les sockets tunnel vivantes dont la fenêtre vient d'expirer.
+    for (const p of peers) {
+      if (
+        p.accessMode === AccessMode.TUNNEL &&
+        p.accessOpenUntil !== null &&
+        p.accessOpenUntil.getTime() <= now
+      ) {
+        this.tunnelRegistry.closeByPeer(p.id, RemoteTunnelCloseReason.EXPIRED);
+      }
+    }
+    await this.tunnel.closeExpiredSessions();
     await this.prisma.remotePeer.updateMany({
       where: { accessOpenUntil: { lte: new Date() } },
       data: { accessOpenUntil: null, accessSourceIp: null },
