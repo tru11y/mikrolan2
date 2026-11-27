@@ -18,6 +18,8 @@ export const LOOPBACK_HOST = '127.0.0.1';
 export const DEFAULT_LOCAL_PORTS = {
   ssh: 2222,
   webfig: 8080,
+  // Port canonique Winbox : l'app MikroTik native s'y connecte par défaut.
+  winbox: 8291,
 } as const;
 
 /** Sous-ensemble structurel d'un socket TCP client (react-native-tcp-socket). */

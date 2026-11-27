@@ -43,12 +43,13 @@ export default function RemoteTunnelScreen() {
 
   const webfig = state.endpoints.find((e) => e.name === 'webfig');
   const ssh = state.endpoints.find((e) => e.name === 'ssh');
+  const winbox = state.endpoints.find((e) => e.name === 'winbox');
 
   const openWebfig = useCallback((ep: LocalEndpoint) => {
     void WebBrowser.openBrowserAsync(ep.url);
   }, []);
 
-  const copySsh = useCallback((ep: LocalEndpoint) => {
+  const copyAddress = useCallback((ep: LocalEndpoint) => {
     void Clipboard.setStringAsync(`${ep.host}:${ep.port}`);
   }, []);
 
@@ -99,10 +100,20 @@ export default function RemoteTunnelScreen() {
               subtitle={ssh ? `${ssh.host}:${ssh.port}` : 'En cours de liaison…'}
               actionLabel="Copier l'adresse"
               disabled={!ssh}
-              onPress={() => ssh && copySsh(ssh)}
+              onPress={() => ssh && copyAddress(ssh)}
             />
             {/* TODO terminal in-app : aucune lib terminal présente dans le repo.
                 En attendant, l'adresse loopback est copiable pour un client SSH tiers. */}
+
+            {winbox && (
+              <ServiceCard
+                title="Winbox"
+                subtitle={`${winbox.host}:${winbox.port}`}
+                actionLabel="Copier l'adresse"
+                instruction="Ouvre l'app Winbox et connecte-toi à cette adresse. Garde MikroLan ouvert ou utilise la notification « Tunnel actif » pour fermer."
+                onPress={() => copyAddress(winbox)}
+              />
+            )}
 
             <Button title="Fermer l'accès" variant="danger" onPress={close} />
           </>
@@ -118,18 +129,23 @@ function ServiceCard({
   actionLabel,
   onPress,
   disabled,
+  instruction,
 }: {
   title: string;
   subtitle: string;
   actionLabel: string;
   onPress: () => void;
   disabled?: boolean;
+  instruction?: string;
 }) {
   const theme = useTheme();
   return (
     <View style={{ backgroundColor: theme.surface, borderRadius: 16, padding: 16, gap: space.sm }}>
       <Text style={{ color: theme.text, fontSize: 16, fontWeight: '600' }}>{title}</Text>
       <Text style={{ color: theme.textMuted, fontFamily: 'monospace' }}>{subtitle}</Text>
+      {instruction && (
+        <Text style={{ color: theme.textMuted, fontSize: 13 }}>{instruction}</Text>
+      )}
       <Press
         accessibilityLabel={actionLabel}
         onPress={onPress}

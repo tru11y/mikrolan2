@@ -25,7 +25,7 @@ export type SessionPhase =
 
 export type LocalEndpoint = {
   serviceId: ServiceId;
-  name: 'webfig' | 'ssh';
+  name: 'webfig' | 'ssh' | 'winbox';
   host: string;
   port: number;
   url: string;
