@@ -129,7 +129,8 @@ fi
 readonly API_USER="${MIKROLAN_API_USER:-mikrolan}"
 readonly WRAPPER_DEST="/usr/local/sbin/mikrolan-radius-sync"
 readonly SPOOL_DIR="${MIKROLAN_SPOOL_DIR:-/opt/mikrolan2/backend/run}"
-readonly SPOOL_FILE="${SPOOL_DIR}/radius-clients.req"
+# Le fichier spool lui-même (${SPOOL_DIR}/radius-clients.req) est écrit par l'API
+# et référencé par les units systemd ; le script ne pose que le répertoire.
 
 log "pose du wrapper ${WRAPPER_DEST}"
 install -o root -g root -m 0750 "${SCRIPT_DIR}/mikrolan-radius-sync" "${WRAPPER_DEST}"
