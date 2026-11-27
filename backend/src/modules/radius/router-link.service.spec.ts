@@ -46,6 +46,8 @@ const config = makeConfig();
 
 const subscriptions = { assertRouterLinking: jest.fn().mockResolvedValue(undefined) };
 
+const clientsSync = { sync: jest.fn().mockResolvedValue(0) };
+
 function build(
   prisma: any,
   remote: any = { run: jest.fn() },
@@ -59,6 +61,7 @@ function build(
     eventLog as any,
     cfg as any,
     subs as any,
+    clientsSync as any,
   );
 }
 

@@ -14,11 +14,13 @@
 #   - désactive les sites par défaut (default, inner-tunnel) et le module eap ;
 #   - active le module rest et le site mikrolan ;
 #   - prépare clients.d/ et l'inclusion dans clients.conf ;
+#   - installe le wrapper root mikrolan-radius-sync + la règle sudoers de l'API ;
 #   - daemon-reload + enable.
 #
 # Il NE pose PAS le secret ni les clients : mikrolan-secrets.conf est posé à la
 # main (modèle .example) et clients.d/mikrolan-clients.conf est écrit par le
-# wrapper mikrolan-radius-sync (piloté par l'API).
+# wrapper mikrolan-radius-sync (piloté par l'API, qui appelle
+# `sudo -n mikrolan-radius-sync`).
 set -euo pipefail
 umask 022
 export DEBIAN_FRONTEND=noninteractive
@@ -114,7 +116,35 @@ if ! grep -qE '^\s*\$INCLUDE\s+clients\.d/\s*$' "${FR_DIR}/clients.conf"; then
     >> "${FR_DIR}/clients.conf"
 fi
 
-# ── 7. Drop-in systemd ───────────────────────────────────────────────────────
+# ── 7. Wrapper root + sudoers (chaînon API → FreeRADIUS, STDIN only) ─────────
+# L'API (user `mikrolan`) génère clients.conf et le pipe sur STDIN du wrapper via
+# `sudo -n /usr/local/sbin/mikrolan-radius-sync`. Le wrapper (root, 0750) valide,
+# écrit clients.d/ atomiquement et recharge FreeRADIUS. Aucun argument, aucun
+# secret en argv. Override de l'utilisateur API via MIKROLAN_API_USER si besoin.
+readonly API_USER="${MIKROLAN_API_USER:-mikrolan}"
+readonly WRAPPER_DEST="/usr/local/sbin/mikrolan-radius-sync"
+
+log "pose du wrapper ${WRAPPER_DEST}"
+install -o root -g root -m 0750 "${SCRIPT_DIR}/mikrolan-radius-sync" "${WRAPPER_DEST}"
+
+if id "${API_USER}" >/dev/null 2>&1; then
+  log "règle sudoers : ${API_USER} -> ${WRAPPER_DEST} (NOPASSWD, sans argument)"
+  tmp_sudo="$(mktemp)"
+  printf '%s ALL=(root) NOPASSWD: %s\n' "${API_USER}" "${WRAPPER_DEST}" > "${tmp_sudo}"
+  if visudo -cf "${tmp_sudo}" >/dev/null 2>&1; then
+    install -o root -g root -m 0440 "${tmp_sudo}" /etc/sudoers.d/mikrolan-radius
+  else
+    rm -f "${tmp_sudo}"
+    echo "Règle sudoers générée invalide (visudo -c) : abandon." >&2
+    exit 1
+  fi
+  rm -f "${tmp_sudo}"
+else
+  log "ATTENTION : utilisateur API '${API_USER}' introuvable — sudoers NON posé."
+  log "  Relancez avec MIKROLAN_API_USER=<user> une fois l'API déployée."
+fi
+
+# ── 8. Drop-in systemd ───────────────────────────────────────────────────────
 log "pose du drop-in systemd"
 install -d -o root -g root -m 0755 /etc/systemd/system/freeradius.service.d
 install -o root -g root -m 0644 \
@@ -123,7 +153,7 @@ install -o root -g root -m 0644 \
 
 systemctl daemon-reload
 
-# ── 8. Vérifications ─────────────────────────────────────────────────────────
+# ── 9. Vérifications ─────────────────────────────────────────────────────────
 if [ ! -f "${FR_DIR}/mikrolan-secrets.conf" ]; then
   log "ATTENTION : ${FR_DIR}/mikrolan-secrets.conf absent."
   log "  Posez-le à la main (0640 root:${FR_USER}) avant de démarrer :"

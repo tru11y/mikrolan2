@@ -12,6 +12,7 @@ import { RadiusCoaService } from './radius-coa.service';
 import { RadiusInternalGuard } from './guards/radius-internal.guard';
 import { RadiusSessionCron } from './radius-session.cron';
 import { RouterLinkService } from './router-link.service';
+import { RadiusClientsSyncService } from './radius-clients-sync.service';
 
 /**
  * Module RADIUS (PR5 : câblé dans AppModule). Expose le CRUD des liens
@@ -25,7 +26,7 @@ import { RouterLinkService } from './router-link.service';
 @Module({
   imports: [PrismaModule, EventsModule, NotificationsModule, CryptoModule, RemoteAccessModule, SubscriptionsModule],
   controllers: [RadiusController, RouterLinkController],
-  providers: [RadiusService, RadiusCoaService, RadiusInternalGuard, RadiusSessionCron, RouterLinkService],
+  providers: [RadiusService, RadiusCoaService, RadiusInternalGuard, RadiusSessionCron, RouterLinkService, RadiusClientsSyncService],
   exports: [RouterLinkService],
 })
 export class RadiusModule {}
