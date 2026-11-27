@@ -1,20 +1,31 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { execFile } from "node:child_process";
+import { writeFile, rename } from "node:fs/promises";
+import { dirname } from "node:path";
 import { ManagementMode, RouterLinkAuthMode } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { CryptoService } from "../../common/crypto/crypto.service";
 import type { AppConfig } from "../../config/configuration";
 
-/** Wrapper root installé sur le VPS (sudoers fixe, lecture STDIN, voir backend/deploy/radius/). */
-const SYNC_WRAPPER = "/usr/local/sbin/mikrolan-radius-sync";
+/**
+ * Fichier spool écrit par l'API (user `mikrolan`) et surveillé sur le VPS par
+ * l'unit systemd `mikrolan-radius-sync.path`, qui déclenche le service root
+ * oneshot `mikrolan-radius-sync.service` (celui-ci pipe le spool dans le wrapper
+ * root `/usr/local/sbin/mikrolan-radius-sync`, qui valide, écrit atomiquement
+ * `clients.d/mikrolan-clients.conf` et recharge FreeRADIUS).
+ *
+ * Le chemin est SOUS `/opt/mikrolan2/backend` (seul emplacement inscriptible par
+ * l'API : `ProtectSystem=strict` + `ReadWritePaths`). On n'appelle PAS `sudo` :
+ * le service API tourne avec `NoNewPrivileges=true` (durcissement), qui interdit
+ * toute escalade — d'où le découplage spool + path-unit.
+ */
+const SPOOL_FILE = "/opt/mikrolan2/backend/run/radius-clients.req";
 
 /**
  * Génère le fichier `clients.conf` de FreeRADIUS (un bloc `client {}` par NAS
- * provisionné) et le pousse sur le VPS via le wrapper root `mikrolan-radius-sync`
- * (sudo -n, contenu sur STDIN — jamais en argv : le secret RADIUS n'apparaît dans
- * aucune ligne de commande ni journal). Le wrapper valide, écrit atomiquement
- * `clients.d/mikrolan-clients.conf` puis recharge FreeRADIUS (HUP).
+ * provisionné) et le dépose dans le spool `SPOOL_FILE` (écriture atomique : fichier
+ * temporaire + rename). Une unit systemd root l'applique à FreeRADIUS. Le secret
+ * RADIUS n'apparaît dans aucune ligne de commande ni journal.
  *
  * C'est le chaînon API→FreeRADIUS : sans lui, FreeRADIUS ne connaît aucun NAS et
  * rejette tout Access-Request AVANT même d'appeler l'API. Inerte si
@@ -40,7 +51,7 @@ export class RadiusClientsSyncService {
       return 0;
     }
     const conf = await this.buildClientsConf();
-    await this.push(conf.content);
+    await this.spool(conf.content);
     this.logger.log({ event: "radius.clients_synced", nas: conf.count });
     return conf.count;
   }
@@ -109,27 +120,16 @@ export class RadiusClientsSyncService {
     return { content, count: seen.size };
   }
 
-  /** Pousse le contenu via `sudo -n mikrolan-radius-sync` (STDIN, jamais argv). */
-  private push(content: string): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      const child = execFile(
-        "sudo",
-        ["-n", SYNC_WRAPPER],
-        { timeout: 15_000 },
-        (err, _stdout, stderr) => {
-          if (err) {
-            // stderr du wrapper peut contenir le motif de refus (jamais le secret).
-            reject(
-              new Error(
-                `mikrolan-radius-sync a échoué: ${stderr?.trim() || err.message}`,
-              ),
-            );
-            return;
-          }
-          resolve();
-        },
-      );
-      child.stdin?.end(content);
-    });
+  /**
+   * Dépose le contenu dans le spool, de façon atomique (écriture d'un fichier
+   * temporaire voisin + rename). Le rename-en-place déclenche l'unit systemd
+   * `mikrolan-radius-sync.path`. 0600 : le secret RADIUS en clair n'est lisible
+   * que par l'API et root.
+   */
+  private async spool(content: string): Promise<void> {
+    const tmp = `${SPOOL_FILE}.${process.pid}.tmp`;
+    await writeFile(tmp, content, { mode: 0o600 });
+    await rename(tmp, SPOOL_FILE);
+    this.logger.debug({ event: "radius.clients_spooled", dir: dirname(SPOOL_FILE) });
   }
 }
