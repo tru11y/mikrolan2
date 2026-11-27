@@ -51,6 +51,13 @@ async function clearAllLocalRouterCredentials(): Promise<void> {
 type AuthContextValue = {
   isReady: boolean;
   isAuthenticated: boolean;
+  /**
+   * Session valide (jetons présents) dont le profil n'a pas encore pu être
+   * rechargé faute de réseau : on retente au retour de la connexion. Les
+   * gardes de navigation affichent un écran de chargement au lieu de renvoyer
+   * au login, pour ne pas simuler une déconnexion sur une coupure passagère.
+   */
+  isRestoring: boolean;
   isBusy: boolean;
   me: Me | null;
   isPro: boolean;
@@ -331,6 +338,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     () => ({
       isReady,
       isAuthenticated: Boolean(me),
+      isRestoring: restorePending && !me,
       isBusy,
       me,
       isPro: entitlement.tier === 'PRO',
@@ -354,7 +362,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       refreshProfile,
       updateApiBaseUrl,
     }),
-    [apiBaseUrl, entitlement, error, isBusy, isReady, me, needsLegalConsent, promptGoogle],
+    [apiBaseUrl, entitlement, error, isBusy, isReady, me, needsLegalConsent, promptGoogle, restorePending],
   );
 
   return (

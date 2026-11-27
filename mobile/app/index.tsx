@@ -9,7 +9,7 @@ import { useTheme } from '@/src/providers/theme-provider';
 import { ONBOARDING_KEY } from './onboarding';
 
 export default function Index() {
-  const { isReady, isAuthenticated, me } = useAuth();
+  const { isReady, isAuthenticated, isRestoring, me } = useAuth();
   const theme = useTheme();
   const [onboardingDone, setOnboardingDone] = useState<boolean | null>(null);
 
@@ -20,7 +20,9 @@ export default function Index() {
       });
   }, []);
 
-  if (!isReady || onboardingDone === null) {
+  // `isRestoring` : jetons valides, profil pas encore rechargé (réseau coupé).
+  // On attend sur l'écran de chargement plutôt que de renvoyer au login.
+  if (!isReady || isRestoring || onboardingDone === null) {
     return (
       <View
         style={{

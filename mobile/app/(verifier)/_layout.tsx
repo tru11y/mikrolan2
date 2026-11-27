@@ -7,9 +7,9 @@ import { useTheme } from '@/src/providers/theme-provider';
 // même brièvement. Un non-TICKET_VERIFIER est redirigé en silencieux ;
 // un non authentifié repart au login. Le backend reste l'autorité finale.
 export default function VerifierLayout() {
-  const { isReady, isAuthenticated, me } = useAuth();
+  const { isReady, isAuthenticated, isRestoring, me } = useAuth();
   const theme = useTheme();
-  if (!isReady) {
+  if (!isReady || isRestoring) {
     return (
       <View
         style={{
