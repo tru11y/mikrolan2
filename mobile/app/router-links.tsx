@@ -261,8 +261,11 @@ function LinkCard({
   onRemoveMember: (routerId: string) => void;
   busy: boolean;
 }) {
-  const isActive = link.status === 'ACTIVE';
   const isRadius = link.authMode === 'RADIUS';
+  // « Actif » (RADIUS) = au moins un routeur provisionné (radiusReadyAt) ; `status` reste le cycle de vie (ARCHIVED).
+  const isActive = isRadius
+    ? link.routers.some((m) => m.radiusReadyAt !== null)
+    : link.status === 'ACTIVE';
   const statusColor = isActive ? theme.success : theme.textMuted;
 
   return (
@@ -270,7 +273,7 @@ function LinkCard({
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <Title>{link.name}</Title>
         <Text style={{ color: statusColor, fontSize: 12, fontWeight: '700' }}>
-          {isActive ? 'ACTIF' : 'ARCHIVÉ'}
+          {isActive ? 'ACTIF' : isRadius ? 'INACTIF' : 'ARCHIVÉ'}
         </Text>
       </View>
       <Text style={{ color: theme.textMuted, fontSize: 12 }}>
