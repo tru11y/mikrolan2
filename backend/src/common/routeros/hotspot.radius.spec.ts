@@ -48,7 +48,7 @@ describe('ensureRadiusClient (idempotent, .proplist)', () => {
 });
 
 describe('ensureHotspotUsesRadius', () => {
-  it('pose use-radius=yes, radius-accounting=yes et interim-update', async () => {
+  it('pose use-radius=yes, radius-accounting=yes et radius-interim-update', async () => {
     const { client, calls } = makeClient({
       0: [{ '.id': '*2', name: 'mikrolan-hsprof', 'use-radius': 'no' }],
     });
@@ -62,16 +62,18 @@ describe('ensureHotspotUsesRadius', () => {
       '=.id=*2',
       '=use-radius=yes',
       '=radius-accounting=yes',
-      '=interim-update=30s',
+      '=radius-interim-update=30s',
     ]);
   });
 
-  it('défaut interim-update=30s si non fourni', async () => {
+  it('défaut radius-interim-update=30s si non fourni', async () => {
     const { client, calls } = makeClient({
       0: [{ '.id': '*2', name: 'p', 'use-radius': 'no' }],
     });
     await ensureHotspotUsesRadius(client, 'p');
-    expect(calls[1]).toEqual(expect.arrayContaining(['=interim-update=30s']));
+    expect(calls[1]).toEqual(
+      expect.arrayContaining(['=radius-interim-update=30s']),
+    );
   });
 
   it('throw si le profil est absent', async () => {

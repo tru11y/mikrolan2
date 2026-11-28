@@ -575,7 +575,7 @@ export async function ensureRadiusClient(
 
 /**
  * Passe le profil hotspot `profileName` en délégation RADIUS (use-radius=yes,
- * radius-accounting=yes, interim-update). Throw si le profil est absent.
+ * radius-accounting=yes, radius-interim-update). Throw si le profil est absent.
  */
 export async function ensureHotspotUsesRadius(
   c: RouterOsApiClient,
@@ -594,7 +594,9 @@ export async function ensureHotspotUsesRadius(
     ...attrs({
       'use-radius': 'yes',
       'radius-accounting': 'yes',
-      'interim-update': o.interimUpdate ?? '30s',
+      // RouterOS : le paramètre du profil hotspot est `radius-interim-update`
+      // (et non `interim-update`, qui est rejeté « unknown parameter »).
+      'radius-interim-update': o.interimUpdate ?? '30s',
     }),
   ]);
 }
