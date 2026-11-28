@@ -174,7 +174,10 @@
     "countryReminderAction": "Choisir mon pays",
     "countryReminderDismiss": "Plus tard",
     "viewProfile": "Voir mon profil",
-    "fcfa": "FCFA"
+    "fcfa": "FCFA",
+    "revenueHide": "Masquer le revenu",
+    "revenueShow": "Afficher le revenu",
+    "revenueUnlock": "Authentifiez-vous pour afficher le revenu"
   },
   "routers": {
     "title": "Routeurs",

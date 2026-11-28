@@ -13,6 +13,7 @@ import { getLocalCredentials } from '@/src/lib/router-credentials';
 import { resolveVerifiedLanRoute } from '@/src/lib/lanRouting';
 import { withApi } from '@/src/services/mikrotik-lan/MikroTikApiClient';
 import { RouterStatusDot } from '@/src/components/RouterStatusDot';
+import { useRevenuePrivacy } from '@/src/hooks/useRevenuePrivacy';
 import {
   AuroraCard,
   Banner,
@@ -160,6 +161,12 @@ export default function MaisonScreen() {
     queryFn: () => api.metrics.summary('today'),
     placeholderData: keepPreviousData,
   });
+  const revenue = useRevenuePrivacy();
+
+  async function toggleRevenue() {
+    if (revenue.hidden) await revenue.reveal(t('home.revenueUnlock'));
+    else revenue.hide();
+  }
 
   const list: RouterItem[] = routers.data ?? [];
 
@@ -348,9 +355,31 @@ export default function MaisonScreen() {
 
       {/* Indicateur financier principal — seul bloc en dégradé de l'écran. */}
       <AuroraCard>
-        <Text style={{ color: theme.primaryText, fontWeight: weight.semibold, opacity: 0.9 }}>
-          {t('home.revenueToday')}
-        </Text>
+        <Row>
+          <Text style={{ color: theme.primaryText, fontWeight: weight.semibold, opacity: 0.9 }}>
+            {t('home.revenueToday')}
+          </Text>
+          <Press
+            accessibilityRole="button"
+            accessibilityLabel={revenue.hidden ? t('home.revenueShow') : t('home.revenueHide')}
+            onPress={toggleRevenue}
+            hitSlop={10}
+            style={{
+              width: 34,
+              height: 34,
+              borderRadius: radius.md,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: withAlpha(theme.onStrong, 0.18),
+            }}
+          >
+            <Ionicons
+              name={revenue.hidden ? 'eye-off-outline' : 'eye-outline'}
+              size={icon.md}
+              color={theme.primaryText}
+            />
+          </Press>
+        </Row>
         {metricsState === 'loading' ? (
           <View style={{ marginTop: space.sm + 2 }}>
             <Skeleton
@@ -380,7 +409,7 @@ export default function MaisonScreen() {
         ) : (
           <Row style={{ alignItems: 'flex-end', justifyContent: 'flex-start', marginTop: space.sm + 2 }}>
             <Text style={{ color: theme.primaryText, fontSize: type.hero, fontWeight: weight.heavy }}>
-              {(metrics.data?.revenueXof ?? 0).toLocaleString('fr-FR')}
+              {revenue.hidden ? '••• •••' : (metrics.data?.revenueXof ?? 0).toLocaleString('fr-FR')}
             </Text>
             <Text
               style={{

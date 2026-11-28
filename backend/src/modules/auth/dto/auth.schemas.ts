@@ -55,6 +55,11 @@ export const changePasswordSchema = z
   .strict();
 export type ChangePasswordDto = z.infer<typeof changePasswordSchema>;
 
+export const verifyPasswordSchema = z
+  .object({ password: z.string().min(1).max(128) })
+  .strict();
+export type VerifyPasswordDto = z.infer<typeof verifyPasswordSchema>;
+
 export const updateNotificationsSchema = z
   .object({
     enabled: z.boolean(),
