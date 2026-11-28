@@ -361,6 +361,21 @@ export class AuthService {
     });    this.tokens.recordSessionEvent('PASSWORD_CHANGED', userId, 'change_password');
   }
 
+  /** Ré-authentification légère : vérifie le mot de passe sans créer de session. */
+  async verifyPassword(userId: string, password: string): Promise<{ ok: true }> {
+    const user = await this.prisma.user.findFirst({ where: { id: userId } });
+    if (!user) throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_ACCOUNT_NOT_FOUND, 'Compte introuvable. Reconnectez-vous.');
+    if (!user.hasPassword) {
+      throw new BusinessException(
+        HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_UNSUPPORTED_METHOD,
+        'Compte OAuth — définissez d’abord un mot de passe.',
+      );
+    }
+    const ok = await argon2.verify(user.passwordHash, password);
+    if (!ok) throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_WRONG_PASSWORD, 'Mot de passe incorrect');
+    return { ok: true };
+  }
+
   async setPassword(userId: string, dto: SetPasswordDto): Promise<void> {
     const user = await this.prisma.user.findFirst({ where: { id: userId } });
     if (!user) throw new BusinessException(HttpStatus.UNAUTHORIZED, ErrorCode.AUTH_ACCOUNT_NOT_FOUND, 'Compte introuvable. Reconnectez-vous.');

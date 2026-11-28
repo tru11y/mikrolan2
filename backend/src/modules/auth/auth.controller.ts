@@ -32,6 +32,8 @@ import {
   requestPasswordResetSchema,
   setPasswordSchema,
   signupSchema,
+  verifyPasswordSchema,
+  type VerifyPasswordDto,
   updateNotificationsSchema,
   updateProfileSchema,
   type AcceptLegalDto,
@@ -108,6 +110,16 @@ export class AuthController {
     @Body(new ZodValidationPipe(changePasswordSchema)) dto: ChangePasswordDto,
   ) {
     return this.auth.changePassword(user.userId, dto);
+  }
+
+  @Post('verify-password')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  verifyPassword(
+    @CurrentUser() user: TenantContext,
+    @Body(new ZodValidationPipe(verifyPasswordSchema)) dto: VerifyPasswordDto,
+  ) {
+    return this.auth.verifyPassword(user.userId, dto.password);
   }
 
   @Post('set-password')
