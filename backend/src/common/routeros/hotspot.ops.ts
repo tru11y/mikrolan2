@@ -190,6 +190,28 @@ function parseTimeoutMinutes(value?: string): number | null {
   return short ? Number(short[1]) : null;
 }
 
+/**
+ * Picks which hotspot server to operate on. Prefers the one named exactly
+ * `serverName` (mikrolan's own, created by `configureHotspot`). Routers
+ * onboarded without that step expose their native server under another name —
+ * MikroTik's default is `hotspot1` — so when the exact name is absent we fall
+ * back to the router's real server: the sole one when there is only one,
+ * otherwise the first by alphabetical name (deterministic and stable). Returns
+ * `undefined` only when the router has no hotspot server at all.
+ */
+export function resolveHotspotServer(
+  rows: ApiRow[],
+  serverName: string,
+): ApiRow | undefined {
+  const exact = rows.find((s) => s.name === serverName);
+  if (exact) return exact;
+  const named = rows.filter((r) => r.name);
+  if (named.length <= 1) return named[0];
+  return [...named].sort((a, b) =>
+    (a.name ?? '').localeCompare(b.name ?? ''),
+  )[0];
+}
+
 /** Resolves the `/ip/hotspot/profile` name backing a given server. */
 export async function profileNameForServer(
   c: RouterOsApiClient,
@@ -199,7 +221,7 @@ export async function profileNameForServer(
     '/ip/hotspot/print',
     '=.proplist=.id,name,profile',
   ]);
-  const server = servers.find((s) => s.name === serverName);
+  const server = resolveHotspotServer(servers, serverName);
   if (!server?.profile) {
     throw new Error(`Hotspot server "${serverName}" not found`);
   }
@@ -215,7 +237,7 @@ async function hotspotInterface(
     '/ip/hotspot/print',
     '=.proplist=.id,name,interface',
   ]);
-  const server = servers.find((s) => s.name === serverName);
+  const server = resolveHotspotServer(servers, serverName);
   if (!server?.interface) {
     throw new Error(`Hotspot server "${serverName}" not found`);
   }
