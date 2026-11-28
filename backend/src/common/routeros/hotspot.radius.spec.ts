@@ -104,6 +104,10 @@ describe('hotspotProfileUsesRadius', () => {
     const { client } = makeClient({ 0: [{ '.id': '*4', name: 'p', 'use-radius': 'yes' }] });
     expect(await hotspotProfileUsesRadius(client, 'p')).toBe(true);
   });
+  it('true quand use-radius=true (format booléen de l’API RouterOS)', async () => {
+    const { client } = makeClient({ 0: [{ '.id': '*4', name: 'p', 'use-radius': 'true' }] });
+    expect(await hotspotProfileUsesRadius(client, 'p')).toBe(true);
+  });
   it('false sinon / profil absent', async () => {
     const { client } = makeClient({ 0: [{ '.id': '*4', name: 'p', 'use-radius': 'no' }] });
     expect(await hotspotProfileUsesRadius(client, 'p')).toBe(false);

@@ -628,7 +628,11 @@ export async function hotspotProfileUsesRadius(
     '/ip/hotspot/profile/print',
     '=.proplist=.id,name,use-radius',
   ]);
-  return rows.find((r) => r.name === profileName)?.['use-radius'] === 'yes';
+  // L'API RouterOS renvoie les booléens en `true`/`false` (le CLI affiche
+  // yes/no). On accepte les deux pour ne pas faire échouer la confirmation
+  // après un `set use-radius=yes` pourtant appliqué.
+  const value = rows.find((r) => r.name === profileName)?.['use-radius'];
+  return value === 'yes' || value === 'true';
 }
 
 export function listActive(c: RouterOsApiClient): Promise<ApiRow[]> {
